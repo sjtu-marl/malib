@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package rpc;
+
+service ControlRPC {
+    rpc HeatBeat(BeatSignal) returns (BeatReply);
+}
+
+message BeatSignal {
+    string node_type = 1;
+    string node_id = 2;
+    string node_status = 3;
+
+    double send_time = 4;
+}
+
+message BeatReply {
+    // Instruction code quick definition
+    // Target Code: Claimed Target
+    // "1" --     : parameter server
+    // "2" --     : rollout worker
+    // "3" --     : agent
+    // "4" --     : evaluator
+    // "0" --     : all
+    string target_code = 1;
+
+    // Instruction -- Required Action
+    string action_code = 2;
+
+    double send_time = 3;
+}

@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package rpc;
+
+service MongoRPC {
+    rpc RegisterFunction(RegisterRequest) returns (RegisterReply);
+    rpc Call(RemoteCallRequest) returns (RemoteCallResult);
+}
+
+message RegisterRequest {
+    bytes func_code = 1;
+    string func_name = 2;
+    double send_time = 3;
+}
+
+message RegisterReply {
+    int32 status_code = 1;
+    double send_time = 2;
+}
+
+message RemoteCallRequest {
+    double send_time = 1;
+}
+
+message RemoteCallResult {
+    double send_time = 1;
+}

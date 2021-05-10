@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package rpc;
+
+service LogRPC {
+    rpc Log(LogInfo) returns (LogReply);
+}
+
+message LogInfo {
+    string log_level = 1;
+    string log_info = 2;
+
+    double send_time = 3;
+}
+
+message LogReply {
+    string status_code = 1;
+
+    double send_time = 2;
+}
