@@ -186,7 +186,7 @@ class RolloutWorker(BaseRolloutWorker):
 
         if threaded:
             print(f"got simulation task: {len(combinations)}")
-            res = self.actor_pool.map_unordered(
+            res = self.actor_pool.map(
                 lambda a, combination: a.run.remote(
                     trainable_pairs=None,
                     policy_mapping={aid: v[0] for aid, v in combination.items()},
