@@ -92,7 +92,7 @@ class Func:
             aid: Episode.concatenate(*merged_data[aid], capacity=merged_capacity[aid])
             for aid in merged_data
         }
-        env.close()
+        # env.close()
         del env
         return statics, data2send
 
