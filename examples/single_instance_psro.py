@@ -195,6 +195,7 @@ if __name__ == "__main__":
                     num_episodes=[rollout_config["num_episodes"]],
                     threaded=False,
                     role="rollout",
+                    trainable_pairs=trainable_policy_mapping,
                 )
                 batch = agent_episodes[agent].sample(size=args.batch_size)
                 res = learners[agent].optimize(

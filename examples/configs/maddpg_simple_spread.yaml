@@ -33,7 +33,7 @@ rollout:
 evaluation:
   fragment_length: 100
   num_episodes: 100
-  callback: "simultaneous"
+  callback: "sequential"
 
 env_description:
   #  scenario_name: "simple_spread"

@@ -5,7 +5,7 @@ from pettingzoo.mpe import simple_v2
 from malib.runner import run
 
 
-parser = argparse.ArgumentParser("Async PPO training on mpe environments.")
+parser = argparse.ArgumentParser("Async training on mpe environments.")
 
 parser.add_argument("--num_learner", type=int, default=3)
 parser.add_argument("--batch_size", type=int, default=64)
@@ -26,7 +26,7 @@ if __name__ == "__main__":
 
     run(
         group="MPE/simple",
-        name="async_ppo",
+        name="async_dqn",
         worker_config={"worker_num": args.num_learner},
         env_description={
             "creator": simple_v2.env,

@@ -53,6 +53,9 @@ class CoordinatorServer(BaseCoordinator):
         BaseCoordinator.__init__(self)
 
         self._configs = kwargs
+        self._configs["rollout"]["worker_num"] = self._configs["worker_config"].get(
+            "worker_num", -1
+        )
 
         self._terminate = False
         self._pending_trainable_pairs = {}

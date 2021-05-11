@@ -20,7 +20,7 @@ from malib.agent import get_training_agent
 from malib.rollout.rollout_worker import RolloutWorker
 from malib.rollout.rollout_func import rollout_wrapper
 
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.backend.datapool.offline_dataset_server import MultiAgentEpisode
 from malib.utils.logger import Log, get_logger
 
 
@@ -113,38 +113,30 @@ if __name__ == "__main__":
             rollout_handler.update_population(agent, pid, policy)
             trainable_policy_mapping[agent] = pid
 
-    agent_episodes = {
-        agent: Episode(
-            env_desc["id"],
-            policy_id=trainable_policy_mapping[agent],
-            capacity=config["dataset_config"]["episode_capacity"],
-            other_columns=["times"],
-        )
-        for agent in env.possible_agents
-    }
+    agent_episode = MultiAgentEpisode(
+        env_desc["id"],
+        trainable_policy_mapping,
+        capacity=config["dataset_config"]["episode_capacity"],
+    )
     # ======================================================================================================
 
     # ==================================== Main loop =======================================================
     min_size = 0
-    while min_size < config["dataset_config"]["learning_start"]:
+    while agent_episode.size < config["dataset_config"]["learning_start"]:
         statistics, _ = rollout_handler.sample(
-            callback=rollout_wrapper(
-                agent_episodes, rollout_type=config["rollout"]["callback"]
-            ),
+            callback=rollout_wrapper(agent_episode),
+            trainable_pairs=trainable_policy_mapping,
             fragment_length=config["rollout"]["fragment_length"],
             behavior_policy_mapping=trainable_policy_mapping,
             num_episodes=[config["rollout"]["episode_seg"]],
             role="rollout",
             threaded=False,
         )
-        min_size = min([e.size for e in agent_episodes.values()])
 
     for epoch in range(1000):
         print(f"==================== epoch #{epoch} ===============")
         _ = rollout_handler.sample(
-            callback=rollout_wrapper(
-                agent_episodes, rollout_type=config["rollout"]["callback"]
-            ),
+            callback=rollout_wrapper(agent_episode),
             fragment_length=config["rollout"]["fragment_length"],
             behavior_policy_mapping=trainable_policy_mapping,
             num_episodes=[config["rollout"]["episode_seg"]],
@@ -155,9 +147,7 @@ if __name__ == "__main__":
             log=True, logger=logger, worker_idx="Rollout", global_step=epoch
         ) as (statistic_seq, processed_statistics):
             statistics, _ = rollout_handler.sample(
-                callback=rollout_wrapper(
-                    None, rollout_type=config["evaluation"]["callback"]
-                ),
+                callback=rollout_wrapper(None),
                 fragment_length=config["rollout"]["fragment_length"],
                 behavior_policy_mapping=trainable_policy_mapping,
                 num_episodes=[config["evaluation"]["num_episodes"]],
@@ -170,15 +160,12 @@ if __name__ == "__main__":
         print("-------------- rollout --------")
         pprint.pprint(processed_statistics[0])
 
-        idxes = np.random.choice(min_size, config["training"]["config"]["batch_size"])
         batches = {}
         for agent in env.possible_agents:
-            batch = agent_episodes[agent].sample(idxes)
+            batch = agent_episode.sample(
+                size=config["training"]["config"]["batch_size"]
+            )
             batches[agent] = batch
-        # check timestamp
-        for i in range(config["training"]["config"]["batch_size"]):
-            times = [b["times"][i] for b in batches.values()]
-            assert max(times) == min(times), (max(times), min(times))
 
         print("-------------- traininig -------")
         for iid, interface in learners.items():

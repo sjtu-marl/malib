@@ -19,9 +19,9 @@ from collections import defaultdict
 
 import numpy as np
 
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.backend.datapool.offline_dataset_server import Episode, MultiAgentEpisode
 from malib.utils.metrics import get_metric
-from malib.utils.typing import AgentID, Dict
+from malib.utils.typing import AgentID, Dict, Union
 from malib.utils.preprocessor import get_preprocessor
 
 
@@ -231,11 +231,12 @@ def simultaneous(
 
 
 def rollout_wrapper(
-    agent_episodes: Dict[AgentID, Episode] = None, rollout_type="sequential"
+    agent_episodes: Union[MultiAgentEpisode, Dict[AgentID, Episode]] = None,
+    rollout_type="sequential",
 ):
     """Rollout wrapper accept a dict of episodes outside.
 
-    :param Dict[AgentID,Episode] agent_episodes: A dict of agent episodes.
+    :param Union[MultiAgentEpisode,Dict[AgentID,Episode]] agent_episodes: A dict of agent episodes or multiagentepisode instance.
     :param str rollout_type: Specify rollout styles. Default to `sequential`, choices={sequential, simultaneous}.
     :return: A function
     """
@@ -258,7 +259,9 @@ def rollout_wrapper(
             max_iter,
             behavior_policy_mapping=behavior_policy_mapping,
         )
-        if agent_episodes is not None:
+        if isinstance(agent_episodes, MultiAgentEpisode):
+            agent_episodes.insert(**episodes)
+        elif isinstance(agent_episodes, Dict):
             for agent, episode in episodes.items():
                 agent_episodes[agent].insert(**episode.data)
         return statistic, episodes

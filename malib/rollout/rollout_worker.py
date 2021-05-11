@@ -168,10 +168,11 @@ class RolloutWorker(BaseRolloutWorker):
             aid: Episode.concatenate(*merged_data[aid], capacity=merged_capacity[aid])
             for aid in merged_data
         }
+        ap_mapping = {k: v.policy_id for k, v in agent_episode.items()}
         data2send = {
             aid: MultiAgentEpisode(
                 e.env_id,
-                kwargs["trainable_pairs"],
+                ap_mapping,
                 merged_capacity[aid],
                 e.other_columns,
             )
