@@ -19,7 +19,6 @@ def cal_entropy(logits):
 
 
 class PPOLoss(LossFunc):
-
     def __init__(self):
         super(PPOLoss, self).__init__()
         # default parameters here
@@ -29,6 +28,7 @@ class PPOLoss(LossFunc):
             "cliprange": 0.2,
             "entropy_coef": 1e-3,
             "value_coef": 0.5,
+            "optimizer": "Adam",
         }
 
     def setup_optimizers(self, *args, **kwargs):

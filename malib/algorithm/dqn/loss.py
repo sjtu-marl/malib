@@ -10,6 +10,10 @@ from .policy import DQN
 
 
 class DQNLoss(LossFunc):
+    def __init__(self):
+        super(DQNLoss, self).__init__()
+        self._params = {"optimizer": "Adam", "lr": 1e-4}
+
     def setup_optimizers(self, *args, **kwargs):
         self._policy: DQN
         optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))

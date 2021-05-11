@@ -10,7 +10,7 @@ from ray.util import ActorPool
 
 import uuid
 from malib import settings
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.backend.datapool.offline_dataset_server import Episode, MultiAgentEpisode
 from malib.envs.agent_interface import AgentInterface
 from malib.rollout import rollout_func
 from malib.rollout.base_worker import BaseRolloutWorker
@@ -131,7 +131,7 @@ class RolloutWorker(BaseRolloutWorker):
 
     def ready_for_sample(self, policy_distribution=None):
         """Reset policy behavior distribution.
-    
+
         :param Dict[AgentID,Dict[PolicyID,float]] policy_distribution: The agent policy distribution
         """
 
@@ -164,10 +164,21 @@ class RolloutWorker(BaseRolloutWorker):
                 merged_capacity[aid] += episode.size
             statistic_seq.append(statis)
 
-        data2send = {
+        agent_episode = {
             aid: Episode.concatenate(*merged_data[aid], capacity=merged_capacity[aid])
             for aid in merged_data
         }
+        data2send = {
+            aid: MultiAgentEpisode(
+                e.env_id,
+                kwargs["trainable_pairs"],
+                merged_capacity[aid],
+                e.other_columns,
+            )
+            for aid, e in agent_episode.items()
+        }
+        for aid, mae in data2send.items():
+            mae.insert(**agent_episode)
         return statistic_seq, data2send
 
     def _simulation(self, threaded, combinations, **kwargs):
@@ -200,8 +211,7 @@ class RolloutWorker(BaseRolloutWorker):
             return statis, None
 
     def sample(self, *args, **kwargs) -> Tuple[Sequence[Dict], Sequence[Any]]:
-        """Sample function. Support rollout and simulation. Default in threaded mode.
-        """
+        """Sample function. Support rollout and simulation. Default in threaded mode."""
 
         callback = kwargs["callback"]
         behavior_policy_mapping = kwargs.get("behavior_policy_mapping", None)

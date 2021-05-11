@@ -10,6 +10,13 @@ from malib.backend.datapool.offline_dataset_server import Episode
 class DDPGLoss(LossFunc):
     def __init__(self):
         super(DDPGLoss, self).__init__()
+        self._params = {
+            "actor_lr": 1e-2,
+            "critic_lr": 1e-2,
+            "tau": 0.01,
+            "optimizer": "Adam",
+            "grad_norm_clipping": 0.5,
+        }
 
     def reset(self, policy, configs):
         self._params.update(configs)

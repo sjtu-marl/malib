@@ -141,7 +141,7 @@ class AgentInterface(metaclass=ABCMeta):
         :return: A tuple of agent ids.
         """
 
-        return tuple(self._group)
+        return self._group
 
     @classmethod
     def as_remote(

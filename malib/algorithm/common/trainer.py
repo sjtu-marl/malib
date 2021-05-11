@@ -44,7 +44,9 @@ class Trainer(metaclass=ABCMeta):
             raise ValueError("Loss has not been initialized yet.")
 
     @abstractmethod
-    def preprocess(self, batch: Dict[AgentID, Any], other_policies: Dict[AgentID, Policy]) -> Any:
+    def preprocess(
+        self, batch: Dict[AgentID, Any], other_policies: Dict[AgentID, Policy]
+    ) -> Any:
         """Preprocess agent batches.
 
         :param batch:

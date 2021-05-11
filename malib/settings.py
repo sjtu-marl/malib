@@ -66,7 +66,7 @@ DEFAULT_CONFIG = {
             "optimizer": "SGD",
             "lr": 1e-4,
             "actor_lr": 1e-4,
-            "critic_lr": 1e-4
+            "critic_lr": 1e-4,
         },
     },
     # environment description for environment creation, creator, config and id are required

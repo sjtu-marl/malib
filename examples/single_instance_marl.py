@@ -173,7 +173,7 @@ if __name__ == "__main__":
         idxes = np.random.choice(min_size, config["training"]["config"]["batch_size"])
         batches = {}
         for agent in env.possible_agents:
-            batch, _ = agent_episodes[agent].sample(idxes)
+            batch = agent_episodes[agent].sample(idxes)
             batches[agent] = batch
         # check timestamp
         for i in range(config["training"]["config"]["batch_size"]):

@@ -160,7 +160,10 @@ class AsyncAgent(IndependentAgent):
         return status
 
     def optimize(
-        self, policy_ids: Dict[AgentID, PolicyID], batch: Dict[AgentID, Any], training_config: Dict[str, Any]
+        self,
+        policy_ids: Dict[AgentID, PolicyID],
+        batch: Dict[AgentID, Any],
+        training_config: Dict[str, Any],
     ) -> Dict[AgentID, Dict[str, MetricEntry]]:
         """Execute optimization and gradient collecting for a group of policies with given batches.
 
@@ -177,7 +180,9 @@ class AsyncAgent(IndependentAgent):
             trainer = self.get_trainer(pid)
             trainer.reset(self.policies[pid], training_config)
             res[env_aid] = trainer.optimize(batch[env_aid])
-            assert res[env_aid].get("gradients") is not None, "You must return gradients from optimizer"
+            assert (
+                res[env_aid].get("gradients") is not None
+            ), "You must return gradients from optimizer"
             gradients = res[env_aid].pop("gradients")
             res[env_aid] = metrics.to_metric_entry(res[env_aid])
             self._cumulative_grads[pid].append(gradients)

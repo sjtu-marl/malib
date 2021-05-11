@@ -196,7 +196,7 @@ if __name__ == "__main__":
                     threaded=False,
                     role="rollout",
                 )
-                batch, info = agent_episodes[agent].sample(size=args.batch_size)
+                batch = agent_episodes[agent].sample(size=args.batch_size)
                 res = learners[agent].optimize(
                     policy_ids={agent: trainable_policy_mapping[agent]},
                     batch={agent: batch},

@@ -336,7 +336,13 @@ class BaseRolloutWorker:
                     callback=task_desc.content.callback,
                     behavior_policy_mapping=None,
                     num_episodes=num_episode_seg,
-                    trainable_pairs=task_desc.content.agent_involve_info.trainable_pairs,
+                    trainable_pairs={
+                        aid: pid
+                        for aid, (
+                            pid,
+                            _,
+                        ) in task_desc.content.agent_involve_info.trainable_pairs.items()
+                    },
                     explore=True,
                     fragment_length=task_desc.content.fragment_length,
                     role="rollout",

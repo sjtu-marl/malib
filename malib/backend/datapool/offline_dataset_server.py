@@ -220,11 +220,11 @@ class Episode:
                 )
         self._size = len(self._data[Episode.CUR_OBS])
 
-    def sample(self, idxes=None, size=None) -> Tuple[Any, str]:
+    def sample(self, idxes=None, size=None) -> Any:
         assert idxes is None or size is None
         size = size or len(idxes)
         if idxes is not None:
-            return {k: self._data[k][idxes] for k in self.columns}, "OK"
+            return {k: self._data[k][idxes] for k in self.columns}
 
         if self.size < size:
             info = f"no enough data, {self.size} < {size}"
@@ -232,7 +232,7 @@ class Episode:
         if size is not None:
             # FIXME(ming): random sample should avoid conflicts
             indices = np.random.choice(self._size, size)
-            return {k: self._data[k][indices] for k in self.columns}, "OK"
+            return {k: self._data[k][indices] for k in self.columns}
         raise RuntimeError("You must specify either `idxes` or `size`")
 
     @classmethod
@@ -298,7 +298,10 @@ class MultiAgentEpisode(Episode):
     def insert(self, **kwargs):
         """ Format: {agent: {column: np.array, ...}, ...} """
         for agent, episode in self._data.items():
-            episode.insert(**kwargs[agent])
+            if isinstance(episode, Episode):
+                episode.insert(**kwargs[agent].data)
+            else:
+                episode.insert(**kwargs[agent])
             # FIXME(ming): support clipped mode only
             self._size = episode.size
 
@@ -392,8 +395,8 @@ class Table:
 
     def sample(self, idxes=None, size=None) -> Tuple[Any, str]:
         with self._threading_lock:
-            data, info = self._episode.sample(idxes, size)
-        return data, info
+            data = self._episode.sample(idxes, size)
+        return data
 
     def lock_push_pull(self, lock_type):
         with self._threading_lock:
@@ -628,7 +631,6 @@ class OfflineDataset:
         try:
             res = {}
             with Log.timer(log=settings.PROFILING, logger=self.logger):
-                size_list, candidate, batch_size = [], [], []
                 for agent, buffer_desc in agent_buffer_desc_dict.items():
                     table_name = Table.gen_table_name(
                         env_id=buffer_desc.env_id,
@@ -636,14 +638,7 @@ class OfflineDataset:
                         pid=buffer_desc.policy_id,
                     )
                     table = self._tables[table_name]
-                    size_list.append(table.size)
-                    candidate.append((agent, table))
-                    batch_size.append(buffer_desc.batch_size)
-                if min(size_list) < self._learning_start:
-                    raise NoEnoughDataError
-                idxes = np.random.choice(min(size_list), min(batch_size))
-                for agent, table in candidate:
-                    res[agent], info = table.sample(idxes)
+                    res[agent], info = table.sample(size=buffer_desc.batch_size)
         except (KeyError, OversampleError, NoEnoughDataError) as e:
             info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
             res = None
