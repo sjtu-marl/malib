@@ -64,17 +64,18 @@ class RolloutWorkerManager:
         )
         print(f"-------- worker num: {worker_num}")
         rollout_worker_cls = get_rollout_worker(rollout_config["type"])
+        worker_cls = rollout_worker_cls.as_remote(
+            num_cpus=None,
+            num_gpus=None,
+            memory=None,
+            object_store_memory=None,
+            resources=None,
+        )
+
         # meta_keys = possible_agents
         for i in range(worker_num):
             worker_idx = _get_worker_hash_idx(i)
 
-            worker_cls = rollout_worker_cls.as_remote(
-                num_cpus=None,
-                num_gpus=None,
-                memory=None,
-                object_store_memory=None,
-                resources=None,
-            )
             self._workers[worker_idx] = worker_cls.options(max_concurrency=100).remote(
                 worker_index=worker_idx,
                 env_desc=self._env_desc,
