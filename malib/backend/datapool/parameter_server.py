@@ -21,7 +21,6 @@ from malib.utils.typing import (
     AgentID,
     PolicyID,
 )
-from malib.debugging import tools as debug_tools
 
 PARAMETER_TABLE_NAME_GEN = (
     lambda env_id, agent_id, pid, policy_type: f"{env_id}_{agent_id}_{pid}_{policy_type}"
