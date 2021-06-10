@@ -14,15 +14,16 @@ Examples:
 In your custom rollout function, you can decide extra data
 you wanna save by specifying extra columns when Episode initialization.
 """
-import time
+import ray
 from collections import defaultdict
 
 import numpy as np
 
-from malib.backend.datapool.offline_dataset_server import Episode, MultiAgentEpisode
-from malib.utils.metrics import get_metric
-from malib.utils.typing import AgentID, Dict, Union
+from malib.utils.metrics import get_metric, Metric
+from malib.utils.typing import AgentID, Dict, PolicyID, Union
 from malib.utils.preprocessor import get_preprocessor
+from malib.envs.agent_interface import AgentInterface
+from malib.backend.datapool.offline_dataset_server import Episode, MultiAgentEpisode
 
 
 def sequential(
@@ -129,105 +130,118 @@ def sequential(
 
 
 def simultaneous(
-    trainable_pairs,
-    agent_interfaces,
-    env_desc,
-    metric_type,
-    max_iter,
-    behavior_policy_mapping=None,
+    env: type,
+    num_episodes: int,
+    agent_interfaces: Dict[AgentID, AgentInterface],
+    fragment_length: int,
+    behavior_policies: Dict[AgentID, PolicyID],
+    agent_episodes: Dict[AgentID, Episode],
+    metric: Metric,
+    send_interval: int = 50,
+    dataset_server: ray.ObjectRef = None,
 ):
-    """Do not support next action mask.
+    """Rollout in simultaneous mode, support environment vectorization.
 
-    :param trainable_pairs:
-    :param agent_interfaces:
-    :param env_desc:
-    :param metric_type:
-    :param max_iter:
-    :param behavior_policy_mapping:
-    :return:
+    :param type env: The environment instance.
+    :param int num_episodes: Episode number.
+    :param Dict[Agent,AgentInterface] agent_interfaces: The dict of agent interfaces for interacting with environment.
+    :param int fragment_length: The maximum step limitation of environment rollout.
+    :param Dict[AgentID,PolicyID] behavior_policies: The behavior policy mapping for policy
+        specifing when execute `compute_action` `transform_observation. Furthermore, the specified policy id will replace the existing behavior policy if you've reset it before.
+    :param Dict[AgentID,Episode] agent_episodes: A dict of agent episodes, for individual experience buffering.
+    :param Metric metric: The metric handler, for statistics parsing and grouping.
+    :param int send_interval: Specifying the step interval of sending buffering data to remote offline dataset server.
+    :param ray.ObjectRef dataset_server: The offline dataset server handler, buffering data if it is not None.
+    :return: A tuple of statistics and the size of buffered experience.
     """
 
-    env = env_desc.get("env", env_desc["creator"](**env_desc["config"]))
-
-    metric = get_metric(metric_type)(
-        env.possible_agents if trainable_pairs is None else list(trainable_pairs.keys())
-    )
-
-    if behavior_policy_mapping is None:
-        for agent in agent_interfaces.values():
-            agent.reset()
-
-    behavior_policy_mapping = behavior_policy_mapping or {
-        _id: agent.behavior_policy for _id, agent in agent_interfaces.items()
-    }
-
-    agent_episode = {
-        agent: Episode(
-            env_desc["id"],
-            behavior_policy_mapping[agent],
-            capacity=max_iter,
-            other_columns=["times"],
-        )
-        for agent in (trainable_pairs or env.possible_agents)
-    }
-
+    rets = env.reset(limits=num_episodes)
     done = False
-    step = 0
-    observations = env.reset()
+    cnt = 0
 
-    for agent, obs in observations.items():
-        observations[agent] = agent_interfaces[agent].transform_observation(
-            obs, policy_id=behavior_policy_mapping[agent]
+    agent_ids = list(agent_interfaces.keys())
+
+    rets[Episode.CUR_OBS] = dict(
+        zip(
+            agent_ids,
+            ray.get(
+                [
+                    agent_interfaces[aid].transform_observation.remote(
+                        rets[Episode.CUR_OBS][aid], policy_id=behavior_policies[aid]
+                    )
+                    for aid in agent_ids
+                ]
+            ),
         )
-
-    while step < max_iter and not done:
-        actions, action_dists = {}, {}
-        for agent, interface in agent_interfaces.items():
-            action, action_dist, extra_info = agent_interfaces[agent].compute_action(
-                observations[agent], policy_id=behavior_policy_mapping[agent]
-            )
-            actions[agent] = action
-            action_dists[agent] = action_dist
-
-        next_observations, rewards, dones, infos = env.step(actions)
-
-        for agent, interface in agent_interfaces.items():
-            obs = next_observations[agent]
-            if obs is not None:
-                next_observations[agent] = interface.transform_observation(
-                    obs, policy_id=behavior_policy_mapping[agent]
-                )
-            else:
-                next_observations[agent] = np.zeros_like(observations[agent])
-        time_stamp = time.time()
-        for agent in agent_episode:
-            agent_episode[agent].insert(
-                **{
-                    Episode.CUR_OBS: np.expand_dims(observations[agent], 0),
-                    Episode.ACTIONS: np.asarray([actions[agent]]),
-                    Episode.REWARDS: np.asarray([rewards[agent]]),
-                    Episode.ACTION_DIST: np.expand_dims(action_dists[agent], 0),
-                    Episode.NEXT_OBS: np.expand_dims(next_observations[agent], 0),
-                    Episode.DONES: np.asarray([dones[agent]]),
-                    "times": np.asarray([time_stamp]),
-                }
-            )
-            metric.step(
-                agent,
-                behavior_policy_mapping[agent],
-                observation=observations[agent],
-                action=actions[agent],
-                reward=rewards[agent],
-                action_dist=action_dists[agent],
-                done=dones[agent],
-            )
-        step += 1
-        done = any(dones.values())
-
-    return (
-        metric.parse(agent_filter=tuple(agent_episode)),
-        agent_episode,
     )
+
+    while not done and cnt < fragment_length:
+        act_dict = {}
+        act_dist_dict = {}
+
+        tasks = []
+        for aid in agent_ids:
+            obs_seq = rets[Episode.CUR_OBS][aid]
+            extra_kwargs = {"policy_id": behavior_policies[aid]}
+            if rets.get(Episode.ACTION_MASKS) is not None:
+                extra_kwargs["action_mask"] = rets[Episode.ACTION_MASKS][aid]
+            tasks.append(
+                agent_interfaces[aid].compute_action.remote(obs_seq, **extra_kwargs)
+            )
+        prets = ray.get(tasks)
+        for aid, (x, y, _) in zip(agent_ids, prets):
+            act_dict[aid] = x
+            act_dist_dict[aid] = y
+
+        next_rets = env.step(act_dict)
+        rets.update(next_rets)
+
+        for k, v in rets.items():
+            if k == Episode.NEXT_OBS:
+                tasks = []
+                for aid in agent_ids:
+                    tasks.append(
+                        agent_interfaces[aid].transform_observation.remote(
+                            v[aid], policy_id=behavior_policies[aid]
+                        )
+                    )
+                tmpv = ray.get(tasks)
+                for aid, e in zip(agent_ids, tmpv):
+                    v[aid] = e
+
+        # stack to episodes
+        for aid in agent_episodes:
+            episode = agent_episodes[aid]
+            items = {
+                Episode.ACTIONS: np.stack(act_dict[aid]),
+                Episode.ACTION_DIST: np.stack(act_dist_dict[aid]),
+            }
+
+            for k, v in rets.items():
+                items[k] = np.stack(v[aid])
+
+            episode.insert(**items)
+            metric.step(aid, behavior_policies[aid], **items)
+
+        rets[Episode.CUR_OBS] = rets[Episode.NEXT_OBS]
+        done = any(
+            [
+                any(v) if not isinstance(v, bool) else v
+                for v in rets[Episode.DONES].values()
+            ]
+        )
+        cnt += 1
+
+        if dataset_server is not None and cnt % send_interval == 0:
+            dataset_server.save.remote(agent_episodes)
+            # clean agent episode
+            for e in agent_episodes.values():
+                e.reset()
+
+    dataset_server.save.remote(agent_episodes)
+    transition_size = cnt * len(agent_episodes) * getattr(env, "num_envs", 1)
+    # print("transition size:", transition_size)
+    return [metric.parse(agent_filter=list(agent_episodes.keys()))], transition_size
 
 
 def rollout_wrapper(
@@ -267,125 +281,6 @@ def rollout_wrapper(
         return statistic, episodes
 
     return func
-
-
-def multi_agent_rollout(multi_agent_episode):
-    """Not READY"""
-
-    def rollout_fn(
-        trainable_pairs,
-        agent_interfaces,
-        env_desc,
-        metric_type,
-        max_iter,
-        behavior_policy_mapping=None,
-    ):
-        env = env_desc.get("env", env_desc["creator"](**env_desc["config"]))
-        metric = get_metric(metric_type)(env.possible_agents)
-        behavior_policy_mapping = behavior_policy_mapping or {
-            _id: agent.behavior_policy for _id, agent in agent_interfaces.items()
-        }
-
-        observations = defaultdict(list)
-        states = defaultdict(list)
-        actions = defaultdict(list)
-        rewards = defaultdict(list)
-        action_dists = defaultdict(list)
-        next_observations = defaultdict(list)
-        next_states = defaultdict(list)
-        dones = defaultdict(list)
-        next_action_masks = defaultdict(list)
-        infos = defaultdict(list)
-
-        obs_dict, state_dict, action_mask_dict = env.reset()
-
-        cnt = 0
-        while cnt < max_iter:
-            act_dict, act_dist_dict = {}, {}
-            for aid, obs in obs_dict.items():
-                info = {}
-                info["action_mask"] = action_mask_dict[aid]
-
-                # XXX(ziyu): what is "info" we need? I think we may need to pass the true
-                #  info_dict[aid] to compute_action
-                info["policy_id"] = behavior_policy_mapping[aid]
-                act_dict[aid], _, extra_info = agent_interfaces[aid].compute_action(
-                    obs, **info
-                )
-                act_dist_dict[aid] = extra_info["action_probs"]
-            (
-                next_obs_dict,
-                next_state_dict,
-                rew_dict,
-                done_dict,
-                action_mask_dict,
-                info_dict,
-            ) = env.step(act_dict)
-
-            for aid in env.agents:
-                (
-                    _obs,
-                    _state,
-                    _act,
-                    _act_dist,
-                    _rew,
-                    _n_obs,
-                    _n_state,
-                    _done,
-                    _action_mask,
-                    _info,
-                ) = (
-                    obs_dict[aid],
-                    state_dict[aid],
-                    act_dict[aid],
-                    act_dist_dict[aid],
-                    rew_dict[aid],
-                    next_obs_dict[aid],
-                    next_state_dict[aid],
-                    done_dict[aid],
-                    action_mask_dict[aid],
-                    info_dict[aid],
-                )
-                observations[aid].append(_obs)
-                states[aid].append(_state)
-                actions[aid].append(_act)
-                action_dists[aid].append(_act_dist)
-                next_observations[aid].append(_n_obs)
-                next_states[aid].append(_n_state)
-                rewards[aid].append(_rew)
-                dones[aid].append(_done)
-                next_action_masks[aid].append(_action_mask)
-                infos[aid].append(_info)
-
-                # metric.step(aid, _obs, _act, _rew, _done, _info)
-                metric.step(aid, behavior_policy_mapping[aid], reward=_rew, info=_info)
-
-            obs_dict = next_obs_dict
-            state_dict = next_state_dict
-
-            if all(done_dict.values()):
-                break
-
-        multi_agent_episode.insert(
-            **{
-                aid: {
-                    Episode.CUR_OBS: np.stack(observations[aid]),
-                    Episode.CUR_STATE: np.stack(states[aid]),
-                    Episode.NEXT_OBS: np.stack(next_observations[aid]),
-                    Episode.NEXT_STATE: np.stack(next_states[aid]),
-                    Episode.DONES: np.stack(dones[aid]),
-                    Episode.REWARDS: np.stack(rewards[aid]),
-                    Episode.ACTIONS: np.stack(actions[aid]),
-                    Episode.ACTION_DIST: np.stack(action_dists[aid]),
-                    Episode.NEXT_ACTION_MASK: np.stack(next_action_masks[aid]),
-                }
-                for aid in observations
-            }
-        )
-
-        return metric.parse(), {}
-
-    return rollout_fn
 
 
 def get_func(name: str):

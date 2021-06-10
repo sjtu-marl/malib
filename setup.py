@@ -40,6 +40,12 @@ setup(
             "sphinx",
             "sphinx-rtd-theme",
             "sphinxcontrib-apidoc",
-        ]
+        ],
+        "envs": [
+            "git+https://github.com/oxwhirl/smac.git",
+            "supersuit",
+            "multi-agent-ale-py",
+            "autorom",
+        ],
     },
 )

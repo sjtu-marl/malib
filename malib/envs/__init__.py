@@ -1,8 +1,19 @@
-# -*- coding:utf-8 -*-
-# Create Date: 11/17/20, 11:48 AM
-# Author: ming
-# ---
-# Last Modified: 11/17/20
-# Modified By: ming
-# ---
-# Copyright (c) 2020 MARL @ SJTU
+from malib.utils.typing import Dict, AgentID, List
+
+
+class Environment:
+    def __init__(self, *args, **kwargs):
+        self.is_sequential = False
+
+    @property
+    def extra_returns(self):
+        raise NotImplementedError
+
+    def reset(self, *args, **kwargs):
+        pass
+
+    def step(self, actions: Dict[AgentID, List]):
+        raise NotImplementedError
+
+    def render(self, *args, **kwargs):
+        raise NotImplementedError
