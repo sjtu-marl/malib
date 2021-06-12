@@ -16,6 +16,8 @@ Algorithm Customization
 MALib decouple the algorithm :ref:`malib.algorithm`
 
 
+.. _api-environment-custom:
+
 Environment Customization
 -------------------------
 
