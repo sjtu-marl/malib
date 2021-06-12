@@ -3,18 +3,20 @@
 
 MALib is a parallel framework of population-based learning nested with (multi-agent) reinforcement learning (RL) methods, such as Policy Space Response Oracle, Self-Play and Neural Fictitous Self-Play. MALib provides higher-level abstractions of MARL training paradigms, which enables efficient code reuse and flexible deployments on different distributed computing paradigms. The design of MALib also strives to promto the research of other multi-agent learning research, including multi-agent imitation learning and model-based RL.
 
+![architecture](docs/imgs/Architecture.png)
+
 ## Installation
 
-We've tested MALib on Python 3.6 and 3.7
+The installation of MALib is very easy. We've tested MALib on Python 3.6 and 3.7. This guide is based on ubuntu 18.04 or above. We strongly recommend using [conda](https://docs.conda.io/en/latest/miniconda.html) to manage your dependencies, and avoid version conflicts. Here we show the example of building python 3.7 based conda environment.
+
 
 ```bash
 conda create -n malib python==3.7 -y
 conda activate malib
 pip install -e .
-
-# for development
-pip install -e .[dev]
 ```
+
+External environments are integrated in MALib, such as StarCraftII and vizdoom, you can install them via `pip install -e .[envs]`. For users who wanna contribute to our repository, run `pip install -e .[dev]` to complete the development dependencies, also refer the contributing guide.
 
 **optional**: if you wanna use alpha-rank to solve meta-game, install open-spiel with its [installation guides](https://github.com/deepmind/open_spiel)
 
@@ -62,4 +64,19 @@ run(
         "callback": rollout_func.sequential
     }
 )
+```
+
+## Citing MALib
+
+
+If you use MALib in your work, please cite the accompanying [paper](https://yingwen.io/malib.pdf).
+
+```bibtex
+@inproceedings{zhou2021malib,
+    title={MALib: A Parallel Framework for Population-based Multi-agent Reinforcement Learning},
+    author={Zhou, Ming and Wan, Ziyu and Wang, Hanjing and Wen, Muning and Wu, Runzhe and Wen, Ying and Yang, Yaodong and Zhang, Weinan and Wang, Jun},
+    booktitle={Preprint},
+    year={2021},
+    organization={Preprint}
+}
 ```
