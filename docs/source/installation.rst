@@ -15,6 +15,11 @@ We strongly recommend using `conda <https://docs.conda.io/en/latest/miniconda.ht
 
     conda create -n malib python==3.7 -y
     conda activate malib
+
+    # install dependencies
+    ./install_deps.sh
+
+    # install malib
     pip install -e .
 
 

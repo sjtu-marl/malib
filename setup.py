@@ -43,7 +43,7 @@ setup(
         ],
         "envs": [
             "vizdoom==1.1.8",
-            "git+https://github.com/oxwhirl/smac.git",
+            # "git+https://github.com/oxwhirl/smac.git",
             "supersuit",
             "multi-agent-ale-py",
             "autorom"
