@@ -62,7 +62,6 @@ class RolloutWorkerManager:
             if rollout_config["worker_num"] == -1
             else rollout_config["worker_num"]
         )
-        print(f"-------- worker num: {worker_num}")
         rollout_worker_cls = get_rollout_worker(rollout_config["type"])
         worker_cls = rollout_worker_cls.as_remote(
             num_cpus=None,

@@ -25,7 +25,6 @@ from malib.utils.typing import (
 )
 from malib.utils import metrics
 from malib.agent.indepdent_agent import IndependentAgent
-from malib.debugging import tools as debug_tools
 
 
 class AsyncAgent(IndependentAgent):

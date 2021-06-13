@@ -8,7 +8,7 @@ with open(path.join(DIR, "README.md"), encoding="utf-8") as f:
 
 setup(
     name="MALib",
-    description="A General Purpose Multi-agent Training Framework",
+    description="A Parallel Framework for Population-based MARL",
     long_description=long_desc,
     long_description_content="text/markdown",
     version="0.1.0",
@@ -40,6 +40,13 @@ setup(
             "sphinx",
             "sphinx-rtd-theme",
             "sphinxcontrib-apidoc",
+        ],
+        "envs": [
+            "vizdoom==1.1.8",
+            # "git+https://github.com/oxwhirl/smac.git",
+            "supersuit",
+            "multi-agent-ale-py",
+            "autorom"
         ]
     },
 )
