@@ -1,3 +1,8 @@
+.. figure:: ../imgs/logo.svg
+    :align: center
+    :width: 45%
+
+
 Introduction
 ============
 
