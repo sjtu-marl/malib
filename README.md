@@ -1,5 +1,5 @@
 
-<div align=center><img src="docs/imgs/logo.png" width="35%"></div>
+<div align=center style="margin-bottom: 20px"><img src="docs/imgs/logo.svg" width="35%"></div>
 
 
 # MALib: A parallel framework for population-based multi-agent reinforcement learning
