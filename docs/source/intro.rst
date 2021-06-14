@@ -3,7 +3,7 @@ Introduction
 
 MALib is a parallel framework of population-based learning nested with (multi-agent) reinforcement learning (RL) methods, such as Policy Space Response Oracle, Self-Play and Neural Fictitous Self-Play. MALib provides higher-level abstractions of MARL training paradigms, which enables efficient code reuse and flexible deployments on different distributed computing paradigms. The design of MALib also strives to promto the research of other multi-agent learning research, including multi-agent imitation learning and model-based RL.
 
-.. figure:: ../imgs/Architecture.png
+.. figure:: ../imgs/Architecture.svg
     :align: center
 
     Overview of the MALib architecture.
@@ -14,8 +14,7 @@ Population-based MARL (PB-MARL)
 
 In general, a PB-MARL algorithm will start from an initialized policy set and the distribution over the policies (**step 1**), then find new policies (**step 2**) via (MA)RL algorithms. After that, the policy set will be updated with new policies, also the policy distribution (**step 3**), and follow with (MA)RL tasks over expanded policy combinations (**step 4**). This process will be cyclically executed until meeting the convergence such as an estimated Nash Equilibrium, then output the final policy distribution.
 
-.. figure:: ../imgs/pb_marl.png
-    :scale: 35%
+.. figure:: ../imgs/pb_marl.svg
     :align: center
 
     The auto-curriculum learning paradigm of PB-MARL. 
