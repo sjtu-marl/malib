@@ -79,7 +79,7 @@ run(
 ## Citing MALib
 
 
-If you use MALib in your work, please cite the accompanying [paper](https://yingwen.io/malib.pdf).
+If you use MALib in your work, please cite the accompanying [paper](https://arxiv.org/abs/2106.07551).
 
 ```bibtex
 @misc{zhou2021malib,
