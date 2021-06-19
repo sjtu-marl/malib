@@ -30,7 +30,7 @@ title: MALib
 github_username:  sjtu-marl
 
 # Build settings
-theme: jekyll-theme-cayman
+theme: jekyll-theme-tactile
 plugins:
   - jekyll-feed
 
