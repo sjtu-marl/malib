@@ -1,0 +1,81 @@
+# Dueling dqn learning configuration for vizdoom (single player)
+worker_config:
+  worke_num: -1
+
+training:
+  interface:
+    type: "independent"
+    population_size: 1
+  config:
+    update_interval: 1
+    saving_interval: 10
+    batch_size: 64
+    optimizer: "sgd"
+
+rollout:
+  type: "async"
+  stopper: "simple_rollout"
+  stopper_config:
+    stop_num: 55
+    metric_type: "simple"
+    fragment_length: 1000
+    num_episodes: 1000
+    terminate: "any"
+    callback: "simultaneous"
+
+env_description:
+  creator: "vizdoom_v1"
+  config:
+    doom_scenario_path: "basic.wad"
+    doom_map: "map01"
+    window_visible: False
+    sound_enabled: False
+
+algorithms:
+  DQN:
+    name: "DQN"
+    model_config:
+      - conv1:
+        - Conv2d:
+            kernel_size: 3
+            stride: 2
+            bias: False
+        - BatchNorm2d:
+            units: 8
+        - ReLU
+      - conv2:
+          - Conv2d:
+              unit: 8
+          - BatchNorm2d:
+              unit: 8
+          - ReLU
+      - conv3:
+          - Conv2d
+          - BatchNorm2d
+          - ReLU
+      - conv4:
+          - Conv2d
+          - BatchNorm2d
+          - ReLU
+      - state_fc:
+          - Linear
+          - ReLU
+          - Linear
+
+    custom_config:
+      gamma: 0.99
+      lr: 0.00025
+      eps_max: 1.0  # upper bound of epsilon
+      eps_decay: 0.9996  # decay ratio or step (ratio < 1, step > 1)
+      eps_min: 0.1  # lower bound of epsilon
+      dueling: True  # use dueling tech
+
+evaluation:
+  max_episode_length: 5
+  num_episode: 100
+
+global_evaluator:
+  name: "general"
+  config:
+    stop_metrics:
+      max_iteration: 100

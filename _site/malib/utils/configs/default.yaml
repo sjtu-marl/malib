@@ -1,0 +1,16 @@
+training:
+  interface:
+    type:
+  config:
+env_description:
+  id:
+  possible_agents:
+algorithms:
+rollout:
+  type:
+  stopper:
+  mode:
+  fragment_length:
+  num_episodes:
+evaluation:
+dataset_config:

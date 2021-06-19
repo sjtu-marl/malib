@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package rpc;
+
+service DataRPC {
+    rpc Pull(PullRequest) returns (stream PullBuffer);
+    rpc Push(stream PushBuffer) returns (PushReply);
+}
+
+message PullRequest {
+    string type = 1;
+    string schema_id = 2;
+    string instance_id = 3;
+}
+
+message PullBuffer {
+    bytes buffer = 1;
+}
+
+message PushBuffer {
+    string type = 1;
+    string schema_id = 2;
+    string instance_id = 3;
+    bytes buffer = 4;
+}
+
+message PushReply {
+    string status = 1;
+}
