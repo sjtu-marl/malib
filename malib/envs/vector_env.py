@@ -1,7 +1,16 @@
+"""
+The `VectorEnv` is an interface that integrates multiple environment instances to support parllel rollout 
+with shared multi-agent policies. Currently, the `VectorEnv` support parallel rollout for environment which steps in simultaneous mode.
+"""
+
+import logging
 import gym
 
 from malib.utils.typing import Dict, AgentID, Any, List, Tuple
 from malib.envs import Environment
+
+
+logger = logging.getLogger(__name__)
 
 
 class VectorEnv:
@@ -13,7 +22,15 @@ class VectorEnv:
         configs: Dict[str, Any],
         num_envs: int,
     ):
+        """Create a VectorEnv instance.
 
+        :param Dict[AgentID,gym.Space] observation_spaces: A dict of agent observation space
+        :param Dict[AgentID,gym.Space] action_spaces: A dict of agent action space
+        :param type creator: The handler to create environment
+        :param Dict[str,Any] configs: Environment configuration
+        :param int num_envs: The number of nested environment
+
+        """
         self.observation_spaces = observation_spaces
         self.action_spaces = action_spaces
         self.possible_agents = list(observation_spaces.keys())
@@ -21,20 +38,33 @@ class VectorEnv:
         self._num_envs = num_envs
         self._creator = creator
         self._configs = configs.copy()
-        self._limits = num_envs
 
-        self._envs: List[Environment] = [creator(**configs) for _ in range(num_envs)]
+        self._envs: List[Environment] = [creator(**configs)]
+        self._validate_env(self._envs[0])
+        self._envs.extend([creator(**configs) for _ in range(num_envs - 1)])
+        self._limits = len(self._envs)
+
+    def _validate_env(self, env: Environment):
+        assert not self._envs[
+            0
+        ].is_sequential, (
+            "The nested environment must be an instance which steps in simultaneous."
+        )
 
     @property
-    def num_envs(self):
+    def num_envs(self) -> int:
+        """The total number of environments"""
+
         return self._num_envs
 
     @property
-    def envs(self):
+    def envs(self) -> List[Environment]:
+        """Return a limited list of enviroments"""
+
         return self._envs[: self._limits]
 
     @property
-    def extra_returns(self):
+    def extra_returns(self) -> List[str]:
         """Return extra columns required by this environment"""
 
         return self.envs[0].extra_returns
@@ -70,20 +100,25 @@ class VectorEnv:
 
         if envs and len(envs) > 0:
             for env in envs:
+                self._validate_env(env)
                 self._envs.append(env)
                 self._num_envs += 1
-            print(f"added {len(envs)} exisiting environments.")
+            logger.debug(f"added {len(envs)} exisiting environments.")
         elif num > 0:
             for _ in range(num):
                 self._envs.append(self.env_creator(**self.env_configs))
                 self._num_envs += 1
-            print(f"created {num} new environments.")
+            logger.debug(f"created {num} new environments.")
 
-    def reset(self, limits=None) -> Dict:
+    def reset(self, limits: int = None) -> Dict:
         self._limits = limits or self.num_envs
 
-    def step(self, actions: Dict[AgentID, List]) -> Dict:
-        raise NotImplementedError
+    def step(self, actions: Dict[AgentID, List]) -> List:
+        transitions = []
+        for i, env in enumerate(self.envs):
+            tmp = env.step({_agent: array[i] for _agent, array in actions.items()})
+            transitions.append(tmp)
+        return transitions
 
     def close(self):
         for env in self._envs:

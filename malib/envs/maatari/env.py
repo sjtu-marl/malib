@@ -1,15 +1,12 @@
 from collections import defaultdict
 import importlib
 import supersuit
-import gym
 
 from malib.envs.vector_env import VectorEnv
 from malib.utils.typing import (
     Dict,
     Any,
-    List,
     Sequence,
-    AgentID,
 )
 from malib.backend.datapool.offline_dataset_server import Episode
 

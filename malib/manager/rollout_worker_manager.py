@@ -51,18 +51,15 @@ class RolloutWorkerManager:
         possible_agents = env_desc["possible_agents"]
         self._workers: Dict[str, ray.actor] = {}
         self._counter = 0
-        # self._policy_mapping_func = policy_mapping_func
         self._config = rollout_config
         self._env_desc = env_desc
         self._metric_type = rollout_config["metric_type"]
 
-        # assign workers to meta policies
         worker_num = (
             len(possible_agents)
             if rollout_config["worker_num"] == -1
             else rollout_config["worker_num"]
         )
-        print(f"-------- worker num: {worker_num}")
         rollout_worker_cls = get_rollout_worker(rollout_config["type"])
         worker_cls = rollout_worker_cls.as_remote(
             num_cpus=None,
@@ -72,7 +69,6 @@ class RolloutWorkerManager:
             resources=None,
         )
 
-        # meta_keys = possible_agents
         for i in range(worker_num):
             worker_idx = _get_worker_hash_idx(i)
 
