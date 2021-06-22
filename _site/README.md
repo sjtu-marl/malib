@@ -5,6 +5,7 @@
 # MALib: A parallel framework for population-based multi-agent reinforcement learning
 
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/sjtu-marl/malib/blob/main/LICENSE)
+[![Documentation Status](https://readthedocs.org/projects/malib/badge/?version=latest)](https://malib.readthedocs.io/en/latest/?badge=latest)
 
 MALib is a parallel framework of population-based learning nested with (multi-agent) reinforcement learning (RL) methods, such as Policy Space Response Oracle, Self-Play and Neural Fictitous Self-Play. MALib provides higher-level abstractions of MARL training paradigms, which enables efficient code reuse and flexible deployments on different distributed computing paradigms. The design of MALib also strives to promto the research of other multi-agent learning, including multi-agent imitation learning and model-based MARL.
 
@@ -75,6 +76,10 @@ run(
     }
 )
 ```
+
+## Documentation
+
+See [MALib Docs](https://malib.readthedocs.io/)
 
 ## Citing MALib
 
