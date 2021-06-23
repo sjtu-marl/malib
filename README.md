@@ -7,7 +7,7 @@
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/sjtu-marl/malib/blob/main/LICENSE)
 [![Documentation Status](https://readthedocs.org/projects/malib/badge/?version=latest)](https://malib.readthedocs.io/en/latest/?badge=latest)
 
-MALib is a parallel framework of population-based learning nested with (multi-agent) reinforcement learning (RL) methods, such as Policy Space Response Oracle, Self-Play and Neural Fictitous Self-Play. MALib provides higher-level abstractions of MARL training paradigms, which enables efficient code reuse and flexible deployments on different distributed computing paradigms. The design of MALib also strives to promto the research of other multi-agent learning, including multi-agent imitation learning and model-based MARL.
+MALib is a parallel framework of population-based learning nested with (multi-agent) reinforcement learning (RL) methods, such as Policy Space Response Oracle, Self-Play and Neural Fictitious Self-Play. MALib provides higher-level abstractions of MARL training paradigms, which enables efficient code reuse and flexible deployments on different distributed computing paradigms. The design of MALib also strives to promote the research of other multi-agent learning, including multi-agent imitation learning and model-based MARL.
 
 ![architecture](docs/imgs/Architecture.svg)
 
@@ -84,14 +84,15 @@ See [MALib Docs](https://malib.readthedocs.io/)
 ## Citing MALib
 
 
-If you use MALib in your work, please cite the accompanying [paper](https://yingwen.io/malib.pdf).
+If you use MALib in your work, please cite the accompanying [paper](https://arxiv.org/abs/2106.07551).
 
 ```bibtex
-@inproceedings{zhou2021malib,
-    title={MALib: A Parallel Framework for Population-based Multi-agent Reinforcement Learning},
-    author={Zhou, Ming and Wan, Ziyu and Wang, Hanjing and Wen, Muning and Wu, Runzhe and Wen, Ying and Yang, Yaodong and Zhang, Weinan and Wang, Jun},
-    booktitle={Preprint},
-    year={2021},
-    organization={Preprint}
+@misc{zhou2021malib,
+      title={MALib: A Parallel Framework for Population-based Multi-agent Reinforcement Learning}, 
+      author={Ming Zhou and Ziyu Wan and Hanjing Wang and Muning Wen and Runzhe Wu and Ying Wen and Yaodong Yang and Weinan Zhang and Jun Wang},
+      year={2021},
+      eprint={2106.07551},
+      archivePrefix={arXiv},
+      primaryClass={cs.MA}
 }
 ```
