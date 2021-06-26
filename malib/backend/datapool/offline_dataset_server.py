@@ -101,19 +101,20 @@ class Episode:
 
     CUR_OBS = "obs"
     NEXT_OBS = "new_obs"
-    ACTIONS = "actions"
-    ACTION_MASKS = "action_masks"
-    REWARDS = "rewards"
-    DONES = "dones"
-    ACTION_DIST = "action_probs"
+    ACTION = "action"
+    ACTION_MASK = "action_mask"
+    REWARD = "reward"
+    DONE = "done"
+    ACTION_DIST = "action_prob"
     # XXX(ming): seems useless
-    INFOS = "infos"
+    INFO = "infos"
 
     # optional
     STATE_VALUE = "state_value_estimation"
     STATE_ACTION_VALUE = "state_action_value_estimation"
     CUR_STATE = "cur_state"  # current global state
     NEXT_STATE = "next_state"  # next global state
+    LAST_REWARD = "last_reward"
 
     def __init__(
         self,

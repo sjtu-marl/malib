@@ -1,8 +1,6 @@
 """
 Implementation of async rollout worker.
 """
-import gc
-import time
 from collections import defaultdict
 
 import ray
@@ -92,7 +90,6 @@ class Func:
             aid: Episode.concatenate(*merged_data[aid], capacity=merged_capacity[aid])
             for aid in merged_data
         }
-        # env.close()
         del env
         return statics, data2send
 
@@ -183,8 +180,6 @@ class RolloutWorker(BaseRolloutWorker):
         return statistic_seq, data2send
 
     def _simulation(self, threaded, combinations, **kwargs):
-        """Helper function to support simulation."""
-
         if threaded:
             print(f"got simulation task: {len(combinations)}")
             res = self.actor_pool.map(

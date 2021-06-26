@@ -61,12 +61,6 @@ class BaseRolloutWorker:
         self._offline_dataset = None
 
         env = env_desc["creator"](**env_desc["config"])
-        # XXX(ming): from muning
-        # if env_desc.get("env", None) is None:
-        #     env = env_desc["creator"](**env_desc["config"])
-        #     env_desc["env"] = env
-        # else:
-        #     env = env_desc.get("env")
         self._agents = env.possible_agents
 
         if remote:

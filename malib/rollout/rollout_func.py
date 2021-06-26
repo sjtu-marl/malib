@@ -14,119 +14,96 @@ Examples:
 In your custom rollout function, you can decide extra data
 you wanna save by specifying extra columns when Episode initialization.
 """
-import ray
-from collections import defaultdict
 
+import uuid
+
+import ray
 import numpy as np
 
+from collections import defaultdict
+
+from malib import settings
+from malib.utils.logger import get_logger, Log
 from malib.utils.metrics import get_metric, Metric
-from malib.utils.typing import AgentID, Dict, PolicyID, Union
+from malib.utils.typing import AgentID, Dict, PolicyID, Union, Any
 from malib.utils.preprocessor import get_preprocessor
 from malib.envs.agent_interface import AgentInterface
+from malib.envs.vector_env import VectorEnv
 from malib.backend.datapool.offline_dataset_server import Episode, MultiAgentEpisode
 
 
 def sequential(
-    trainable_pairs,
-    agent_interfaces,
-    env_desc,
-    metric_type,
-    max_iter,
-    behavior_policy_mapping=None,
+    env: type,
+    num_episodes: int,
+    agent_interfaces: Dict[AgentID, AgentInterface],
+    fragment_length: int,
+    behavior_policies: Dict[AgentID, PolicyID],
+    agent_episodes: Dict[AgentID, Episode],
+    metric: Metric,
+    send_interval: int = 50,
+    dataset_server: ray.ObjectRef = None,
 ):
     """ Rollout in sequential manner """
-    res1, res2 = [], []
-    env = env_desc.get("env", env_desc["creator"](**env_desc["config"]))
-    # for _ in range(num_episode):
-    env.reset()
 
-    # metric.add_episode(f"simulation_{policy_combination_mapping}")
-    metric = get_metric(metric_type)(env.possible_agents)
-    if behavior_policy_mapping is None:
-        for agent in agent_interfaces.values():
-            agent.reset()
-    behavior_policy_mapping = behavior_policy_mapping or {
-        _id: agent.behavior_policy for _id, agent in agent_interfaces.items()
-    }
-    agent_episode = {
-        agent: Episode(
-            env_desc["id"], behavior_policy_mapping[agent], capacity=max_iter
-        )
-        for agent in (trainable_pairs or env.possible_agents)
-    }
+    cnt = 0
+    for ith in range(num_episodes):
+        env.reset()
+        for aid in env.agent_iter(max_iter=fragment_length):
+            observation, reward, done, info = env.last()
 
-    (observations, actions, action_dists, next_observations, rewards, dones, infos,) = (
-        defaultdict(lambda: []),
-        defaultdict(lambda: []),
-        defaultdict(lambda: []),
-        defaultdict(lambda: []),
-        defaultdict(lambda: []),
-        defaultdict(lambda: []),
-        defaultdict(lambda: []),
-    )
+            if isinstance(observation, dict):
+                info = {"action_mask": observation["action_mask"]}
+                action_mask = observation["action_mask"]
+            else:
+                action_mask = np.ones(
+                    get_preprocessor(env.action_spaces[aid])(
+                        env.action_spaces[aid]
+                    ).size
+                )
 
-    for aid in env.agent_iter(max_iter=max_iter):
-        observation, reward, done, info = env.last()
-
-        if isinstance(observation, dict):
-            info = {"action_mask": observation["action_mask"]}
-            action_mask = observation["action_mask"]
-        else:
-            action_mask = np.ones(
-                get_preprocessor(env.action_spaces[aid])(env.action_spaces[aid]).size
+            # observation has been transferred
+            observation = agent_interfaces[aid].transform_observation(
+                observation, behavior_policies[aid]
             )
-        observation = agent_interfaces[aid].transform_observation(
-            observation, behavior_policy_mapping[aid]
-        )
-        observations[aid].append(observation)
-        rewards[aid].append(reward)
-        dones[aid].append(done)
-        info["policy_id"] = behavior_policy_mapping[aid]
 
-        if not done:
-            action, action_dist, extra_info = agent_interfaces[aid].compute_action(
-                observation, **info
+            info["policy_id"] = behavior_policies[aid]
+
+            if not done:
+                action, action_dist, extra_info = agent_interfaces[aid].compute_action(
+                    observation, **info
+                )
+                agent_episodes[aid].insert(
+                    **{
+                        Episode.CUR_OBS: observation,
+                        Episode.ACTION_MASK: action_mask,
+                        Episode.ACTION_DIST: action_dist,
+                        Episode.ACTION: action_dist,
+                        Episode.LAST_REWARD: reward,
+                        Episode.DONE: done,
+                    }
+                )
+            else:
+                info["policy_id"] = behavior_policies[aid]
+                action = None
+            env.step(action)
+            metric.step(
+                aid,
+                behavior_policies[aid],
+                observation=observation,
+                action=action,
+                action_dist=action_dist,
+                reward=reward,
+                done=done,
+                info=info,
             )
-            actions[aid].append(action)
-            action_dists[aid].append(action_dist)
-        else:
-            info["policy_id"] = behavior_policy_mapping[aid]
-            action = None
-        env.step(action)
-        metric.step(
-            aid,
-            behavior_policy_mapping[aid],
-            observation=observation,
-            action=action,
-            action_dist=action_dist,
-            reward=reward,
-            done=done,
-            info=info,
-        )
+            cnt += 1
 
-    # metric.end()
+        if dataset_server and cnt % send_interval == 0:
+            dataset_server.save.remote(agent_episodes)
+            for e in agent_episodes.values():
+                e.reset()
 
-    for k in agent_episode:
-        obs = observations[k]
-        cur_len = len(obs)
-        agent_episode[k].fill(
-            **{
-                Episode.CUR_OBS: np.stack(obs[: cur_len - 1]),
-                Episode.NEXT_OBS: np.stack(obs[1:cur_len]),
-                Episode.DONES: np.stack(dones[k][1:cur_len]),
-                Episode.REWARDS: np.stack(rewards[k][1:cur_len]),
-                Episode.ACTIONS: np.stack(actions[k][: cur_len - 1]),
-                Episode.ACTION_DIST: np.stack(action_dists[k][: cur_len - 1]),
-            }
-        )
-    return (
-        metric.parse(
-            agent_filter=tuple(trainable_pairs.keys())
-            if trainable_pairs is not None
-            else None
-        ),
-        agent_episode,
-    )
+    return [metric.parse(agent_filter=tuple(agent_episodes.keys()))], cnt
 
 
 def simultaneous(
@@ -238,9 +215,9 @@ def simultaneous(
             for e in agent_episodes.values():
                 e.reset()
 
-    dataset_server.save.remote(agent_episodes)
+    if dataset_server:
+        dataset_server.save.remote(agent_episodes)
     transition_size = cnt * len(agent_episodes) * getattr(env, "num_envs", 1)
-    # print("transition size:", transition_size)
     return [metric.parse(agent_filter=list(agent_episodes.keys()))], transition_size
 
 
@@ -285,3 +262,118 @@ def rollout_wrapper(
 
 def get_func(name: str):
     return {"sequential": sequential, "simultaneous": simultaneous}[name]
+
+
+class Stepping:
+    def __init__(self, exp_cfg: Dict[str, Any], env_desc: Dict[str, Any]):
+        self.logger = get_logger(
+            log_level=settings.LOG_LEVEL,
+            log_dir=settings.LOG_DIR,
+            name=f"rolloutfunc_executor_{uuid.uuid1()}",
+            remote=settings.USE_REMOTE_LOGGER,
+            mongo=settings.USE_MONGO_LOGGER,
+            **exp_cfg,
+        )
+
+        # init environment here
+        self.env_desc = env_desc
+        self.env = env_desc["creator"](**env_desc["config"])
+
+        self._data_server = None
+
+    def set_data_server(self, data_server):
+        self._data_server = data_server
+
+    @classmethod
+    def as_remote(
+        cls,
+        num_cpus: int = None,
+        num_gpus: int = None,
+        memory: int = None,
+        object_store_memory: int = None,
+        resources: dict = None,
+    ) -> type:
+        """Return a remote class for Actor initialization."""
+
+        return ray.remote(
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            object_store_memory=object_store_memory,
+            resources=resources,
+        )(cls)
+
+    @Log.data_feedback(enable=settings.DATA_FEEDBACK)
+    def run(
+        self,
+        agent_interfaces: Dict[AgentID, AgentInterface],
+        metric_type: Union[str, type],
+        fragment_length: int,
+        desc: Dict[str, Any],
+        callback: type,
+    ) -> Any:
+        """Environment stepping.
+
+        :param Dict[AgentID,AgentInterface] agent_interface: A dict of agent interfaces.
+        :param Union[str,type] metric_type: Metric type or handler.
+        :param int fragment_length: The maximum length of an episode.
+        :param Dict[str,Any] desc: The description of task
+        """
+        for interface in agent_interfaces.values():
+            interface.reset()
+
+        # behavior policies is a mapping from agents to policy ids
+        behavior_policies = desc["behavior_policies"]
+        # specify the number of running episodes
+        num_episodes = desc["num_episodes"]
+
+        agent_episodes = {
+            agent: Episode(
+                self.env_desc["id"],
+                behavior_policies[agent],
+                capacity=fragment_length * num_episodes,
+                other_columns=self.env.extra_returns,
+            )
+            for agent in (self.env.trainable_agents or self.env.possible_agents)
+        }
+
+        metric = get_metric(metric_type)(self.env.possible_agents)
+
+        self.add_envs(num_episodes)
+
+        if isinstance(callback, str):
+            callback = get_func(callback)
+
+        return callback(
+            self.env,
+            num_episodes,
+            agent_interfaces,
+            fragment_length,
+            behavior_policies,
+            agent_episodes,
+            metric,
+            self._data_server,
+        )
+
+    def add_envs(self, maximum: int) -> int:
+        """Create environments, if env is an instance of VectorEnv, add these new environment instances into it,
+        otherwise do nothing.
+
+        :returns: The number of nested environments.
+        """
+
+        if not isinstance(self.env, VectorEnv):
+            return 1
+
+        existing_env_num = getattr(self.env, "num_envs", 1)
+
+        if existing_env_num >= maximum:
+            return self.env.num_envs
+
+        self.env.add_envs(num=maximum - existing_env_num)
+
+        return self.env.num_envs
+
+    def close(self):
+        if self.env is not None:
+            self.env.close()
