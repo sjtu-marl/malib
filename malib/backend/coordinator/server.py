@@ -131,9 +131,6 @@ class CoordinatorServer(BaseCoordinator):
             """Requests from rollout worker after rollout tasks done, or agent.AgentInterface after optimize tasks done.
             Evaluate task here aims to determine whether to do simulation or terminate task directly.
             """
-            # task_request = self._rollout_worker_manager.retrieve_information(
-            #     task_request
-            # )
             populations = task_request.content.agent_involve_info.populations
             trainable_pairs = task_request.content.agent_involve_info.trainable_pairs
             pending_matches = []
@@ -152,9 +149,6 @@ class CoordinatorServer(BaseCoordinator):
                 self.gen_simulation_task(task_request, pending_matches)
         elif task_request.task_type == TaskType.UPDATE_PAYOFFTABLE:
             """ Update payoff table after simulations, and then generate new policies """
-            # task_request = self._rollout_worker_manager.retrieve_information(
-            #     task_request
-            # )
             with self._lock:
                 self.update_payoff_table(task_request)
         elif task_request.task_type == TaskType.ROLLOUT:
