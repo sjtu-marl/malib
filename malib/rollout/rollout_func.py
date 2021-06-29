@@ -265,7 +265,7 @@ def get_func(name: str):
 
 
 class Stepping:
-    def __init__(self, exp_cfg: Dict[str, Any], env_desc: Dict[str, Any]):
+    def __init__(self, exp_cfg: Dict[str, Any], env_desc: Dict[str, Any], dataset_server = None):
         self.logger = get_logger(
             log_level=settings.LOG_LEVEL,
             log_dir=settings.LOG_DIR,
@@ -277,14 +277,16 @@ class Stepping:
 
         # init environment here
         self.env_desc = env_desc
-        self.env = env_desc["creator"](**env_desc["config"])
 
-        self._data_server = None
+        # check whether env is simultaneous
+        env = env_desc["creator"](**env_desc["config"])
 
-    def set_data_server(self, data_server):
-        """Set dataset server"""
+        if not env.is_sequential:
+            self.env = VectorEnv.from_envs([env])
+        else:
+            self.env = env
 
-        self._data_server = data_server
+        self._dataset_server = dataset_server
 
     @classmethod
     def as_remote(
@@ -314,7 +316,7 @@ class Stepping:
         desc: Dict[str, Any],
         callback: type,
     ) -> Any:
-        """Environment stepping.
+        """Environment stepping, rollout/simulate with environment vectorization if it is feasible.
 
         :param Dict[AgentID,AgentInterface] agent_interface: A dict of agent interfaces.
         :param Union[str,type] metric_type: Metric type or handler.
@@ -354,7 +356,7 @@ class Stepping:
             behavior_policies,
             agent_episodes,
             metric,
-            self._data_server,
+            self._dataset_server,
         )
 
     def add_envs(self, maximum: int) -> int:

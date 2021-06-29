@@ -38,10 +38,13 @@ class VectorEnv:
         self._num_envs = num_envs
         self._creator = creator
         self._configs = configs.copy()
+        self._envs: List[Environment] = []
 
-        self._envs: List[Environment] = [creator(**configs)]
-        self._validate_env(self._envs[0])
-        self._envs.extend([creator(**configs) for _ in range(num_envs - 1)])
+        if num_envs > 0:
+            self._envs.append(creator(**configs))
+            self._validate_env(self._envs[0])
+            self._envs.extend([creator(**configs) for _ in range(num_envs - 1)])
+
         self._limits = len(self._envs)
 
     def _validate_env(self, env: Environment):

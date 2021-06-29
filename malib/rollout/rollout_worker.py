@@ -14,7 +14,7 @@ from malib.envs.agent_interface import AgentInterface
 from malib.rollout import rollout_func
 from malib.rollout.base_worker import BaseRolloutWorker
 from malib.utils.logger import Log, get_logger
-from malib.utils.typing import Any, Dict, BehaviorMode, Tuple, Sequence
+from malib.utils.typing import AgentID, Any, Dict, BehaviorMode, PolicyID, Tuple, Sequence
 
 
 class RolloutWorker(BaseRolloutWorker):
@@ -41,13 +41,25 @@ class RolloutWorker(BaseRolloutWorker):
             self, worker_index, env_desc, metric_type, remote, **kwargs
         )
 
-        parallel_num = kwargs.get("parallel_num", 0)
-        if parallel_num:
-            Stepping = rollout_func.Stepping.as_remote()
+        parallel_num = kwargs["parallel_num"]
+        if remote:
+            assert parallel_num > 0, f"parallel_num should be positive, while parallel_num={parallel_num}"
+
+            resources = kwargs.get("resources", {
+                "num_cpus": None,
+                "num_gpus": None,
+                "memory": None,
+                "object_store_memory": None,
+                "resources": None
+            })
+
+            Stepping = rollout_func.Stepping.as_remote(**resources)
             self.actors = [
-                Stepping.remote(kwargs["exp_cfg"]) for _ in range(parallel_num)
+                Stepping.remote(kwargs["exp_cfg"], env_desc, self._offline_dataset) for _ in range(parallel_num)
             ]
             self.actor_pool = ActorPool(self.actors)
+        else:
+            raise NotImplementedError
 
     def ready_for_sample(self, policy_distribution=None):
         """Reset policy behavior distribution.
@@ -130,17 +142,26 @@ class RolloutWorker(BaseRolloutWorker):
                 statis.append(tmp)
             return statis, None
 
-    def sample(self, *args, **kwargs) -> Tuple[Sequence[Dict], Sequence[Any]]:
+    def sample(
+        self,
+        behavior_policy_mapping: Dict[AgentID, PolicyID],
+        callback: type,
+        num_episodes: int,
+        fragment_length: int,
+        role: str,
+        explore: bool = True,
+        threaded: bool = True
+    ) -> Tuple[Sequence[Dict], Sequence[Any]]:
         """Sample function. Support rollout and simulation. Default in threaded mode."""
 
-        callback = kwargs["callback"]
-        behavior_policy_mapping = kwargs.get("behavior_policy_mapping", None)
-        num_episodes = kwargs["num_episodes"]
-        trainable_pairs = kwargs.get("trainable_pairs", None)
-        threaded = kwargs.get("threaded", True)
-        explore = kwargs.get("explore", True)
-        fragment_length = kwargs.get("fragment_length", 1000)
-        role = kwargs["role"]  # rollout or simulation
+        # callback = kwargs["callback"]
+        # behavior_policy_mapping = kwargs.get("behavior_policy_mapping", None)
+        # num_episodes = kwargs["num_episodes"]
+        # # trainable_pairs = kwargs.get("trainable_pairs", None)
+        # threaded = kwargs.get("threaded", True)
+        # explore = kwargs.get("explore", True)
+        # fragment_length = kwargs.get("fragment_length", 1000)
+        # role = kwargs["role"]  # rollout or simulation
 
         if explore:
             for interface in self._agent_interfaces.values():
@@ -153,7 +174,7 @@ class RolloutWorker(BaseRolloutWorker):
             return self._rollout(
                 threaded,
                 num_episodes,
-                trainable_pairs=trainable_pairs,
+                # trainable_pairs=trainable_pairs,
                 agent_interfaces=self._agent_interfaces,
                 env_desc=self._env_description,
                 metric_type=self._metric_type,
