@@ -27,7 +27,6 @@ DATASET_DIR = os.path.join(BASE_DIR, "dataset")
 
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = {
-    "worker_config": {"worker_num": -1, "resources": {}},  # determined by agent number
     # configuration for training agent usage, specify which type you wanna use
     "training": {
         # configuration for agent interface
@@ -88,6 +87,8 @@ DEFAULT_CONFIG = {
         # provide stopping rules for rollout, see rollout/rollout_worker.py::rollout
         "metric_type": "simple",
         "fragment_length": 25000,  #
+        # if vector_env is enabled, there will be (num_episodes + episode_seg - 1) // episode_seg environments
+        # rollout in parallel.
         "num_episodes": 1000,  #
         "episode_seg": 100,
         # terminate condition for environment stepping, any means once an agent dead, then terminate all agents

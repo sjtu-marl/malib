@@ -17,12 +17,14 @@ logger_server = None
 
 
 def update_configs(update_dict, ori_dict=None):
-    """ Update global configs with """
+    """ Update global configs with a given dict """
+
     ori_configs = (
         copy.copy(ori_dict)
         if ori_dict is not None
         else copy.copy(settings.DEFAULT_CONFIG)
     )
+
     for k, v in update_dict.items():
         # assert k in ori_configs, f"Illegal key: {k}, {list(ori_configs.keys())}"
         if isinstance(v, dict):
@@ -47,31 +49,12 @@ def _terminate(recycle_funcs: List[Dict[str, Any]], waiting: bool = True):
         print("Background recycling thread ended.")
 
 
-def start_logger(exp_cfg):
+def start_logger_server(exp_cfg):
     global logger_server
     logger_server = start_logging_server(
         port="localhost:12333", logdir=settings.LOG_DIR
     )
     logger_server.start()
-
-    # wait for the logging server to be ready
-    _wait_for_ready_start_time = time.time()
-    while True:
-        try:
-            logger = get_logger(
-                name="runner", port="localhost:12333", remote=True, **exp_cfg
-            )
-            logger.info("Wait for server ready", wait_for_ready=True)
-            break
-        except Exception as e:
-            if time.time() - _wait_for_ready_start_time > WAIT_FOR_READY_THRESHOLD:
-                raise RuntimeError(
-                    "Wait time exceed threshold, "
-                    "task cancelled, "
-                    "cannot connect to logging server, "
-                    "please check the network availability!"
-                )
-            time.sleep(1)
 
 
 def terminate_logger():
@@ -104,7 +87,7 @@ def run(**kwargs):
     try:
         # def run_coordinator_server(coordinator_server_configs):
         if settings.USE_REMOTE_LOGGER and not settings.USE_MONGO_LOGGER:
-            start_logger(exp_cfg)
+            start_logger_server(exp_cfg)
 
         # wait for the logging server to be ready
         _wait_for_ready_start_time = time.time()
