@@ -36,8 +36,7 @@ class RolloutWorkerManager:
         self,
         rollout_config: Dict[str, Any],
         env_desc: Dict[str, Any],
-        exp_cfg: Dict[str, Any]
-        # worker_config: Dict[str, Any],
+        exp_cfg: Dict[str, Any],
     ):
         """Create a rollout worker manager. A rollout worker manager is responsible for a group of rollout workers. For
         each rollout/simulation tasks dispatched from `CoordinatorServer`, it will be assigned to an idle worker which
@@ -48,19 +47,14 @@ class RolloutWorkerManager:
         :param Dict[str,Any] exp_cfg: Experiment description.
         """
 
-        possible_agents = env_desc["possible_agents"]
         self._workers: Dict[str, ray.actor] = {}
-        self._counter = 0
         self._config = rollout_config
         self._env_desc = env_desc
         self._metric_type = rollout_config["metric_type"]
 
-        worker_num = (
-            len(possible_agents)
-            if rollout_config["worker_num"] == -1
-            else rollout_config["worker_num"]
-        )
+        worker_num = rollout_config["worker_num"]
         rollout_worker_cls = get_rollout_worker(rollout_config["type"])
+
         worker_cls = rollout_worker_cls.as_remote(
             num_cpus=None,
             num_gpus=None,
@@ -71,18 +65,17 @@ class RolloutWorkerManager:
 
         for i in range(worker_num):
             worker_idx = _get_worker_hash_idx(i)
-
             self._workers[worker_idx] = worker_cls.options(max_concurrency=100).remote(
                 worker_index=worker_idx,
                 env_desc=self._env_desc,
                 metric_type=self._metric_type,
                 remote=True,
+                # parallel_num: the size of actor pool for rollout and simulation
                 parallel_num=rollout_config["num_episodes"]
                 // rollout_config["episode_seg"],
                 exp_cfg=exp_cfg,
             )
 
-        self._counter = worker_num
         self.logger = get_logger(
             log_level=settings.LOG_LEVEL,
             log_dir=settings.LOG_DIR,
@@ -91,8 +84,7 @@ class RolloutWorkerManager:
             mongo=settings.USE_MONGO_LOGGER,
             **exp_cfg,
         )
-        self.proc = psutil.Process(os.getpid())
-        self.logger.debug("manager started ...")
+        self.logger.debug(f"Created {worker_num} rollout workers ...")
 
     def retrieve_information(self, task_request: TaskRequest) -> TaskRequest:
         """Retrieve information from other agent interface. Default do nothing and return the original task request.

@@ -53,10 +53,6 @@ class CoordinatorServer(BaseCoordinator):
         BaseCoordinator.__init__(self)
 
         self._configs = kwargs
-        self._configs["rollout"]["worker_num"] = self._configs["worker_config"].get(
-            "worker_num", -1
-        )
-
         self._terminate = False
         self._pending_trainable_pairs = {}
 
@@ -91,12 +87,6 @@ class CoordinatorServer(BaseCoordinator):
         )
 
     def start(self):
-        self._rollout_worker_manager = RolloutWorkerManager(
-            rollout_config=self._configs["rollout"],
-            env_desc=self._configs["env_description"],
-            exp_cfg=self._exp_cfg,
-        )
-
         self._training_manager = TrainingManager(
             algorithms=self._configs["algorithms"],
             env_desc=self._configs["env_description"],
@@ -106,6 +96,17 @@ class CoordinatorServer(BaseCoordinator):
             exp_cfg=self._exp_cfg,
         )
         self._training_manager.init()
+
+        # one training interface one rollout worker
+        self._configs["rollout"]["worker_num"] = ray.get(
+            self._training_manager.get_agent_interface_num()
+        )
+        self._rollout_worker_manager = RolloutWorkerManager(
+            rollout_config=self._configs["rollout"],
+            env_desc=self._configs["env_description"],
+            exp_cfg=self._exp_cfg,
+        )
+
         self._logger.info("Coordinator server started")
 
     def request(self, task_request: TaskRequest):

@@ -113,6 +113,9 @@ class TrainingManager:
         )
         self.logger.debug(f"{len(self._agents)} agents have been created")
 
+    def get_agent_interface_num(self) -> int:
+        return len(self._agents)
+
     @Log.method_timer(enable=settings.PROFILING)
     def init(self) -> None:
         """Initialize all training agents. Add fixed policies for them.
