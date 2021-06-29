@@ -24,3 +24,4 @@ class Environment:
 
     def render(self, *args, **kwargs):
         raise NotImplementedError
+

@@ -52,7 +52,6 @@ class EpisodeLock:
         return self._pull_lock
 
     def lock_pull(self):
-        # print(f"------ push lock: {self._push_lock}, state: {self._state}, time: {time.time()}")
         if self._push_lock > 0:
             return Status.FAILED
         else:
@@ -63,7 +62,6 @@ class EpisodeLock:
         return Status.SUCCESS
 
     def lock_push(self):
-        # print(f"------ pull lock: {self._pull_lock}, state: {self._state}, time: {time.time()}")
         if self._pull_lock > 0:
             return Status.FAILED
         else:
@@ -74,7 +72,6 @@ class EpisodeLock:
         return Status.SUCCESS
 
     def unlock_pull(self):
-        # print(f"++++++ pull lock: {self._pull_lock}, state: {self._state}, time: {time.time()}")
         if self._pull_lock < 1:
             return Status.FAILED
         else:
@@ -86,7 +83,6 @@ class EpisodeLock:
         return Status.SUCCESS
 
     def unlock_push(self):
-        # print(f"+++++++ push lock: {self._push_lock}, state: {self._state}, time: {time.time()}")
         if self._push_lock < 1:
             return Status.FAILED
         else:
@@ -201,7 +197,6 @@ class Episode:
         for column in self.columns:
             self._data[column].fill(kwargs[column])
         self._size = len(self._data[Episode.CUR_OBS])
-        # XXX(ming): is it reasonable?
         self._capacity = max(self._size, self._capacity)
 
     def insert(self, **kwargs):
@@ -231,7 +226,6 @@ class Episode:
             info = f"no enough data, {self.size} < {size}"
             raise OversampleError
         if size is not None:
-            # FIXME(ming): random sample should avoid conflicts
             indices = np.random.choice(self._size, size)
             return {k: self._data[k][indices] for k in self.columns}
         raise RuntimeError("You must specify either `idxes` or `size`")
@@ -450,12 +444,6 @@ class OfflineDataset:
         self._threading_lock = threading.Lock()
 
     def lock(self, lock_type: str, desc: Dict[AgentID, Any]):
-        """Lock table.
-
-        :param lock_type: str
-        :param desc:
-        :return:
-        """
         status = dict.fromkeys(desc, Status.FAILED)
         for agent, item in desc.items():
             table_name = Table.gen_table_name(
