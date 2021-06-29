@@ -265,7 +265,9 @@ def get_func(name: str):
 
 
 class Stepping:
-    def __init__(self, exp_cfg: Dict[str, Any], env_desc: Dict[str, Any], dataset_server = None):
+    def __init__(
+        self, exp_cfg: Dict[str, Any], env_desc: Dict[str, Any], dataset_server=None
+    ):
         self.logger = get_logger(
             log_level=settings.LOG_LEVEL,
             log_dir=settings.LOG_DIR,

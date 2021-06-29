@@ -14,7 +14,15 @@ from malib.envs.agent_interface import AgentInterface
 from malib.rollout import rollout_func
 from malib.rollout.base_worker import BaseRolloutWorker
 from malib.utils.logger import Log, get_logger
-from malib.utils.typing import AgentID, Any, Dict, BehaviorMode, PolicyID, Tuple, Sequence
+from malib.utils.typing import (
+    AgentID,
+    Any,
+    Dict,
+    BehaviorMode,
+    PolicyID,
+    Tuple,
+    Sequence,
+)
 
 
 class RolloutWorker(BaseRolloutWorker):
@@ -43,19 +51,25 @@ class RolloutWorker(BaseRolloutWorker):
 
         parallel_num = kwargs["parallel_num"]
         if remote:
-            assert parallel_num > 0, f"parallel_num should be positive, while parallel_num={parallel_num}"
+            assert (
+                parallel_num > 0
+            ), f"parallel_num should be positive, while parallel_num={parallel_num}"
 
-            resources = kwargs.get("resources", {
-                "num_cpus": None,
-                "num_gpus": None,
-                "memory": None,
-                "object_store_memory": None,
-                "resources": None
-            })
+            resources = kwargs.get(
+                "resources",
+                {
+                    "num_cpus": None,
+                    "num_gpus": None,
+                    "memory": None,
+                    "object_store_memory": None,
+                    "resources": None,
+                },
+            )
 
             Stepping = rollout_func.Stepping.as_remote(**resources)
             self.actors = [
-                Stepping.remote(kwargs["exp_cfg"], env_desc, self._offline_dataset) for _ in range(parallel_num)
+                Stepping.remote(kwargs["exp_cfg"], env_desc, self._offline_dataset)
+                for _ in range(parallel_num)
             ]
             self.actor_pool = ActorPool(self.actors)
         else:
@@ -150,7 +164,7 @@ class RolloutWorker(BaseRolloutWorker):
         fragment_length: int,
         role: str,
         explore: bool = True,
-        threaded: bool = True
+        threaded: bool = True,
     ) -> Tuple[Sequence[Dict], Sequence[Any]]:
         """Sample function. Support rollout and simulation. Default in threaded mode."""
 
