@@ -1,13 +1,9 @@
-from collections import defaultdict
+import logging
 import importlib
 import supersuit
 
-from malib.envs.vector_env import VectorEnv
-from malib.utils.typing import (
-    Dict,
-    Any,
-    Sequence,
-)
+from malib.envs import Environment
+from malib.utils.typing import Dict, Any, Sequence, AgentID
 from malib.backend.datapool.offline_dataset_server import Episode
 
 
@@ -36,12 +32,33 @@ def nested_env_creator(ori_creator: type, wrappers: Sequence[Dict]) -> type:
     return creator
 
 
-def make_env(env_id, parallel=True, **env_configs) -> Any:
-    env_module = env_module = importlib.import_module(f"pettingzoo.atari.{env_id}")
-    ori_caller = env_module.env if not parallel else env_module.parallel_env
-    wrappers = (
-        env_configs.pop("wrappers") if env_configs.get("wrappers") is not None else []
-    )
-    wrapped_caller = nested_env_creator(ori_caller, wrappers)
+class MAAtari(Environment):
+    def __init__(self, **configs):
+        super().__init__(**configs)
 
-    return wrapped_caller(**env_configs)
+        env_id = self._configs["env_id"]
+        wrappers = self._configs.get("wrappers", [])
+        scenario_configs = self._configs.get("scenario_configs", {})
+        env_module = env_module = importlib.import_module(f"pettingzoo.atari.{env_id}")
+        ori_caller = env_module.parallel_env
+        wrapped_caller = nested_env_creator(ori_caller, wrappers)
+
+        self.is_sequential = False
+        self._env = wrapped_caller(**scenario_configs)
+        self._trainable_agents = self._env.possible_agents
+
+    def step(self, actions: Dict[AgentID, Any]):
+        observations, rewards, dones, infos = self._env.step(actions)
+        return {
+            Episode.NEXT_OBS: observations,
+            Episode.REWARD: rewards,
+            Episode.DONE: dones,
+            Episode.INFO: infos,
+        }
+
+    def render(self, *args, **kwargs):
+        pass
+
+    def reset(self):
+        observations = self._env.reset()
+        return {Episode.CUR_OBS: observations}

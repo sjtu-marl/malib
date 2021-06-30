@@ -3,6 +3,7 @@ The `VectorEnv` is an interface that integrates multiple environment instances t
 with shared multi-agent policies. Currently, the `VectorEnv` support parallel rollout for environment which steps in simultaneous mode.
 """
 
+from collections import defaultdict
 import logging
 import gym
 
@@ -13,6 +14,20 @@ from malib.envs import Environment
 logger = logging.getLogger(__name__)
 
 
+class AgentItems:
+    def __init__(self) -> None:
+        self._data = {}
+
+    def update(self, agent_items: Dict[AgentID, Any]):
+        for k, v in agent_items.items():
+            if k not in self._data:
+                self._data[k] = []
+            self._data[k].append(v)
+
+    def cleaned_data(self):
+        return self._data
+
+
 class VectorEnv:
     def __init__(
         self,
@@ -20,7 +35,7 @@ class VectorEnv:
         action_spaces: Dict[AgentID, gym.Space],
         creator: type,
         configs: Dict[str, Any],
-        num_envs: int,
+        num_envs: int = 0,
     ):
         """Create a VectorEnv instance.
 
@@ -115,13 +130,24 @@ class VectorEnv:
 
     def reset(self, limits: int = None) -> Dict:
         self._limits = limits or self.num_envs
+        transitions = defaultdict(lambda: AgentItems())
+        for i, env in enumerate(self.envs[: self._limits]):
+            ret = env.reset()
+            for k, agent_items in ret.items():
+                transitions[k].update(agent_items)
+        data = {k: v.cleaned_data() for k, v in transitions.items()}
+        return data
 
-    def step(self, actions: Dict[AgentID, List]) -> List:
-        transitions = []
+    def step(self, actions: Dict[AgentID, List]) -> Dict:
+        transitions = defaultdict(lambda: AgentItems())
         for i, env in enumerate(self.envs):
-            tmp = env.step({_agent: array[i] for _agent, array in actions.items()})
-            transitions.append(tmp)
-        return transitions
+            ret = env.step({_agent: array[i] for _agent, array in actions.items()})
+            for k, agent_items in ret.items():
+                transitions[k].update(agent_items)
+
+        # merge transitions by keys
+        data = {k: v.cleaned_data() for k, v in transitions.items()}
+        return data
 
     def close(self):
         for env in self._envs:

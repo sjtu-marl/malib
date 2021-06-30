@@ -3,6 +3,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from torch._C import dtype
 
 from malib.algorithm.common.policy import Policy
 from malib.utils.typing import DataTransferType
@@ -28,7 +29,20 @@ class RandomPolicy(Policy):
     def compute_actions(
         self, observation: DataTransferType, **kwargs
     ) -> DataTransferType:
-        raise NotImplementedError
+        batch_size = len(observation)
+        actions = range(self.action_space.n)
+        action_prob = torch.zeros((batch_size, self.action_space.n))
+        # if "legal_moves" in kwargs:
+        #     actions = kwargs["legal_moves"]
+        # if "action_mask" in kwargs:
+        #     actions = np.where(kwargs["action_mask"] == 1)[0]
+        #     action_prob[actions] = 1.0
+        #     action_prob /= action_prob.sum()
+        actions = np.random.choice(actions, size=batch_size)
+        action_prob.scatter_(
+            -1, torch.from_numpy(actions.reshape((batch_size, -1))), 1.0
+        )
+        return actions, None, {"action_probs": action_prob}
 
     def compute_action(self, observation: DataTransferType, **kwargs) -> Any:
         actions = range(self.action_space.n)

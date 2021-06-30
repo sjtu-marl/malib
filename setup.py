@@ -46,7 +46,7 @@ setup(
             # "git+https://github.com/oxwhirl/smac.git",
             "supersuit",
             "multi-agent-ale-py",
-            "autorom"
-        ]
+            "autorom",
+        ],
     },
 )
