@@ -184,7 +184,7 @@ def simultaneous(
         for aid in agent_episodes:
             episode = agent_episodes[aid]
             items = {
-                Episode.ACTIONS: np.stack(act_dict[aid]),
+                Episode.ACTION: np.stack(act_dict[aid]),
                 Episode.ACTION_DIST: np.stack(act_dist_dict[aid]),
             }
 
@@ -198,7 +198,7 @@ def simultaneous(
         done = any(
             [
                 any(v) if not isinstance(v, bool) else v
-                for v in rets[Episode.DONES].values()
+                for v in rets[Episode.DONE].values()
             ]
         )
         cnt += 1

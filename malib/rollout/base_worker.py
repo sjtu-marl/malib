@@ -335,7 +335,7 @@ class BaseRolloutWorker:
                     f"from worker={self._worker_index} time consump={end - start} seconds"
                 )
 
-                statistic_seq.extend(res)
+                statistic_seq.extend(res[0])
 
             merged_statics = processed_statics[0]
             self.after_rollout(task_desc.content.agent_involve_info.trainable_pairs)

@@ -84,79 +84,6 @@ class RolloutWorker(BaseRolloutWorker):
 
         return BaseRolloutWorker.ready_for_sample(self, policy_distribution)
 
-    def _rollout(
-        self, threaded, episode_seg, **kwargs
-    ) -> Tuple[Sequence[Dict], Sequence[Any]]:
-        """Helper function to support rollout."""
-
-        if threaded:
-            stat_data_tuples = self.actor_pool.map_unordered(
-                lambda a, v: a.run.remote(
-                    num_episode=v,
-                    **kwargs,
-                ),
-                episode_seg,
-            )
-        else:
-            stat_data_tuples = []
-            for v in episode_seg:
-                statistics, data = rollout_func.Stepping.run(
-                    None, num_episode=v, **kwargs
-                )
-                stat_data_tuples.append((statistics, data))
-        statistic_seq = []
-        merged_data = defaultdict(list)
-        merged_capacity = defaultdict(lambda: 0)
-        for statis, data in stat_data_tuples:
-            for aid, episode in data.items():
-                merged_data[aid].append(episode)
-                merged_capacity[aid] += episode.size
-            statistic_seq.append(statis)
-
-        agent_episode = {
-            aid: Episode.concatenate(*merged_data[aid], capacity=merged_capacity[aid])
-            for aid in merged_data
-        }
-        ap_mapping = {k: v.policy_id for k, v in agent_episode.items()}
-        data2send = {
-            aid: MultiAgentEpisode(
-                e.env_id,
-                ap_mapping,
-                merged_capacity[aid],
-                e.other_columns,
-            )
-            for aid, e in agent_episode.items()
-        }
-        for aid, mae in data2send.items():
-            mae.insert(**agent_episode)
-        return statistic_seq, data2send
-
-    def _simulation(self, threaded, combinations, **kwargs):
-        if threaded:
-            res = self.actor_pool.map(
-                lambda a, combination: a.run.remote(
-                    trainable_pairs=None,
-                    policy_mapping={aid: v[0] for aid, v in combination.items()},
-                    **kwargs,
-                ),
-                combinations,
-            )
-            # depart res into two parts
-            statis = []
-            statis = [e[0] for e in res]
-            return statis, None
-        else:
-            statis = []
-            for comb in combinations:
-                tmp, _ = rollout_func.Stepping.run(
-                    None,
-                    trainable_pairs=None,
-                    policy_mapping={aid: v[0] for aid, v in comb.items()},
-                    **kwargs,
-                )
-                statis.append(tmp)
-            return statis, None
-
     def sample(
         self,
         callback: type,
@@ -211,7 +138,7 @@ class RolloutWorker(BaseRolloutWorker):
 
         num_frames, stats_list = 0, []
         for ret in rets:
-            stats_list.extend(ret[0])
+            stats_list.append(ret[0])
             num_frames += ret[1]
 
         return stats_list, num_frames
