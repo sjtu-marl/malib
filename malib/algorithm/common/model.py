@@ -91,7 +91,7 @@ class RNN(nn.Module):
 
 
 class QMixer(nn.Module):
-    def __init__(self, obs_dim, num_agents, model_config):
+    def __init__(self, obs_dim, num_agents, model_config=None):
         super(QMixer, self).__init__()
         self.n_agents = num_agents
 

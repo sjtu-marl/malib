@@ -10,13 +10,6 @@ from malib.backend.datapool.offline_dataset_server import Episode
 class DDPGLoss(LossFunc):
     def __init__(self):
         super(DDPGLoss, self).__init__()
-        self._params = {
-            "actor_lr": 1e-2,
-            "critic_lr": 1e-2,
-            "tau": 0.01,
-            "optimizer": "Adam",
-            "grad_norm_clipping": 0.5,
-        }
 
     def reset(self, policy, configs):
         self._params.update(configs)
@@ -33,16 +26,25 @@ class DDPGLoss(LossFunc):
     def setup_optimizers(self, *args, **kwargs):
         """Accept training configuration and setup optimizers"""
 
-        optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
-
-        self.optimizers = {
-            "actor": optim_cls(
-                self.policy.actor.parameters(), lr=self._params["actor_lr"]
-            ),
-            "critic": optim_cls(
-                self.policy.critic.parameters(), lr=self._params["critic_lr"]
-            ),
-        }
+        if self.optimizers is None:
+            optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
+            self.optimizers = {
+                "actor": optim_cls(
+                    self.policy.actor.parameters(), lr=self._params["actor_lr"]
+                ),
+                "critic": optim_cls(
+                    self.policy.critic.parameters(), lr=self._params["critic_lr"]
+                ),
+            }
+        else:
+            self.optimizers["actor"].param_groups = []
+            self.optimizers["actor"].add_param_group(
+                {"params": self.policy.actor.parameters()}
+            )
+            self.optimizers["critic"].param_groups = []
+            self.optimizers["critic"].add_param_group(
+                {"params": self.policy.critic.parameters()}
+            )
 
     def __call__(self, batch) -> Dict[str, Any]:
         self.loss = []
@@ -73,9 +75,6 @@ class DDPGLoss(LossFunc):
         vf_in = torch.cat([cur_obs, actions], dim=-1)
         actual_value = self.policy.critic(vf_in)
 
-        print(
-            f"reward shape: {rewards.mean()} {actual_value.mean()} {next_value.mean()}"
-        )
         assert actual_value.shape == target_value.shape, (
             actual_value.shape,
             target_value.shape,

@@ -10,16 +10,17 @@ from .policy import DQN
 
 
 class DQNLoss(LossFunc):
-    def __init__(self):
-        super(DQNLoss, self).__init__()
-        self._params = {"optimizer": "Adam", "lr": 1e-4}
-
     def setup_optimizers(self, *args, **kwargs):
         self._policy: DQN
-        optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
-        self.optimizers.append(
-            optim_cls(self.policy.critic.parameters(), lr=self._params["lr"])
-        )
+        if self.optimizers is None:
+            optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
+            self.optimizers = optim_cls(
+                self.policy.critic.parameters(), lr=self._params["lr"]
+            )
+        else:
+            # update parameters
+            self.optimizers.param_groups = []
+            self.optimizers.add_param_group({"params": self.policy.critic.parameters()})
 
     def step(self) -> Any:
         """ Step optimizers and update target """
@@ -32,7 +33,7 @@ class DQNLoss(LossFunc):
             },
         }
 
-        _ = [p.step() for p in self.optimizers]
+        self.optimizers.step()
 
         return gradients
 

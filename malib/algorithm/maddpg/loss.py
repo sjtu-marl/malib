@@ -11,13 +11,6 @@ class MADDPGLoss(DDPGLoss):
     def __init__(self):
         super(MADDPGLoss, self).__init__()
         self.cnt = 0
-        self._params = {
-            "tau": 0.01,
-            "grad_norm_clipping": 0.5,
-            "actor_lr": 1e-2,
-            "critic_lr": 1e-2,
-            "optimizer": "Adam",
-        }
 
     def _set_centralized_critic(self):
         global_state_space = self.policy.custom_config["global_state_space"]

@@ -23,7 +23,7 @@ class MADDPGTrainer(Trainer):
         """Execution decision making with next observations from batched data, and fill these online
         execution results into batch.
 
-        :param Dict[AgentID,Any] batch: A mapping from environment agents to batched data entities
+        :param batch: Dict[AgentID, Any], a mapping from environment agents to batched data entities
         """
 
         other_policies = kwargs["other_policies"]
