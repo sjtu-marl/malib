@@ -22,6 +22,7 @@ from malib.utils.typing import (
     PolicyID,
     Tuple,
     Sequence,
+    List,
 )
 
 
@@ -158,24 +159,15 @@ class RolloutWorker(BaseRolloutWorker):
 
     def sample(
         self,
-        behavior_policy_mapping: Dict[AgentID, PolicyID],
         callback: type,
         num_episodes: int,
         fragment_length: int,
         role: str,
+        policy_combinations: List,
         explore: bool = True,
         threaded: bool = True,
     ) -> Tuple[Sequence[Dict], Sequence[Any]]:
         """Sample function. Support rollout and simulation. Default in threaded mode."""
-
-        # callback = kwargs["callback"]
-        # behavior_policy_mapping = kwargs.get("behavior_policy_mapping", None)
-        # num_episodes = kwargs["num_episodes"]
-        # # trainable_pairs = kwargs.get("trainable_pairs", None)
-        # threaded = kwargs.get("threaded", True)
-        # explore = kwargs.get("explore", True)
-        # fragment_length = kwargs.get("fragment_length", 1000)
-        # role = kwargs["role"]  # rollout or simulation
 
         if explore:
             for interface in self._agent_interfaces.values():
@@ -184,31 +176,45 @@ class RolloutWorker(BaseRolloutWorker):
             for interface in self._agent_interfaces.values():
                 interface.set_behavior_mode(BehaviorMode.EXPLOITATION)
 
-        if role == "rollout":
-            return self._rollout(
-                threaded,
-                num_episodes,
-                # trainable_pairs=trainable_pairs,
-                agent_interfaces=self._agent_interfaces,
-                env_desc=self._env_description,
-                metric_type=self._metric_type,
-                max_iter=fragment_length,
-                policy_mapping=behavior_policy_mapping,
-                callback=callback,
-                role="rollout",
+        if role == "simulation":
+            tasks = [
+                {"num_episodes": num_episodes, "behavior_policies": comb}
+                for comb in policy_combinations
+            ]
+        elif role == "rollout":
+            seg_num = len(self.actors)
+            x = num_episodes // seg_num
+            y = num_episodes - seg_num * x
+            episode_segs = [x] * seg_num + ([y] if y else [])
+            assert len(policy_combinations) == 1
+            tasks = [
+                {"num_episodes": episode, "behavior_policies": policy_combinations[0]}
+                for episode in episode_segs
+            ]
+        else:
+            raise TypeError(f"Unkown role: {role}")
+
+        if threaded:
+            rets = self.actor_pool.map(
+                lambda a, task: a.run.remote(
+                    self._agent_interfaces,
+                    self._metric_type,
+                    fragment_length,
+                    task,
+                    callback,
+                    role,
+                ),
+                tasks,
             )
         else:
-            return self._simulation(
-                threaded,
-                behavior_policy_mapping,
-                agent_interfaces=self._agent_interfaces,
-                env_desc=self._env_description,
-                metric_type=self._metric_type,
-                max_iter=fragment_length,
-                callback=callback,
-                num_episode=num_episodes,
-                role="simulation",
-            )
+            raise NotImplementedError
+
+        num_frames, stats_list = 0, []
+        for ret in rets:
+            stats_list.extend(ret[0])
+            num_frames += ret[1]
+
+        return stats_list, num_frames
 
     # @Log.method_timer(enable=False)
     def update_population(self, agent, policy_id, policy):

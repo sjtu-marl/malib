@@ -95,17 +95,16 @@ class CoordinatorServer(BaseCoordinator):
             training_config=self._configs["training"]["config"],
             exp_cfg=self._exp_cfg,
         )
-        self._training_manager.init()
-
         # one training interface one rollout worker
-        self._configs["rollout"]["worker_num"] = ray.get(
-            self._training_manager.get_agent_interface_num()
-        )
+        self._configs["rollout"][
+            "worker_num"
+        ] = self._training_manager.get_agent_interface_num()
         self._rollout_worker_manager = RolloutWorkerManager(
             rollout_config=self._configs["rollout"],
             env_desc=self._configs["env_description"],
             exp_cfg=self._exp_cfg,
         )
+        self._training_manager.init()
 
         self._logger.info("Coordinator server started")
 

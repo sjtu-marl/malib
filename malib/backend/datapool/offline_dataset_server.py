@@ -131,10 +131,10 @@ class Episode:
         self.policy_id = policy_id
         self._columns = [
             Episode.CUR_OBS,
-            Episode.ACTIONS,
+            Episode.ACTION,
             Episode.NEXT_OBS,
-            Episode.DONES,
-            Episode.REWARDS,
+            Episode.DONE,
+            Episode.REWARD,
             Episode.ACTION_DIST,
         ]
         if other_columns:

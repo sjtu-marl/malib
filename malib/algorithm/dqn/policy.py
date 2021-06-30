@@ -89,11 +89,14 @@ class DQN(Policy):
                     actions = kwargs["legal_moves"]
                 elif "action_mask" in kwargs:
                     actions = np.where(kwargs["action_mask"] == 1)[0]
-                action = np.random.choice(actions)
+                actions = np.asarray(actions)
+                action = actions[:, np.random.choice(actions.shape[-1])]
                 action_prob = torch.zeros(self.action_space.n)
                 action_prob[action] = 1.0
-                return action, action_prob, {Episode.ACTION_DIST: action_prob}
-        probs = torch.softmax(self._model(np.asarray([observation])), dim=-1)
+                return action, action_prob.numpy(), {Episode.ACTION_DIST: action_prob}
+
+        probs = torch.softmax(self._model(np.asarray(observation)), dim=-1)
+
         if "legal_moves" in kwargs:
             mask = torch.zeros_like(probs)
             mask[:, kwargs["legal_moves"]] = 1
@@ -102,13 +105,13 @@ class DQN(Policy):
             mask = torch.FloatTensor(kwargs["action_mask"]).to(probs.device)
             mask = mask.long().unsqueeze(0)
             probs = mask * probs
-        action = probs.argmax().view(1)
+
+        action = probs.argmax(-1).view((-1,))
         action_prob = torch.zeros_like(probs, device=probs.device)
-        action_prob[:, action] = 1.0
-        action_prob = action_prob.squeeze(0)
+        action_prob[action] = 1.0
         extra_info = {Episode.ACTION_DIST: action_prob}
 
-        return action.item(), action_prob, extra_info
+        return action.numpy(), action_prob.numpy(), extra_info
 
     def compute_actions(
         self, observation: DataTransferType, **kwargs

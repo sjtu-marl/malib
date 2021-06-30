@@ -12,6 +12,10 @@ class Environment:
         self._env = None
 
     @property
+    def possible_agents(self):
+        return self._env.possible_agents
+
+    @property
     def trainable_agents(self) -> Union[Tuple, None]:
         """Return trainble agents, if registered return a tuple, otherwise None"""
         return self._trainable_agents
@@ -36,3 +40,6 @@ class Environment:
 
     def render(self, *args, **kwargs):
         raise NotImplementedError
+
+    def close(self):
+        self._env.close()

@@ -19,7 +19,7 @@ setup(
     install_requires=[
         "wrapt",
         "ray==1.3.0",
-        "pettingzoo",
+        "pettingzoo==1.9.0",
         "grpcio-tools",
         "protobuf3-to-dict",
         "pickle5",

@@ -141,14 +141,12 @@ def simultaneous(
     rets[Episode.CUR_OBS] = dict(
         zip(
             agent_ids,
-            ray.get(
-                [
-                    agent_interfaces[aid].transform_observation.remote(
-                        rets[Episode.CUR_OBS][aid], policy_id=behavior_policies[aid]
-                    )
-                    for aid in agent_ids
-                ]
-            ),
+            [
+                agent_interfaces[aid].transform_observation(
+                    rets[Episode.CUR_OBS][aid], policy_id=behavior_policies[aid]
+                )
+                for aid in agent_ids
+            ],
         )
     )
 
@@ -156,16 +154,13 @@ def simultaneous(
         act_dict = {}
         act_dist_dict = {}
 
-        tasks = []
+        prets = []
         for aid in agent_ids:
             obs_seq = rets[Episode.CUR_OBS][aid]
             extra_kwargs = {"policy_id": behavior_policies[aid]}
-            if rets.get(Episode.ACTION_MASKS) is not None:
-                extra_kwargs["action_mask"] = rets[Episode.ACTION_MASKS][aid]
-            tasks.append(
-                agent_interfaces[aid].compute_action.remote(obs_seq, **extra_kwargs)
-            )
-        prets = ray.get(tasks)
+            if rets.get(Episode.ACTION_MASK) is not None:
+                extra_kwargs["action_mask"] = rets[Episode.ACTION_MASK][aid]
+            prets.append(agent_interfaces[aid].compute_action(obs_seq, **extra_kwargs))
         for aid, (x, y, _) in zip(agent_ids, prets):
             act_dict[aid] = x
             act_dist_dict[aid] = y
@@ -175,14 +170,13 @@ def simultaneous(
 
         for k, v in rets.items():
             if k == Episode.NEXT_OBS:
-                tasks = []
+                tmpv = []
                 for aid in agent_ids:
-                    tasks.append(
-                        agent_interfaces[aid].transform_observation.remote(
+                    tmpv.append(
+                        agent_interfaces[aid].transform_observation(
                             v[aid], policy_id=behavior_policies[aid]
                         )
                     )
-                tmpv = ray.get(tasks)
                 for aid, e in zip(agent_ids, tmpv):
                     v[aid] = e
 
@@ -284,7 +278,7 @@ class Stepping:
         env = env_desc["creator"](**env_desc["config"])
 
         if not env.is_sequential:
-            self.env = VectorEnv.from_envs([env])
+            self.env = VectorEnv.from_envs([env], config=env_desc["config"])
         else:
             self.env = env
 
@@ -317,6 +311,7 @@ class Stepping:
         fragment_length: int,
         desc: Dict[str, Any],
         callback: type,
+        role: str,
     ) -> Any:
         """Environment stepping, rollout/simulate with environment vectorization if it is feasible.
 
@@ -333,6 +328,9 @@ class Stepping:
         # specify the number of running episodes
         num_episodes = desc["num_episodes"]
 
+        self.add_envs(num_episodes)
+        self.env.reset(limits=num_episodes)
+
         agent_episodes = {
             agent: Episode(
                 self.env_desc["id"],
@@ -345,8 +343,6 @@ class Stepping:
 
         metric = get_metric(metric_type)(self.env.possible_agents)
 
-        self.add_envs(num_episodes)
-
         if isinstance(callback, str):
             callback = get_func(callback)
 
@@ -358,7 +354,7 @@ class Stepping:
             behavior_policies,
             agent_episodes,
             metric,
-            self._dataset_server,
+            self._dataset_server if role == "rollout" else None,
         )
 
     def add_envs(self, maximum: int) -> int:

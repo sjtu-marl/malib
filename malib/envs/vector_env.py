@@ -63,11 +63,13 @@ class VectorEnv:
         self._limits = len(self._envs)
 
     def _validate_env(self, env: Environment):
-        assert not self._envs[
-            0
-        ].is_sequential, (
-            "The nested environment must be an instance which steps in simultaneous."
-        )
+        assert (
+            not env.is_sequential
+        ), "The nested environment must be an instance which steps in simultaneous."
+
+    @property
+    def trainable_agents(self):
+        return self._envs[0].trainable_agents
 
     @property
     def num_envs(self) -> int:
@@ -106,7 +108,7 @@ class VectorEnv:
         observation_spaces = envs[0].observation_spaces
         action_spaces = envs[0].action_spaces
 
-        vec_env = cls(observation_spaces, action_spaces, config, 0)
+        vec_env = cls(observation_spaces, action_spaces, type(envs[0]), config, 0)
         vec_env.add_envs(envs=envs)
 
         return vec_env
