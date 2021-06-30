@@ -42,7 +42,7 @@ setup(
             "sphinxcontrib-apidoc",
         ],
         "envs": [
-            "vizdoom==1.1.8",
+            # "vizdoom==1.1.8",
             # "git+https://github.com/oxwhirl/smac.git",
             "supersuit",
             "multi-agent-ale-py",

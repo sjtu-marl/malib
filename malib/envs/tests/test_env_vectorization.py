@@ -1,3 +1,4 @@
+import logging
 import pytest
 
 from malib.envs.vector_env import VectorEnv
@@ -58,4 +59,5 @@ class TestVecotorMAatari:
 
             rets[Episode.CUR_OBS] = rets[Episode.NEXT_OBS]
             step += 1
-            done = any(rets[Episode.DONE].values())
+            done = all([sum(v) for v in rets[Episode.DONE].values()])
+            logging.debug(f"stepping basketball pong at step={step}")
