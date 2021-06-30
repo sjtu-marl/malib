@@ -1,12 +1,36 @@
 import operator
 from abc import ABCMeta, abstractmethod
 from functools import reduce
-from typing import Sequence, Tuple, List, Any
+import re
 
 import numpy as np
 from gym import spaces
 
-from malib.utils.typing import DataTransferType
+from malib.utils.typing import DataTransferType, Dict, Sequence, Tuple, List, Any
+
+
+def _get_batched(data: Any):
+    """Get batch dim, nested data must be numpy array like"""
+
+    res = []
+    if isinstance(data, Dict):
+        for k, v in data.items():
+            cleaned_v = _get_batched(v)
+            for i, e in enumerate(cleaned_v):
+                if i > len(res):
+                    res[i] = {}
+                res[i][k] = e
+    elif isinstance(data, Sequence):
+        for v in data:
+            cleaned_v = _get_batched(v)
+            for i, e in enumerate(cleaned_v):
+                if i > len(res):
+                    res[i] = []
+                res[i].append(e)
+    elif isinstance(data, np.ndarray):
+        return data
+    else:
+        raise TypeError(f"Unexpected nested data type: {type(data)}")
 
 
 class Preprocessor(metaclass=ABCMeta):
@@ -14,7 +38,8 @@ class Preprocessor(metaclass=ABCMeta):
         self._original_space = space
 
     @abstractmethod
-    def transform(self, data) -> DataTransferType:
+    def transform(self, data, nested=False) -> DataTransferType:
+        """Transform original data to feet the preprocessed shape. Nested works for nested array."""
         pass
 
     @abstractmethod
@@ -58,16 +83,21 @@ class DictFlattenPreprocessor(Preprocessor):
     def size(self):
         return self._size
 
-    def transform(self, data) -> DataTransferType:
+    def transform(self, data, nested=False) -> DataTransferType:
         """ Transform support multi-instance input """
 
-        if not isinstance(data, Sequence):
+        if nested:
+            data = _get_batched(data)
+
+        if isinstance(data, Dict):
             array = np.zeros(self.shape)
             self.write(array, 0, data)
-        else:
+        elif isinstance(data, Sequence):
             array = np.zeros((len(data),) + self.shape)
             for i in range(len(array)):
                 self.write(array[i], 0, data[i])
+        else:
+            raise TypeError(f"Unexpected type: {type(data)}")
 
         return array
 
@@ -98,7 +128,10 @@ class TupleFlattenPreprocessor(Preprocessor):
     def shape(self):
         return (self.size,)
 
-    def transform(self, data) -> DataTransferType:
+    def transform(self, data, nested=False) -> DataTransferType:
+        if nested:
+            data = _get_batched(data)
+
         if isinstance(data, List):
             array = np.zeros((len(data),) + self.shape)
             for i in range(len(array)):
@@ -129,7 +162,10 @@ class BoxFlattenPreprocessor(Preprocessor):
     def shape(self):
         return (self._size,)
 
-    def transform(self, data) -> np.ndarray:
+    def transform(self, data, nested=False) -> np.ndarray:
+        if nested:
+            data = _get_batched(data)
+
         if isinstance(data, list):
             array = np.stack(data)
             array = array.reshape((len(array), -1))
@@ -139,6 +175,38 @@ class BoxFlattenPreprocessor(Preprocessor):
             return array
 
     def write(self, array, offset, data):
+        pass
+
+
+class BoxStackedPreprocessor(Preprocessor):
+    def __init__(self, space: spaces.Box):
+        super(BoxStackedPreprocessor, self).__init__(space)
+        assert (
+            len(space.shape) >= 3
+        ), "Stacked box preprocess can only applied to 3D shape"
+        self._size = reduce(operator.mul, space.shape)
+        self._shape = space.shape
+
+    @property
+    def size(self):
+        return self._size
+
+    @property
+    def shape(self):
+        return self._shape
+
+    def transform(self, data, nested=False) -> DataTransferType:
+        if nested:
+            raise TypeError("Do not support nested transformation yet")
+
+        if isinstance(data, list):
+            array = np.stack(data)
+            return array
+        else:
+            array = np.asarray(data)
+            return array
+
+    def write(self, array: DataTransferType, offset: int, data: Any):
         pass
 
 
@@ -155,8 +223,11 @@ class DiscreteFlattenPreprocessor(Preprocessor):
     def shape(self):
         return (self._size,)
 
-    def transform(self, data) -> np.ndarray:
+    def transform(self, data, nested=False) -> np.ndarray:
         """Transform to one hot"""
+
+        if nested:
+            data = _get_batched(data)
 
         if isinstance(data, int):
             array = np.zeros(self.size, dtype=np.int32)
@@ -189,7 +260,10 @@ def get_preprocessor(space: spaces.Space, mode: str = Mode.FLATTEN):
             return DiscreteFlattenPreprocessor
         else:
             raise TypeError(f"Unexpected space type: {type(space)}")
-    elif mode == Mode.STACK:
-        raise NotImplementedError
+    elif mode == Mode.STACK:  # for sequential model like CNN and RNN
+        if isinstance(space, spaces.Box):
+            return BoxStackedPreprocessor
+        else:
+            raise NotImplementedError
     else:
         raise ValueError(f"Unexpected mode: {mode}")
