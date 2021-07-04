@@ -1,4 +1,5 @@
-experiment_group: "basketball_pong_independent_async"
+group: "maatari/basketball"
+name: "dqn_shared"
 
 training:
   interface:

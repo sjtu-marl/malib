@@ -5,6 +5,7 @@ import time
 from typing import Dict, List, Any, Union, Sequence
 
 import numpy as np
+from numpy.core.fromnumeric import size
 import ray
 
 from typing import Dict, List, Any, Union, Sequence, Tuple, Iterable
@@ -206,14 +207,15 @@ class Episode:
                 {c: len(self._data[c]) for c in self.columns},
             )
         for column in self.columns:
-            if isinstance(kwargs[column], np.ndarray):
-                self._data[column].insert(kwargs[column])
-            elif isinstance(kwargs[column], NumpyDataArray):
+            # if isinstance(kwargs[column], np.ndarray):
+            # self._data[column].insert(kwargs[column])
+            if isinstance(kwargs[column], NumpyDataArray):
                 self._data[column].insert(kwargs[column].get_data())
             else:
-                raise TypeError(
-                    f"Unexpected type of column={column} {type(kwargs[column])}"
-                )
+                self._data[column].insert(kwargs[column])
+                # raise TypeError(
+                #     f"Unexpected type of column={column} {type(kwargs[column])}"
+                # )
         self._size = len(self._data[Episode.CUR_OBS])
 
     def sample(self, idxes=None, size=None) -> Any:
@@ -257,6 +259,46 @@ class Episode:
 
     def format_to_dataset(self) -> List[Dict[str, Any]]:
         raise NotImplementedError
+
+
+class SequentialEpisode(Episode):
+    def __init__(
+        self,
+        env_id: str,
+        policy_id: Union[PolicyID, Dict],
+        capacity: int,
+        other_columns: List[str],
+    ):
+        super().__init__(
+            env_id, policy_id, capacity=capacity, other_columns=other_columns
+        )
+
+    def insert(self, **kwargs):
+        for column, value in kwargs.items():
+            assert column in self.columns, f"unregistered column: {column}"
+            if isinstance(value, NumpyDataArray):
+                self._data[column].insert(value.get_data())
+            else:
+                self._data[column].insert(value)
+                # raise TypeError(
+                #     f"Unexpected type of column={column} {value}"
+                # )
+
+    def clean_data(self):
+        # check length
+        length = self._data[Episode.CUR_OBS].size
+        self._data[Episode.NEXT_OBS].flush(
+            np.roll(self._data[Episode.CUR_OBS]._data[:length], 1, axis=0)
+        )
+        self._data[Episode.REWARD].flush(
+            np.roll(self._data[Episode.REWARD]._data[:length], 1, axis=0)
+        )
+        _size = self._data[Episode.CUR_OBS].size
+        for colum in self.columns:
+            assert (
+                _size == self._data[colum].size
+            ), f"Expected size is {_size}, while accpeted {self._data[colum].size} for column={colum}"
+        self._size = _size
 
 
 class MultiAgentEpisode(Episode):

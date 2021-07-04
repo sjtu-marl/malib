@@ -163,6 +163,12 @@ class NumpyDataArray(DataArray):
         :return: None
         """
 
+        if isinstance(data, list):
+            data = np.array(data)
+
+        if not isinstance(data, np.ndarray):
+            data = np.array([data])
+
         if self._data is None:
             data_shape = list(data.shape)
             data_shape[0] = max(self._capacity, data.shape[0])
@@ -221,6 +227,11 @@ class NumpyDataArray(DataArray):
         """
 
         return self._data.nbytes
+
+    def flush(self, data: DataTransferType):
+        self._length = len(data)
+        self._data = data.copy()
+        self._capacity = max(self._length, self._capacity)
 
 
 class LinkDataArray(DataArray):

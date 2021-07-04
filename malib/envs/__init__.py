@@ -11,6 +11,14 @@ class Environment:
         self._configs = configs
         self._env = None
 
+    @staticmethod
+    def from_sequential_game(env, **kwargs):
+        _env = Environment(**kwargs)
+        _env._env = env
+        _env._trainable_agents = env.possible_agents
+        _env.is_sequential = True
+        return _env
+
     @property
     def possible_agents(self):
         return self._env.possible_agents

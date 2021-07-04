@@ -10,6 +10,7 @@ import time
 
 import psutil
 import ray
+import logging
 
 
 from malib import settings
@@ -84,7 +85,7 @@ class RolloutWorkerManager:
             mongo=settings.USE_MONGO_LOGGER,
             **exp_cfg,
         )
-        self.logger.debug(f"Created {worker_num} rollout workers ...")
+        print(f"Created {worker_num} rollout worker(s) ...")
 
     def retrieve_information(self, task_request: TaskRequest) -> TaskRequest:
         """Retrieve information from other agent interface. Default do nothing and return the original task request.

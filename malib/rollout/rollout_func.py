@@ -20,8 +20,6 @@ import uuid
 import ray
 import numpy as np
 
-from collections import defaultdict
-
 from malib import settings
 from malib.utils.logger import get_logger, Log
 from malib.utils.metrics import get_metric, Metric
@@ -29,7 +27,11 @@ from malib.utils.typing import AgentID, Dict, PolicyID, Union, Any
 from malib.utils.preprocessor import get_preprocessor
 from malib.envs.agent_interface import AgentInterface
 from malib.envs.vector_env import VectorEnv
-from malib.backend.datapool.offline_dataset_server import Episode, MultiAgentEpisode
+from malib.backend.datapool.offline_dataset_server import (
+    Episode,
+    MultiAgentEpisode,
+    SequentialEpisode,
+)
 
 
 def sequential(
@@ -74,14 +76,16 @@ def sequential(
                 )
                 agent_episodes[aid].insert(
                     **{
-                        Episode.CUR_OBS: observation,
-                        Episode.ACTION_MASK: action_mask,
-                        Episode.ACTION_DIST: action_dist,
-                        Episode.ACTION: action_dist,
-                        Episode.LAST_REWARD: reward,
+                        Episode.CUR_OBS: [observation],
+                        Episode.ACTION_MASK: [action_mask],
+                        Episode.ACTION_DIST: [action_dist],
+                        Episode.ACTION: [action],
+                        Episode.REWARD: reward,
                         Episode.DONE: done,
                     }
                 )
+                # convert action to scalar
+                action = action[0]
             else:
                 info["policy_id"] = behavior_policies[aid]
                 action = None
@@ -279,8 +283,10 @@ class Stepping:
 
         if not env.is_sequential:
             self.env = VectorEnv.from_envs([env], config=env_desc["config"])
+            self.callback = simultaneous
         else:
             self.env = env
+            self.callback = sequential
 
         self._dataset_server = dataset_server
 
@@ -331,8 +337,9 @@ class Stepping:
         self.add_envs(num_episodes)
         self.env.reset(limits=num_episodes)
 
+        episode_creator = Episode if not self.env.is_sequential else SequentialEpisode
         agent_episodes = {
-            agent: Episode(
+            agent: episode_creator(
                 self.env_desc["id"],
                 behavior_policies[agent],
                 capacity=fragment_length * num_episodes,
@@ -343,8 +350,10 @@ class Stepping:
 
         metric = get_metric(metric_type)(self.env.possible_agents)
 
-        if isinstance(callback, str):
-            callback = get_func(callback)
+        # if isinstance(callback, str):
+        #     callback = get_func(callback)
+
+        callback = get_func(callback) if callback else self.callback
 
         return callback(
             self.env,

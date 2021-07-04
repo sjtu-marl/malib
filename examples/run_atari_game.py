@@ -5,11 +5,6 @@ import argparse
 
 import yaml
 import os
-import importlib
-import supersuit
-
-from typing import Dict, Sequence
-
 
 from malib.envs.maatari.env import MAAtari
 from malib.runner import run
@@ -29,7 +24,6 @@ if __name__ == "__main__":
     with open(os.path.join(BASE_DIR, args.config), "r") as f:
         config = yaml.load(f)
 
-    experiment_group = config["experiment_group"]
     env_desc = config["env_description"]
     env_desc["config"] = env_desc.get("config", {})
     # load creator
@@ -39,9 +33,6 @@ if __name__ == "__main__":
     traianable_agents = env.trainable_agents
     observation_spaces = env.observation_spaces
     action_spaces = env.action_spaces
-
-    print(f"---------- observation spaces: {observation_spaces}")
-    print(f"---------- action spaces: {action_spaces}")
 
     env_desc["possible_agents"] = env.trainable_agents
     env.close()
@@ -53,7 +44,8 @@ if __name__ == "__main__":
     training_config["interface"]["action_spaces"] = action_spaces
 
     run(
-        experiment=experiment_group,
+        group=config["group"],
+        name=config["name"],
         env_description=env_desc,
         # generate multiple agent interfaces (one to many)
         agent_mapping_func=config.get(

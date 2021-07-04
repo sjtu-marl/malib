@@ -43,7 +43,7 @@ class RandomPolicy(Policy):
 
     def compute_action(self, observation: DataTransferType, **kwargs) -> Any:
         logits = torch.softmax(self.actor(observation), dim=-1)
-        action_prob = torch.zeros(self.action_space.n)
+        action_prob = torch.zeros((len(observation), self.action_space.n))
         if "legal_moves" in kwargs:
             mask = torch.zeros_like(logits)
             mask[kwargs["legal_moves"]] = 1
@@ -53,7 +53,7 @@ class RandomPolicy(Policy):
             mask = torch.ones_like(logits)
         logits = mask * logits
         action = logits.argmax(dim=-1).view((-1, 1)).squeeze(-1).numpy()
-        return action, None, {"action_probs": action_prob}
+        return action, action_prob.numpy(), {"action_probs": action_prob}
 
     def train(self):
         pass

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from malib.backend.datapool.offline_dataset_server import Episode
 import random
 from typing import List
 
@@ -8,6 +9,7 @@ from pettingzoo.utils import wrappers
 from pettingzoo.utils.env import AECEnv
 
 from open_spiel.python.rl_environment import Environment as OPEN_SPIEL_ENV, TimeStep
+from malib.envs import Environment
 
 
 class PokerEnv(AECEnv):
@@ -152,4 +154,6 @@ def env(**kwargs):
     env = wrappers.TerminateIllegalWrapper(env, illegal_reward=-1)
     env = wrappers.AssertOutOfBoundsWrapper(env)
     env = wrappers.OrderEnforcingWrapper(env)
+    env = Environment.from_sequential_game(env, **kwargs)
+    env._extra_returns = [Episode.ACTION_MASK]
     return env
