@@ -1,5 +1,6 @@
 import os
 import sys
+import traceback
 import threading
 import time
 from typing import Dict, List, Any, Union, Sequence
@@ -170,6 +171,9 @@ class Episode:
             for col in self.columns
         }
 
+    def empty(self) -> bool:
+        return self._size == 0
+
     @property
     def capacity(self):
         return self._capacity
@@ -201,22 +205,26 @@ class Episode:
         self._capacity = max(self._size, self._capacity)
 
     def insert(self, **kwargs):
-        for column in self.columns:
-            assert self._size == len(self._data[column]), (
-                self._size,
-                {c: len(self._data[c]) for c in self.columns},
-            )
-        for column in self.columns:
-            # if isinstance(kwargs[column], np.ndarray):
-            # self._data[column].insert(kwargs[column])
-            if isinstance(kwargs[column], NumpyDataArray):
-                self._data[column].insert(kwargs[column].get_data())
-            else:
-                self._data[column].insert(kwargs[column])
-                # raise TypeError(
-                #     f"Unexpected type of column={column} {type(kwargs[column])}"
-                # )
-        self._size = len(self._data[Episode.CUR_OBS])
+        try:
+            for column in self.columns:
+                assert self._size == len(self._data[column]), (
+                    self._size,
+                    {c: len(self._data[c]) for c in self.columns},
+                )
+            for column in self.columns:
+                # if isinstance(kwargs[column], np.ndarray):
+                # self._data[column].insert(kwargs[column])
+                if isinstance(kwargs[column], NumpyDataArray):
+                    assert kwargs[column]._data is not None, f"{column} has empty data"
+                    self._data[column].insert(kwargs[column].get_data())
+                else:
+                    self._data[column].insert(kwargs[column])
+                    # raise TypeError(
+                    #     f"Unexpected type of column={column} {type(kwargs[column])}"
+                    # )
+            self._size = len(self._data[Episode.CUR_OBS])
+        except Exception as e:
+            print(traceback.format_exc())
 
     def sample(self, idxes=None, size=None) -> Any:
         assert idxes is None or size is None
@@ -400,8 +408,7 @@ class Table:
 
     @property
     def episode(self):
-        with self._threading_lock:
-            return self._episode
+        return self._episode
 
     @property
     def size(self):
@@ -543,7 +550,7 @@ class OfflineDataset:
 
         insert_results = []
         for aid, episode in agent_episodes.items():
-            if episode is None:
+            if episode is None or episode.empty():
                 continue
             table_name = Table.gen_table_name(
                 env_id=episode.env_id,
@@ -564,7 +571,7 @@ class OfflineDataset:
             for fut in insert_results:
                 while not fut.done():
                     pass
-            self.logger.debug("Insertion operation completed")
+            print("Insertion operation completed")
 
     @Log.method_timer(enable=settings.PROFILING)
     def load_from_dataset(
@@ -669,10 +676,17 @@ class OfflineDataset:
                         pid=buffer_desc.policy_id,
                     )
                     table = self._tables[table_name]
-                    res[agent], info = table.sample(size=buffer_desc.batch_size)
-        except (KeyError, OversampleError, NoEnoughDataError) as e:
-            info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
+                    res[agent] = table.sample(size=buffer_desc.batch_size)
+        except KeyError as e:
+            info = f"data table `{table_name}` not exist"
             res = None
+        except NoEnoughDataError as e:
+            info = f"no enough data for table `{table_name}`"
+            res = None
+        except OversampleError as e:
+            info = "oversampled error"
+            res = None
+
         return res, info
 
     def shutdown(self):

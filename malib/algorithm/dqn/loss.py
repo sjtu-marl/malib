@@ -39,11 +39,11 @@ class DQNLoss(LossFunc):
 
     def __call__(self, batch) -> Dict[str, Any]:
         self.loss = []
-        reward = torch.FloatTensor(batch[Episode.REWARDS].copy()).view(-1, 1)
-        act = torch.LongTensor(batch[Episode.ACTIONS].copy()).view(-1, 1)
+        reward = torch.FloatTensor(batch[Episode.REWARD].copy()).view(-1, 1)
+        act = torch.LongTensor(batch[Episode.ACTION].copy()).view(-1, 1)
         obs = batch[Episode.CUR_OBS].copy()
         next_obs = batch[Episode.NEXT_OBS].copy()
-        done = torch.FloatTensor(batch[Episode.DONES].copy()).view(-1, 1)
+        done = torch.FloatTensor(batch[Episode.DONE].copy()).view(-1, 1)
 
         state_action_values = self.policy.critic(obs).gather(1, act)
         next_state_q = self.policy.target_critic(next_obs)

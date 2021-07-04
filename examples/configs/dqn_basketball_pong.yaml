@@ -59,4 +59,4 @@ global_evaluator:
   name: "generic"
 
 dataset_config:
-  episode_capacity: 2000000
+  episode_capacity: 300

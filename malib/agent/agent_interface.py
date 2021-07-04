@@ -310,6 +310,7 @@ class AgentInterface(metaclass=ABCMeta):
 
         while batch is None:
             batch, info = ray.get(self._offline_dataset.sample.remote(buffer_desc))
+            # print(">>>>>> sample info:", info)
 
         return batch, info
 

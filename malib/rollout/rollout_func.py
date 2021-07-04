@@ -206,7 +206,6 @@ def simultaneous(
             ]
         )
         cnt += 1
-
         if dataset_server is not None and cnt % send_interval == 0:
             dataset_server.save.remote(agent_episodes)
             # clean agent episode
@@ -280,6 +279,7 @@ class Stepping:
 
         # check whether env is simultaneous
         env = env_desc["creator"](**env_desc["config"])
+        self._is_sequential = env.is_sequential
 
         if not env.is_sequential:
             self.env = VectorEnv.from_envs([env], config=env_desc["config"])
@@ -337,7 +337,7 @@ class Stepping:
         self.add_envs(num_episodes)
         self.env.reset(limits=num_episodes)
 
-        episode_creator = Episode if not self.env.is_sequential else SequentialEpisode
+        episode_creator = Episode if not self._is_sequential else SequentialEpisode
         agent_episodes = {
             agent: episode_creator(
                 self.env_desc["id"],
@@ -363,7 +363,7 @@ class Stepping:
             behavior_policies,
             agent_episodes,
             metric,
-            self._dataset_server if role == "rollout" else None,
+            dataset_server=self._dataset_server if role == "rollout" else None,
         )
 
     def add_envs(self, maximum: int) -> int:
