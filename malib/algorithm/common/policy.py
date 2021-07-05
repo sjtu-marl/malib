@@ -6,12 +6,26 @@ import gym
 
 from abc import ABCMeta, abstractmethod
 
+import numpy as np
 import torch.nn as nn
 
 from malib.utils import errors
-from malib.utils.typing import DataTransferType, ModelConfig, Dict, Any, Tuple, Callable
+from malib.utils.typing import (
+    List,
+    DataTransferType,
+    ModelConfig,
+    Dict,
+    Any,
+    Tuple,
+    Callable,
+    BehaviorMode,
+    Sequence,
+    Union,
+)
 from malib.utils.preprocessor import get_preprocessor, Mode
 from malib.utils.notations import deprecated
+from malib.envs.tabular.game import Game as TabularGame
+from malib.envs.tabular.state import State as TabularGameState
 
 
 class SimpleObject:
@@ -50,6 +64,57 @@ DEFAULT_MODEL_CONFIG = {
         "output": {"activation": False},
     },
 }
+
+
+class TabularPolicy:
+    def __init__(
+        self,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        callable_policy: callable,
+        batched_callable_policy: callable,
+    ):
+        self._action_space = action_space
+        self._observation_space = observation_space
+        self._game_states = []
+        self._tabular_dist = None
+
+        assert isinstance(
+            action_space, gym.spaces.Discrete
+        ), f"The action space is illegal, expected should be `gym.spaces.Discrete`, while received {type(action_space)}"
+        assert isinstance(
+            observation_space, gym.spaces.Discrete
+        ), f"The observation space is illegal, expected should be `gym.spaces.Discrete`, while received {type(observation_space)}"
+
+        self._callable_policy = callable_policy
+        self._batched_callable_policy = batched_callable_policy
+
+    @property
+    def action_probability_array(self) -> Dict[TabularGameState, np.ndarray]:
+        assert self._tabular_dist is not None
+        return self._tabular_dist
+
+    def set_states_to_init_policy(self, states: Sequence[TabularGameState]):
+        self._game_states = states
+        # init policy in tabular
+        self._tabular_dist = {
+            state: np.zeros(self._action_space.n) for state in self._game_states
+        }
+
+    def action_probability(self, state: TabularGameState):
+        return self._callable_policy(state)
+
+    def action_probabilities(self, states: Sequence[TabularGameState]):
+        return self._batched_callable_policy(states)
+
+    def __call__(self, state: Union[TabularGameState, Sequence[TabularGameState]]):
+        """Turns the policy into a callable.
+
+        :param Any state: The current state used to compute strategy
+        :return: A `dict` of {action: probability}` for the given state
+        """
+
+        return self.action_probability(state)
 
 
 class Policy(metaclass=ABCMeta):
@@ -254,3 +319,59 @@ class Policy(metaclass=ABCMeta):
     @deprecated
     def eval(self):
         pass
+
+    def to_tabular(self) -> TabularPolicy:
+        """Convert RL policy to tabular policy."""
+
+        def _callable_policy(state: TabularGameState):
+            valid_action_index_with_mask = state.legal_actions_mask()
+            info_state_vector = state.information_state_tensor()
+            obs = self.preprocessor.transform(
+                {
+                    "observation": np.asarray(info_state_vector),
+                    "action_mask": np.asarray(valid_action_index_with_mask),
+                }
+            )
+            _, action_probs, _ = self.compute_action(
+                observation=obs, behavior_mode=BehaviorMode.EXPLOITATION
+            )
+            return {
+                state.actions[idx]: action_probs[idx]
+                for idx, v in enumerate(valid_action_index_with_mask)
+                if v == 1.0
+            }
+
+        def _batched_callable_policy(states: Sequence[TabularGameState]):
+            obs = np.asarray(
+                [
+                    self.preprocessor.transform(
+                        {
+                            "observation": np.asarray(state.information_state_tensor()),
+                            "action_mask": np.asarray(state.legal_actions_mask()),
+                        }
+                    )
+                    for state in states
+                ]
+            )
+
+            _, batched_action_probs, _ = self.compute_actions(
+                observation=obs, behavior_mode=BehaviorMode.EXPLOITATION
+            )
+            batched_action_probs = batched_action_probs.tolist()
+            actions = [
+                {
+                    state.actions[idx]: action_probs[idx]
+                    for idx, v in enumerate(state.legal_actions_mask())
+                    if v == 1.0
+                }
+                for state, action_probs in zip(states, batched_action_probs)
+            ]
+            return actions
+
+        tabular_policy = TabularPolicy(
+            self.observation_space,
+            self.action_space,
+            _callable_policy,
+            _batched_callable_policy,
+        )
+        return tabular_policy

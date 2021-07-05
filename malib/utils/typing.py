@@ -90,6 +90,11 @@ class Status(enum.Enum):
     FAILED = "failed"
 
 
+class GameType(enum.Enum):
+    Sequential = "sequential"
+    Simultaneous = "simultaneous"
+
+
 class Paradigm(enum.Enum):
     MARL = "marl"
     META_GAME = "meta_game"

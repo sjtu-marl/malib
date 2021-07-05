@@ -10,6 +10,7 @@ from collections import namedtuple
 from typing import Dict, Any, Tuple, Callable, Union, Sequence
 
 import gym
+import numpy as np
 import ray
 
 from malib import settings
@@ -28,10 +29,11 @@ from malib.utils.typing import (
     AgentID,
     List,
     MetricEntry,
+    DataTransferType,
 )
 from malib.utils import errors
 from malib.utils.logger import get_logger, Log
-from malib.algorithm.common.policy import Policy
+from malib.algorithm.common.policy import Policy, TabularPolicy
 from malib.algorithm.common.trainer import Trainer
 
 
@@ -587,6 +589,40 @@ class AgentInterface(metaclass=ABCMeta):
             raise errors.TypeError(
                 f"Unexpected algorithm mapping function: {self._algorithm_mapping_func}"
             )
+
+    def policy_pool_mixture(
+        self, weights: Dict[PolicyID, float], agent_id: AgentID, tabular: bool = False
+    ):
+        assert list(weights.keys()) == list(self.policies.keys())
+        assert np.isclose(1.0, sum(weights.values()))
+
+        class mixed_policy(Policy):
+            def __init__(self, observation_space, action_space, policies, weights):
+                super(mixed_policy, self).__init__(
+                    "mixed", observation_space, action_space
+                )
+                self._policies = policies
+                self._weights = weights
+
+            def compute_actions(
+                self, observation: DataTransferType, **kwargs
+            ) -> DataTransferType:
+                raise NotImplementedError
+
+            def compute_action(
+                self, observation: DataTransferType, **kwargs
+            ) -> DataTransferType:
+                raise NotImplementedError
+
+        policy = mixed_policy(
+            self._observation_spaces[agent_id],
+            self._action_spaces[agent_id],
+            self.policies,
+            weights,
+        )
+        if tabular:
+            policy = policy.to_tabular()
+        return policy
 
     @abstractmethod
     def optimize(
