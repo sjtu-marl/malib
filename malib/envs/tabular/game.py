@@ -59,3 +59,8 @@ class Game:
     @property
     def game_spec(self) -> GameSpec:
         return self._game_spec
+
+    @property
+    def states(self):
+        """States is a dict-like mapping from player to states"""
+        raise NotImplementedError

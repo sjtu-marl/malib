@@ -607,12 +607,24 @@ class AgentInterface(metaclass=ABCMeta):
             def compute_actions(
                 self, observation: DataTransferType, **kwargs
             ) -> DataTransferType:
-                raise NotImplementedError
+                tmp = []
+                for pid, weight in self._weights.items():
+                    _, batched_action_probs, _ = self._policies[pid].compute_actions(
+                        observation, **kwargs
+                    )
+                    tmp.append(batched_action_probs * weight)
+                return _, np.sum(tmp, axis=0), _
 
             def compute_action(
                 self, observation: DataTransferType, **kwargs
             ) -> DataTransferType:
-                raise NotImplementedError
+                tmp = []
+                for pid, weight in self._weights.items():
+                    _, action_probs, _ = self._policies[pid].compute_action(
+                        observation, **kwargs
+                    )
+                    tmp.append(action_probs * weight)
+                return _, np.sum(tmp, axis=0), _
 
         policy = mixed_policy(
             self._observation_spaces[agent_id],

@@ -73,6 +73,8 @@ class TabularPolicy:
         action_space: gym.Space,
         callable_policy: callable,
         batched_callable_policy: callable,
+        value_func: callable = None,
+        values_func: callable = None,
     ):
         self._action_space = action_space
         self._observation_space = observation_space
@@ -88,6 +90,9 @@ class TabularPolicy:
 
         self._callable_policy = callable_policy
         self._batched_callable_policy = batched_callable_policy
+
+        self._value_func = value_func
+        self._values_func = values_func
 
     @property
     def action_probability_array(self) -> Dict[TabularGameState, np.ndarray]:
@@ -107,13 +112,32 @@ class TabularPolicy:
     def action_probabilities(self, states: Sequence[TabularGameState]):
         return self._batched_callable_policy(states)
 
+    def value(self, state: TabularGameState, walk: bool = True):
+        if not walk:
+            assert self._value_func is not None and callable(self._value_func), type(
+                self._value_func
+            )
+            return self._value_func(state)
+        else:
+            # TODO(ming): recursively walk through the game tree to estimate the state value
+            raise NotImplementedError
+
+    def values(self, states: Sequence[TabularGameState], walk: bool = True):
+        if not walk:
+            assert self._values_func is not None and callable(self._values_func), type(
+                self._values_func
+            )
+            return self._values_func(states)
+        else:
+            # TODO(ming): recursively walk through the game tree to estimate the state vlaues
+            raise NotImplementedError
+
     def __call__(self, state: Union[TabularGameState, Sequence[TabularGameState]]):
         """Turns the policy into a callable.
 
         :param Any state: The current state used to compute strategy
         :return: A `dict` of {action: probability}` for the given state
         """
-
         return self.action_probability(state)
 
 
