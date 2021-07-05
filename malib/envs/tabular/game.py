@@ -1,4 +1,3 @@
-from typing import Sequence, Union
 from dataclasses import dataclass
 
 import gym
@@ -48,8 +47,8 @@ class Game:
             observation_spaces=observation_spaces,
         )
 
-    def initial_states(self) -> Union[GameState, Sequence[GameState]]:
-        """Return initialized states.
+    def initial_state(self) -> GameState:
+        """Return initialized state.
 
         :raises: NotImplementedError
         :returns: A sequence of states or a single state.
@@ -62,5 +61,6 @@ class Game:
 
     @property
     def states(self):
-        """States is a dict-like mapping from player to states"""
+        """States is a dict-like mapping from player to states (has `filter` interface)"""
+
         raise NotImplementedError

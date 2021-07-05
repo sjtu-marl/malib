@@ -1,26 +1,90 @@
 from malib.gt.tabular import types as tabularType
-from malib.utils.typing import Dict, Tuple, Sequence, Any
+from malib.utils.typing import AgentID, Dict, Tuple, Sequence, Any, List
+
+
+_DEFAULT_REWARD_FUNC = lambda state, action, next_state: 0.0
 
 
 class State:
-    def __init__(self, actions: Sequence):
+    def __init__(self, actions: Sequence, reward_func: callable = None):
+        """Create a state instance with given actions and reward function.
+
+        :param Sequence actions: A sequence of actions
+        :param callable reward_func: Reward function. If not be specified, will use `_DEFAULT_REWARD_FUNC`
+        """
+
+        # XXX(ming): we consider the deterministic state transition,
+        #  but the next state could be a sequence of states too.
         self._action_to_next_state: Dict[tabularType.Action, "State"] = dict()
         self._actions = tuple(actions)
+        self._reward_func = reward_func or _DEFAULT_REWARD_FUNC
+        self._value = 0.0
+        self._game_over = False
+        self._discounted = 1.0
+
+    def reward(self, action: "Action") -> float:
+        """Compute reward."""
+
+        next_state = self.next(action)
+        return self._reward_func(self, action, next_state)
 
     def legal_actions_mask(self) -> Tuple:
         """Return a tuple of legal action index with mask."""
+
         raise NotImplementedError
 
     def information_state_tensor(self) -> Any:
         raise NotImplementedError
 
     @property
-    def actions(self) -> Tuple:
+    def value(self) -> float:
+        """Return the state value. Default by 0."""
+
+        return self._value
+
+    @value.setter
+    def value(self, value: float):
+        """Assign state-value to this state."""
+
+        self._value = value
+
+    @property
+    def discounted(self) -> float:
+        return self._discounted
+
+    @discounted.setter
+    def discounted(self, value: float):
+        assert 0.0 <= value <= 1.0, value
+        self._discounted = value
+
+    @property
+    def game_over(self):
+        return self._game_over
+
+    @game_over.setter
+    def game_over(self, value: bool):
+        self._game_over = value
+
+    @property
+    def actions(self) -> Tuple["Action"]:
         """Return the tuple of actions, whose length is equal to the action space"""
+
         return self._actions
 
+    def is_chance_node(self) -> bool:
+        raise NotImplementedError
+
+    def chance_outcomes(self) -> List[Tuple["Action", float]]:
+        """Returns the possible change outcomes and their probabilities"""
+        raise NotImplementedError
+
+    def current_player(self) -> AgentID:
+        """Returns id of the next player to move."""
+
+        raise NotImplementedError
+
     def next(self, action: tabularType.Action) -> "State":
-        """Move step and return the next state"""
+        """Move step and return the next state."""
 
         assert (
             self._action_to_next_state is not None
@@ -34,5 +98,9 @@ class State:
         self._action_to_next_state = None
 
     @property
-    def is_terminal(self):
-        return self._action_to_next_state is None
+    def is_terminal(self) -> bool:
+        """Check whether current state is terminal. If there are no child states or game
+        has been terminated, return true.
+        """
+
+        return self._action_to_next_state is None or self._game_over
