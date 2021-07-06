@@ -28,9 +28,8 @@ if __name__ == "__main__":
     env_desc = config["env_description"]
     env_desc["config"] = env_desc.get("config", {})
     # load creator
-    env_creator = MPE
-    env_desc["creator"] = env_creator
-    env = env_creator(**env_desc["config"])
+    env_desc["creator"] = MPE
+    env = MPE(**env_desc["config"])
 
     possible_agents = env.possible_agents
     observation_spaces = env.observation_spaces

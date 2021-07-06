@@ -344,7 +344,7 @@ class Stepping:
         episode_creator = Episode if not self._is_sequential else SequentialEpisode
         agent_episodes = {
             agent: episode_creator(
-                self.env_desc["id"],
+                self.env_desc["config"]["env_id"],
                 behavior_policies[agent],
                 capacity=fragment_length * num_episodes,
                 other_columns=self.env.extra_returns,

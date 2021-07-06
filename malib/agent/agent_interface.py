@@ -326,7 +326,7 @@ class AgentInterface(metaclass=ABCMeta):
         """
 
         return BufferDescription(
-            env_id=self._env_desc["id"],
+            env_id=self._env_desc["config"]["env_id"],
             agent_id=aid,
             policy_id=pid,
             batch_size=batch_size,
@@ -450,7 +450,7 @@ class AgentInterface(metaclass=ABCMeta):
         """
 
         return ParameterDescription(
-            env_id=self._env_desc["id"],
+            env_id=self._env_desc["config"]["env_id"],
             identify=env_aid,
             id=policy_id,
             time_stamp=time.time(),
