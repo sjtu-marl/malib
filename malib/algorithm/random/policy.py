@@ -1,12 +1,9 @@
-# -*- coding: utf-8 -*-
-from typing import Any
-
 import numpy as np
 import torch
 import gym
 
 from malib.algorithm.common.policy import Policy
-from malib.utils.typing import DataTransferType
+from malib.utils.typing import DataTransferType, Any
 from malib.algorithm.common.model import get_model
 
 

@@ -125,7 +125,6 @@ class AgentInterface:
         for pid in distribution:
             assert pid in self.policies, (pid, list(self.policies.keys()))
 
-        # reset the sample distribution with 0.0 for all policies
         self.sample_dist = dict.fromkeys(self.policies, 1.0 / len(self.policies))
         self.sample_dist.update(distribution)
 
