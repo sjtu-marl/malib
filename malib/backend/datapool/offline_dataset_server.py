@@ -571,7 +571,6 @@ class OfflineDataset:
             for fut in insert_results:
                 while not fut.done():
                     pass
-            print("Insertion operation completed")
 
     @Log.method_timer(enable=settings.PROFILING)
     def load_from_dataset(

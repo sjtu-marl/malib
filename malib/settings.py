@@ -101,7 +101,7 @@ DEFAULT_CONFIG = {
         "stopper_config": {},
         # callback specify which manner you wanna use for rollout/simulation, default is sequential
         # feasible choices: sequential, simultaneous, or any registered name of rollout func
-        "callback": "sequential",  #
+        "callback": None,
         "worker_num": -1,
     },
     # for evaluation, if not specified, MALib will use rollout configuration to do evaluation

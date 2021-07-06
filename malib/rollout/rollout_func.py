@@ -15,6 +15,7 @@ In your custom rollout function, you can decide extra data
 you wanna save by specifying extra columns when Episode initialization.
 """
 
+from typing import Callable
 import uuid
 
 import ray
@@ -257,8 +258,11 @@ def rollout_wrapper(
     return func
 
 
-def get_func(name: str):
-    return {"sequential": sequential, "simultaneous": simultaneous}[name]
+def get_func(name: Union[str, Callable]):
+    if callable(name):
+        return name
+    else:
+        return {"sequential": sequential, "simultaneous": simultaneous}[name]
 
 
 class Stepping:

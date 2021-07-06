@@ -1,7 +1,6 @@
 import argparse
 
-from pettingzoo.mpe import simple_v2
-
+from malib.envs import MPE
 from malib.runner import run
 
 
@@ -17,9 +16,10 @@ parser.add_argument("--rollout_metric", type=str, default="simple", choices={"si
 if __name__ == "__main__":
     args = parser.parse_args()
     env_config = {
-        "max_cycles": 25,
+        "scenario_configs": {"max_cycles": 25},
+        "env_id": "simple_v2",
     }
-    env = simple_v2.env(**env_config)
+    env = MPE(**env_config)
     possible_agents = env.possible_agents
     observation_spaces = env.observation_spaces
     action_spaces = env.action_spaces
@@ -27,11 +27,9 @@ if __name__ == "__main__":
     run(
         group="MPE/simple",
         name="async_dqn",
-        worker_config={"worker_num": args.num_learner},
         env_description={
-            "creator": simple_v2.env,
+            "creator": MPE,
             "config": env_config,
-            "id": "simple_v2",
             "possible_agents": possible_agents,
         },
         agent_mapping_func=lambda agent: [
@@ -49,6 +47,7 @@ if __name__ == "__main__":
                 "saving_interval": 10,
                 "batch_size": args.batch_size,
                 "num_epoch": 100,
+                "return_gradients": True,
             },
         },
         algorithms={
@@ -58,10 +57,9 @@ if __name__ == "__main__":
             "type": "async",
             "stopper": "simple_rollout",
             "metric_type": args.rollout_metric,
-            "fragment_length": env_config["max_cycles"],
+            "fragment_length": env_config["scenario_configs"]["max_cycles"],
             "num_episodes": 100,  # episode for each evaluation/training epoch
             "terminate": "any",
-            "callback": "sequential",
         },
         global_evaluator={
             "name": "generic",
