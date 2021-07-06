@@ -1,7 +1,14 @@
 import numpy as np
+
 from gym import spaces
+from numpy.core.fromnumeric import _cumprod_dispatcher
 from pettingzoo import ParallelEnv
 from smac.env import StarCraft2Env as sc_env
+
+from malib.envs import Environment
+from malib.utils.typing import Dict, AgentID, Any
+from malib.backend.datapool.offline_dataset_server import Episode
+
 
 agents_list = {
     "3m": [f"Marine_{i}" for i in range(3)],
@@ -20,11 +27,11 @@ def get_agent_names(map_name):
         return None
 
 
-class SC2Env(ParallelEnv):
+class _SC2Env(ParallelEnv):
     metadata = {"render.modes": ["human"]}
 
     def __init__(self, **kwargs):
-        super(SC2Env, self).__init__()
+        super(_SC2Env, self).__init__()
         self.smac_env = sc_env(**kwargs)
         env_info = self.smac_env.get_env_info()
         self.kwargs = kwargs
@@ -76,11 +83,12 @@ class SC2Env(ParallelEnv):
             aid: {"observation": obs_t[i], "action_mask": np.array(action_mask[i])}
             for i, aid in enumerate(self.agents)
         }
-        return obs
+        return {aid: state for aid in obs}, obs
 
     def step(self, actions):
         act_list = [actions[aid] for aid in self.agents]
         reward, terminated, info = self.smac_env.step(act_list)
+        next_state = self.get_state()
         next_obs_t = self.smac_env.get_obs()
         next_action_mask = self.smac_env.get_avail_actions()
         rew_dict = {agent_name: reward for agent_name in self.agents}
@@ -99,19 +107,62 @@ class SC2Env(ParallelEnv):
         }
         if terminated:
             self.agents = []
-        return next_obs_dict, rew_dict, done_dict, info_dict
+        return (
+            {aid: next_state for aid in next_obs_dict},
+            next_obs_dict,
+            next_action_mask,
+            rew_dict,
+            done_dict,
+            info_dict,
+        )
 
     def get_state(self):
         return self.smac_env.get_state()
 
     def render(self, mode="human"):
         """not implemented now in smac"""
-        # self._env.render()
         pass
 
     def close(self):
-        # XXX(ming): avoid redundant close
         self.smac_env.close()
+
+
+class SC2Env(Environment):
+    def __init__(self, **configs):
+        super(SC2Env, self).__init__(**configs)
+
+        self.is_sequential = False
+        self._env_id = configs["env_id"]
+        self._env = _SC2Env(**configs["scenario_configs"])
+        self._trainable_agents = self._env.possible_agents
+
+        # register extra returns
+        self._extra_returns = [
+            Episode.NEXT_STATE,
+            Episode.CUR_STATE,
+            Episode.ACTION_MASK,
+            "next_action_mask",
+        ]
+
+    def step(self, actions: Dict[AgentID, Any]):
+        states, observations, action_masks, rewards, dones, infos = self._env.step(
+            actions
+        )
+        return {
+            Episode.NEXT_STATE: states,
+            Episode.NEXT_OBS: observations,
+            Episode.REWARD: rewards,
+            Episode.DONE: dones,
+            Episode.INFO: infos,
+            "next_action_mask": action_masks,
+        }
+
+    def render(self, *args, **kwargs):
+        self._env.render()
+
+    def reset(self):
+        states, observations = self._env.reset()
+        return {Episode.CUR_STATE: states, Episode.CUR_OBS: observations}
 
 
 if __name__ == "__main__":

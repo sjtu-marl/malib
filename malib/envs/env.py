@@ -11,6 +11,10 @@ class Environment:
         self._configs = configs
         self._env = None
 
+    @property
+    def env(self):
+        return self._env
+
     @staticmethod
     def from_sequential_game(env, **kwargs):
         _env = Environment(**kwargs)

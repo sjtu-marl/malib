@@ -11,7 +11,7 @@ import numpy as np
 
 from malib import settings
 from malib.backend.datapool.offline_dataset_server import Episode
-from malib.envs.poker import poker_aec_env as leduc_holdem
+from malib.envs import PokerEnv
 from malib.runner import run
 from malib.utils.metrics import get_metric
 
@@ -55,22 +55,22 @@ args.work_num = 3
 
 
 if __name__ == "__main__":
-    env_config = {"fixed_player": True}
+    env_description = {
+        "creator": PokerEnv,
+        "config": {"scenario_configs": {"fixed_player": True}, "env_id": "leduc"},
+    }
 
-    env = leduc_holdem.env(**env_config)
+    env = PokerEnv(**env_description["config"])
     possible_agents = env.possible_agents
     observation_spaces = env.observation_spaces
     action_spaces = env.action_spaces
 
+    env_description["possible_agents"] = possible_agents
+
     run(
         group="psro",
         name="leduc_poker",
-        env_description={
-            "creator": leduc_holdem.env,
-            "config": env_config,
-            "id": "leduc_holdem",
-            "possible_agents": possible_agents,
-        },
+        env_description=env_description,
         training={
             "interface": {
                 "type": "independent",
@@ -102,7 +102,6 @@ if __name__ == "__main__":
             "fragment_length": args.fragment_length,
             "num_episodes": num_episode,
             "episode_seg": 100,
-            # "callback": psro_rollout_func,
         },
         evaluation={
             "max_episode_length": 5,

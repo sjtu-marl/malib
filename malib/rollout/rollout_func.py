@@ -26,6 +26,7 @@ from malib.utils.logger import get_logger, Log
 from malib.utils.metrics import get_metric, Metric
 from malib.utils.typing import AgentID, Dict, PolicyID, Union, Any
 from malib.utils.preprocessor import get_preprocessor
+from malib.envs import Environment
 from malib.envs.agent_interface import AgentInterface
 from malib.envs.vector_env import VectorEnv
 from malib.backend.datapool.offline_dataset_server import (
@@ -36,7 +37,7 @@ from malib.backend.datapool.offline_dataset_server import (
 
 
 def sequential(
-    env: type,
+    env: Environment,
     num_episodes: int,
     agent_interfaces: Dict[AgentID, AgentInterface],
     fragment_length: int,
@@ -48,6 +49,8 @@ def sequential(
 ):
     """ Rollout in sequential manner """
 
+    # use env.env as real env
+    env = env.env
     cnt = 0
     for ith in range(num_episodes):
         env.reset()
