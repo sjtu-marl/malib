@@ -164,23 +164,23 @@ class RolloutWorker(BaseRolloutWorker):
                 merged_capacity[aid] += episode.size
             statistic_seq.append(statis)
 
-        agent_episode = {
+        agent_episodes = {
             aid: Episode.concatenate(*merged_data[aid], capacity=merged_capacity[aid])
             for aid in merged_data
         }
-        ap_mapping = {k: v.policy_id for k, v in agent_episode.items()}
-        data2send = {
-            aid: MultiAgentEpisode(
-                e.env_id,
-                ap_mapping,
-                merged_capacity[aid],
-                e.other_columns,
-            )
-            for aid, e in agent_episode.items()
-        }
-        for aid, mae in data2send.items():
-            mae.insert(**agent_episode)
-        return statistic_seq, data2send
+        # ap_mapping = {k: v.policy_id for k, v in agent_episode.items()}
+        # data2send = {
+        #     aid: MultiAgentEpisode(
+        #         e.env_id,
+        #         ap_mapping,
+        #         merged_capacity[aid],
+        #         e.other_columns,
+        #     )
+        #     for aid, e in agent_episode.items()
+        # }
+        # for aid, mae in data2send.items():
+        #     mae.insert(**agent_episode)
+        return statistic_seq, agent_episodes
 
     def _simulation(self, threaded, combinations, **kwargs):
         """Helper function to support simulation."""

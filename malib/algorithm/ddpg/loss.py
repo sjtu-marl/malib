@@ -73,9 +73,6 @@ class DDPGLoss(LossFunc):
         vf_in = torch.cat([cur_obs, actions], dim=-1)
         actual_value = self.policy.critic(vf_in)
 
-        print(
-            f"reward shape: {rewards.mean()} {actual_value.mean()} {next_value.mean()}"
-        )
         assert actual_value.shape == target_value.shape, (
             actual_value.shape,
             target_value.shape,
