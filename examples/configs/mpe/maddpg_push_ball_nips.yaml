@@ -42,7 +42,7 @@ env_description:
 
 algorithms:
   DDPG:
-    name: "DDPG"
+    name: "MADDPG"
     model_config:
       actor:
         network: mlp

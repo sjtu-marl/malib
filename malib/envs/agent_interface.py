@@ -115,6 +115,12 @@ class AgentInterface:
         self.parameter_buffer = defaultdict(lambda: None)
         self.behavior_mode = BehaviorMode.EXPLORATION
 
+        self._behavior_policy = None
+
+    @property
+    def behavior_policy(self) -> PolicyID:
+        return self._behavior_policy
+
     def set_behavior_dist(self, distribution: Dict[PolicyID, float]) -> None:
         """Set policy distribution with given distribution. The distribution has no need to cover all policies in this
         agent.
@@ -139,12 +145,13 @@ class AgentInterface:
 
         self.behavior_mode = behavior_mode
 
-    def reset(
-        self,
-    ) -> None:
+    def reset(self, sample_dist=None) -> None:
         """Reset agent interface."""
         # clear sample distribution
-        self.sample_dist = dict.fromkeys(self.policies, 1.0 / len(self.policies))
+        self.sample_dist = sample_dist or dict.fromkeys(
+            self.policies, 1.0 / len(self.policies)
+        )
+        self._behavior_policy = self._random_select_policy()
 
     def add_policy(
         self,
@@ -182,8 +189,10 @@ class AgentInterface:
     def _random_select_policy(self) -> PolicyID:
         """Random select a policy, and return its id."""
         assert len(self.policies) > 0, "No available policies."
-        res = np.random.choice(
-            list(self.sample_dist.keys()), p=list(self.sample_dist.values())
+        res = str(
+            np.random.choice(
+                list(self.sample_dist.keys()), p=list(self.sample_dist.values())
+            )
         )
         return res
 

@@ -11,6 +11,7 @@ import ray
 
 from malib import settings
 from malib.utils.typing import (
+    AgentID,
     TaskDescription,
     TaskRequest,
     TaskType,
@@ -323,12 +324,11 @@ class BaseRolloutWorker:
                 res, num_frames = self.sample(
                     callback=task_desc.content.callback,
                     num_episodes=task_desc.content.num_episodes,
-                    policy_combinations=[
-                        trainable_behavior_policies
-                    ],
+                    policy_combinations=[trainable_behavior_policies],
                     explore=True,
                     fragment_length=task_desc.content.fragment_length,
                     role="rollout",
+                    policy_distribution=task_desc.content.policy_distribution,
                 )
                 end = time.time()
                 print(
@@ -450,6 +450,7 @@ class BaseRolloutWorker:
         policy_combinations: List,
         explore: bool = True,
         threaded: bool = True,
+        policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
     ) -> Tuple[Sequence[Dict], int]:
         """Implement your sample logic here, return the collected data and statistics"""
 

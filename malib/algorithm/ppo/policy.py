@@ -104,9 +104,9 @@ class PPO(Policy):
         # td_value - value
         next_value = self.target_critic(batch[Episode.NEXT_OBS].copy())
         td_value = (
-            torch.from_numpy(batch[Episode.REWARDS].copy())
+            torch.from_numpy(batch[Episode.REWARD].copy())
             + self.gamma
-            * (1.0 - torch.from_numpy(batch[Episode.DONES].copy()).float())
+            * (1.0 - torch.from_numpy(batch[Episode.DONE].copy()).float())
             * next_value
         )
         value = self.critic(batch[Episode.CUR_OBS].copy())

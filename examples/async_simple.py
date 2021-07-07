@@ -11,10 +11,24 @@ from malib.runner import run
 
 parser = argparse.ArgumentParser("Async training on mpe environments.")
 
-parser.add_argument("--num_learner", type=int, default=3, help="The number of agent training interfaces. Default by 3.")
-parser.add_argument("--batch_size", type=int, default=64, help="Trianing batch size. Default by 64.")
-parser.add_argument("--num_epoch", type=int, default=100, help="Training epoch. Default by 100.")
-parser.add_argument("--algorithm", type=str, default="DQN", help="The single-agent RL algortihm registered in MALib. Default by DQN")
+parser.add_argument(
+    "--num_learner",
+    type=int,
+    default=3,
+    help="The number of agent training interfaces. Default by 3.",
+)
+parser.add_argument(
+    "--batch_size", type=int, default=64, help="Trianing batch size. Default by 64."
+)
+parser.add_argument(
+    "--num_epoch", type=int, default=100, help="Training epoch. Default by 100."
+)
+parser.add_argument(
+    "--algorithm",
+    type=str,
+    default="DQN",
+    help="The single-agent RL algortihm registered in MALib. Default by DQN",
+)
 
 
 if __name__ == "__main__":

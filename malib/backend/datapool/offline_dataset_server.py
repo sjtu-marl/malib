@@ -8,6 +8,7 @@ from typing import Dict, List, Any, Union, Sequence
 
 import numpy as np
 from numpy.core.fromnumeric import size
+from numpy.lib.function_base import percentile
 import ray
 
 from typing import Dict, List, Any, Union, Sequence, Tuple, Iterable
