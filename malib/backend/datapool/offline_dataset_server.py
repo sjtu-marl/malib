@@ -3,6 +3,7 @@ import sys
 import traceback
 import threading
 import time
+import traceback
 from typing import Dict, List, Any, Union, Sequence
 
 import numpy as np
@@ -229,16 +230,16 @@ class Episode:
     def sample(self, idxes=None, size=None) -> Any:
         assert idxes is None or size is None
         size = size or len(idxes)
+
+        if self.size < size:
+            raise OversampleError
+
         if idxes is not None:
             return {k: self._data[k][idxes] for k in self.columns}
 
-        if self.size < size:
-            info = f"no enough data, {self.size} < {size}"
-            raise OversampleError
         if size is not None:
             indices = np.random.choice(self._size, size)
             return {k: self._data[k][indices] for k in self.columns}
-        raise RuntimeError("You must specify either `idxes` or `size`")
 
     @classmethod
     def from_episode(cls, episode, capacity=None):
@@ -343,15 +344,13 @@ class MultiAgentEpisode(Episode):
     def insert(self, **kwargs):
         """ Format: {agent: {column: np.array, ...}, ...} """
         for agent, episode in self._data.items():
-            if isinstance(episode, Episode):
+            if isinstance(kwargs[agent], Episode):
                 episode.insert(**kwargs[agent].data)
             else:
                 episode.insert(**kwargs[agent])
-            # FIXME(ming): support clipped mode only
             self._size = episode.size
 
     def sample(self, idxes=None, size=None):
-        # FIXME(ming): muning set [0] here?
         return {
             agent: episode.sample(idxes, size) for agent, episode in self._data.items()
         }
@@ -434,8 +433,12 @@ class Table:
             self._episode.fill(**kwargs)
 
     def insert(self, **kwargs):
-        with self._threading_lock:
-            self._episode.insert(**kwargs)
+        try:
+            with self._threading_lock:
+                self._episode.insert(**kwargs)
+                assert self._episode.size > 0, self._episode.size
+        except Exception as e:
+            print(traceback.format_exc())
 
     def sample(self, idxes=None, size=None) -> Tuple[Any, str]:
         with self._threading_lock:
@@ -668,6 +671,9 @@ class OfflineDataset:
         try:
             res = {}
             with Log.timer(log=settings.PROFILING, logger=self.logger):
+                sizes = []
+                batch_sizes = []
+                agent_tables = {}
                 for agent, buffer_desc in agent_buffer_desc_dict.items():
                     table_name = Table.gen_table_name(
                         env_id=buffer_desc.env_id,
@@ -675,17 +681,26 @@ class OfflineDataset:
                         pid=buffer_desc.policy_id,
                     )
                     table = self._tables[table_name]
-                    res[agent] = table.sample(size=buffer_desc.batch_size)
+                    sizes.append(table.size)
+                    batch_sizes.append(buffer_desc.batch_size)
+                    agent_tables[agent] = table
+                batch_size = min(batch_sizes)
+                min_size = min(sizes)
+                if min_size < batch_size:
+                    raise OversampleError
+                idxes = np.random.choice(min_size, batch_size)
+                for agent, table in agent_tables.items():
+                    res[agent] = table.sample(idxes=idxes)
         except KeyError as e:
-            info = f"data table `{table_name}` not exist"
-            res = None
-        except NoEnoughDataError as e:
-            info = f"no enough data for table `{table_name}`"
+            info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
             res = None
         except OversampleError as e:
-            info = "oversampled error"
+            info = f"No enough data: table_size={table.size} batch_size={buffer_desc.batch_size}"
             res = None
-
+        except Exception as e:
+            print(traceback.format_exc())
+            res = None
+            info = "others"
         return res, info
 
     def shutdown(self):
