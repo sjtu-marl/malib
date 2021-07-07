@@ -312,17 +312,19 @@ class BaseRolloutWorker:
                 if status == Status.LOCKED:
                     break
 
+                trainable_behavior_policies = {
+                    aid: pid
+                    for aid, (
+                        pid,
+                        _,
+                    ) in task_desc.content.agent_involve_info.trainable_pairs.items()
+                }
+                # get behavior policies of other fixed agent
                 res, num_frames = self.sample(
                     callback=task_desc.content.callback,
                     num_episodes=task_desc.content.num_episodes,
                     policy_combinations=[
-                        {
-                            aid: pid
-                            for aid, (
-                                pid,
-                                _,
-                            ) in task_desc.content.agent_involve_info.trainable_pairs.items()
-                        }
+                        trainable_behavior_policies
                     ],
                     explore=True,
                     fragment_length=task_desc.content.fragment_length,

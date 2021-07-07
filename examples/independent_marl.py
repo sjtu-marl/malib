@@ -1,3 +1,7 @@
+"""
+Implementation of independent learning applied to MARL cases.
+"""
+
 import argparse
 
 from malib.envs.mpe.env import MPE
@@ -12,7 +16,6 @@ parser.add_argument("--num_epoch", type=int, default=100)
 parser.add_argument("--fragment_length", type=int, default=25)
 parser.add_argument("--worker_num", type=int, default=6)
 parser.add_argument("--algorithm", type=str, default="PPO")
-parser.add_argument("--rollout_metric", type=str, default="simple", choices={"simple"})
 
 
 if __name__ == "__main__":

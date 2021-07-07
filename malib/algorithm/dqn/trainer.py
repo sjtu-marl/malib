@@ -22,7 +22,7 @@ class DQNTrainer(Trainer):
         else:
             loss_states = self.loss(batch)
         gradients = self.loss.step()
-        if kwargs.get("use_gradients", False):
+        if self.training_config.get("return_gradients", False):
             loss_states["gradients"] = gradients
         # self._cnt = (self._cnt + 1) % self._update_interval
         self._policy._step += 1

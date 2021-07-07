@@ -114,6 +114,8 @@ class RolloutWorker(BaseRolloutWorker):
             y = num_episodes - seg_num * x
             episode_segs = [x] * seg_num + ([y] if y else [])
             assert len(policy_combinations) == 1
+            # FIXME(ming): here the policy combinations[0] is actually produced from the trainiable pairs.
+            #   so we need to init behavior policies for other fixed agents
             tasks = [
                 {"num_episodes": episode, "behavior_policies": policy_combinations[0]}
                 for episode in episode_segs
