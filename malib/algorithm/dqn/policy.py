@@ -9,7 +9,7 @@ import torch
 from malib.algorithm.common import misc
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.model import get_model
-from malib.utils.typing import DataTransferType, BehaviorMode
+from malib.utils.typing import DataTransferType, BehaviorMode, EvaluateResult
 from malib.backend.datapool.offline_dataset_server import Episode
 
 
@@ -83,33 +83,33 @@ class DQN(Policy):
         """
 
         behavior = kwargs.get("behavior_mode", BehaviorMode.EXPLORATION)
+        batch_size = len(observation)
+        logits = torch.softmax(self.critic(observation), dim=-1)
+
+        # do masking
+        if "action_mask" in kwargs:
+            mask = torch.FloatTensor(kwargs["action_mask"])
+        else:
+            mask = torch.FloatTensor(np.ones(logits.shape))
+        assert mask.shape == logits.shape, (mask.shape, logits.shape)
+
+        logits = mask * logits
+        m = torch.distributions.Categorical(logits=logits)
+        action_probs = m.probs
+
         if behavior == BehaviorMode.EXPLORATION:
             if np.random.random() < self._calc_eps():
-                actions = self.action_space.n
-                # XXX(ming): maybe legal moves move to environment APIs could be a better choice.
-                if "legal_moves" in kwargs:
-                    actions = kwargs["legal_moves"]
-                elif "action_mask" in kwargs:
-                    actions = np.where(kwargs["action_mask"] == 1)[0]
-                action = np.random.choice(actions, size=len(observation))
-                action_prob = torch.zeros((len(observation), self.action_space.n))
-                action_prob.scatter_(-1, torch.from_numpy(action.reshape((-1, 1))), 1.0)
-                return action, action_prob.numpy(), {Episode.ACTION_DIST: action_prob}
+                actions = m.sample().view((-1, 1))
+                return (
+                    actions.numpy(),
+                    action_probs.detach().numpy(),
+                    {Episode.ACTION_DIST: action_probs.detach().numpy()},
+                )
 
-        logits = torch.softmax(self.critic(observation), dim=-1)
-        if "legal_moves" in kwargs:
-            mask = torch.zeros_like(logits)
-            mask[kwargs["legal_moves"]] = 1
-            logits = mask * logits
-        elif "action_mask" in kwargs:
-            mask = torch.FloatTensor(kwargs["action_mask"])
-            logits = mask * logits
-        action = logits.argmax(dim=-1).view((-1, 1))
-        action_prob = torch.zeros_like(logits)
-        action_prob.scatter_(-1, action, 1.0)
-        extra_info = {Episode.ACTION_DIST: action_prob}
+        actions = torch.argmax(logits, dim=-1, keepdim=True)
+        extra_info = {Episode.ACTION_DIST: action_probs.detach().numpy()}
 
-        return action.view((-1,)).numpy(), action_prob.numpy(), extra_info
+        return actions.detach().numpy(), action_probs.detach().numpy(), extra_info
 
     def compute_actions(
         self, observation: DataTransferType, **kwargs
