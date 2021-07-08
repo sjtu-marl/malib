@@ -1,3 +1,8 @@
+"""
+Async optimizer for single-agent RL algorithms running simple scenario from MPE enviroments. In this case, there will be more than one agent training interfaces
+used to do policy learning in async mode. Users can specify the number with `--num_learner`.
+"""
+
 import argparse
 
 from malib.envs import MPE
@@ -6,11 +11,24 @@ from malib.runner import run
 
 parser = argparse.ArgumentParser("Async training on mpe environments.")
 
-parser.add_argument("--num_learner", type=int, default=3)
-parser.add_argument("--batch_size", type=int, default=64)
-parser.add_argument("--num_epoch", type=int, default=100)
-parser.add_argument("--algorithm", type=str, default="DQN")
-parser.add_argument("--rollout_metric", type=str, default="simple", choices={"simple"})
+parser.add_argument(
+    "--num_learner",
+    type=int,
+    default=3,
+    help="The number of agent training interfaces. Default by 3.",
+)
+parser.add_argument(
+    "--batch_size", type=int, default=64, help="Trianing batch size. Default by 64."
+)
+parser.add_argument(
+    "--num_epoch", type=int, default=100, help="Training epoch. Default by 100."
+)
+parser.add_argument(
+    "--algorithm",
+    type=str,
+    default="DQN",
+    help="The single-agent RL algortihm registered in MALib. Default by DQN",
+)
 
 
 if __name__ == "__main__":
@@ -56,7 +74,7 @@ if __name__ == "__main__":
         rollout={
             "type": "async",
             "stopper": "simple_rollout",
-            "metric_type": args.rollout_metric,
+            "metric_type": "simple",
             "fragment_length": env_config["scenario_configs"]["max_cycles"],
             "num_episodes": 100,  # episode for each evaluation/training epoch
             "terminate": "any",

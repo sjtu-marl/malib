@@ -83,16 +83,16 @@ class PPO(Policy):
             mask = torch.FloatTensor(kwargs["action_mask"]).to(probs.device)
             mask = mask.long().unsqueeze(0)
             probs = mask * probs
-        action = probs.argmax().view(1)
+        action = probs.argmax(dim=-1).view((-1, 1))
 
         extra_info = {}
         action_prob = torch.zeros_like(probs, device=probs.device)
         if mask is not None:
             active_indices = mask > 0
             action_prob[active_indices] = probs[active_indices] / probs.sum()
-        extra_info["action_probs"] = action_prob.squeeze(0)
+        extra_info["action_probs"] = action_prob.numpy()
 
-        return action.item(), action_prob.squeeze(0), extra_info
+        return action.view((-1,)).numpy(), action_prob.numpy(), extra_info
 
     def compute_actions(self, observation, **kwargs):
         probs = self.actor(observation)
@@ -104,9 +104,9 @@ class PPO(Policy):
         # td_value - value
         next_value = self.target_critic(batch[Episode.NEXT_OBS].copy())
         td_value = (
-            torch.from_numpy(batch[Episode.REWARDS].copy())
+            torch.from_numpy(batch[Episode.REWARD].copy())
             + self.gamma
-            * (1.0 - torch.from_numpy(batch[Episode.DONES].copy()).float())
+            * (1.0 - torch.from_numpy(batch[Episode.DONE].copy()).float())
             * next_value
         )
         value = self.critic(batch[Episode.CUR_OBS].copy())

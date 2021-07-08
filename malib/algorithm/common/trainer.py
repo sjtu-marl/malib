@@ -24,6 +24,10 @@ class Trainer(metaclass=ABCMeta):
     def __call__(self, *args, **kwargs):
         return self.optimize(*args, **kwargs)
 
+    @property
+    def training_config(self):
+        return self._training_config
+
     @abstractmethod
     def optimize(self, batch) -> Dict[str, Any]:
         """ Execution policy optimization then return a dict of statistics """

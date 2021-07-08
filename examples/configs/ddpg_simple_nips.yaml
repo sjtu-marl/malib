@@ -1,10 +1,10 @@
 # battle: https://github.com/wsjeon/maddpg-rllib
 group: "MPE"
-name: "share/maddpg"
+name: "share/ddpg"
 
 training:
   interface:
-    type: "ctde"
+    type: "independent"
     population_size: -1
   config:
     # control the frequency of remote parameter update
@@ -28,21 +28,24 @@ rollout:
   num_episodes: 250
   episode_seg: 25
   terminate: "any"
+  # can be sequential or simultaneous
+  callback: "sequential"
 
 evaluation:
   fragment_length: 25
   num_episodes: 100
+  # can be sequential or simultaneous
+  callback: "simultaneous"
 
 env_description:
-  creator: "MPE"
+  #  scenario_name: "simple_spread"
+  id: "simple_v2"
   config:
-    env_id: "simple_spread_v2"
-    scenario_configs:
-      max_cycles: 25
+    max_cycles: 25
 
 algorithms:
   DDPG:
-    name: "MADDPG"
+    name: "DDPG"
     model_config:
       actor:
         network: mlp

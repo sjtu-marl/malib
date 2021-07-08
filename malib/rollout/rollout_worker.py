@@ -2,6 +2,7 @@
 Implementation of async rollout worker.
 """
 from collections import defaultdict
+from malib.algorithm.common.policy import Policy
 
 import ray
 from ray.util import ActorPool
@@ -93,6 +94,7 @@ class RolloutWorker(BaseRolloutWorker):
         policy_combinations: List,
         explore: bool = True,
         threaded: bool = True,
+        policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
     ) -> Tuple[Sequence[Dict], Sequence[Any]]:
         """Sample function. Support rollout and simulation. Default in threaded mode."""
 
@@ -114,8 +116,15 @@ class RolloutWorker(BaseRolloutWorker):
             y = num_episodes - seg_num * x
             episode_segs = [x] * seg_num + ([y] if y else [])
             assert len(policy_combinations) == 1
+            # FIXME(ming): here the policy combinations[0] is actually produced from the trainiable pairs.
+            #   so we need to init behavior policies for other fixed agents
+            assert policy_distribution is not None
             tasks = [
-                {"num_episodes": episode, "behavior_policies": policy_combinations[0]}
+                {
+                    "num_episodes": episode,
+                    "behavior_policies": policy_combinations[0],
+                    "policy_distribution": policy_distribution,
+                }
                 for episode in episode_segs
             ]
         else:
@@ -124,12 +133,12 @@ class RolloutWorker(BaseRolloutWorker):
         if threaded:
             rets = self.actor_pool.map(
                 lambda a, task: a.run.remote(
-                    self._agent_interfaces,
-                    self._metric_type,
-                    fragment_length,
-                    task,
-                    callback,
-                    role,
+                    agent_interfaces=self._agent_interfaces,
+                    metric_type=self._metric_type,
+                    fragment_length=fragment_length,
+                    desc=task,
+                    callback=callback,
+                    role=role,
                 ),
                 tasks,
             )

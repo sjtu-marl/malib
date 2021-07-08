@@ -76,8 +76,8 @@ class PPOLoss(LossFunc):
         # empty loss
         self.loss = []
         # total loss = policy_gradient_loss - entropy * entropy_coefficient + value_coefficient * value_loss
-        rewards = torch.from_numpy(batch[Episode.REWARDS].copy())
-        actions = torch.from_numpy(batch[Episode.ACTIONS].copy())
+        rewards = torch.from_numpy(batch[Episode.REWARD].copy())
+        actions = torch.from_numpy(batch[Episode.ACTION].copy())
         cliprange = self._params["cliprange"]
         ent_coef = self._params["entropy_coef"]
         vf_coef = self._params["value_coef"]
@@ -108,7 +108,7 @@ class PPOLoss(LossFunc):
         td_value = (
             rewards
             + self.policy.custom_config["gamma"]
-            * (1.0 - torch.from_numpy(batch[Episode.DONES].copy()).float())
+            * (1.0 - torch.from_numpy(batch[Episode.DONE].copy()).float())
             * next_value
         )
         vf_loss1 = torch.square(vpred - td_value)

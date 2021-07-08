@@ -76,7 +76,7 @@ def sequential(
 
             if not done:
                 action, action_dist, extra_info = agent_interfaces[aid].compute_action(
-                    observation, **info
+                    [observation], **info
                 )
                 agent_episodes[aid].insert(
                     **{
@@ -333,11 +333,17 @@ class Stepping:
         :param int fragment_length: The maximum length of an episode.
         :param Dict[str,Any] desc: The description of task
         """
-        for interface in agent_interfaces.values():
-            interface.reset()
+
+        behavior_policies = {}
+        policy_distribution = desc.get("policy_distribution")
+        for agent, interface in agent_interfaces.items():
+            if policy_distribution:
+                interface.reset(policy_distribution[agent])
+            behavior_policies[agent] = interface.behavior_policy
 
         # behavior policies is a mapping from agents to policy ids
-        behavior_policies = desc["behavior_policies"]
+        # update with external behavior_policies
+        behavior_policies.update(desc["behavior_policies"])
         # specify the number of running episodes
         num_episodes = desc["num_episodes"]
 
@@ -352,14 +358,10 @@ class Stepping:
                 capacity=fragment_length * num_episodes,
                 other_columns=self.env.extra_returns,
             )
-            for agent in (self.env.trainable_agents or self.env.possible_agents)
+            for agent in behavior_policies
         }
 
         metric = get_metric(metric_type)(self.env.possible_agents)
-
-        # if isinstance(callback, str):
-        #     callback = get_func(callback)
-
         callback = get_func(callback) if callback else self.callback
 
         return callback(

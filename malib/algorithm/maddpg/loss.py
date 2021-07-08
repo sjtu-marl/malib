@@ -48,8 +48,8 @@ class MADDPGLoss(DDPGLoss):
         cliprange = self._params["grad_norm_clipping"]
 
         # print(all_agent_batch[agent_id])
-        rewards = cast_to_tensor(agent_batch[self.main_id][Episode.REWARDS]).view(-1, 1)
-        dones = cast_to_tensor(agent_batch[self.main_id][Episode.DONES]).view(-1, 1)
+        rewards = cast_to_tensor(agent_batch[self.main_id][Episode.REWARD]).view(-1, 1)
+        dones = cast_to_tensor(agent_batch[self.main_id][Episode.DONE]).view(-1, 1)
         cur_obs = cast_to_tensor(agent_batch[self.main_id][Episode.CUR_OBS])
 
         gamma = self.policy.custom_config["gamma"]
