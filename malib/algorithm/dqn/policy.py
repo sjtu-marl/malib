@@ -48,7 +48,6 @@ class DQN(Policy):
             observation_space, action_space, self.custom_config.get("use_cuda", False)
         )
 
-        # self._exploration = True
         self._step = 0
 
         self.register_state(self._gamma, "_gamma")
@@ -57,7 +56,6 @@ class DQN(Policy):
         self.register_state(self._eps_decay, "_eps_decay")
         self.register_state(self._model, "critic")
         self.register_state(self._target_model, "target_critic")
-        # self.register_state(self._exploration, "_exploration")
         self.register_state(self._step, "_step")
         self.set_critic(self._model)
         self.target_critic = self._target_model
@@ -72,7 +70,6 @@ class DQN(Policy):
         return self._eps_min + (self._eps_max - self._eps_min) * np.exp(
             -self._step / self._eps_decay
         )
-        # return max(self._eps_min, self._eps_max - self._step / self._eps_decay)
 
     def compute_action(self, observation: DataTransferType, **kwargs):
         """Compute action with one piece of observation. Behavior mode is used to do exploration/exploitation trade-off.
@@ -88,9 +85,9 @@ class DQN(Policy):
 
         # do masking
         if "action_mask" in kwargs:
-            mask = torch.FloatTensor(kwargs["action_mask"])
+            mask = torch.FloatTensor(kwargs["action_mask"]).to(logits.device)
         else:
-            mask = torch.FloatTensor(np.ones(logits.shape))
+            mask = torch.ones(logits.shape, device=logits.device, dtype=logits.dtype)
         assert mask.shape == logits.shape, (mask.shape, logits.shape)
 
         logits = mask * logits
@@ -101,15 +98,19 @@ class DQN(Policy):
             if np.random.random() < self._calc_eps():
                 actions = m.sample().view((-1, 1))
                 return (
-                    actions.numpy(),
-                    action_probs.detach().numpy(),
-                    {Episode.ACTION_DIST: action_probs.detach().numpy()},
+                    actions.to("cpu").numpy(),
+                    action_probs.detach().to("cpu").numpy(),
+                    {Episode.ACTION_DIST: action_probs.detach().to("cpu").numpy()},
                 )
 
         actions = torch.argmax(logits, dim=-1, keepdim=True)
-        extra_info = {Episode.ACTION_DIST: action_probs.detach().numpy()}
+        extra_info = {Episode.ACTION_DIST: action_probs.detach().to("cpu").numpy()}
 
-        return actions.detach().numpy(), action_probs.detach().numpy(), extra_info
+        return (
+            actions.detach().numpy(),
+            action_probs.detach().to("cpu").numpy(),
+            extra_info,
+        )
 
     def compute_actions(
         self, observation: DataTransferType, **kwargs
