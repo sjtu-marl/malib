@@ -44,7 +44,7 @@ Please take care in using good commit messages as they're useful for debugging, 
 
 1. Do your best to see that your code compiles locally.
 2. Run `make format`. See [Formatting](#Formatting).
-3. Do not push to `main`. Instead make a branch and a [pull request](#Pull-Requests)
+3. Do not push to `main`. Instead make a branch and a [pull request](#submission-of-a-pull-request)
 
 ## Submission of a Pull Request
 
