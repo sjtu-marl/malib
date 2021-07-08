@@ -214,16 +214,11 @@ class Episode:
                     {c: len(self._data[c]) for c in self.columns},
                 )
             for column in self.columns:
-                # if isinstance(kwargs[column], np.ndarray):
-                # self._data[column].insert(kwargs[column])
                 if isinstance(kwargs[column], NumpyDataArray):
                     assert kwargs[column]._data is not None, f"{column} has empty data"
                     self._data[column].insert(kwargs[column].get_data())
                 else:
                     self._data[column].insert(kwargs[column])
-                    # raise TypeError(
-                    #     f"Unexpected type of column={column} {type(kwargs[column])}"
-                    # )
             self._size = len(self._data[Episode.CUR_OBS])
         except Exception as e:
             print(traceback.format_exc())
