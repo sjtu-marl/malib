@@ -4,7 +4,7 @@ from malib.algorithm.common.trainer import Trainer
 from malib.algorithm.common.policy import Policy
 
 from malib.algorithm.common import misc
-from malib.algorithm.common.model import QMixer
+from malib.algorithm.qmix.q_mixer import QMixer
 from malib.algorithm.qmix.loss import QMIXLoss
 from malib.utils.preprocessor import Preprocessor, get_preprocessor
 
