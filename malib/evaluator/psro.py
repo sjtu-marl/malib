@@ -56,7 +56,7 @@ class PSROEvaluator(BaseEvaluator):
             nash_cov += abs(weighted_payoff - oracle_payoffs[aid])
         nash_cov /= 2.0
 
-        res["Exploitability"] = nash_cov
+        res["exploitability"] = nash_cov
 
         # default by no limitation on iteration
         res[

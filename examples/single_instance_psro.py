@@ -1,75 +1,78 @@
 import argparse
-import time
+import logging
+import ray
+
 from typing import Dict
 
-from pettingzoo.mpe import simple_tag_v2
-
-from malib.runner import start_logger, terminate_logger
 from malib.utils.typing import (
     AgentID,
     EvaluateResult,
+    MetricEntry,
     RolloutFeedback,
     PolicyID,
     TrainingFeedback,
 )
 
-
-exp_cfg = {
-    "expr_group": "single_instance_psro",
-    "expr_name": f"simple_tag_{time.time()}",
-}
-
-start_logger(exp_cfg)
-
 from malib.agent.indepdent_agent import IndependentAgent
 from malib.rollout.rollout_worker import RolloutWorker
-from malib.rollout.rollout_func import rollout_wrapper
 from malib.evaluator.psro import PSROEvaluator
 from malib.evaluator.utils.payoff_manager import PayoffManager
-
 from malib.backend.datapool.offline_dataset_server import Episode
 from malib.utils.formatter import pretty_print
-from malib.utils.metrics import get_metric
+from malib.utils import logger
+from malib.envs import MPE
+from malib.rollout import rollout_func
 
 parser = argparse.ArgumentParser(
     "Single instance of PSRO training on mpe environments."
 )
 
-
 parser.add_argument("--batch_size", type=int, default=64)
 parser.add_argument("--num_epoch", type=int, default=1)
 parser.add_argument("--fragment_length", type=int, default=25)
-parser.add_argument("--worker_num", type=int, default=6)
 parser.add_argument("--algorithm", type=str, default="PPO")
 parser.add_argument("--max_iteration", type=int, default=20)
 parser.add_argument("--buffer_size", type=int, default=100)
 parser.add_argument("--rollout_metric", type=str, default="simple", choices={"simple"})
+parser.add_argument(
+    "--threaded", action="store_true", help="Whether use threaded sampling."
+)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
     env_config = {
-        "num_good": 1,
-        "num_adversaries": 1,
-        "num_obstacles": 2,
-        "max_cycles": 75,
+        "env_id": "simple_tag_v2",
+        "scenario_configs": {
+            "num_good": 1,
+            "num_adversaries": 1,
+            "num_obstacles": 2,
+            "max_cycles": 75,
+        },
     }
 
-    env = simple_tag_v2.env(**env_config)
+    # NOTE(ming): threaded is not available for single instance yet
+    if args.threaded:
+        ray.init()
+
+    # starts logging server and returns a experiment configuration
+    exp_cfg = logger.start(group="single_instance", name="simple_tag/psro")
+
+    env = MPE(**env_config)
     possible_agents = env.possible_agents
     observation_spaces = env.observation_spaces
     action_spaces = env.action_spaces
 
     env_desc = {
-        "creator": simple_tag_v2.env,
+        "creator": MPE,
         "config": env_config,
-        "id": "simple_tag_v2",
         "possible_agents": possible_agents,
     }
 
-    # agent buffer, for sampling
+    # in the single-instance cases, we can directly use episodes as buffers
     agent_episodes = {
-        agent: Episode(env_desc["id"], policy_id=None, capacity=args.buffer_size)
+        agent: Episode(env_config["env_id"], policy_id=None, capacity=args.buffer_size)
         for agent in env.possible_agents
     }
 
@@ -77,10 +80,9 @@ if __name__ == "__main__":
         "stopper": "simple_rollout",
         "metric_type": args.rollout_metric,
         "fragment_length": 100,
-        "num_episodes": 1,
-        "terminate": "any",
-        "mode": "on_policy",
-        "callback": rollout_wrapper(agent_episodes),  # online mode
+        "num_episodes": 8,
+        "episode_seg": 4,
+        "callback": rollout_func.simultaneous,
     }
 
     algorithm = {"name": args.algorithm, "model_config": {}, "custom_config": {}}
@@ -116,6 +118,7 @@ if __name__ == "__main__":
             PSROEvaluator.StopMetrics.PAYOFF_DIFF_THRESHOLD: 1e-2,
         }
     )
+
     # payoff manager, maintain agent payoffs and simulation status
     payoff_manager = PayoffManager(env.possible_agents, exp_cfg=exp_cfg)
 
@@ -123,6 +126,7 @@ if __name__ == "__main__":
         pid_mapping: Dict[AgentID, PolicyID]
     ) -> Dict[AgentID, Dict[PolicyID, float]]:
         """ Run simulations and update payoff tables with returned RolloutFeedback """
+
         population = None
         for agent, rollout_handler in rollout_handlers.items():
             learner = learners[agent]
@@ -132,13 +136,20 @@ if __name__ == "__main__":
                 pid,  # PSRO requires only one policy for each agent
                 learner.policies[pid].description,
             )
-            statistics_list, _ = rollout_handler.sample(
+            # filter matches without policy
+            policy_combinations = [
+                {k: p for k, (p, _) in match.items()} for match in matches
+            ]
+            statistics_list, num_frames = rollout_handler.sample(
                 callback=rollout_config["callback"],
-                behavior_policy_mapping=matches,
                 num_episodes=10,
-                threaded=False,
+                fragment_length=rollout_config["fragment_length"],
+                policy_combinations=policy_combinations,
+                explore=True,
+                threaded=args.threaded,
                 role="simulation",
             )
+
             for statistics, match in zip(
                 statistics_list, matches
             ):  # update payoff table
@@ -147,9 +158,7 @@ if __name__ == "__main__":
                         worker_idx=None,
                         agent_involve_info=None,
                         policy_combination=match,
-                        statistics=get_metric(
-                            rollout_config["metric_type"]
-                        ).merge_parsed(statistics),
+                        statistics=statistics,
                     )
                 )
                 population = rollout_handler.population
@@ -190,15 +199,20 @@ if __name__ == "__main__":
             # print(policy_distribution)
             rollout_handlers[agent].ready_for_sample(policy_distribution)
             for epoch in range(args.num_epoch):
-                rollout_feedback[agent], _ = rollout_handlers[agent].sample(
+                rollout_feedback[agent], num_frames = rollout_handlers[agent].sample(
                     callback=rollout_config["callback"],
-                    num_episodes=[rollout_config["num_episodes"]],
-                    threaded=False,
+                    num_episodes=rollout_config["num_episodes"],
+                    fragment_length=rollout_config["fragment_length"],
+                    policy_combinations=[trainable_policy_mapping],
+                    explore=True,
+                    threaded=args.threaded,
                     role="rollout",
-                    trainable_pairs=trainable_policy_mapping,
+                    policy_distribution=policy_distribution,
+                    episodes=agent_episodes,
                 )
+                logging.debug(f"sampled {num_frames} for agent={agent}")
                 batch = agent_episodes[agent].sample(size=args.batch_size)
-                res = learners[agent].optimize(
+                res: Dict[AgentID, Dict[str, MetricEntry]] = learners[agent].optimize(
                     policy_ids={agent: trainable_policy_mapping[agent]},
                     batch={agent: batch},
                     training_config={
@@ -229,14 +243,14 @@ if __name__ == "__main__":
         # 1. add new trainable policy
         print(f"=========== Iteration #{iteration} ===========")
         trainable_policy_mapping = extend_policy_pool(trainable=True)
-        # 2. do rollout and training workflow
+        # 2. training workflow: rollout and optimize for args.num_epoch
         feedback: Dict = training_workflow(trainable_policy_mapping)
-        # 3. simulation and payoff table update
+        # 3. do simulation and update payoff table
         equilibrium: Dict[
             AgentID, Dict[PolicyID, float]
         ] = run_simulation_and_update_payoff(trainable_policy_mapping)
-        print(f"------- Equilibrium:\n{pretty_print(equilibrium)}")
-        # 4. judge converge
+        print(f"Equilibrium: {pretty_print(equilibrium)}")
+        # 4. convergence judgement
         nash_payoffs: Dict[AgentID, float] = payoff_manager.aggregate(
             equilibrium=equilibrium
         )
@@ -250,7 +264,9 @@ if __name__ == "__main__":
             oracle_payoffs=nash_payoffs,
             trainable_mapping=trainable_policy_mapping,
         )
-        print(f"------- Evaluation:\n{pretty_print(evaluation_results)}\n")
+        print(
+            f"Exploitability: {evaluation_results['exploitability']} | Reward: {evaluation_results[EvaluateResult.AVE_REWARD]} | Population size: {iteration + 1}"
+        )
         if (
             evaluation_results[EvaluateResult.CONVERGED]
             or evaluation_results[EvaluateResult.REACHED_MAX_ITERATION]
@@ -260,4 +276,4 @@ if __name__ == "__main__":
 
         iteration += 1
 
-    terminate_logger()
+    logger.terminate()

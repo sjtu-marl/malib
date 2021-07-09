@@ -90,9 +90,8 @@ class DQN(Policy):
             mask = torch.ones(logits.shape, device=logits.device, dtype=logits.dtype)
         assert mask.shape == logits.shape, (mask.shape, logits.shape)
 
-        logits = mask * logits
-        m = torch.distributions.Categorical(logits=logits)
-        action_probs = m.probs
+        action_probs = misc.masked_softmax(logits, mask)
+        m = torch.distributions.Categorical(probs=action_probs)
 
         if behavior == BehaviorMode.EXPLORATION:
             if np.random.random() < self._calc_eps():
@@ -103,7 +102,7 @@ class DQN(Policy):
                     {Episode.ACTION_DIST: action_probs.detach().to("cpu").numpy()},
                 )
 
-        actions = torch.argmax(logits, dim=-1, keepdim=True)
+        actions = torch.argmax(action_probs, dim=-1, keepdim=True)
         extra_info = {Episode.ACTION_DIST: action_probs.detach().to("cpu").numpy()}
 
         return (

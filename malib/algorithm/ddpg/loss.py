@@ -56,11 +56,11 @@ class DDPGLoss(LossFunc):
         )
         cast_to_tensor = lambda x: FloatTensor(x.copy())
 
-        rewards = cast_to_tensor(batch[Episode.REWARDS]).view(-1, 1)
+        rewards = cast_to_tensor(batch[Episode.REWARD]).view(-1, 1)
         actions = cast_to_tensor(batch[Episode.ACTION_DIST])
         cur_obs = cast_to_tensor(batch[Episode.CUR_OBS])
         next_obs = cast_to_tensor(batch[Episode.NEXT_OBS])
-        dones = cast_to_tensor(batch[Episode.DONES]).view(-1, 1)
+        dones = cast_to_tensor(batch[Episode.DONE]).view(-1, 1)
         cliprange = self._params["grad_norm_clipping"]
         gamma = self.policy.custom_config["gamma"]
 

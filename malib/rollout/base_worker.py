@@ -3,7 +3,6 @@ Users can implement and register their own rollout worker by inheriting from thi
 """
 
 import copy
-from os import stat
 import time
 import traceback
 
@@ -28,6 +27,7 @@ from malib.utils.typing import (
     List,
 )
 
+from malib.backend.datapool.offline_dataset_server import Episode
 from malib.envs.agent_interface import AgentInterface
 from malib.algorithm.common.policy import Policy
 from malib.utils.logger import get_logger, Log
@@ -65,6 +65,7 @@ class BaseRolloutWorker:
 
         env = env_desc["creator"](**env_desc["config"])
         self._agents = env.possible_agents
+        self._kwargs = kwargs
 
         if remote:
             self.init()
@@ -331,13 +332,12 @@ class BaseRolloutWorker:
                     policy_distribution=task_desc.content.policy_distribution,
                 )
                 end = time.time()
-                print(
-                    f"epoch {epoch}, "
-                    f"{task_desc.content.agent_involve_info.training_handler} "
-                    f"from worker={self._worker_index} time consump={end - start} seconds"
-                )
-
-                statistic_seq.extend(res[0])
+                # print(
+                #     f"epoch {epoch}, "
+                #     f"{task_desc.content.agent_involve_info.training_handler} "
+                #     f"from worker={self._worker_index} time consump={end - start} seconds"
+                # )
+                statistic_seq.extend(res)
 
             merged_statics = processed_statics[0]
             self.after_rollout(task_desc.content.agent_involve_info.trainable_pairs)
@@ -410,7 +410,7 @@ class BaseRolloutWorker:
                 statistic_seq,
                 merged_statistics,
             ):
-                statistic_seq.extend(statistics)
+                statistic_seq.append(statistics)
             merged_statistics = merged_statistics[0]
             rollout_feedback = RolloutFeedback(
                 worker_idx=self._worker_index,
@@ -451,6 +451,7 @@ class BaseRolloutWorker:
         explore: bool = True,
         threaded: bool = True,
         policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
+        episodes: Dict[AgentID, Episode] = None,
     ) -> Tuple[Sequence[Dict], int]:
         """Implement your sample logic here, return the collected data and statistics"""
 

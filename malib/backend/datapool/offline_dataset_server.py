@@ -222,13 +222,14 @@ class Episode:
             self._size = len(self._data[Episode.CUR_OBS])
         except Exception as e:
             print(traceback.format_exc())
+            raise e
 
     def sample(self, idxes=None, size=None) -> Any:
         assert idxes is None or size is None
         size = size or len(idxes)
 
         if self.size < size:
-            raise OversampleError
+            raise OversampleError(f"batch size={size} data size={self.size}")
 
         if idxes is not None:
             return {k: self._data[k][idxes] for k in self.columns}
@@ -238,11 +239,12 @@ class Episode:
             return {k: self._data[k][indices] for k in self.columns}
 
     @classmethod
-    def from_episode(cls, episode, capacity=None):
+    def from_episode(cls, episode, capacity=None, fix_class=None):
         """Create an empty episode like episode with given capacity"""
 
         other_columns = episode.other_columns
-        return cls(
+        episode_class = fix_class or cls
+        return episode_class(
             episode.env_id,
             episode.policy_id,
             capacity or episode.capacity,
@@ -274,7 +276,7 @@ class SequentialEpisode(Episode):
         capacity: int,
         other_columns: List[str],
     ):
-        super().__init__(
+        super(SequentialEpisode, self).__init__(
             env_id, policy_id, capacity=capacity, other_columns=other_columns
         )
 
@@ -434,7 +436,7 @@ class Table:
                 self._episode.insert(**kwargs)
                 assert self._episode.size > 0, self._episode.size
         except Exception as e:
-            print(traceback.format_exc())
+            print(traceback.format_exc(), type(self._episode))
 
     def sample(self, idxes=None, size=None) -> Tuple[Any, str]:
         with self._threading_lock:
@@ -541,6 +543,7 @@ class OfflineDataset:
                     episode.from_episode(
                         episode=episode,
                         capacity=self._episode_capacity,
+                        fix_class=Episode,
                     )
                 )
 
