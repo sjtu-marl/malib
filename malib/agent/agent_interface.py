@@ -388,9 +388,11 @@ class AgentInterface(metaclass=ABCMeta):
                 worker_idx=self._id,
                 global_step=epoch,
             ) as (statistic_seq, processed_statistics):
+                # a dict of dict of metric entry {agent: {item: MetricEntry}}
                 statistics = self.optimize(policy_id_mapping, batch, training_config)
                 statistic_seq.append(statistics)
-
+                # NOTE(ming): if it meets the update interval, parameters will be pushed to remote parameter server
+                # the returns `status` code will determine whether we should stop the training or continue it.
                 if (epoch + 1) % training_config["update_interval"] == 0:
                     for env_aid in self._group:
                         pid = policy_id_mapping[env_aid]

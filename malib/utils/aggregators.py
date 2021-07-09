@@ -53,11 +53,11 @@ class Min(BaseAggregator):
 
 
 class Aggregator:
-    m = {
-        "mean": Mean,
-        "max": Max,
-        "min": Min,
-    }
+    MEAN = "mean"
+    MAX = "max"
+    MIN = "min"
+
+    m = dict(zip([MEAN, MAX, MIN], [Mean, Max, Min]))
 
     @staticmethod
     def register(name: str, cls_build_func: Callable):

@@ -3,14 +3,16 @@ import wrapt
 import os
 import inspect
 import uuid
-from contextlib import contextmanager
+import time
 
+from contextlib import contextmanager
 from collections import defaultdict
 
 from malib import settings
+from malib.rpc.ExperimentManager import ExperimentServer
 from malib.rpc.ExperimentManager.ExperimentClient import ExprManagerClient
 from malib.rpc.ExperimentManager.mongo_client import MongoClient
-from malib.utils.typing import Any, EventReportStatus, MetricType
+from malib.utils.typing import Any, EventReportStatus, Dict
 from malib.utils.aggregators import Aggregator
 
 
@@ -50,6 +52,7 @@ class Log:
                 for key, entry in agent_data.items():
                     tag = entry.tag or f"{aid}/{key}"
                     if collected_statistics[aid][key]["agg"] is None:
+                        # XXX(ming): it seems we should check whether there are multiple aggegrators here?
                         collected_statistics[aid][key]["agg"] = Aggregator.get(
                             entry.agg
                         )(scale=scale)
@@ -65,7 +68,9 @@ class Log:
             for key, entry in agent_data.items():
                 val = entry.get("agg").apply(entry.get("val"))
                 if entry.get("log"):
-                    summaries.update({entry.get("tag"): val})
+                    # contact tag
+                    tag = f"{aid}/{entry.get('tag')}"
+                    summaries.update({tag: val})
                 # print("Agg: ", entry.get("agg"), " Val: ", val)
                 agent_data_dict.update({key: val})
 
@@ -161,6 +166,9 @@ class Log:
         return wrapper
 
 
+logger_server = None
+
+
 def get_logger(
     log_level=logging.INFO,
     log_dir="",
@@ -225,3 +233,56 @@ def get_logger(
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
         return logger
+
+
+def start(group: str, name: str, host="localhost", port=12333) -> Dict[str, Any]:
+    """Start logging server if has not been started yet and return an experiment configuration."""
+
+    global logger_server
+
+    WAIT_FOR_READY_THRESHOLD = 10
+    endpoint = f"{host}:{port}"
+
+    logger_server = ExperimentServer.start_logging_server(
+        port=endpoint, logdir=settings.LOG_DIR
+    )
+
+    logger_server.start()
+
+    # create a logger instance to test
+    _wait_for_ready_start_time = time.time()
+
+    general_expr_cfg = {"expr_group": group, "expr_name": name}
+
+    while True:
+        try:
+            instance = get_logger(
+                name="test",
+                log_dir=settings.LOG_DIR,
+                expr_group=general_expr_cfg["expr_group"],
+                expr_name=general_expr_cfg["expr_name"],
+                port=endpoint,
+                remote=True,
+                mongo=settings.USE_MONGO_LOGGER,
+                file_stream=False,
+            )
+            instance.info("wait for server ready")
+            del instance
+            break
+        except Exception as e:
+            if time.time() - _wait_for_ready_start_time > WAIT_FOR_READY_THRESHOLD:
+                raise RuntimeError(
+                    "Wait time exceed threshold, "
+                    "task cancelled, "
+                    "cannot connect to logging server, "
+                    "please check the network availability!"
+                )
+            time.sleep(1)
+
+    return general_expr_cfg
+
+
+def terminate():
+    """Terminate logging server"""
+    global logger_server
+    logger_server.terminate()

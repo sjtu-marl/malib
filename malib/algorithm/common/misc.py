@@ -103,6 +103,13 @@ def gumbel_softmax(logits: DataTransferType, temperature=1.0, hard=False):
     return y
 
 
+def masked_softmax(logits: torch.Tensor, mask: torch.Tensor):
+    probs = F.softmax(logits, dim=-1) * mask
+    probs = probs + (mask.sum(dim=-1, keepdim=True) == 0.0).to(dtype=torch.float32)
+    Z = probs.sum(dim=-1, keepdim=True)
+    return probs / Z
+
+
 def cumulative_td_errors(
     start: int, end: int, offset: int, value, td_errors, ratios, gamma: float
 ):

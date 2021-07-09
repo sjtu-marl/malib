@@ -65,6 +65,7 @@ class BaseRolloutWorker:
 
         env = env_desc["creator"](**env_desc["config"])
         self._agents = env.possible_agents
+        self._kwargs = kwargs
 
         if remote:
             self.init()
@@ -336,8 +337,7 @@ class BaseRolloutWorker:
                     f"{task_desc.content.agent_involve_info.training_handler} "
                     f"from worker={self._worker_index} time consump={end - start} seconds"
                 )
-
-                statistic_seq.extend(res[0])
+                statistic_seq.extend(res)
 
             merged_statics = processed_statics[0]
             self.after_rollout(task_desc.content.agent_involve_info.trainable_pairs)
@@ -410,7 +410,7 @@ class BaseRolloutWorker:
                 statistic_seq,
                 merged_statistics,
             ):
-                statistic_seq.extend(statistics)
+                statistic_seq.append(statistics)
             merged_statistics = merged_statistics[0]
             rollout_feedback = RolloutFeedback(
                 worker_idx=self._worker_index,

@@ -20,6 +20,8 @@ class MPE(Environment):
         self._trainable_agents = self._env.possible_agents
 
     def step(self, actions: Dict[AgentID, Any]) -> Dict[str, Any]:
+        # for agent, action in actions.items():
+        #     assert self.action_spaces[agent].contains(action), f"Action is not in space: {action} with type={type(action)}"
         observations, rewards, dones, infos = self._env.step(actions)
         return {
             Episode.NEXT_OBS: observations,
