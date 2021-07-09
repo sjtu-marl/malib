@@ -358,10 +358,10 @@ class Stepping:
         )
 
         # convert evaluated results to metric entry
-        evaluated_results = {
-            agent: to_metric_entry(result)
-            for agent, result in evaluated_results.items()
-        }
+        # evaluated_results = {
+        #     agent: to_metric_entry(result)
+        #     for agent, result in evaluated_results.items()
+        # }
 
         return evaluated_results, num_frames
 
