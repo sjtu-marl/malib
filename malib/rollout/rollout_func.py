@@ -117,7 +117,7 @@ def sequential(
     if dataset_server:
         for e in agent_episodes.values():
             e.clean_data()
-        _ = ray.get(dataset_server.save.remote(agent_episodes, wait_for_ready=False))
+        dataset_server.save.remote(agent_episodes, wait_for_ready=False)
         for e in agent_episodes.values():
             e.reset()
 
@@ -231,7 +231,7 @@ def simultaneous(
         #         e.reset()
 
     if dataset_server:
-        _ = ray.get(dataset_server.save.remote(agent_episodes))
+        dataset_server.save.remote(agent_episodes, wait_for_ready=False)
     transition_size = cnt * len(agent_episodes) * getattr(env, "num_envs", 1)
 
     evaluated_results = metric.parse(agent_filter=tuple(agent_episodes.keys()))
