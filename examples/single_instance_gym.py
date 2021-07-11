@@ -1,37 +1,37 @@
 """
-Single instance run MPE with marl
+Single instance run Gym with marl
 """
 
 import argparse
 import os
 import pprint
-
-import yaml
-import importlib
-
 import numpy as np
 
+import ray
+import yaml
+
 from malib import settings
-from malib.runner import start_logger_server, terminate_logger
-from malib.utils.typing import AgentID, PolicyID, Dict, Any
 
 from malib.agent import get_training_agent
-from malib.rollout.rollout_worker import RolloutWorker
-from malib.rollout.rollout_func import rollout_wrapper
-
-from malib.backend.datapool.offline_dataset_server import MultiAgentEpisode
-from malib.utils.logger import Log, get_logger
+from malib.rollout import rollout_func
+from malib.utils import logger
+from malib.utils.logger import Log
 from malib.envs import GymEnv
+from malib.rollout.rollout_worker import RolloutWorker
+from malib.backend.datapool.offline_dataset_server import Episode
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 parser = argparse.ArgumentParser(
-    "Single instance of RL training on gym environments."
+    "Single instance of MARL training on gym environments."
 )
 parser.add_argument(
     "--config", type=str, help="YAML configuration path.", required=True
+)
+parser.add_argument(
+    "--threaded", action="store_true", help="Whether use threaded sampling."
 )
 
 
@@ -43,10 +43,8 @@ if __name__ == "__main__":
     # ================== Clean configuration =================================================================
     env_desc = config["env_description"]
     env_desc["config"] = env_desc.get("config", {})
-    # load creator
-    env_creator = GymEnv
-    env_desc["creator"] = env_creator
-    env = env_creator(**env_desc["config"])
+    env_desc["creator"] = GymEnv
+    env = GymEnv(**env_desc["config"])
 
     possible_agents = env.possible_agents
     observation_spaces = env.observation_spaces
@@ -56,16 +54,18 @@ if __name__ == "__main__":
     env.close()
 
     agent_mapping_func = lambda agent: "share"
-    exp_cfg = {"expr_group": config["group"], "expr_name": config["name"]}
+
+    if args.threaded:
+        ray.init()
+
+    exp_cfg = logger.start(group="single_instance", name="marl")
     # ========================================================================================================
 
     global_step = 0
 
-    start_logger_server(exp_cfg)
-
-    logger = get_logger(
+    _logger = logger.get_logger(
         log_level=settings.LOG_LEVEL,
-        name="single_instance_gym",
+        name="single_instance_marl",
         remote=settings.USE_REMOTE_LOGGER,
         mongo=settings.USE_MONGO_LOGGER,
         **exp_cfg,
@@ -108,64 +108,58 @@ if __name__ == "__main__":
             rollout_handler.update_population(agent, pid, policy)
             trainable_policy_mapping[agent] = pid
 
-    agent_episode = MultiAgentEpisode(
-        env_desc["id"],
-        trainable_policy_mapping,
-        capacity=config["dataset_config"]["episode_capacity"],
-    )
+    agent_episodes = {
+        aid: Episode(
+            env_desc["config"]["env_id"],
+            trainable_policy_mapping,
+            capacity=config["dataset_config"]["episode_capacity"],
+        )
+        for aid in env_desc["possible_agents"]
+    }
+
+    stationary_policy_distribution = {
+        aid: {pid: 1.0} for aid, pid in trainable_policy_mapping.items()
+    }
     # ======================================================================================================
 
     # ==================================== Main loop =======================================================
-    min_size = 0
-    while agent_episode.size < config["dataset_config"]["learning_start"]:
-        statistics, _ = rollout_handler.sample(
-            callback=rollout_wrapper(agent_episode),
-            trainable_pairs=trainable_policy_mapping,
-            fragment_length=config["rollout"]["fragment_length"],
-            behavior_policy_mapping=trainable_policy_mapping,
-            num_episodes=[config["rollout"]["episode_seg"]],
-            role="rollout",
-            threaded=False,
-        )
-
     for epoch in range(1000):
-        print(f"==================== epoch #{epoch} ===============")
-        _ = rollout_handler.sample(
-            callback=rollout_wrapper(agent_episode),
-            fragment_length=config["rollout"]["fragment_length"],
-            behavior_policy_mapping=trainable_policy_mapping,
-            num_episodes=[config["rollout"]["episode_seg"]],
-            role="rollout",
-            threaded=False,
-        )
+        print(f"\n==================== epoch #{epoch} ===============")
+        total_frames = 0
+        min_size = 0
         with Log.stat_feedback(
-            log=True, logger=logger, worker_idx="Rollout", global_step=epoch
+            log=True, logger=_logger, worker_idx="Rollout", global_step=epoch, group="single_instance"
         ) as (statistic_seq, processed_statistics):
-            statistics, _ = rollout_handler.sample(
-                callback=rollout_wrapper(None),
-                fragment_length=config["rollout"]["fragment_length"],
-                behavior_policy_mapping=trainable_policy_mapping,
-                num_episodes=[config["evaluation"]["num_episodes"]],
-                role="rollout",
-                threaded=False,
-                explore=False,
-            )
-            statistic_seq.extend(statistics[0])
+            while min_size < config["dataset_config"]["learning_start"]:
+                statistics, num_frames = rollout_handler.sample(
+                    callback=rollout_func.simultaneous,
+                    num_episodes=config["rollout"]["num_episodes"],
+                    fragment_length=config["rollout"]["fragment_length"],
+                    policy_combinations=[trainable_policy_mapping],
+                    explore=True,
+                    role="rollout",
+                    policy_distribution=stationary_policy_distribution,
+                    threaded=args.threaded,
+                    episodes=agent_episodes,
+                )
+                statistic_seq.extend(statistics)
+                min_size = min([e.size for e in agent_episodes.values()])
+                total_frames += num_frames
 
-        print("-------------- rollout --------")
+        print("rollout statistics:")
         pprint.pprint(processed_statistics[0])
+        print("sampled new frames:", total_frames, "total_size:", min_size)
 
         batches = {}
+        idxes = np.random.choice(min_size, config["training"]["config"]["batch_size"])
         for agent in env.possible_agents:
-            batch = agent_episode.sample(
-                size=config["training"]["config"]["batch_size"]
-            )
+            batch = agent_episodes[agent].sample(idxes=idxes)
             batches[agent] = batch
 
         print("-------------- traininig -------")
         for iid, interface in learners.items():
             with Log.stat_feedback(
-                log=True, logger=logger, worker_idx=iid, global_step=global_step
+                log=True, logger=_logger, worker_idx=iid, global_step=global_step, group="single_instance"
             ) as (statistics_seq, processed_statistics):
                 statistics_seq.append(
                     learners[iid].optimize(
@@ -177,4 +171,4 @@ if __name__ == "__main__":
             pprint.pprint(processed_statistics[0])
         global_step += 1
     # =====================================================================================================
-    terminate_logger()
+    logger.terminate()

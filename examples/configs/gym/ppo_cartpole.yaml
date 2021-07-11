@@ -1,6 +1,6 @@
 # battle: https://github.com/wsjeon/maddpg-rllib
 group: "Gym"
-name: "share/ppo_pendulum"
+name: "share/ppo_cartpole"
 
 training:
   interface:
@@ -36,14 +36,13 @@ evaluation:
   callback: "simultaneous"
 
 env_description:
-  #  scenario_name: "simple_spread"
   creator: "Gym"
   config:
-    env_id: "Acrobot-v1"
+    env_id: "CartPole-v1"
 
 algorithms:
-  PPO:
-    name: "PPO"
+  DQN:
+    name: "DQN"
 
 global_evaluator:
   name: "generic"
