@@ -276,20 +276,38 @@ class SequentialEpisode(Episode):
         capacity: int,
         other_columns: List[str],
     ):
+        """Sequential episode is designed for sequential rollout. Different from `Episode`, it allows partially insertion, but require
+        data clean mannually.
+
+        Examples:
+            >>> ep = SequentialEpisode(...)
+            >>> ep.insert(**{Episode.OBS: .., Episode.ACTION: ...})
+            >>> ep.insert(**{Episode.ACTION_MASK: ..., Episode.NEXT_OBS: ...})
+            >>> # before send to offline dataset server or sampling, you need to do data alighment via executing `clean_data`
+            >>> ep.clean_data()
+            >>> # send to dataset server
+            >>> server.save.remote(ep)
+            >>> # or sampling
+            >>> ep.sample(size=64)
+            >>> # ...
+        """
         super(SequentialEpisode, self).__init__(
             env_id, policy_id, capacity=capacity, other_columns=other_columns
         )
+        self._cleaned = False
 
     def insert(self, **kwargs):
+        self._cleaned = False
         for column, value in kwargs.items():
             assert column in self.columns, f"unregistered column: {column}"
             if isinstance(value, NumpyDataArray):
                 self._data[column].insert(value.get_data())
             else:
                 self._data[column].insert(value)
-                # raise TypeError(
-                #     f"Unexpected type of column={column} {value}"
-                # )
+
+    def sample(self, idxes, size) -> Any:
+        assert self._cleaned, "Data alignment is required before sampling!"
+        return super(SequentialEpisode, self).sample(idxes=idxes, size=size)
 
     def clean_data(self):
         # check length
