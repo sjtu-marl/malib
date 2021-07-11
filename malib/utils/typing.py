@@ -153,8 +153,8 @@ class MetaParameterDescription:
 @dataclass
 class BufferDescription:
     env_id: str
-    agent_id: AgentID
-    policy_id: PolicyID
+    agent_id: Union[AgentID, List[AgentID]]
+    policy_id: Union[PolicyID, List[AgentID]]
     batch_size: int = 0
     sample_mode: str = ""
 

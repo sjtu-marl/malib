@@ -1,25 +1,26 @@
+from collections import namedtuple
+import logging
 import os
 import sys
 import traceback
 import threading
 import time
 import traceback
-from typing import Dict, List, Any, Union, Sequence
+from typing import Dict, List, Any, Type, Union, Sequence
 
 import numpy as np
-from numpy.core.fromnumeric import size
-from numpy.lib.function_base import percentile
+from numpy.core.fromnumeric import trace
 import ray
 
-from typing import Dict, List, Any, Union, Sequence, Tuple, Iterable
+from typing import Dict, List, Any, Union, Sequence, Tuple
 from concurrent.futures import ThreadPoolExecutor
+from readerwriterlock import rwlock
 
 from malib import settings
 from malib.backend.datapool.data_array import NumpyDataArray
 from malib.utils.errors import OversampleError, NoEnoughDataError
 from malib.utils.typing import BufferDescription, PolicyID, AgentID, Status
 from malib.utils.logger import get_logger, Log
-from malib.utils.convert import anyof
 from malib.utils.logger import get_logger
 from malib.utils.typing import BufferDescription, PolicyID, AgentID
 
@@ -27,7 +28,16 @@ import threading
 import pickle as pkl
 
 
-DATASET_TABLE_NAME_GEN = lambda env_id, main_id, pid: f"{env_id}_{main_id}_{pid}"
+def _gen_table_name(env_id, main_id, pid):
+    if isinstance(main_id, List):
+        main_id = "_".join(sorted(main_id))
+    if isinstance(pid, List):
+        pid = "_".join(sorted(pid))
+    return f"{env_id}_{main_id}_{pid}"
+
+
+DATASET_TABLE_NAME_GEN = _gen_table_name
+Batch = namedtuple("Batch", "identity, data")
 
 
 class EpisodeLock:
@@ -181,6 +191,10 @@ class Episode:
         return self._capacity
 
     @property
+    def nbytes(self) -> int:
+        return sum([e.nbytes for e in self._data.values()])
+
+    @property
     def data(self):
         return self._data
 
@@ -207,22 +221,18 @@ class Episode:
         self._capacity = max(self._size, self._capacity)
 
     def insert(self, **kwargs):
-        try:
-            for column in self.columns:
-                assert self._size == len(self._data[column]), (
-                    self._size,
-                    {c: len(self._data[c]) for c in self.columns},
-                )
-            for column in self.columns:
-                if isinstance(kwargs[column], NumpyDataArray):
-                    assert kwargs[column]._data is not None, f"{column} has empty data"
-                    self._data[column].insert(kwargs[column].get_data())
-                else:
-                    self._data[column].insert(kwargs[column])
-            self._size = len(self._data[Episode.CUR_OBS])
-        except Exception as e:
-            print(traceback.format_exc())
-            raise e
+        for column in self.columns:
+            assert self._size == len(self._data[column]), (
+                self._size,
+                {c: len(self._data[c]) for c in self.columns},
+            )
+        for column in self.columns:
+            if isinstance(kwargs[column], NumpyDataArray):
+                assert kwargs[column]._data is not None, f"{column} has empty data"
+                self._data[column].insert(kwargs[column].get_data())
+            else:
+                self._data[column].insert(kwargs[column])
+        self._size = len(self._data[Episode.CUR_OBS])
 
     def sample(self, idxes=None, size=None) -> Any:
         assert idxes is None or size is None
@@ -352,17 +362,37 @@ class MultiAgentEpisode(Episode):
 
     def fill(self, **kwargs):
         """ Format: {agent: {column: np.array, ...}, ...} """
+
+        pre_size = list(kwargs.values())[0].size
+        for agent, episode in kwargs.items():
+            assert (
+                episode.size == pre_size
+            ), f"Inconsistency of episode size: {agent} {pre_size}/{episode.size}"
+
+        _sizes = set()
         for agent, episode in self._data.items():
             episode.fill(**kwargs[agent])
-            # FIXME(ming): support clipped mode only
-            self._size = episode.size
+            _sizes.add(episode.size)
+        assert len(_sizes) == 1, f"Multiple size is not allowed: {_sizes}"
+        self._size = _sizes.pop()
 
     def insert(self, **kwargs):
         """ Format: {agent: {column: np.array, ...}, ...} """
+        _selected = list(kwargs.values())[0]
+        if isinstance(_selected, Episode):
+            _size = _selected.size
+        elif isinstance(_selected, Dict):
+            _size = len(list(_selected.values())[0])
+        else:
+            raise TypeError(f"Unexpected type: {type(_selected)}")
         for agent, episode in self._data.items():
             if isinstance(kwargs[agent], Episode):
+                assert (
+                    _size == kwargs[agent].size
+                ), f"Inconsistency of inserted episodes, expect {_size} while actual {episode.size}"
                 episode.insert(**kwargs[agent].data)
             else:
+                assert _size == len(list(kwargs[agent].values())[0])
                 episode.insert(**kwargs[agent])
             self._size = episode.size
 
@@ -411,53 +441,85 @@ class MultiAgentEpisode(Episode):
 
 
 class Table:
-    def __init__(self, name):
+    def __init__(self, name, multi_agent: bool = False):
+        """One table for one episode."""
+
         self._name = name
         self._lock_status: EpisodeLock = EpisodeLock()
         self._threading_lock = threading.Lock()
+        self._rwlock = rwlock.RWLockFairD()
         self._episode: Union[Episode, MultiAgentEpisode] = None
+        self._is_multi_agent = multi_agent
 
     @property
     def name(self):
         return self._name
 
     @property
-    def episode(self):
+    def is_multi_agent(self) -> bool:
+        return self._is_multi_agent
+
+    @property
+    def episode(self) -> Union[Episode, MultiAgentEpisode]:
         return self._episode
 
     @property
     def size(self):
-        with self._threading_lock:
+        with self._rwlock.gen_rlock():
             return self._episode.size if self._episode is not None else 0
 
     @property
     def capacity(self):
-        with self._threading_lock:
+        with self._rwlock.gen_rlock():
             return self._episode.capacity
 
-    def set_episode(self, episode: Union[Episode, MultiAgentEpisode]):
-        with self._threading_lock:
+    def set_episode(
+        self, episode: Dict[AgentID, Union[Episode, SequentialEpisode]], capacity: int
+    ):
+        """If the current table has no episode, inititalize one for it."""
+
+        with self._rwlock.gen_wlock():
             assert self._episode is None
-            self._episode = episode
+            _episode = list(episode.values())[0]
+            if self._is_multi_agent:
+                self._episode = MultiAgentEpisode(
+                    env_id=_episode.env_id,
+                    agent_policy_mapping={
+                        aid: e.policy_id for aid, e in episode.items()
+                    },
+                    capacity=capacity,
+                    other_columns=_episode.other_columns,
+                )
+            else:
+                self._episode = Episode(
+                    env_id=_episode.env_id,
+                    policy_id=_episode.policy_id,
+                    capacity=capacity,
+                    other_columns=_episode.other_columns,
+                )
 
     @staticmethod
     def gen_table_name(*args, **kwargs):
         return DATASET_TABLE_NAME_GEN(*args, **kwargs)
 
     def fill(self, **kwargs):
-        with self._threading_lock:
+        with self._rwlock.gen_wlock():
             self._episode.fill(**kwargs)
 
     def insert(self, **kwargs):
         try:
-            with self._threading_lock:
+            with self._rwlock.gen_wlock():
+                if not self._is_multi_agent:
+                    assert len(kwargs) == 1, kwargs
+                    kwargs = list(kwargs.values())[0].data
+                # print("ready to insert")
                 self._episode.insert(**kwargs)
-                assert self._episode.size > 0, self._episode.size
+                # print(f"after inserted: {self._episode.size}")
         except Exception as e:
-            print(traceback.format_exc(), type(self._episode))
+            print(traceback.format_exc())
 
     def sample(self, idxes=None, size=None) -> Tuple[Any, str]:
-        with self._threading_lock:
+        with self._rwlock.gen_rlock():
             data = self._episode.sample(idxes, size)
         return data
 
@@ -488,7 +550,8 @@ class Table:
             return self._lock_status
 
     def reset(self, **kwargs):
-        self._episode.reset(**kwargs)
+        with self._rwlock.gen_wlock():
+            self._episode.reset(**kwargs)
 
 
 @ray.remote
@@ -509,7 +572,6 @@ class OfflineDataset:
             mongo=settings.USE_MONGO_LOGGER,
             **exp_cfg,
         )
-        self._threading_lock = threading.Lock()
 
     def lock(self, lock_type: str, desc: Dict[AgentID, Any]):
         status = dict.fromkeys(desc, Status.FAILED)
@@ -538,54 +600,44 @@ class OfflineDataset:
 
         return status
 
-    def check_table(self, table_name: str, episode: Episode = None):
+    def check_table(
+        self, table_name: str, episode: Dict[AgentID, Union[SequentialEpisode, Episode]]
+    ):
         """Check table existing, if not, create a new table. If `episode` is not None and table has no episode yet, it
         will be used to create an empty episode with default capacity for table.
 
         :param str table_name: Registered table name, to index table.
         :param Episode episode: Episode to insert. Default to None.
         """
-
         with self._threading_lock:
-            # create a new table
             if self._tables.get(table_name, None) is None:
-                self._tables[table_name] = Table(table_name)
-
-            if self._tables[table_name].episode is None:
-                pass
-            else:
-                return
-            if isinstance(episode, Episode):
+                self._tables[table_name] = Table(
+                    table_name, multi_agent=len(episode) > 1
+                )
                 self._tables[table_name].set_episode(
-                    # TODO(ming): too ugly (generate an empty episode with larger capacity)
-                    episode.from_episode(
-                        episode=episode,
-                        capacity=self._episode_capacity,
-                        fix_class=Episode,
-                    )
+                    episode, capacity=self._episode_capacity
                 )
 
     def save(self, agent_episodes: Dict[AgentID, Episode], wait_for_ready: bool = True):
-        """ Accept a dictionary of agent episodes, save them to a named table (Episode) """
+        """Accept a dictionary of agent episodes, save them to a named table. If there is only one agent episode
+        in the dict, we use `Episode`, otherwise `MultiAgentEpisode` will be used.
+        """
 
         insert_results = []
-        for aid, episode in agent_episodes.items():
-            if episode is None or episode.empty():
-                continue
-            table_name = Table.gen_table_name(
-                env_id=episode.env_id,
-                main_id=aid,
-                pid=episode.policy_id
-                if isinstance(episode.policy_id, str)
-                else episode.policy_id[aid],
+        episode = list(agent_episodes.values())[0]
+        main_ids = list(agent_episodes.keys())
+        table_name = Table.gen_table_name(
+            env_id=episode.env_id,
+            main_id=main_ids,
+            pid=[agent_episodes[aid].policy_id for aid in main_ids],
+        )
+        self.check_table(table_name, agent_episodes)
+        insert_results.append(
+            self._threading_pool.submit(
+                self._tables[table_name].insert, **agent_episodes
             )
-            self.check_table(table_name, episode)
-            insert_results.append(
-                self._threading_pool.submit(
-                    self._tables[table_name].insert, **episode.data
-                )
-            )
-            self.logger.debug(f"Threads created for insertion on table={table_name}")
+        )
+        self.logger.debug(f"Threads created for insertion on table={table_name}")
 
         if wait_for_ready:
             for fut in insert_results:
@@ -674,11 +726,11 @@ class OfflineDataset:
             with open(dataset_path + ".pkl", "wb") as f:
                 pkl.dump(obj=dataset, file=f, protocol=protocol)
 
-    @Log.method_timer(enable=settings.PROFILING)
-    def sample(self, agent_buffer_desc_dict: Dict[AgentID, BufferDescription]) -> Any:
+    # @Log.method_timer(enable=settings.PROFILING)
+    def sample(self, buffer_desc: BufferDescription) -> Tuple[Batch, str]:
         """Sample data from the top for training, default is random sample from sub batches.
 
-        :param agent_buffer_desc_dict: Dict[AgentID, BufferDescription], specify the env_id and policy_type,
+        :param BufferDesc buffer_desc: Description of sampling a buffer.
             used to index the buffer slot
         :return: a tuple of samples and information
         """
@@ -687,36 +739,24 @@ class OfflineDataset:
         info = "OK"
         try:
             res = {}
-            with Log.timer(log=settings.PROFILING, logger=self.logger):
-                sizes = []
-                batch_sizes = []
-                agent_tables = {}
-                for agent, buffer_desc in agent_buffer_desc_dict.items():
-                    table_name = Table.gen_table_name(
-                        env_id=buffer_desc.env_id,
-                        main_id=buffer_desc.agent_id,
-                        pid=buffer_desc.policy_id,
-                    )
-                    table = self._tables[table_name]
-                    sizes.append(table.size)
-                    batch_sizes.append(buffer_desc.batch_size)
-                    agent_tables[agent] = table
-                batch_size = min(batch_sizes)
-                min_size = min(sizes)
-                if min_size < batch_size:
-                    raise OversampleError
-                idxes = np.random.choice(min_size, batch_size)
-                for agent, table in agent_tables.items():
-                    res[agent] = table.sample(idxes=idxes)
+            # with Log.timer(log=settings.PROFILING, logger=self.logger):
+            table_name = Table.gen_table_name(
+                env_id=buffer_desc.env_id,
+                main_id=buffer_desc.agent_id,
+                pid=buffer_desc.policy_id,
+            )
+            table = self._tables[table_name]
+            res = table.sample(size=buffer_desc.batch_size)
+            res = Batch(identity=buffer_desc.agent_id, data=res)
         except KeyError as e:
             info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
-            res = None
+            res = Batch(identity=buffer_desc.agent_id, data=None)
         except OversampleError as e:
-            info = f"No enough data: table_size={table.size} batch_size={buffer_desc.batch_size}"
-            res = None
+            info = f"No enough data: table_size={table.size} batch_size={buffer_desc.batch_size} table_name={table_name}"
+            res = Batch(identity=buffer_desc.agent_id, data=None)
         except Exception as e:
             print(traceback.format_exc())
-            res = None
+            res = Batch(identity=buffer_desc.agent_id, data=None)
             info = "others"
         return res, info
 

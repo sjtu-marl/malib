@@ -23,7 +23,7 @@ import numpy as np
 
 from malib import settings
 from malib.utils.logger import get_logger, Log
-from malib.utils.metrics import get_metric, Metric, to_metric_entry
+from malib.utils.metrics import get_metric, Metric
 from malib.utils.typing import AgentID, Dict, MetricEntry, PolicyID, Union, Any, Tuple
 from malib.utils.preprocessor import get_preprocessor
 from malib.envs import Environment
@@ -31,7 +31,6 @@ from malib.envs.agent_interface import AgentInterface
 from malib.envs.vector_env import VectorEnv
 from malib.backend.datapool.offline_dataset_server import (
     Episode,
-    MultiAgentEpisode,
     SequentialEpisode,
 )
 
@@ -83,17 +82,17 @@ def sequential(
                 action, action_dist, extra_info = agent_interfaces[aid].compute_action(
                     [observation], **info
                 )
-
-                agent_episodes[aid].insert(
-                    **{
-                        Episode.CUR_OBS: [observation],
-                        Episode.ACTION_MASK: [action_mask],
-                        Episode.ACTION_DIST: action_dist,
-                        Episode.ACTION: action,
-                        Episode.REWARD: reward,
-                        Episode.DONE: done,
-                    }
-                )
+                if aid in agent_episodes:
+                    agent_episodes[aid].insert(
+                        **{
+                            Episode.CUR_OBS: [observation],
+                            Episode.ACTION_MASK: [action_mask],
+                            Episode.ACTION_DIST: action_dist,
+                            Episode.ACTION: action,
+                            Episode.REWARD: reward,
+                            Episode.DONE: done,
+                        }
+                    )
                 # convert action to scalar
                 action = action[0][0]
             else:
@@ -115,12 +114,12 @@ def sequential(
             metric.parse(agent_filter=tuple(agent_episodes.keys()))
         )
         # when dataset_server is not None
-        if dataset_server and cnt % send_interval == 0:
-            for e in agent_episodes.values():
-                e.clean_data()
-            dataset_server.save.remote(agent_episodes)
-            for e in agent_episodes.values():
-                e.reset()
+    if dataset_server:
+        for e in agent_episodes.values():
+            e.clean_data()
+        _ = ray.get(dataset_server.save.remote(agent_episodes, wait_for_ready=False))
+        for e in agent_episodes.values():
+            e.reset()
 
     # aggregated evaluated results groupped in agent wise
     evaluated_results = metric.merge_parsed(evaluated_results)
@@ -225,14 +224,14 @@ def simultaneous(
             ]
         )
         cnt += 1
-        if dataset_server is not None and cnt % send_interval == 0:
-            dataset_server.save.remote(agent_episodes)
-            # clean agent episode
-            for e in agent_episodes.values():
-                e.reset()
+        # if dataset_server is not None and cnt % send_interval == 0:
+        #     dataset_server.save.remote(agent_episodes)
+        #     # clean agent episode
+        #     for e in agent_episodes.values():
+        #         e.reset()
 
     if dataset_server:
-        dataset_server.save.remote(agent_episodes)
+        _ = ray.get(dataset_server.save.remote(agent_episodes))
     transition_size = cnt * len(agent_episodes) * getattr(env, "num_envs", 1)
 
     evaluated_results = metric.parse(agent_filter=tuple(agent_episodes.keys()))
@@ -336,11 +335,11 @@ class Stepping:
         agent_episodes = episodes or {
             agent: episode_creator(
                 self.env_desc["config"]["env_id"],
-                behavior_policies[agent],
+                desc["behavior_policies"][agent],
                 capacity=fragment_length * num_episodes,
                 other_columns=self.env.extra_returns,
             )
-            for agent in behavior_policies
+            for agent in desc["behavior_policies"]
         }
 
         metric = get_metric(metric_type)(self.env.possible_agents)
@@ -356,12 +355,6 @@ class Stepping:
             metric,
             dataset_server=self._dataset_server if role == "rollout" else None,
         )
-
-        # convert evaluated results to metric entry
-        # evaluated_results = {
-        #     agent: to_metric_entry(result)
-        #     for agent, result in evaluated_results.items()
-        # }
 
         return evaluated_results, num_frames
 

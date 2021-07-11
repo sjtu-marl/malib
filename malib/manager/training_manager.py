@@ -70,7 +70,8 @@ class TrainingManager:
         groups = (
             {}
         )  # mapping from training agent id to environment agent id (many to many)
-        for env_aid in env_desc["possible_agents"]:
+        sorted_env_agents = sorted(env_desc["possible_agents"])
+        for env_aid in sorted_env_agents:
             training_aid = training_agent_mapping(env_aid)
             if isinstance(training_aid, str):
                 training_aids = [training_aid]
