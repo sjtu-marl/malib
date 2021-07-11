@@ -22,11 +22,9 @@ from malib.utils.typing import (
     Status,
     MetaParameterDescription,
     BufferDescription,
-    TrainingMetric,
     TrainingFeedback,
     TaskRequest,
     AgentID,
-    List,
     MetricEntry,
 )
 from malib.utils import errors
@@ -383,13 +381,23 @@ class AgentInterface(metaclass=ABCMeta):
         old_policy_id_mapping = copy.deepcopy(policy_id_mapping)
 
         while not stopper(statistics, global_step=epoch) and not stopper.all():
-            batch, size = self.request_data(buffer_desc)
+            # add timer: key to identify object, tag to log
+            # FIXME(ming): key for logger has been discarded!
+            with Log.timer(
+                log=True,
+                logger=self.logger,
+                tag=f"time/TrainingInterface_{self._id}/data_request",
+                global_step=epoch,
+            ):
+                start = time.time()
+                batch, size = self.request_data(buffer_desc)
 
             with Log.stat_feedback(
                 log=settings.STATISTIC_FEEDBACK,
                 logger=self.logger,
                 worker_idx=self._id,
                 global_step=epoch,
+                group="TrainingSummary",
             ) as (statistic_seq, processed_statistics):
                 # a dict of dict of metric entry {agent: {item: MetricEntry}}
                 statistics = self.optimize(policy_id_mapping, batch, training_config)
