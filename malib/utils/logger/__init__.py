@@ -22,7 +22,12 @@ class Log:
     @staticmethod
     @contextmanager
     def stat_feedback(
-        log: bool = False, logger: Any = None, worker_idx: str = None, *args, **kwargs
+        log: bool = False,
+        logger: Any = None,
+        worker_idx: str = None,
+        group: str = None,
+        *args,
+        **kwargs,
     ):
         """Collect a sequence of statistics (agent wise).
 
@@ -77,9 +82,8 @@ class Log:
         if log and logger is not None:
             if isinstance(logger, ExprManagerClient):
                 for k, v in summaries.items():
-                    if worker_idx is not None:
-                        k = f"{worker_idx}/{k}"
-                    logger.send_scalar(tag=k, content=v, *args, **kwargs)
+                    assert group is not None, "Group is required!"
+                    logger.send_scalar(tag=f"{group}/{k}", content=v, *args, **kwargs)
             elif isinstance(logger, MongoClient):
                 logger.send_scalar(
                     tag_content_dict=summaries, batch_mode=True, *args, **kwargs
@@ -130,14 +134,26 @@ class Log:
         if logger is None or not log:
             yield None
         else:
-            eid = f"{inspect.stack()[2].function}{postfix}-{uuid.uuid1()}"
-            logger.report(status=EventReportStatus.START, event_id=eid, metric=None)
-            yield None
-            logger.report(
-                status=EventReportStatus.END,
-                event_id=eid,
-                metric=None,
-            )
+            if isinstance(logger, MongoClient):
+                eid = f"{inspect.stack()[2].function}{postfix}-{uuid.uuid1()}"
+                logger.report(status=EventReportStatus.START, event_id=eid, metric=None)
+                yield None
+                logger.report(
+                    status=EventReportStatus.END,
+                    event_id=eid,
+                    metric=None,
+                )
+            elif isinstance(logger, ExprManagerClient):
+                _start = time.time()
+                yield None
+                logger.send_scalar(
+                    key=kwargs.get("key", None),
+                    tag=kwargs["tag"],
+                    content=time.time() - _start,
+                    global_step=kwargs.get("global_step", None),
+                )
+            else:
+                raise TypeError(f"Unexpected logger error: {type(logger)}.")
 
     @staticmethod
     def method_timer(enable=settings.PROFILING):
