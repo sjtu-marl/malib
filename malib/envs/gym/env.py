@@ -12,7 +12,6 @@ class _GymEnv(ParallelEnv):
         self.gym_env = gym.make(env_name, **kwargs)
         self.default_agent_name = "agent_0"
 
-        self.is_sequential = False
         self.possible_agents = [self.default_agent_name]
         self.observation_spaces = {self.default_agent_name: self.gym_env.observation_space}
         self.action_spaces = {self.default_agent_name: self.gym_env.action_space}

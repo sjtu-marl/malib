@@ -24,14 +24,14 @@ rollout:
   stopper_config:
     max_step: 1000
   metric_type: "simple"
-  fragment_length: 25
+  fragment_length: 200
   num_episodes: 25
   episode_seg: 25
   terminate: "any"
   callback: "simultaneous"
 
 evaluation:
-  fragment_length: 25
+  fragment_length: 200
   num_episodes: 25
   callback: "simultaneous"
 
@@ -39,7 +39,7 @@ env_description:
   #  scenario_name: "simple_spread"
   creator: "Gym"
   config:
-    env_id: "Pendulum-v0"
+    env_id: "Acrobot-v1"
 
 algorithms:
   PPO:
