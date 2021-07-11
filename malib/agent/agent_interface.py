@@ -424,7 +424,7 @@ class AgentInterface(metaclass=ABCMeta):
                 logger=self.logger,
                 worker_idx=self._id,
                 global_step=epoch,
-                group="TrainingSummary",
+                group="training",
             ) as (statistic_seq, processed_statistics):
                 # a dict of dict of metric entry {agent: {item: MetricEntry}}
                 statistics = self.optimize(policy_id_mapping, batch, training_config)
