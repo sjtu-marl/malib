@@ -23,8 +23,8 @@ import numpy as np
 
 from malib import settings
 from malib.utils.logger import get_logger, Log
-from malib.utils.metrics import get_metric, Metric
-from malib.utils.typing import AgentID, Dict, PolicyID, Union, Any
+from malib.utils.metrics import get_metric, Metric, to_metric_entry
+from malib.utils.typing import AgentID, Dict, MetricEntry, PolicyID, Union, Any, Tuple
 from malib.utils.preprocessor import get_preprocessor
 from malib.envs import Environment
 from malib.envs.agent_interface import AgentInterface
@@ -52,13 +52,18 @@ def sequential(
     # use env.env as real env
     env = env.env
     cnt = 0
+    evaluated_results = []
+
+    assert fragment_length > 0, fragment_length
+
     for ith in range(num_episodes):
         env.reset()
+        metric.reset()
         for aid in env.agent_iter(max_iter=fragment_length):
             observation, reward, done, info = env.last()
 
             if isinstance(observation, dict):
-                info = {"action_mask": observation["action_mask"]}
+                info = {"action_mask": np.asarray([observation["action_mask"]])}
                 action_mask = observation["action_mask"]
             else:
                 action_mask = np.ones(
@@ -78,18 +83,19 @@ def sequential(
                 action, action_dist, extra_info = agent_interfaces[aid].compute_action(
                     [observation], **info
                 )
+
                 agent_episodes[aid].insert(
                     **{
                         Episode.CUR_OBS: [observation],
                         Episode.ACTION_MASK: [action_mask],
-                        Episode.ACTION_DIST: [action_dist],
-                        Episode.ACTION: [action],
+                        Episode.ACTION_DIST: action_dist,
+                        Episode.ACTION: action,
                         Episode.REWARD: reward,
                         Episode.DONE: done,
                     }
                 )
                 # convert action to scalar
-                action = action[0]
+                action = action[0][0]
             else:
                 info["policy_id"] = behavior_policies[aid]
                 action = None
@@ -105,13 +111,20 @@ def sequential(
                 info=info,
             )
             cnt += 1
-
+        evaluated_results.append(
+            metric.parse(agent_filter=tuple(agent_episodes.keys()))
+        )
+        # when dataset_server is not None
         if dataset_server and cnt % send_interval == 0:
+            for e in agent_episodes.values():
+                e.clean_data()
             dataset_server.save.remote(agent_episodes)
             for e in agent_episodes.values():
                 e.reset()
 
-    return [metric.parse(agent_filter=tuple(agent_episodes.keys()))], cnt
+    # aggregated evaluated results groupped in agent wise
+    evaluated_results = metric.merge_parsed(evaluated_results)
+    return evaluated_results, cnt
 
 
 def simultaneous(
@@ -157,6 +170,8 @@ def simultaneous(
             ],
         )
     )
+
+    metric.reset(mode="vector")
 
     while not done and cnt < fragment_length:
         act_dict = {}
@@ -219,46 +234,9 @@ def simultaneous(
     if dataset_server:
         dataset_server.save.remote(agent_episodes)
     transition_size = cnt * len(agent_episodes) * getattr(env, "num_envs", 1)
-    return [metric.parse(agent_filter=list(agent_episodes.keys()))], transition_size
 
-
-def rollout_wrapper(
-    agent_episodes: Union[MultiAgentEpisode, Dict[AgentID, Episode]] = None,
-    rollout_type="sequential",
-):
-    """Rollout wrapper accept a dict of episodes outside.
-
-    :param Union[MultiAgentEpisode,Dict[AgentID,Episode]] agent_episodes: A dict of agent episodes or multiagentepisode instance.
-    :param str rollout_type: Specify rollout styles. Default to `sequential`, choices={sequential, simultaneous}.
-    :return: A function
-    """
-
-    handler = sequential if rollout_type == "sequential" else simultaneous
-
-    def func(
-        trainable_pairs,
-        agent_interfaces,
-        env_desc,
-        metric_type,
-        max_iter,
-        behavior_policy_mapping=None,
-    ):
-        statistic, episodes = handler(
-            trainable_pairs,
-            agent_interfaces,
-            env_desc,
-            metric_type,
-            max_iter,
-            behavior_policy_mapping=behavior_policy_mapping,
-        )
-        if isinstance(agent_episodes, MultiAgentEpisode):
-            agent_episodes.insert(**episodes)
-        elif isinstance(agent_episodes, Dict):
-            for agent, episode in episodes.items():
-                agent_episodes[agent].insert(**episode.data)
-        return statistic, episodes
-
-    return func
+    evaluated_results = metric.parse(agent_filter=tuple(agent_episodes.keys()))
+    return evaluated_results, transition_size
 
 
 def get_func(name: Union[str, Callable]):
@@ -325,13 +303,17 @@ class Stepping:
         desc: Dict[str, Any],
         callback: type,
         role: str,
-    ) -> Any:
+        episodes: Dict[AgentID, Episode] = None,
+    ) -> Tuple[Dict[str, MetricEntry], int]:
         """Environment stepping, rollout/simulate with environment vectorization if it is feasible.
 
         :param Dict[AgentID,AgentInterface] agent_interface: A dict of agent interfaces.
         :param Union[str,type] metric_type: Metric type or handler.
         :param int fragment_length: The maximum length of an episode.
-        :param Dict[str,Any] desc: The description of task
+        :param Dict[str,Any] desc: The description of task.
+        :param type callback: Customized/registered rollout function.
+        :param str role: Indicator of stepping type. Values in `rollout` or `simulation`.
+        :returns: A tuple of a dict of MetricEntry and the caculation of total frames.
         """
 
         behavior_policies = {}
@@ -351,7 +333,7 @@ class Stepping:
         self.env.reset(limits=num_episodes)
 
         episode_creator = Episode if not self._is_sequential else SequentialEpisode
-        agent_episodes = {
+        agent_episodes = episodes or {
             agent: episode_creator(
                 self.env_desc["config"]["env_id"],
                 behavior_policies[agent],
@@ -364,7 +346,7 @@ class Stepping:
         metric = get_metric(metric_type)(self.env.possible_agents)
         callback = get_func(callback) if callback else self.callback
 
-        return callback(
+        evaluated_results, num_frames = callback(
             self.env,
             num_episodes,
             agent_interfaces,
@@ -374,6 +356,14 @@ class Stepping:
             metric,
             dataset_server=self._dataset_server if role == "rollout" else None,
         )
+
+        # convert evaluated results to metric entry
+        # evaluated_results = {
+        #     agent: to_metric_entry(result)
+        #     for agent, result in evaluated_results.items()
+        # }
+
+        return evaluated_results, num_frames
 
     def add_envs(self, maximum: int) -> int:
         """Create environments, if env is an instance of VectorEnv, add these new environment instances into it,

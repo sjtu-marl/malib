@@ -22,11 +22,9 @@ from malib.utils.typing import (
     Status,
     MetaParameterDescription,
     BufferDescription,
-    TrainingMetric,
     TrainingFeedback,
     TaskRequest,
     AgentID,
-    List,
     MetricEntry,
 )
 from malib.utils import errors
@@ -376,25 +374,41 @@ class AgentInterface(metaclass=ABCMeta):
         status = None
 
         # sync parameters if implemented
+        print("---- training for agent with policy:", policy_id_mapping)
         for env_aid, pid in policy_id_mapping.items():
             self.pull(env_aid, pid)
 
+        old_policy_id_mapping = copy.deepcopy(policy_id_mapping)
+
         while not stopper(statistics, global_step=epoch) and not stopper.all():
-            batch, size = self.request_data(buffer_desc)
+            # add timer: key to identify object, tag to log
+            # FIXME(ming): key for logger has been discarded!
+            with Log.timer(
+                log=True,
+                logger=self.logger,
+                tag=f"time/TrainingInterface_{self._id}/data_request",
+                global_step=epoch,
+            ):
+                start = time.time()
+                batch, size = self.request_data(buffer_desc)
 
             with Log.stat_feedback(
                 log=settings.STATISTIC_FEEDBACK,
                 logger=self.logger,
                 worker_idx=self._id,
                 global_step=epoch,
+                group="TrainingSummary",
             ) as (statistic_seq, processed_statistics):
+                # a dict of dict of metric entry {agent: {item: MetricEntry}}
                 statistics = self.optimize(policy_id_mapping, batch, training_config)
                 statistic_seq.append(statistics)
-
+                # NOTE(ming): if it meets the update interval, parameters will be pushed to remote parameter server
+                # the returns `status` code will determine whether we should stop the training or continue it.
                 if (epoch + 1) % training_config["update_interval"] == 0:
                     for env_aid in self._group:
                         pid = policy_id_mapping[env_aid]
                         status = self.push(env_aid, pid)
+                        print("--- got push status at:", epoch, env_aid, pid, status)
                         if status.locked:
                             # terminate sub task tagged with env_id
                             stopper.set_terminate(env_aid)
@@ -406,9 +420,9 @@ class AgentInterface(metaclass=ABCMeta):
                             self.pull(env_aid, pid)
                 epoch += 1
                 self._global_step += 1
-
+        print(f"**** training for mapping: {old_policy_id_mapping} finished")
         if status is not None and not status.locked:
-            for aid, pid in policy_id_mapping.items():
+            for aid, pid in old_policy_id_mapping.items():
                 parameter_desc = copy.copy(self._parameter_desc[pid])
                 parameter_desc.lock = True
                 policy = self._policies[pid]

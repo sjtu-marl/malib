@@ -214,26 +214,22 @@ class Episode:
                     {c: len(self._data[c]) for c in self.columns},
                 )
             for column in self.columns:
-                # if isinstance(kwargs[column], np.ndarray):
-                # self._data[column].insert(kwargs[column])
                 if isinstance(kwargs[column], NumpyDataArray):
                     assert kwargs[column]._data is not None, f"{column} has empty data"
                     self._data[column].insert(kwargs[column].get_data())
                 else:
                     self._data[column].insert(kwargs[column])
-                    # raise TypeError(
-                    #     f"Unexpected type of column={column} {type(kwargs[column])}"
-                    # )
             self._size = len(self._data[Episode.CUR_OBS])
         except Exception as e:
             print(traceback.format_exc())
+            raise e
 
     def sample(self, idxes=None, size=None) -> Any:
         assert idxes is None or size is None
         size = size or len(idxes)
 
         if self.size < size:
-            raise OversampleError
+            raise OversampleError(f"batch size={size} data size={self.size}")
 
         if idxes is not None:
             return {k: self._data[k][idxes] for k in self.columns}
@@ -243,11 +239,12 @@ class Episode:
             return {k: self._data[k][indices] for k in self.columns}
 
     @classmethod
-    def from_episode(cls, episode, capacity=None):
+    def from_episode(cls, episode, capacity=None, fix_class=None):
         """Create an empty episode like episode with given capacity"""
 
         other_columns = episode.other_columns
-        return cls(
+        episode_class = fix_class or cls
+        return episode_class(
             episode.env_id,
             episode.policy_id,
             capacity or episode.capacity,
@@ -279,20 +276,38 @@ class SequentialEpisode(Episode):
         capacity: int,
         other_columns: List[str],
     ):
-        super().__init__(
+        """Sequential episode is designed for sequential rollout. Different from `Episode`, it allows partially insertion, but require
+        data clean mannually.
+
+        Examples:
+            >>> ep = SequentialEpisode(...)
+            >>> ep.insert(**{Episode.OBS: .., Episode.ACTION: ...})
+            >>> ep.insert(**{Episode.ACTION_MASK: ..., Episode.NEXT_OBS: ...})
+            >>> # before send to offline dataset server or sampling, you need to do data alighment via executing `clean_data`
+            >>> ep.clean_data()
+            >>> # send to dataset server
+            >>> server.save.remote(ep)
+            >>> # or sampling
+            >>> ep.sample(size=64)
+            >>> # ...
+        """
+        super(SequentialEpisode, self).__init__(
             env_id, policy_id, capacity=capacity, other_columns=other_columns
         )
+        self._cleaned = False
 
     def insert(self, **kwargs):
+        self._cleaned = False
         for column, value in kwargs.items():
             assert column in self.columns, f"unregistered column: {column}"
             if isinstance(value, NumpyDataArray):
                 self._data[column].insert(value.get_data())
             else:
                 self._data[column].insert(value)
-                # raise TypeError(
-                #     f"Unexpected type of column={column} {value}"
-                # )
+
+    def sample(self, idxes, size) -> Any:
+        assert self._cleaned, "Data alignment is required before sampling!"
+        return super(SequentialEpisode, self).sample(idxes=idxes, size=size)
 
     def clean_data(self):
         # check length
@@ -439,7 +454,7 @@ class Table:
                 self._episode.insert(**kwargs)
                 assert self._episode.size > 0, self._episode.size
         except Exception as e:
-            print(traceback.format_exc())
+            print(traceback.format_exc(), type(self._episode))
 
     def sample(self, idxes=None, size=None) -> Tuple[Any, str]:
         with self._threading_lock:
@@ -546,6 +561,7 @@ class OfflineDataset:
                     episode.from_episode(
                         episode=episode,
                         capacity=self._episode_capacity,
+                        fix_class=Episode,
                     )
                 )
 

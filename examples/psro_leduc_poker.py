@@ -5,15 +5,9 @@ import os
 
 # from pettingzoo.classic import leduc_holdem_v2 as leduc_holdem
 # https://www.pettingzoo.ml/classic/leduc_holdem
-from collections import defaultdict
-
-import numpy as np
-
 from malib import settings
-from malib.backend.datapool.offline_dataset_server import Episode
 from malib.envs import PokerEnv
 from malib.runner import run
-from malib.utils.metrics import get_metric
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

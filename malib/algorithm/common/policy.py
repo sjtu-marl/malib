@@ -35,7 +35,7 @@ DEFAULT_MODEL_CONFIG = {
             {"units": 64, "activation": "ReLU"},
             {"units": 64, "activation": "ReLU"},
         ],
-        "output": {"activation": "Softmax"},
+        "output": {"activation": False},
     },
     "critic": {
         "network": "mlp",

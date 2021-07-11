@@ -6,6 +6,7 @@ with shared multi-agent policies. Currently, the `VectorEnv` support parallel ro
 from collections import defaultdict
 import logging
 import gym
+import numpy as np
 
 from malib.utils.typing import Dict, AgentID, Any, List, Tuple
 from malib.envs import Environment
@@ -118,6 +119,8 @@ class VectorEnv:
         If `envs` is not empty or None, the `num` will be ignored.
         """
 
+        from gym.spaces import Discrete
+
         if envs and len(envs) > 0:
             for env in envs:
                 self._validate_env(env)
@@ -143,7 +146,12 @@ class VectorEnv:
     def step(self, actions: Dict[AgentID, List]) -> Dict:
         transitions = defaultdict(lambda: AgentItems())
         for i, env in enumerate(self.envs):
-            ret = env.step({_agent: array[i] for _agent, array in actions.items()})
+            ret = env.step(
+                {
+                    _agent: np.reshape(array[i], self.action_spaces[_agent].shape)
+                    for _agent, array in actions.items()
+                }
+            )
             for k, agent_items in ret.items():
                 transitions[k].update(agent_items)
 

@@ -51,31 +51,51 @@ class RolloutWorker(BaseRolloutWorker):
             self, worker_index, env_desc, metric_type, remote, **kwargs
         )
 
-        parallel_num = kwargs["parallel_num"]
+        self._parallel_num = kwargs.get("parallel_num", 1)
+        self._resources = kwargs.get(
+            "resources",
+            {
+                "num_cpus": None,
+                "num_gpus": None,
+                "memory": None,
+                "object_store_memory": None,
+                "resources": None,
+            },
+        )
+
+        self.actor_pool = None
         if remote:
             assert (
-                parallel_num > 0
-            ), f"parallel_num should be positive, while parallel_num={parallel_num}"
+                self._parallel_num > 0
+            ), f"parallel_num should be positive, while parallel_num={self._parallel_num}"
 
-            resources = kwargs.get(
-                "resources",
-                {
-                    "num_cpus": None,
-                    "num_gpus": None,
-                    "memory": None,
-                    "object_store_memory": None,
-                    "resources": None,
-                },
-            )
-
-            Stepping = rollout_func.Stepping.as_remote(**resources)
+            Stepping = rollout_func.Stepping.as_remote(**self._resources)
             self.actors = [
                 Stepping.remote(kwargs["exp_cfg"], env_desc, self._offline_dataset)
-                for _ in range(parallel_num)
+                for _ in range(self._parallel_num)
             ]
             self.actor_pool = ActorPool(self.actors)
-        else:
-            raise NotImplementedError
+
+    def check_actor_pool_available(self):
+        if self.actor_pool is None:
+            # create actor pool
+            self.logger.warning(
+                "Actor pool has not been created yet, will generate a new one."
+            )
+            assert (
+                self._parallel_num > 0
+            ), f"parallel_num should be positive, while parallel_num={self._parallel_num}"
+
+            Stepping = rollout_func.Stepping.as_remote(**self._resources)
+            self.actors = [
+                Stepping.remote(
+                    self._kwargs["exp_cfg"],
+                    self._env_description,
+                    self._offline_dataset,
+                )
+                for _ in range(self._parallel_num)
+            ]
+            self.actor_pool = ActorPool(self.actors)
 
     def ready_for_sample(self, policy_distribution=None):
         """Reset policy behavior distribution.
@@ -95,6 +115,7 @@ class RolloutWorker(BaseRolloutWorker):
         explore: bool = True,
         threaded: bool = True,
         policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
+        episodes: Dict[AgentID, Episode] = None,
     ) -> Tuple[Sequence[Dict], Sequence[Any]]:
         """Sample function. Support rollout and simulation. Default in threaded mode."""
 
@@ -111,7 +132,7 @@ class RolloutWorker(BaseRolloutWorker):
                 for comb in policy_combinations
             ]
         elif role == "rollout":
-            seg_num = len(self.actors)
+            seg_num = self._parallel_num
             x = num_episodes // seg_num
             y = num_episodes - seg_num * x
             episode_segs = [x] * seg_num + ([y] if y else [])
@@ -131,6 +152,7 @@ class RolloutWorker(BaseRolloutWorker):
             raise TypeError(f"Unkown role: {role}")
 
         if threaded:
+            self.check_actor_pool_available()
             rets = self.actor_pool.map(
                 lambda a, task: a.run.remote(
                     agent_interfaces=self._agent_interfaces,
@@ -143,7 +165,21 @@ class RolloutWorker(BaseRolloutWorker):
                 tasks,
             )
         else:
-            raise NotImplementedError
+            step_func = rollout_func.Stepping(
+                self._kwargs["exp_cfg"], env_desc=self._env_description
+            )
+            rets = [
+                step_func.run(
+                    self._agent_interfaces,
+                    self._metric_type,
+                    fragment_length=fragment_length,
+                    desc=task,
+                    callback=callback,
+                    role=role,
+                    episodes=episodes,
+                )
+                for task in tasks
+            ]
 
         num_frames, stats_list = 0, []
         for ret in rets:

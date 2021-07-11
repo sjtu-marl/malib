@@ -203,8 +203,9 @@ class AgentInterface:
         :param kwargs: dict of args
         :return: A tuple of action, action_dist, extra_info
         """
-
-        policy_id = kwargs.get("policy_id", self._random_select_policy())
+        policy_id = kwargs.get("policy_id", None)
+        if policy_id is None:
+            policy_id = self._random_select_policy()
         kwargs.update({"behavior_mode": self.behavior_mode})
         return self.policies[policy_id].compute_action(*args, **kwargs)
 
