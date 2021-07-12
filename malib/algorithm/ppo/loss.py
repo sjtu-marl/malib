@@ -2,7 +2,7 @@ import torch
 
 from typing import Dict, Tuple, Any
 
-from torch.distributions.categorical import Categorical
+from torch.distributions import Categorical, Normal
 
 from malib.algorithm.common.loss_func import LossFunc
 from malib.backend.datapool.offline_dataset_server import Episode
@@ -15,7 +15,7 @@ def cal_entropy(logits):
     ea0 = torch.exp(a0)
     z0 = torch.sum(ea0, dim=-1, keepdim=True)
     p0 = ea0 / z0
-    return torch.sum(p0 * (torch.log(z0) - a0), dim=-1)
+    return torch.sum(p0 * (torch.log(z0) + a0), dim=-1)
 
 
 class PPOLoss(LossFunc):
@@ -83,17 +83,25 @@ class PPOLoss(LossFunc):
         vf_coef = self._params["value_coef"]
 
         old_probs = self.policy.target_actor(batch[Episode.CUR_OBS].copy())
-        old_neglogpac = -Categorical(probs=old_probs).log_prob(actions)
+        if isinstance(old_probs, tuple):
+            old_neglogpac = -Normal(*old_probs).log_prob(actions)
+        else:
+            old_neglogpac = -Categorical(probs=old_probs).log_prob(actions)
         old_vpred = self.policy.target_value_function(
             batch[Episode.CUR_OBS].copy()
         ).detach()
         # torch.from_numpy(batch[Episode.STATE_VALUE].copy())
 
         probs = self.policy.actor(batch[Episode.CUR_OBS].copy())
-        distri = Categorical(probs=probs)
+        if isinstance(probs, tuple):
+            distri = Normal(*probs)
+        else:
+            distri = Categorical(probs=probs)
         neglogpac = -distri.log_prob(actions)
         ratio = torch.exp(old_neglogpac.detach() - neglogpac)
-        entropy = torch.mean(cal_entropy(distri.logits))
+        # XXX(zbzhu): why using customized cal_entropy()?
+        # entropy = torch.mean(cal_entropy(distri.logits))
+        entropy = distri.entropy().mean()
 
         adv = self.policy.compute_advantage(batch).detach()
         pg_loss = -adv * ratio

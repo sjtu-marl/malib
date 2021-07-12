@@ -68,6 +68,11 @@ class MLP(Model):
         )
         self.net = mlp(layers_config)
 
+        self.output_type = model_config["output"].get("type", None)
+        if self.output_type == "gaussian":
+            assert isinstance(action_space, gym.spaces.Box), action_space
+            self.log_std = nn.Parameter(torch.zeros(self.output_dim, 1))
+
     def _default_layers(self):
         return [
             {"units": 256, "activation": "ReLU"},
@@ -77,7 +82,13 @@ class MLP(Model):
     def forward(self, obs):
         obs = torch.as_tensor(obs, dtype=torch.float32)
         pi = self.net(obs)
-        return pi
+        if self.output_type == "gaussian":
+            shape = [1] * len(pi.shape)
+            shape[1] = -1
+            sigma = (self.log_std.view(shape) + torch.zeros_like(pi)).exp()
+            return (pi, sigma)
+        else:
+            return pi
 
 
 class RNN(Model):

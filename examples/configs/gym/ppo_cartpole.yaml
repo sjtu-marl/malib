@@ -43,6 +43,25 @@ env_description:
 algorithms:
   PPO:
     name: "PPO"
+    model_cofig:
+      actor:
+        network: mlp
+        layers:
+          - units: 64
+            activation: ReLU
+          - units: 64
+            activation: ReLU
+        output:
+          activation: False
+      critic:
+        network: mlp
+        layers:
+          - units: 64
+            activation: ReLU
+          - units: 64
+            activation: ReLU
+        output:
+          activation: False
 
 global_evaluator:
   name: "generic"

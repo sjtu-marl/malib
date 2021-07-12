@@ -1,6 +1,6 @@
 # battle: https://github.com/wsjeon/maddpg-rllib
 group: "Gym"
-name: "share/ppo_cartpole"
+name: "share/ddpg_pendulum"
 
 training:
   interface:

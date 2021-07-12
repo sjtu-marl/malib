@@ -1,6 +1,6 @@
 # battle: https://github.com/wsjeon/maddpg-rllib
-group: "MPE"
-name: "share/ddpg"
+group: "Gym"
+name: "share/ppo_pendulum"
 
 training:
   interface:
@@ -10,13 +10,13 @@ training:
     # control the frequency of remote parameter update
     update_interval: 1
     saving_interval: 10
-    batch_size: 1024
+    batch_size: 256
     optimizer: "Adam"
-    actor_lr: 0.01
-    critic_lr: 0.01
-    lr: 0.01
+    actor_lr: 0.03
+    critic_lr: 0.03
+    lr: 0.03
     tau: 0.01  # soft update
-    grad_norm_clipping: 0.5
+    grad_norm_clipping: 5
 
 rollout:
   type: "async"
@@ -24,28 +24,25 @@ rollout:
   stopper_config:
     max_step: 1000
   metric_type: "simple"
-  fragment_length: 25
-  num_episodes: 250
-  episode_seg: 25
+  fragment_length: 200
+  num_episodes: 2
+  episode_seg: 2
   terminate: "any"
-  # can be sequential or simultaneous
-  callback: "sequential"
+  callback: "simultaneous"
 
 evaluation:
-  fragment_length: 25
-  num_episodes: 100
-  # can be sequential or simultaneous
+  fragment_length: 200
+  num_episodes: 2
   callback: "simultaneous"
 
 env_description:
-  #  scenario_name: "simple_spread"
-  id: "simple_v2"
+  creator: "Gym"
   config:
-    max_cycles: 25
+    env_id: "Pendulum-v0"
 
 algorithms:
-  DDPG:
-    name: "DDPG"
+  PPO:
+    name: "PPO"
     model_config:
       actor:
         network: mlp
@@ -55,7 +52,8 @@ algorithms:
           - units: 64
             activation: ReLU
         output:
-          activation: False
+          type: "gaussian"
+          activation: Tanh
       critic:
         network: mlp
         layers:
@@ -66,14 +64,9 @@ algorithms:
         output:
           activation: False
 
-    # set hyper parameter
-    custom_config:
-      gamma: 0.95
-      use_cuda: False  # enable cuda or not
-
 global_evaluator:
   name: "generic"
 
 dataset_config:
-  episode_capacity: 1000000
-  learning_start: 2560
+  episode_capacity: 5000
+  learning_start: 1000

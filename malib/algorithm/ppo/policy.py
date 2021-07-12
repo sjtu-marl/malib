@@ -6,7 +6,7 @@ from operator import mul
 
 from typing import Dict, Any
 from torch.nn import functional as F
-from torch.distributions import Categorical
+from torch.distributions import Categorical, Normal
 
 from malib.backend.datapool.offline_dataset_server import Episode
 from malib.algorithm.common.model import get_model
@@ -79,23 +79,27 @@ class PPO(Policy):
 
     def compute_action(self, observation, **kwargs):
         logits = self.actor(observation)
-        assert len(logits.shape) > 1, logits.shape
-        if "action_mask" in kwargs:
-            mask = torch.FloatTensor(kwargs["action_mask"]).to(logits.device)
-        else:
-            mask = torch.ones_like(logits, device=logits.device, dtype=logits.dtype)
-        logits = logits * mask
-        assert len(logits.shape) > 1, logits.shape
 
         if self._discrete:
+            assert len(logits.shape) > 1, logits.shape
+            if "action_mask" in kwargs:
+                mask = torch.FloatTensor(kwargs["action_mask"]).to(logits.device)
+            else:
+                mask = torch.ones_like(logits, device=logits.device, dtype=logits.dtype)
+            logits = logits * mask
+            assert len(logits.shape) > 1, logits.shape
             m = Categorical(logits=logits)
             probs = m.probs
             actions = torch.argmax(probs, dim=-1, keepdim=True).detach()
         else:
-            raise NotImplementedError
+            # raise NotImplementedError
+            mu, sigma = logits
+            m = Normal(loc=mu, scale=sigma)
+            probs = torch.cat(logits, dim=-1)
+            actions = m.sample().detach()
 
         extra_info = {}
-        if mask is not None:
+        if self._discrete and mask is not None:
             action_probs = torch.zeros_like(probs, device=probs.device)
             active_indices = mask > 0
             tmp = probs[active_indices].reshape(mask.shape) / torch.sum(
@@ -115,7 +119,10 @@ class PPO(Policy):
 
     def compute_actions(self, observation, **kwargs):
         logits = self.actor(observation)
-        m = Categorical(logits=logits)
+        if self._discrete:
+            m = Categorical(logits=logits)
+        else:
+            m = Normal(*logits)
         actions = m.sample()
         return actions
 
