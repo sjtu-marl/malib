@@ -16,6 +16,7 @@ import copy
 import gym
 
 from malib.utils.typing import (
+    BufferDescription,
     Dict,
     Any,
     Callable,
@@ -80,6 +81,24 @@ class CTDEAgent(AgentInterface):
             algorithm_mapping=algorithm_mapping,
         )
 
+    def gen_buffer_description(
+        self,
+        agent_policy_mapping: Dict[AgentID, PolicyID],
+        batch_size: int,
+        sample_mode: str,
+    ):
+        """Generate a buffer description which description in a batch of agents"""
+        agent_policy_mapping = {
+            aid: pid for aid, (pid, _) in agent_policy_mapping.items()
+        }
+        return BufferDescription(
+            env_id=self._env_desc["config"]["env_id"],
+            agent_id=list(agent_policy_mapping.keys()),
+            policy_id=list(agent_policy_mapping.values()),
+            batch_size=batch_size,
+            sample_mode=sample_mode,
+        )
+
     def optimize(
         self,
         policy_ids: Dict[AgentID, PolicyID],
@@ -104,11 +123,9 @@ class CTDEAgent(AgentInterface):
 
         for env_agent_id, trainer in self._trainers.items():
             trainer.reset(t_policies[env_agent_id], training_config)
-            batch[env_agent_id] = trainer.preprocess(
-                batch[env_agent_id], other_policies=t_policies
-            )
+            agent_batch = trainer.preprocess(batch, other_policies=t_policies)
             res[env_agent_id] = metrics.to_metric_entry(
-                trainer.optimize(batch[env_agent_id].copy()),
+                trainer.optimize(agent_batch.copy()),
                 prefix=policy_ids[env_agent_id],
             )
 

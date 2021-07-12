@@ -127,6 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-.idea
+
+# Workspace
 .vscode
+.idea
 _build
+logs

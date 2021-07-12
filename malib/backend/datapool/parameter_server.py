@@ -251,9 +251,6 @@ class ParameterServer:
         parameter = self._table[table_name].get(parameter_desc)
         status = self._table[table_name].status
         if self._table[table_name].version <= parameter_desc.version:
-            # self.logger.debug(
-            #     f"parameter_desc version: {parameter_desc.version} {self._table[table_name].version}"
-            # )
             parameter_desc.data = None
         else:
             parameter_desc.version = self._table[table_name].version
@@ -267,7 +264,6 @@ class ParameterServer:
         :return TableStatus entity
         """
 
-        # XXX(ming): check threading safe
         table_name = PARAMETER_TABLE_NAME_GEN(
             env_id=parameter_desc.env_id,
             agent_id=parameter_desc.identify,
@@ -284,13 +280,6 @@ class ParameterServer:
                     policy_type=parameter_desc.description["registered_name"],
                     parallel_num=parameter_desc.parallel_num,
                 )
-
-        # lock parameter but not gradients
-        # status = self._table[table_name].status
-        # try to lock parameter
-        # if parameter_desc.type == "parameter":
-        #     if status.locked:
-        #         return TableStatus(Status.TERMINATE, status.gradient_status)
 
         self._table[table_name].insert(parameter_desc)
         status = self._table[table_name].status

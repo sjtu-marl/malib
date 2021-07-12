@@ -19,7 +19,7 @@ setup(
     install_requires=[
         "wrapt",
         "ray==1.3.0",
-        "pettingzoo",
+        "pettingzoo==1.9.0",
         "grpcio-tools",
         "protobuf3-to-dict",
         "pickle5",
@@ -42,11 +42,11 @@ setup(
             "sphinxcontrib-apidoc",
         ],
         "envs": [
-            "vizdoom==1.1.8",
+            # "vizdoom==1.1.8",
             # "git+https://github.com/oxwhirl/smac.git",
-            "supersuit",
-            "multi-agent-ale-py",
-            "autorom"
-        ]
+            "supersuit==2.6.6",
+            "multi-agent-ale-py==0.1.11",
+            "autorom==0.1.20",
+        ],
     },
 )

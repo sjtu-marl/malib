@@ -1,25 +1,43 @@
+"""
+Async optimizer for single-agent RL algorithms running simple scenario from MPE enviroments. In this case, there will be more than one agent training interfaces
+used to do policy learning in async mode. Users can specify the number with `--num_learner`.
+"""
+
 import argparse
 
-from pettingzoo.mpe import simple_v2
-
+from malib.envs import MPE
 from malib.runner import run
 
 
 parser = argparse.ArgumentParser("Async training on mpe environments.")
 
-parser.add_argument("--num_learner", type=int, default=3)
-parser.add_argument("--batch_size", type=int, default=64)
-parser.add_argument("--num_epoch", type=int, default=100)
-parser.add_argument("--algorithm", type=str, default="DQN")
-parser.add_argument("--rollout_metric", type=str, default="simple", choices={"simple"})
+parser.add_argument(
+    "--num_learner",
+    type=int,
+    default=3,
+    help="The number of agent training interfaces. Default by 3.",
+)
+parser.add_argument(
+    "--batch_size", type=int, default=64, help="Trianing batch size. Default by 64."
+)
+parser.add_argument(
+    "--num_epoch", type=int, default=100, help="Training epoch. Default by 100."
+)
+parser.add_argument(
+    "--algorithm",
+    type=str,
+    default="DQN",
+    help="The single-agent RL algortihm registered in MALib. Default by DQN",
+)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
     env_config = {
-        "max_cycles": 25,
+        "scenario_configs": {"max_cycles": 25},
+        "env_id": "simple_v2",
     }
-    env = simple_v2.env(**env_config)
+    env = MPE(**env_config)
     possible_agents = env.possible_agents
     observation_spaces = env.observation_spaces
     action_spaces = env.action_spaces
@@ -27,11 +45,9 @@ if __name__ == "__main__":
     run(
         group="MPE/simple",
         name="async_dqn",
-        worker_config={"worker_num": args.num_learner},
         env_description={
-            "creator": simple_v2.env,
+            "creator": MPE,
             "config": env_config,
-            "id": "simple_v2",
             "possible_agents": possible_agents,
         },
         agent_mapping_func=lambda agent: [
@@ -49,6 +65,7 @@ if __name__ == "__main__":
                 "saving_interval": 10,
                 "batch_size": args.batch_size,
                 "num_epoch": 100,
+                "return_gradients": True,
             },
         },
         algorithms={
@@ -57,11 +74,10 @@ if __name__ == "__main__":
         rollout={
             "type": "async",
             "stopper": "simple_rollout",
-            "metric_type": args.rollout_metric,
-            "fragment_length": env_config["max_cycles"],
+            "metric_type": "simple",
+            "fragment_length": env_config["scenario_configs"]["max_cycles"],
             "num_episodes": 100,  # episode for each evaluation/training epoch
             "terminate": "any",
-            "callback": "sequential",
         },
         global_evaluator={
             "name": "generic",

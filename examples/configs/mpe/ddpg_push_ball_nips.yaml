@@ -1,6 +1,6 @@
 # battle: https://github.com/wsjeon/maddpg-rllib
 group: "MPE"
-name: "share/maddpg_simple_spread"
+name: "share/ddpg"
 
 training:
   interface:
@@ -24,27 +24,26 @@ rollout:
   stopper_config:
     max_step: 1000
   metric_type: "simple"
-  fragment_length: 100
+  fragment_length: 25
   num_episodes: 250
   episode_seg: 25
   terminate: "any"
-  callback: "sequential"
 
 evaluation:
-  fragment_length: 100
+  fragment_length: 25
   num_episodes: 100
-  callback: "sequential"
 
 env_description:
-  #  scenario_name: "simple_spread"
-  id: "simple_spread_v2"
+  creator: "MPE"
   config:
-#    scenario_name: "simple_spread"
-    max_cycles: 25
+    #    scenario_name: "simple_push"
+    env_id: "simple_push_v2"
+    scenario_configs:
+      max_cycles: 25
 
 algorithms:
-  MADDPG:
-    name: "MADDPG"
+  DDPG:
+    name: "DDPG"
     model_config:
       actor:
         network: mlp

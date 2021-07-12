@@ -1,8 +1,12 @@
+"""
+Trainer is a interface for
+"""
+
 from abc import ABCMeta, abstractmethod
+from typing import Any, Dict
 
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.loss_func import LossFunc
-from malib.utils.typing import Any, Dict, AgentID
 
 
 class Trainer(metaclass=ABCMeta):
@@ -19,6 +23,10 @@ class Trainer(metaclass=ABCMeta):
 
     def __call__(self, *args, **kwargs):
         return self.optimize(*args, **kwargs)
+
+    @property
+    def training_config(self):
+        return self._training_config
 
     @abstractmethod
     def optimize(self, batch) -> Dict[str, Any]:
@@ -40,17 +48,10 @@ class Trainer(metaclass=ABCMeta):
         self._training_config.update(training_config)
         if self._loss is not None:
             self._loss.reset(policy, training_config)
-        else:
-            raise ValueError("Loss has not been initialized yet.")
+        # else:
+        #     raise ValueError("Loss has not been initialized yet.")
 
     @abstractmethod
-    def preprocess(
-        self, batch: Dict[AgentID, Any], other_policies: Dict[AgentID, Policy]
-    ) -> Any:
-        """Preprocess agent batches.
-
-        :param batch:
-        :param kwargs:
-        :return:
-        """
+    def preprocess(self, batch, **kwargs) -> Any:
+        """ Preprocess batch if need """
         pass
