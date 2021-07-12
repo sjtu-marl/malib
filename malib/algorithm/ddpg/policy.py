@@ -34,8 +34,6 @@ class DDPG(Policy):
 
         action_dim = get_preprocessor(action_space)(action_space).size
 
-        # now, accept discrete action only
-        assert isinstance(action_space, gym.spaces.Discrete), action_space
         self._discrete_action = isinstance(action_space, gym.spaces.Discrete)
         if not self._discrete_action:
             self._exploration_callback = misc.OUNoise(action_dim)
@@ -75,7 +73,10 @@ class DDPG(Policy):
     def compute_actions(
         self, observation: DataTransferType, **kwargs
     ) -> DataTransferType:
-        pi = misc.gumbel_softmax(self.actor(observation), temperature=1.0, hard=True)
+        if self._discrete_action:
+            pi = misc.gumbel_softmax(self.actor(observation), temperature=1.0, hard=True)
+        else:
+            pi = self.actor(observation).clamp(-1, 1)
         return pi
 
     def compute_action(
@@ -91,14 +92,16 @@ class DDPG(Policy):
                     )[0]
                 else:
                     pi = misc.onehot_from_logits(self.actor([observation]))[0]
+                act = pi.argmax(-1)
             else:
+                pi = self.actor([observation])[0]
                 if behavior == BehaviorMode.EXPLORATION:
                     pi += torch.autograd.Variable(
                         torch.Tensor(self.exploration_callback.noise()),
                         requires_grad=False,
                     )
-                pi = pi.clamp(-1, 1)
-        return pi.argmax(-1).numpy(), pi.numpy(), {Episode.ACTION_DIST: pi.numpy()}
+                act = pi.clamp(-1, 1)
+        return act.numpy(), pi.numpy(), {Episode.ACTION_DIST: pi.numpy()}
 
     def compute_actions_by_target_actor(
         self, observation: DataTransferType, **kwargs
@@ -107,6 +110,8 @@ class DDPG(Policy):
             pi = self.target_actor(observation)
             if self._discrete_action:
                 pi = misc.onehot_from_logits(pi)
+            else:
+                pi = pi.clamp(-1, 1)
         return pi
 
     def update_target(self):
