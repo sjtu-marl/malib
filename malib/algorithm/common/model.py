@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from malib.utils.preprocessor import get_preprocessor
-from malib.utils.typing import Dict, Any, ModelConfig
+from malib.utils.typing import Dict, Any
 
 
 def mlp(layers_config):

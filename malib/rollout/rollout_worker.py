@@ -161,6 +161,7 @@ class RolloutWorker(BaseRolloutWorker):
                     desc=task,
                     callback=callback,
                     role=role,
+                    episodes=episodes,
                 ),
                 tasks,
             )

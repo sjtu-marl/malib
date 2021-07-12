@@ -303,7 +303,7 @@ class BaseRolloutWorker:
                 logger=self.logger,
                 worker_idx=None,
                 global_step=epoch,
-                group="RolloutSummary",
+                group="rollout",
             ) as (
                 statistic_seq,
                 processed_statics,
@@ -408,7 +408,7 @@ class BaseRolloutWorker:
         )
         for statistics, combination in zip(statis_list, combinations):
             with Log.stat_feedback(
-                log=False, logger=self.logger, group="SimulationSummary"
+                log=False, logger=self.logger, group="simulation"
             ) as (
                 statistic_seq,
                 merged_statistics,
