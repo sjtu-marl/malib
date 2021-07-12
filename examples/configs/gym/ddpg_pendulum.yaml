@@ -10,10 +10,10 @@ training:
     # control the frequency of remote parameter update
     update_interval: 1
     saving_interval: 10
-    batch_size: 64
+    batch_size: 32
     optimizer: "Adam"
-    actor_lr: 0.005
-    critic_lr: 0.01
+    actor_lr: 0.01
+    critic_lr: 0.001
     lr: 0.001
     tau: 0.01  # soft update
     grad_norm_clipping: 5
@@ -25,14 +25,14 @@ rollout:
     max_step: 1000
   metric_type: "simple"
   fragment_length: 200
-  num_episodes: 1
-  episode_seg: 1
+  num_episodes: 4
+  episode_seg: 2
   terminate: "any"
   callback: "simultaneous"
 
 evaluation:
   fragment_length: 200
-  num_episodes: 1
+  num_episodes: 2
   callback: "simultaneous"
 
 env_description:
@@ -47,18 +47,18 @@ algorithms:
       actor:
         network: mlp
         layers:
-          - units: 64
+          - units: 32
             activation: ReLU
-          - units: 64
+          - units: 32
             activation: ReLU
         output:
           activation: Tanh
       critic:
         network: mlp
         layers:
-          - units: 64
+          - units: 32
             activation: ReLU
-          - units: 64
+          - units: 32
             activation: ReLU
         output:
           activation: False
@@ -67,5 +67,5 @@ global_evaluator:
   name: "generic"
 
 dataset_config:
-  episode_capacity: 5000
-  learning_start: 500
+  episode_capacity: 2000
+  learning_start: 1000

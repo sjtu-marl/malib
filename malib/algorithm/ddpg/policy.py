@@ -76,7 +76,7 @@ class DDPG(Policy):
         if self._discrete_action:
             pi = misc.gumbel_softmax(self.actor(observation), temperature=1.0, hard=True)
         else:
-            pi = self.actor(observation).clamp(-1, 1)
+            pi = self.actor(observation)
         return pi
 
     def compute_action(
@@ -100,7 +100,7 @@ class DDPG(Policy):
                         torch.Tensor(self.exploration_callback.noise()),
                         requires_grad=False,
                     )
-                act = pi.clamp(-1, 1)
+                act = pi
         return act.numpy(), pi.numpy(), {Episode.ACTION_DIST: pi.numpy()}
 
     def compute_actions_by_target_actor(
@@ -110,8 +110,6 @@ class DDPG(Policy):
             pi = self.target_actor(observation)
             if self._discrete_action:
                 pi = misc.onehot_from_logits(pi)
-            else:
-                pi = pi.clamp(-1, 1)
         return pi
 
     def update_target(self):

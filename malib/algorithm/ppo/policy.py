@@ -93,8 +93,7 @@ class PPO(Policy):
             actions = torch.argmax(probs, dim=-1, keepdim=True).detach()
         else:
             # raise NotImplementedError
-            mu, sigma = logits
-            m = Normal(loc=mu, scale=sigma)
+            m = Normal(*logits)
             probs = torch.cat(logits, dim=-1)
             actions = m.sample().detach()
 
