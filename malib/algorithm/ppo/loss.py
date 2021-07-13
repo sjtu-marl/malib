@@ -15,7 +15,7 @@ def cal_entropy(logits):
     ea0 = torch.exp(a0)
     z0 = torch.sum(ea0, dim=-1, keepdim=True)
     p0 = ea0 / z0
-    return torch.sum(p0 * (torch.log(z0) + a0), dim=-1)
+    return torch.sum(p0 * (torch.log(z0) - a0), dim=-1)
 
 
 class PPOLoss(LossFunc):
@@ -27,7 +27,7 @@ class PPOLoss(LossFunc):
                 "critic_lr": 1e-2,
                 "cliprange": 0.2,
                 "entropy_coef": 1e-3,
-                "value_coef": 1e-2,
+                "value_coef": 1.0,
             }
         )
 
@@ -82,21 +82,21 @@ class PPOLoss(LossFunc):
         ent_coef = self._params["entropy_coef"]
         vf_coef = self._params["value_coef"]
 
-        old_probs = self.policy.target_actor(batch[Episode.CUR_OBS].copy())
-        if isinstance(old_probs, tuple):
-            old_neglogpac = -Normal(*old_probs).log_prob(actions)
+        old_logits = self.policy.target_actor(batch[Episode.CUR_OBS].copy())
+        if isinstance(old_logits, tuple):
+            old_neglogpac = -Normal(*old_logits).log_prob(actions)
         else:
-            old_neglogpac = -Categorical(probs=old_probs).log_prob(actions)
+            old_neglogpac = -Categorical(logits=old_logits).log_prob(actions)
         old_vpred = self.policy.target_value_function(
             batch[Episode.CUR_OBS].copy()
         ).detach()
         # torch.from_numpy(batch[Episode.STATE_VALUE].copy())
 
-        probs = self.policy.actor(batch[Episode.CUR_OBS].copy())
-        if isinstance(probs, tuple):
-            distri = Normal(*probs)
+        logits = self.policy.actor(batch[Episode.CUR_OBS].copy())
+        if isinstance(logits, tuple):
+            distri = Normal(*logits)
         else:
-            distri = Categorical(probs=probs)
+            distri = Categorical(logits=logits)
         neglogpac = -distri.log_prob(actions)
         ratio = torch.exp(old_neglogpac.detach() - neglogpac)
         # XXX(zbzhu): why using customized cal_entropy()?
@@ -111,7 +111,7 @@ class PPOLoss(LossFunc):
         clip_frac = torch.mean(torch.greater(torch.abs(ratio - 1.0), cliprange).float())
 
         vpred = self.policy.value_function(batch[Episode.CUR_OBS].copy())
-        vpred_clipped = old_vpred + torch.clip(vpred - old_vpred, -cliprange, cliprange)
+        # vpred_clipped = old_vpred + torch.clip(vpred - old_vpred, -cliprange, cliprange)
         next_value = self.policy.target_value_function(batch[Episode.NEXT_OBS].copy())
         td_value = (
             rewards
@@ -119,9 +119,10 @@ class PPOLoss(LossFunc):
             * (1.0 - torch.from_numpy(batch[Episode.DONE].copy()).float())
             * next_value
         )
-        vf_loss1 = torch.square(vpred - td_value)
-        vf_loss2 = torch.square(vpred_clipped - td_value)
-        vf_loss = 0.5 * torch.mean(torch.maximum(vf_loss1, vf_loss2))
+        # vf_loss1 = torch.square(vpred - td_value)
+        # vf_loss2 = torch.square(vpred_clipped - td_value)
+        # vf_loss = 0.5 * torch.mean(torch.maximum(vf_loss1, vf_loss2))
+        vf_loss = 0.5 * (vpred - td_value).pow(2).mean()
 
         # total loss
         loss = pg_loss - entropy * ent_coef + vf_loss * vf_coef

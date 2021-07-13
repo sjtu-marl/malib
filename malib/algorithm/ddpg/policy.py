@@ -1,7 +1,3 @@
-"""
-Support discrete action space only
-"""
-
 from typing import Any
 
 import gym

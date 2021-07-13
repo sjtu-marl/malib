@@ -10,10 +10,11 @@ training:
     # control the frequency of remote parameter update
     update_interval: 1
     saving_interval: 10
-    batch_size: 256
+    batch_size: 1024
     optimizer: "Adam"
     actor_lr: 0.03
     critic_lr: 0.03
+    value_coef: 1.0
     tau: 0.01  # soft update
     grad_norm_clipping: 5
 

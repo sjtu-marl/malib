@@ -1,6 +1,6 @@
 # battle: https://github.com/wsjeon/maddpg-rllib
 group: "Gym"
-name: "share/ppo_cartpole"
+name: "share/sac_cartpole"
 
 training:
   interface:
@@ -14,8 +14,9 @@ training:
     optimizer: "Adam"
     actor_lr: 0.01
     critic_lr: 0.01
-    entropy_coef: 0.5
-    grad_norm_clipping: 0.5
+    sac_alpha: 0.2
+    tau: 0.01  # soft update
+    grad_norm_clipping: 2.0
 
 rollout:
   type: "async"
@@ -23,9 +24,9 @@ rollout:
   stopper_config:
     max_step: 1000
   metric_type: "simple"
-  fragment_length: 500
+  fragment_length: 200
   num_episodes: 100
-  episode_seg: 50
+  episode_seg: 25
   terminate: "any"
   callback: "simultaneous"
 
@@ -35,31 +36,27 @@ env_description:
     env_id: "CartPole-v1"
 
 algorithms:
-  PPO:
-    name: "PPO"
-    model_cofig:
+  SAC:
+    name: "SAC"
+    model_config:
       actor:
         network: mlp
         layers:
-          - units: 64
+          - units: 32
             activation: ReLU
-          - units: 64
+          - units: 32
             activation: ReLU
         output:
           activation: False
       critic:
         network: mlp
         layers:
-          - units: 64
+          - units: 32
             activation: ReLU
-          - units: 64
+          - units: 32
             activation: ReLU
         output:
           activation: False
-
-    custom_config:
-      gamma: 0.95
-      use_cuda: False  # enable cuda or not
 
 global_evaluator:
   name: "generic"
