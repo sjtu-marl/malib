@@ -84,10 +84,13 @@ class SACLoss(LossFunc):
             [next_obs, next_actions],
             dim=-1,
         )
-        next_q = torch.min(
-            self.policy.target_critic_1(target_vf_in),
-            self.policy.target_critic_2(target_vf_in),
-        ) - alpha * next_action_log_prob
+        next_q = (
+            torch.min(
+                self.policy.target_critic_1(target_vf_in),
+                self.policy.target_critic_2(target_vf_in),
+            )
+            - alpha * next_action_log_prob
+        )
         target_q = rewards + gamma * next_q.detach() * (1.0 - dones)
         critic_loss_1 = (pred_q_1 - target_q).pow(2).mean()
         critic_loss_2 = (pred_q_2 - target_q).pow(2).mean()
@@ -110,7 +113,9 @@ class SACLoss(LossFunc):
         vf_in = torch.cat([cur_obs, policy_actions], dim=-1)
         current_q_1 = self.policy.critic_1(vf_in)
         current_q_2 = self.policy.critic_2(vf_in)
-        actor_loss = (alpha * policy_action_log_prob - torch.min(current_q_1, current_q_2)).mean()
+        actor_loss = (
+            alpha * policy_action_log_prob - torch.min(current_q_1, current_q_2)
+        ).mean()
         self.optimizers["actor"].zero_grad()
         actor_loss.backward()
         self.optimizers["actor"].step()

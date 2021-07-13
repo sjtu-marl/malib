@@ -13,7 +13,9 @@ class _GymEnv(ParallelEnv):
         self.default_agent_name = "agent_0"
 
         self.possible_agents = [self.default_agent_name]
-        self.observation_spaces = {self.default_agent_name: self.gym_env.observation_space}
+        self.observation_spaces = {
+            self.default_agent_name: self.gym_env.observation_space
+        }
         self.action_spaces = {self.default_agent_name: self.gym_env.action_space}
 
     def seed(self, seed=None):

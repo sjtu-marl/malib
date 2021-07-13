@@ -2,6 +2,7 @@ from malib.algorithm.common.trainer import Trainer
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.loss_func import LossFunc
 
+
 class ImitationTrainer(Trainer):
     def __init__(self, tid):
         super(ImitationTrainer, self).__init__(tid)
@@ -26,11 +27,11 @@ class ImitationTrainer(Trainer):
         return self._reward_loss
 
     def optimize_policy(self, batch):
-        
+
         self.policy_loss.zero_grad()
         policy_loss_stats = self.policy_loss(batch)
         self.policy_loss.step()
-        
+
         return policy_loss_stats
 
     def optimize_reward(self, batch):

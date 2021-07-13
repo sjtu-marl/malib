@@ -15,7 +15,7 @@ class BCTrainer(Trainer):
         self.loss.zero_grad()
         loss_stats = self.loss(batch)
         self.loss.step()
-        
+
         return loss_stats
 
     def preprocess(self, **kwargs) -> Any:

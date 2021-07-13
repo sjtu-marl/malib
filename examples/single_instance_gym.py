@@ -128,7 +128,11 @@ if __name__ == "__main__":
         total_frames = 0
         min_size = 0
         with Log.stat_feedback(
-            log=True, logger=_logger, worker_idx="Rollout", global_step=epoch, group="single_instance"
+            log=True,
+            logger=_logger,
+            worker_idx="Rollout",
+            global_step=epoch,
+            group="single_instance",
         ) as (statistic_seq, processed_statistics):
             while min_size < config["dataset_config"]["learning_start"]:
                 statistics, num_frames = rollout_handler.sample(
@@ -159,7 +163,11 @@ if __name__ == "__main__":
         print("-------------- traininig -------")
         for iid, interface in learners.items():
             with Log.stat_feedback(
-                log=True, logger=_logger, worker_idx=iid, global_step=global_step, group="single_instance"
+                log=True,
+                logger=_logger,
+                worker_idx=iid,
+                global_step=global_step,
+                group="single_instance",
             ) as (statistics_seq, processed_statistics):
                 statistics_seq.append(
                     learners[iid].optimize(

@@ -101,9 +101,7 @@ class BC(Policy):
         return actions
 
     def state_dict(self):
-        return {
-            "policy": self.pi.state_dict()
-        }
+        return {"policy": self.pi.state_dict()}
 
     def set_weights(self, parameters):
         self.pi.load_state_dict(parameters["policy"])

@@ -70,7 +70,9 @@ class DDPG(Policy):
         self, observation: DataTransferType, **kwargs
     ) -> DataTransferType:
         if self._discrete_action:
-            pi = misc.gumbel_softmax(self.actor(observation), temperature=1.0, hard=True)
+            pi = misc.gumbel_softmax(
+                self.actor(observation), temperature=1.0, hard=True
+            )
         else:
             pi = self.actor(observation)
         return pi

@@ -8,16 +8,12 @@ from malib.algorithm.common.loss_func import LossFunc
 from malib.backend.datapool.offline_dataset_server import Episode
 from malib.utils.typing import TrainingMetric
 
+
 class BCLoss(LossFunc):
-    def __init__(self, mode='mle'):
+    def __init__(self, mode="mle"):
         super().__init__()
-        assert mode in ['mle', 'mse']
-        self._params.update(
-            {
-                "actor_lr": 1e-2,
-                "mode": mode
-            }
-        )
+        assert mode in ["mle", "mse"]
+        self._params.update({"actor_lr": 1e-2, "mode": mode})
 
     def setup_optimizers(self, *args, **kwargs):
         if self.optimizers is None:
@@ -61,11 +57,11 @@ class BCLoss(LossFunc):
             mu = probs[0]
         else:
             distri = Categorical(probs=probs)
-        
-        if self._params['mode'] == 'mle':
+
+        if self._params["mode"] == "mle":
             neglogpac = -distri.log_prob(actions)
             loss = neglogpac
-        elif self._params['mode'] == 'mse':
+        elif self._params["mode"] == "mse":
             if self.policy._discrete:
                 loss = torch.nn.CrossEntropyLoss()(prob, actions)
             loss = torch.square(mu - actions)
@@ -73,7 +69,7 @@ class BCLoss(LossFunc):
             raise NotImplementedError
 
         loss_names = [
-            "{}_loss".format(self._params['mode']),
+            "{}_loss".format(self._params["mode"]),
         ]
 
         self.loss.append(loss)

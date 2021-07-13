@@ -15,7 +15,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("General training on single-agent Gym environments.")
+    parser = argparse.ArgumentParser(
+        "General training on single-agent Gym environments."
+    )
     parser.add_argument(
         "--config", type=str, help="YAML configuration path.", required=True
     )
