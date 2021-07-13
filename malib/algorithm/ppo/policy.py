@@ -42,15 +42,7 @@ class PPO(Policy):
         actor = get_model(self.model_config["actor"])(
             observation_space, action_space, custom_config.get("use_cuda", False)
         )
-        self._target_actor = get_model(self.model_config["actor"])(
-            observation_space, action_space, custom_config.get("use_cuda", False)
-        )
         critic = get_model(self.model_config["critic"])(
-            observation_space,
-            gym.spaces.Discrete(1),
-            custom_config.get("use_cuda", False),
-        )
-        self._target_critic = get_model(self.model_config["critic"])(
             observation_space,
             gym.spaces.Discrete(1),
             custom_config.get("use_cuda", False),
@@ -62,20 +54,6 @@ class PPO(Policy):
 
         self.register_state(self._actor, "actor")
         self.register_state(self._critic, "critic")
-        self.register_state(self._target_critic, "target_critic")
-        self.register_state(self._target_actor, "target_actor")
-
-        self.update_target()
-
-        self._action_dist = None
-
-    @property
-    def target_actor(self):
-        return self._target_actor
-
-    @property
-    def target_critic(self):
-        return self._target_critic
 
     def compute_action(self, observation, **kwargs):
         logits = self.actor(observation)
@@ -90,7 +68,7 @@ class PPO(Policy):
             assert len(logits.shape) > 1, logits.shape
             m = Categorical(logits=logits)
             probs = m.probs
-            actions = torch.argmax(probs, dim=-1, keepdim=True).detach()
+            actions = m.sample().unsqueeze(-1).detach()
         else:
             m = Normal(*logits)
             probs = torch.cat(logits, dim=-1)
@@ -126,7 +104,7 @@ class PPO(Policy):
 
     def compute_advantage(self, batch):
         # td_value - value
-        next_value = self.target_critic(batch[Episode.NEXT_OBS].copy())
+        next_value = self.critic(batch[Episode.NEXT_OBS].copy())
         td_value = (
             torch.from_numpy(batch[Episode.REWARD].copy())
             + self.gamma
@@ -140,13 +118,6 @@ class PPO(Policy):
     def value_function(self, states):
         values = self.critic(states)
         return values
-
-    def update_target(self):
-        self._target_critic.load_state_dict(self.critic.state_dict())
-        self._target_actor.load_state_dict(self.actor.state_dict())
-
-    def target_value_function(self, states):
-        return self._target_critic(states)
 
     def export(self, export_format: str):
         raise NotImplementedError

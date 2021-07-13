@@ -8,13 +8,12 @@ training:
     population_size: -1
   config:
     # control the frequency of remote parameter update
-    update_interval: 1
     saving_interval: 10
     batch_size: 1024
     optimizer: "Adam"
-    actor_lr: 0.01
-    critic_lr: 0.01
-    entropy_coef: 0.5
+    lr: 0.01
+    ppo_epoch: 1
+    entropy_coef: 0.02
     grad_norm_clipping: 0.5
 
 rollout:
@@ -23,9 +22,9 @@ rollout:
   stopper_config:
     max_step: 1000
   metric_type: "simple"
-  fragment_length: 500
+  fragment_length: 200
   num_episodes: 100
-  episode_seg: 50
+  episode_seg: 25
   terminate: "any"
   callback: "simultaneous"
 
@@ -41,18 +40,18 @@ algorithms:
       actor:
         network: mlp
         layers:
-          - units: 64
+          - units: 32
             activation: ReLU
-          - units: 64
+          - units: 32
             activation: ReLU
         output:
           activation: False
       critic:
         network: mlp
         layers:
-          - units: 64
+          - units: 32
             activation: ReLU
-          - units: 64
+          - units: 32
             activation: ReLU
         output:
           activation: False
@@ -65,5 +64,5 @@ global_evaluator:
   name: "generic"
 
 dataset_config:
-  episode_capacity: 1000000
+  episode_capacity: 100000
   learning_start: 2000
