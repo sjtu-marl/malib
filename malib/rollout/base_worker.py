@@ -43,6 +43,7 @@ class BaseRolloutWorker:
         worker_index: Any,
         env_desc: Dict[str, Any],
         metric_type: str,
+        test: bool = False,
         remote: bool = False,
         **kwargs,
     ):
@@ -57,6 +58,7 @@ class BaseRolloutWorker:
 
         self._worker_index = worker_index
         self._env_description = env_desc
+        self._test = test
         self.global_step = 0
 
         self._coordinator = None
@@ -94,6 +96,9 @@ class BaseRolloutWorker:
 
     def get_status(self):
         return self._status
+
+    def get_test(self):
+        return self._test
 
     def set_status(self, status):
         if status == self._status:
@@ -150,7 +155,7 @@ class BaseRolloutWorker:
                         settings.PARAMETER_SERVER_ACTOR
                     )
 
-                if self._offline_dataset is None:
+                if self._offline_dataset is None and not self._test:
                     self._offline_dataset = ray.get_actor(
                         settings.OFFLINE_DATASET_ACTOR
                     )
@@ -290,9 +295,12 @@ class BaseRolloutWorker:
     def rollout(self, task_desc: TaskDescription):
         """Collect training data asynchronously and stop it until the evaluation results meet the stopping conditions"""
 
-        stopper = get_stopper(task_desc.content.stopper)(
-            config=task_desc.content.stopper_config, tasks=None
-        )
+        if self._test:
+            stopper = get_stopper("none")
+        else:
+            stopper = get_stopper(task_desc.content.stopper)(
+                config=task_desc.content.stopper_config, tasks=None
+            )
         merged_statics = {}
         epoch = 0
         self.set_state(task_desc)
@@ -303,7 +311,7 @@ class BaseRolloutWorker:
                 logger=self.logger,
                 worker_idx=None,
                 global_step=epoch,
-                group="rollout",
+                group="test" if self._test else "rollout",
             ) as (
                 statistic_seq,
                 processed_statics,
@@ -327,7 +335,7 @@ class BaseRolloutWorker:
                     callback=task_desc.content.callback,
                     num_episodes=task_desc.content.num_episodes,
                     policy_combinations=[trainable_behavior_policies],
-                    explore=True,
+                    explore=False if self._test else True,
                     fragment_length=task_desc.content.fragment_length,
                     role="rollout",
                     policy_distribution=task_desc.content.policy_distribution,

@@ -349,6 +349,26 @@ class CoordinatorServer(BaseCoordinator):
 
         self._rollout_worker_manager.rollout(task_desc=task)
 
+        if rollout_config.get("test_num_episodes", 0) > 0:
+            task = TaskDescription(
+                task_type=TaskType.ROLLOUT,
+                content=RolloutDescription(
+                    agent_involve_info=agent_involve_info,
+                    policy_distribution=policy_distribution,
+                    fragment_length=rollout_config["fragment_length"],
+                    num_episodes=rollout_config["test_num_episodes"],
+                    stopper="none",
+                    stopper_config=rollout_config["stopper_config"],
+                    terminate_mode=rollout_config["terminate"],
+                    mode=rollout_config["mode"],
+                    callback=rollout_config["callback"],
+                    episode_seg=rollout_config["episode_seg"],
+                ),
+                state_id=None,
+            )
+
+            self._rollout_worker_manager.rollout(task_desc=task, test=True)
+
     def is_terminate(self):
         return self._terminate
 

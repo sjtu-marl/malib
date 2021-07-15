@@ -71,11 +71,25 @@ class RolloutWorkerManager:
                 env_desc=self._env_desc,
                 metric_type=self._metric_type,
                 remote=True,
+                test=False,
                 # parallel_num: the size of actor pool for rollout and simulation
                 parallel_num=rollout_config["num_episodes"]
                 // rollout_config["episode_seg"],
                 exp_cfg=exp_cfg,
             )
+            if rollout_config.get("test_num_episodes", 0) > 0:
+                worker_idx = _get_worker_hash_idx(i + worker_num)
+                self._workers[worker_idx] = worker_cls.options(max_concurrency=100).remote(
+                    worker_index=worker_idx,
+                    env_desc=self._env_desc,
+                    metric_type=self._metric_type,
+                    remote=True,
+                    test=True,
+                    # parallel_num: the size of actor pool for rollout and simulation
+                    parallel_num=rollout_config["test_num_episodes"]
+                    // rollout_config["test_episode_seg"],
+                    exp_cfg=exp_cfg,
+                )
 
         self.logger = get_logger(
             log_level=settings.LOG_LEVEL,
@@ -96,7 +110,7 @@ class RolloutWorkerManager:
 
         return task_request
 
-    def get_idle_worker(self) -> Tuple[str, RolloutWorker]:
+    def get_idle_worker(self, test: bool = False) -> Tuple[str, RolloutWorker]:
         """Wait until an idle worker is available.
 
         :return: A tuple of worker index and worker.
@@ -107,7 +121,8 @@ class RolloutWorkerManager:
         while status == Status.FAILED:
             for idx, t in self._workers.items():
                 wstatus = ray.get(t.get_status.remote())
-                if wstatus == Status.IDLE:
+                wtest = ray.get(t.get_test.remote())
+                if wstatus == Status.IDLE and wtest == test:
                     status = ray.get(t.set_status.remote(Status.LOCKED))
                 if status == Status.SUCCESS:
                     worker_idx = idx
@@ -124,7 +139,7 @@ class RolloutWorkerManager:
         worker_idx, worker = self.get_idle_worker()
         worker.simulation.remote(task_desc)
 
-    def rollout(self, task_desc: TaskDescription) -> None:
+    def rollout(self, task_desc: TaskDescription, test: bool = False) -> None:
         """Parse rollout task and dispatch it to available worker.
 
         :param TaskDescription task_desc: A task description.
@@ -132,7 +147,7 @@ class RolloutWorkerManager:
         """
 
         # split into several sub tasks rollout
-        worker_idx, worker = self.get_idle_worker()
+        worker_idx, worker = self.get_idle_worker(test=test)
         worker.rollout.remote(task_desc)
 
     def terminate(self):
