@@ -38,6 +38,10 @@ class DiscreteSACLoss(LossFunc):
                     self.policy.critic_2.parameters(), lr=self._params["critic_lr"]
                 ),
             }
+            if self.policy.use_auto_alpha:
+                self.optimizers["alpha"] = optim_cls(
+                    [self.policy._log_alpha], lr=self._params["alpha_lr"]
+                )
         else:
             self.optimizers["actor"].param_groups = []
             self.optimizers["actor"].add_param_group(
@@ -51,6 +55,11 @@ class DiscreteSACLoss(LossFunc):
             self.optimizers["critic_2"].add_param_group(
                 {"params": self.policy.critic_2.parameters()}
             )
+            if self.policy.use_auto_alpha:
+                self.optimizers["alpha"].param_groups = []
+                self.optimizers["alpha"].add_param_group(
+                    {"params": [self.policy._log_alpha]}
+                )
 
     def __call__(self, batch) -> Dict[str, Any]:
         self.loss = []
@@ -65,8 +74,8 @@ class DiscreteSACLoss(LossFunc):
             if self.policy.custom_config["use_cuda"]
             else torch.LongTensor
         )
-        cast_to_tensor = lambda x : FloatTensor(x.copy())
-        cast_to_long_tensor = lambda x : LongTensor(x.copy())
+        cast_to_tensor = lambda x: FloatTensor(x.copy())
+        cast_to_long_tensor = lambda x: LongTensor(x.copy())
 
         # total loss = policy_gradient_loss - entropy * entropy_coefficient + value_coefficient * value_loss
         rewards = cast_to_tensor(batch[Episode.REWARD])
@@ -75,7 +84,7 @@ class DiscreteSACLoss(LossFunc):
         next_obs = cast_to_tensor(batch[Episode.NEXT_OBS])
         dones = cast_to_tensor(batch[Episode.DONE])
         cliprange = self._params["grad_norm_clipping"]
-        alpha = self._params["sac_alpha"]
+        alpha = self.policy._alpha
         gamma = self.policy.custom_config["gamma"]
 
         # critic update
@@ -105,28 +114,44 @@ class DiscreteSACLoss(LossFunc):
         # actor update
         policy_action_logits = self.policy.actor(cur_obs)
         policy_action_dist = Categorical(logits=policy_action_logits)
+        policy_entropy = policy_action_dist.entropy()
         with torch.no_grad():
             current_q_1 = self.policy.critic_1(cur_obs)
             current_q_2 = self.policy.critic_2(cur_obs)
             current_q = torch.min(current_q_1, current_q_2)
         actor_loss = -(
-            alpha * policy_action_dist.entropy()
-            + (policy_action_dist.probs * current_q).sum(dim=-1)
+            alpha * policy_entropy + (policy_action_dist.probs * current_q).sum(dim=-1)
         ).mean()
         self.optimizers["actor"].zero_grad()
         actor_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.policy.actor.parameters(), cliprange)
         self.optimizers["actor"].step()
+
+        if self.policy.use_auto_alpha:
+            log_prob = -policy_entropy.detach() + self.policy._target_entropy
+            alpha_loss = -(self.policy._log_alpha * log_prob).mean()
+            self.optimizers["alpha"].zero_grad()
+            alpha_loss.backward()
+            torch.nn.utils.clip_grad_norm_([self.policy._log_alpha], cliprange)
+            self.optimizers["alpha"].step()
+            self.policy._alpha = self.policy._log_alpha.detach().exp()
 
         loss_names = [
             "policy_loss",
             "value_loss_1",
             "value_loss_2",
+            "alpha_loss",
+            "alpha",
         ]
 
         stats_list = [
             actor_loss.detach().numpy(),
             critic_loss_1.detach().numpy(),
             critic_loss_2.detach().numpy(),
+            alpha_loss.detach().numpy() if self.policy.use_auto_alpha else 0.0,
+            self.policy._alpha.numpy()
+            if self.policy.use_auto_alpha
+            else self.policy._alpha,
         ]
 
         return dict(zip(loss_names, stats_list))

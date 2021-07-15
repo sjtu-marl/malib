@@ -14,8 +14,8 @@ training:
     optimizer: "Adam"
     actor_lr: 0.01
     critic_lr: 0.01
-    sac_alpha: 0.2
-    tau: 0.01  # soft update
+    alpha_lr: 0.01
+    tau: 0.005  # soft update
     grad_norm_clipping: 2.0
 
 rollout:
@@ -57,6 +57,10 @@ algorithms:
             activation: ReLU
         output:
           activation: False
+
+    custom_config:
+      # use_auto_alpha: True
+      alpha: 0.05
 
 global_evaluator:
   name: "generic"

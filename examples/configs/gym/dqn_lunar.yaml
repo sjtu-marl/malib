@@ -1,6 +1,6 @@
 # battle: https://github.com/wsjeon/maddpg-rllib
 group: "Gym"
-name: "share/dqn_cartpole"
+name: "share/dqn_lunar"
 
 training:
   interface:
@@ -10,9 +10,9 @@ training:
     # control the frequency of remote parameter update
     update_interval: 1
     saving_interval: 10
-    batch_size: 512
+    batch_size: 1024
     optimizer: "Adam"
-    lr: 0.005
+    lr: 0.001
     tau: 0.01  # soft update
     grad_norm_clipping: 2.0
 
@@ -22,8 +22,8 @@ rollout:
   stopper_config:
     max_step: 1000
   metric_type: "simple"
-  fragment_length: 200
-  num_episodes: 500
+  fragment_length: 1000
+  num_episodes: 200
   episode_seg: 50
   terminate: "any"
   callback: "simultaneous"
@@ -31,7 +31,7 @@ rollout:
 env_description:
   creator: "Gym"
   config:
-    env_id: "CartPole-v1"
+    env_id: "LunarLander-v2"
 
 algorithms:
   DQN:
@@ -52,4 +52,4 @@ global_evaluator:
 
 dataset_config:
   episode_capacity: 1000000
-  learning_start: 500
+  learning_start: 1000

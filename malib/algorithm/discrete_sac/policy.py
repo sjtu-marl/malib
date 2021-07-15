@@ -2,6 +2,8 @@ from typing import Any
 
 import gym
 import torch
+import numpy as np
+
 from torch.distributions import Categorical, Normal
 
 from malib.algorithm.common.policy import Policy
@@ -28,6 +30,15 @@ class DiscreteSAC(Policy):
         )
 
         assert isinstance(action_space, gym.spaces.Discrete), action_space
+
+        if self.custom_config.get("use_auto_alpha", False):
+            self.use_auto_alpha = True
+            self._target_entropy = 0.98 * np.log(np.prod(action_space.n))
+            self._log_alpha = torch.zeros(1, requires_grad=True)
+            self._alpha = self._log_alpha.detach().exp()
+        else:
+            self.use_auto_alpha = False
+            self._alpha = self.custom_config.get("alpha", 0.05)
 
         self.set_actor(
             get_model(self.model_config.get("actor"))(

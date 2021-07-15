@@ -91,6 +91,8 @@ DEFAULT_CONFIG = {
         # rollout in parallel.
         "num_episodes": 1000,  #
         "episode_seg": 100,
+        "test_num_episodes": 10,
+        "test_episode_seg": 10,
         # terminate condition for environment stepping, any means once an agent dead, then terminate all agents
         # all means terminate environment until all agents dead.
         "terminate": "any",
