@@ -70,8 +70,8 @@ class RolloutWorkerManager:
                 worker_index=worker_idx,
                 env_desc=self._env_desc,
                 metric_type=self._metric_type,
-                remote=True,
                 test=False,
+                remote=True,
                 # parallel_num: the size of actor pool for rollout and simulation
                 parallel_num=rollout_config["num_episodes"]
                 // rollout_config["episode_seg"],
@@ -83,8 +83,8 @@ class RolloutWorkerManager:
                     worker_index=worker_idx,
                     env_desc=self._env_desc,
                     metric_type=self._metric_type,
-                    remote=True,
                     test=True,
+                    remote=True,
                     # parallel_num: the size of actor pool for rollout and simulation
                     parallel_num=rollout_config["test_num_episodes"]
                     // rollout_config["test_episode_seg"],
@@ -99,7 +99,7 @@ class RolloutWorkerManager:
             mongo=settings.USE_MONGO_LOGGER,
             **exp_cfg,
         )
-        print(f"Created {worker_num} rollout worker(s) ...")
+        print(f"Created {len(self._workers)} rollout worker(s) ...")
 
     def retrieve_information(self, task_request: TaskRequest) -> TaskRequest:
         """Retrieve information from other agent interface. Default do nothing and return the original task request.

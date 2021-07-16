@@ -295,12 +295,9 @@ class BaseRolloutWorker:
     def rollout(self, task_desc: TaskDescription):
         """Collect training data asynchronously and stop it until the evaluation results meet the stopping conditions"""
 
-        if self._test:
-            stopper = get_stopper("none")
-        else:
-            stopper = get_stopper(task_desc.content.stopper)(
-                config=task_desc.content.stopper_config, tasks=None
-            )
+        stopper = get_stopper(task_desc.content.stopper)(
+            config=task_desc.content.stopper_config, tasks=None
+        )
         merged_statics = {}
         epoch = 0
         self.set_state(task_desc)
@@ -311,7 +308,7 @@ class BaseRolloutWorker:
                 logger=self.logger,
                 worker_idx=None,
                 global_step=epoch,
-                group="test" if self._test else "rollout",
+                group="testing" if self._test else "rollout",
             ) as (
                 statistic_seq,
                 processed_statics,

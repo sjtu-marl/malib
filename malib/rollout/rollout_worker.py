@@ -35,6 +35,7 @@ class RolloutWorker(BaseRolloutWorker):
         worker_index: Any,
         env_desc: Dict[str, Any],
         metric_type: str,
+        test: bool = False,
         remote: bool = False,
         **kwargs,
     ):
@@ -48,7 +49,7 @@ class RolloutWorker(BaseRolloutWorker):
         """
 
         BaseRolloutWorker.__init__(
-            self, worker_index, env_desc, metric_type, remote, **kwargs
+            self, worker_index, env_desc, metric_type, test, remote, **kwargs
         )
 
         self._parallel_num = kwargs.get("parallel_num", 1)

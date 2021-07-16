@@ -10,10 +10,10 @@ training:
     # control the frequency of remote parameter update
     update_interval: 1
     saving_interval: 10
-    batch_size: 512
+    batch_size: 20
     optimizer: "Adam"
-    lr: 0.005
-    tau: 0.01  # soft update
+    lr: 0.05
+    tau: 0.001  # soft update
     grad_norm_clipping: 2.0
 
 rollout:
@@ -23,8 +23,10 @@ rollout:
     max_step: 1000
   metric_type: "simple"
   fragment_length: 200
-  num_episodes: 500
-  episode_seg: 50
+  num_episodes: 10
+  episode_seg: 5
+  test_num_episodes: 0
+  test_episode_seg: 5
   terminate: "any"
   callback: "simultaneous"
 
@@ -51,5 +53,5 @@ global_evaluator:
   name: "generic"
 
 dataset_config:
-  episode_capacity: 1000000
+  episode_capacity: 100000
   learning_start: 500
