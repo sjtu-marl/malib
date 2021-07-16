@@ -194,6 +194,7 @@ class CoordinatorServer(BaseCoordinator):
                 f"\n{pp(self._pending_trainable_pairs)}"
             )
             # gen new population mapping
+            last_equilibrium = self._payoff_manager.compute_equilibrium(population_mapping)
             new_population_mapping = copy.copy(population_mapping)
             # check not trainable
             for agent, ele in new_population_mapping.items():
@@ -218,27 +219,29 @@ class CoordinatorServer(BaseCoordinator):
                     equilibrium=equilibrium
                 )
                 # weighted payoffs: payoff aggregation with the learned best response and fixed opponent policies
+                brs = {
+                    aid: pid
+                    for aid, (pid, _) in self._pending_trainable_pairs.items()
+                }
                 weighted_payoffs: Dict[AgentID, float] = self._payoff_manager.aggregate(
                     equilibrium=equilibrium,
-                    brs={
-                        aid: pid
-                        for aid, (pid, _) in self._pending_trainable_pairs.items()
-                    },
+                    brs=brs,
                 )
-                if self._configs["global_evaluator"]["name"] == "psro":
+
+                # if self._configs["global_evaluator"]["name"] == "psro":
                     # compute exploitability
-                    exp = self._training_manager.get_exp(
-                        self._configs["env_description"], equilibrium
-                    )
-                    print("######### payoff:")
-                    print(list(self._payoff_manager.payoffs.values())[0].table)
-                    print("######### equilibriumn:", equilibrium)
-                    print("######### exploitability:", exp)
-                    self._logger.send_scalar(
-                        tag="metric/exp",
-                        content=exp,
-                        global_step=len(equilibrium["player_0"]),
-                    )
+                exp = self._training_manager.get_exp(
+                    self._configs["env_description"], brs, last_equilibrium
+                )
+                print("######### payoff:")
+                print(list(self._payoff_manager.payoffs.values())[0].table)
+                print("######### equilibriumn:", equilibrium)
+                print("######### exploitability:", exp)
+                self._logger.send_scalar(
+                    tag="metric/exp",
+                    content=exp,
+                    global_step=len(equilibrium["player_0"]),
+                )
             else:
                 weighted_payoffs = None
                 oracle_payoffs = None

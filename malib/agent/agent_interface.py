@@ -631,9 +631,9 @@ class AgentInterface(metaclass=ABCMeta):
                 f"Unexpected algorithm mapping function: {self._algorithm_mapping_func}"
             )
 
-    def policy_pool_mixture(
+    def get_policy_pool_mixture(
         self, weights: Dict[PolicyID, float], agent_id: AgentID, tabular: bool = False
-    ):
+    ) -> Dict[AgentID, Policy]:
         assert list(weights.keys()) == list(self.policies.keys())
         assert np.isclose(1.0, sum(weights.values()))
 
@@ -667,15 +667,20 @@ class AgentInterface(metaclass=ABCMeta):
                     tmp.append(action_probs * weight)
                 return _, np.sum(tmp, axis=0), _
 
-        policy = mixed_policy(
-            self._observation_spaces[agent_id],
-            self._action_spaces[agent_id],
-            self.policies,
-            weights,
-        )
+        policies = {
+            aid: mixed_policy(
+                self._observation_spaces[agent_id],
+                self._action_spaces[agent_id],
+                self.policies,
+                weights
+            ) for aid in self.agent_group
+        }
         if tabular:
-            policy = policy.to_tabular()
-        return policy
+            policies = {aid: policy.to_tabular() for aid, policy in policies.items()}
+        return policies
+
+    def get_policies_with_mapping(self, policy_mapping: Dict[AgentID, PolicyID]) -> Dict[AgentID, Policy]:
+        return {aid: self._policies[pid] for aid, pid in policy_mapping.items()}
 
     @abstractmethod
     def optimize(

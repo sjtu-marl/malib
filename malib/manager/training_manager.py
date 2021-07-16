@@ -2,6 +2,7 @@
 Implementation of training manager, which is responsible for a group of training agent interfaces.
 """
 
+from malib.algorithm.common.policy import Policy
 import os
 from typing import Dict, Any, Callable, Sequence
 
@@ -257,6 +258,7 @@ class TrainingManager:
     def get_exp(
         self,
         env_desc: Dict[str, Any],
+        brs: Dict[AgentID, PolicyID],
         policy_distribution: Dict[AgentID, Dict[PolicyID, float]],
     ):
         """Compute exploitability"""
@@ -266,7 +268,8 @@ class TrainingManager:
         #     populations[aid] = ray.get(agent.get_policies.remote())
         nashconv = measure_exploitabilty_v2(
             env_desc=env_desc,
-            populations=self._agents,
+            agent_interfaces=self._agents,
+            brs=brs,
             policy_mixture_dict=policy_distribution,
         )
 
