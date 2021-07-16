@@ -11,12 +11,13 @@ import ray
 from malib import settings
 from malib.agent import get_training_agent
 from malib.agent.agent_interface import AgentFeedback, AgentTaggedFeedback
-from malib.gt.algos.exploitability import measure_exploitability
+from malib.gt.algos.exploitability import measure_exploitabilty_v2
 from malib.utils.logger import get_logger, Log
 from malib.utils.typing import (
     List,
     TaskType,
     PolicyID,
+    AgentID,
     TaskRequest,
     TrainingFeedback,
     TaskDescription,
@@ -253,17 +254,20 @@ class TrainingManager:
             agent.exit_actor()
         del self._agents
 
-    def get_exp(self, policy_distribution):
+    def get_exp(
+        self,
+        env_desc: Dict[str, Any],
+        policy_distribution: Dict[AgentID, Dict[PolicyID, float]],
+    ):
         """Compute exploitability"""
 
-        # XXX(ming): may we migrate this function to (PSRO) evaluator
-        populations = {}
-        for aid, agent in self._agents.items():
-            populations[aid] = ray.get(agent.get_policies.remote())
-        nashconv, _ = measure_exploitability(
-            "leduc_poker",
-            populations=populations,
+        # XXX(ming): partially population retrieving should be supported.
+        # for aid, agent in self._agents.items():
+        #     populations[aid] = ray.get(agent.get_policies.remote())
+        nashconv = measure_exploitabilty_v2(
+            env_desc=env_desc,
+            populations=self._agents,
             policy_mixture_dict=policy_distribution,
         )
 
-        return nashconv
+        return nashconv.nash_conv

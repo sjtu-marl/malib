@@ -206,7 +206,6 @@ class CoordinatorServer(BaseCoordinator):
                     self._pending_trainable_pairs[agent][0]
                 )
             state_id = ray.put(new_population_mapping)
-            # TODO(ming): require a better implementation, or move this branch to payoff_manager
             if len(new_population_mapping) > 1:
                 equilibrium = self._payoff_manager.compute_equilibrium(
                     new_population_mapping
@@ -226,9 +225,11 @@ class CoordinatorServer(BaseCoordinator):
                         for aid, (pid, _) in self._pending_trainable_pairs.items()
                     },
                 )
-                # XXX(ming): PSRO is a special case, require improvement
                 if self._configs["global_evaluator"]["name"] == "psro":
-                    exp = self._training_manager.get_exp(equilibrium)
+                    # compute exploitability
+                    exp = self._training_manager.get_exp(
+                        self._configs["env_description"], equilibrium
+                    )
                     print("######### payoff:")
                     print(list(self._payoff_manager.payoffs.values())[0].table)
                     print("######### equilibriumn:", equilibrium)

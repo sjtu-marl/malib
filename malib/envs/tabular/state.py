@@ -6,7 +6,15 @@ _DEFAULT_REWARD_FUNC = lambda state, action, next_state: 0.0
 
 
 class State:
-    def __init__(self, actions: Sequence, reward_func: callable = None):
+    def __init__(
+        self,
+        player_id: AgentID,
+        information_state_tensor: Any,
+        actions: Sequence,
+        mask: Sequence,
+        game_over: bool,
+        reward_func: callable = None,
+    ):
         """Create a state instance with given actions and reward function.
 
         :param Sequence actions: A sequence of actions
@@ -15,11 +23,14 @@ class State:
 
         # XXX(ming): we consider the deterministic state transition,
         #  but the next state could be a sequence of states too.
+        self._information_state_tensor = information_state_tensor
         self._action_to_next_state: Dict[tabularType.Action, "State"] = dict()
+        self._palyer_id = player_id
         self._actions = tuple(actions)
+        self._mask = mask
         self._reward_func = reward_func or _DEFAULT_REWARD_FUNC
         self._value = 0.0
-        self._game_over = False
+        self._game_over = game_over
         self._discounted = 1.0
 
     def reward(self, action: "Action") -> float:
@@ -30,11 +41,11 @@ class State:
 
     def legal_actions_mask(self) -> Tuple:
         """Return a tuple of legal action index with mask."""
-
+        # _apply_mask_to_action_space(self._actions, self._mask)
         raise NotImplementedError
 
     def information_state_tensor(self) -> Any:
-        raise NotImplementedError
+        return self._information_state_tensor
 
     @property
     def value(self) -> float:
@@ -81,7 +92,14 @@ class State:
     def current_player(self) -> AgentID:
         """Returns id of the next player to move."""
 
-        raise NotImplementedError
+        return self._player
+
+    def add_transition(self, action, state):
+        assert action in self.legal_actions_mask, (action, self.legal_actions_mask)
+        assert (
+            self._action_to_next_state.get(action) is None
+        ), self._action_to_next_state[action]
+        self._action_to_next_state[action] = state
 
     def next(self, action: tabularType.Action) -> "State":
         """Move step and return the next state."""

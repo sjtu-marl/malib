@@ -2,6 +2,7 @@
 
 import copy
 import itertools
+import logging
 from typing import List, Union, Sequence, Dict, Tuple, Any
 
 import nashpy as nash
@@ -18,7 +19,11 @@ from malib.utils.typing import (
     PolicyConfig,
     MetricType,
 )
-from open_spiel.python.egt import alpharank, utils as alpharank_utils
+
+try:
+    from open_spiel.python.egt import alpharank, utils as alpharank_utils
+except Exception as e:
+    logging.warning("open spiel is required if alpharank is used to do evlauation.")
 
 
 class DefaultSolver:
@@ -118,7 +123,7 @@ class DefaultSolver:
 class PayoffManager:
     def __init__(
         self,
-        agent_names: Sequence,
+        agent_names: Sequence[AgentID],
         exp_cfg: Dict[str, Any],
         solve_method="fictitious_play",
     ):
@@ -349,7 +354,8 @@ class PayoffManager:
         population_mapping: Dict[PolicyID, Sequence[PolicyID]],
         eqbm: Dict[PolicyID, Dict[PolicyID, float]],
     ):
-        """Update the equilibrium of certain population mapping in the payoff table
+        """Update the equilibrium of certain population mapping in the payoff table.
+
         :param Dict[PolicyID,Sequence[PolicyID]] population_mapping: a dict from agent_name to a sequence of policy ids
         :param Dict[PolicyID,Dict[PolicyID,float]] eqbm: the nash equilibrium which is a dict from agent_name to a dict from policy id to float
         """
