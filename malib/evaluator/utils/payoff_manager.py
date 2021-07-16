@@ -20,11 +20,6 @@ from malib.utils.typing import (
     MetricType,
 )
 
-try:
-    from open_spiel.python.egt import alpharank, utils as alpharank_utils
-except Exception as e:
-    logging.warning("open spiel is required if alpharank is used to do evlauation.")
-
 
 class DefaultSolver:
     """A Solver to find certain solution concept, e.g. nash equilibrium."""
@@ -35,6 +30,17 @@ class DefaultSolver:
         :param solve_method: a string to tell which solve method should be used, "fictious_play" or "alpharank",default="fictitous_play".
         """
         self._solve_method = solve_method
+        self._alpharank = None
+        self._alpharank_utils = None
+
+        if solve_method == "alpharank":
+            from open_spiel.python.egt import alpharank, utils as alpharank_utils
+
+            self._alpharank = alpharank
+            self._alpharank_utils = alpharank_utils
+            self._solver = self.alpharank
+        else:
+            self._solver = self.fictitious_play
 
     def fictitious_play(self, payoffs_seq):
         """solve the game with fictitious play, only suppoort 2-player games
@@ -91,33 +97,30 @@ class DefaultSolver:
                 return pi
             else:
                 num_strats_per_population = (
-                    alpharank_utils.get_num_strats_per_population(
+                    self._alpharank_utils.get_num_strats_per_population(
                         payoff_tables, payoffs_are_hpt_format=False
                     )
                 )
-                num_profiles = alpharank_utils.get_num_profiles(
+                num_profiles = self._alpharank_utils.get_num_profiles(
                     num_strats_per_population
                 )
                 pi_marginals = [np.zeros(n) for n in num_strats_per_population]
                 for i_strat in range(num_profiles):
-                    strat_profile = alpharank_utils.get_strat_profile_from_id(
+                    strat_profile = self._alpharank_utils.get_strat_profile_from_id(
                         num_strats_per_population, i_strat
                     )
                     for i_player in range(num_populations):
                         pi_marginals[i_player][strat_profile[i_player]] += pi[i_strat]
                 return pi_marginals
 
-        joint_distr = alpharank.sweep_pi_vs_epsilon(payoffs_seq)
+        joint_distr = self._alpharank.sweep_pi_vs_epsilon(payoffs_seq)
         joint_distr = remove_epsilon_negative_probs(joint_distr)
         marginals = get_alpharank_marginals(payoffs_seq, joint_distr)
 
         return marginals
 
     def solve(self, payoffs_seq):
-        if len(payoffs_seq) <= 2:  # or self._solve_method == "fictitious_play":
-            return self.fictitious_play(payoffs_seq)
-        elif len(payoffs_seq) > 2:  # or self._solve_method == "alpharank":
-            return self.alpharank(payoffs_seq)
+        return self._solver(payoffs_seq)
 
 
 class PayoffManager:
@@ -180,10 +183,6 @@ class PayoffManager:
         :param Dict population_mapping: a dict of (agent_name, policy
         """
 
-        # XXX(ming): another more efficient method is to check simulation done with
-        #  sub-matrix extraction
-        #  >>> policy_comb_idx = self._get_combination_index(policy_mapping)
-        #  >>> all_done = np.alltrue(simulation[policy_comb_idx])
         all_done = True
         for agent in population_mapping.keys():
             all_done = self._payoff_tables[agent].is_simulation_done(population_mapping)
@@ -429,12 +428,7 @@ class PayoffManager:
             policy_comb = [
                 population_mapping_list[i][ic] for i, ic in enumerate(idx_comb)
             ]
-            # print("\tPOLICY COMBINATION:", policy_comb)
             policy_comb_idx = self._get_combination_index(policy_comb)
-            # if self._done_table[policy_comb_idx] == 0:
-            #     all_done = False
-            #     break
-            # else:
             for an in self.agents:
                 ans_dict[an][idx_comb] = self.payoffs[an][policy_comb_idx]
 
@@ -447,7 +441,6 @@ class PayoffManager:
     @deprecated
     def _get_combination_index(self, policy_combination):
         assert self.num_player == len(policy_combination)
-        # print("PRINT POLICY COMBINATION", policy_combination)
         return tuple(
             self._policy_idx[an][policy_combination[i]]
             for i, an in enumerate(self.agents)
