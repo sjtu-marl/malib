@@ -74,7 +74,7 @@ class GameSpec:
 
 #         raise NotImplementedError
 
-Tracer = collections.namedtuple("Tracer", "player, policy")
+Tracer = collections.namedtuple("Tracer", "ego_player, policies")
 
 
 def _memory_cache(key_fn=lambda *arg: "_".join(arg)):
@@ -165,7 +165,7 @@ class Game:
         """Iterate state nodes and return a sequence of (state, prob) pairs."""
 
         if not state.is_terminal():
-            if state.current_player() == self._tracer.player:
+            if state.current_player() == self._tracer.ego_player:
                 yield (state, 1.0)
             if not state.iterated_done:
                 pickle_env = pickle.dumps(self._env)
@@ -196,13 +196,13 @@ class Game:
         Reference: https://github.com/deepmind/open_spiel/blob/master/open_spiel/python/algorithms/best_response.py
         """
 
-        if state.current_player() == self._tracer.player:
+        if state.current_player() == self._tracer.ego_player:
             return [(action, 1.0) for action in state.legal_actions_mask]
         elif state.is_chance_node():
             return state.chance_outcomes()
         else:
             return list(
-                self._tracer.policy[state.current_player()]
+                self._tracer.policies[state.current_player()]
                 .action_probability(state)
                 .items()
             )
