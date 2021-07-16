@@ -1,9 +1,10 @@
+import collections
 from dataclasses import dataclass
 from typing import Sequence
 
 import gym
 
-from malib.utils.typing import GameType, AgentID, Dict
+from malib.utils.typing import GameType, AgentID, Dict, Tuple
 from malib.envs.tabular.state import State as GameState
 
 
@@ -70,6 +71,26 @@ class GameSpec:
 
 #         raise NotImplementedError
 
+Tracer = collections.namedtuple("Tracer", "player, policy")
+
+
+def _memory_cache(key_fn=lambda *arg: "_".join(arg)):
+    """Memoize a single-arg instance method using an on-object cache."""
+
+    def memoizer(method):
+        cache_name = "cache_" + method.__name__
+
+        def wrap(self, *arg):
+            key = key_fn(*arg)
+            cache = vars(self).setdefault(cache_name, {})
+            if key not in cache:
+                cache[key] = method(self, *arg)
+            return cache[key]
+
+        return wrap
+
+    return memoizer
+
 
 class Game:
     def __init__(
@@ -95,7 +116,6 @@ class Game:
         )
         # NOTE(ming): this operator is only for sequential games.
         self._env = env.env
-        self._states = None
 
     def initial_state(self) -> GameState:
         """Return initialized state.
@@ -115,9 +135,6 @@ class Game:
             observation.get("action_mask"),
             done,
         )
-        self._states[player] = []
-        self._states[player].append(state)
-
         return state
 
     @property
@@ -129,3 +146,55 @@ class Game:
         """States is a dict-like mapping from player to states (has `filter` interface)"""
 
         return self._states
+
+    def info_sets(
+        self, player_id: AgentID, policies: Dict[AgentID, "TabularPolicy"]
+    ) -> Dict[str, Tuple[GameState, float]]:
+        infosets = collections.defaultdict(list)
+        state = self.initial_state()
+        self._tracer = Tracer(player_id, policies)
+        for s, p in self.iterate_nodes(state):
+            infosets[s.information_state_string(player_id)].append((s, p))
+        return dict(infosets)
+
+    @_memory_cache()
+    def iterate_nodes(self, state: GameState):
+        """Iterate state nodes and return a sequence of (state, prob) pairs."""
+
+        if not state.is_terminal():
+            if state.current_player() == self._tracer.player:
+                yield (state, 1.0)
+            for action, p_action in self.transition(state):
+                if not state.iterated:
+                    # cache environment then rollout
+                    self._env.step(action)
+                    player = next(self._env.agent_iter())
+                    observation, reward, done, info = self._env.last()
+                    next_state = GameState(
+                        player,
+                        observation,
+                        self._game_spec.action_spaces[player],
+                        observation.get("action_mask"),
+                        done,
+                    )
+                    state.add_transition(action, next_state, reward)
+                for next_state, p_state in self.iterate_nodes(state.next(action)):
+                    yield (next_state, p_state * p_action)
+
+    @_memory_cache()
+    def transition(self, state: GameState):
+        """Return a list of (action, prob) pairs from a given parent state.
+
+        Reference: https://github.com/deepmind/open_spiel/blob/master/open_spiel/python/algorithms/best_response.py
+        """
+
+        if state.current_player() == self._tracer.player:
+            return [(action, 1.0) for action in state.legal_actions_mask()]
+        elif state.is_chance_node():
+            return state.chance_outcomes()
+        else:
+            return list(
+                self._tracer.policy[state.current_player()]
+                .action_probability(state)
+                .items()
+            )

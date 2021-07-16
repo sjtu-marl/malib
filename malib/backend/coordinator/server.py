@@ -194,7 +194,9 @@ class CoordinatorServer(BaseCoordinator):
                 f"\n{pp(self._pending_trainable_pairs)}"
             )
             # gen new population mapping
-            last_equilibrium = self._payoff_manager.compute_equilibrium(population_mapping)
+            last_equilibrium = self._payoff_manager.compute_equilibrium(
+                population_mapping
+            )
             new_population_mapping = copy.copy(population_mapping)
             # check not trainable
             for agent, ele in new_population_mapping.items():
@@ -220,8 +222,7 @@ class CoordinatorServer(BaseCoordinator):
                 )
                 # weighted payoffs: payoff aggregation with the learned best response and fixed opponent policies
                 brs = {
-                    aid: pid
-                    for aid, (pid, _) in self._pending_trainable_pairs.items()
+                    aid: pid for aid, (pid, _) in self._pending_trainable_pairs.items()
                 }
                 weighted_payoffs: Dict[AgentID, float] = self._payoff_manager.aggregate(
                     equilibrium=equilibrium,
@@ -229,7 +230,7 @@ class CoordinatorServer(BaseCoordinator):
                 )
 
                 # if self._configs["global_evaluator"]["name"] == "psro":
-                    # compute exploitability
+                # compute exploitability
                 exp = self._training_manager.get_exp(
                     self._configs["env_description"], brs, last_equilibrium
                 )

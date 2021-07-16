@@ -1,3 +1,4 @@
+import collections
 from malib.gt.tabular import types as tabularType
 from malib.utils.typing import AgentID, Dict, Tuple, Sequence, Any, List
 
@@ -28,7 +29,7 @@ class State:
         self._palyer_id = player_id
         self._actions = tuple(actions)
         self._mask = mask
-        self._reward_func = reward_func or _DEFAULT_REWARD_FUNC
+        self._reward_func = {}
         self._value = 0.0
         self._game_over = game_over
         self._discounted = 1.0
@@ -37,7 +38,11 @@ class State:
         """Compute reward."""
 
         next_state = self.next(action)
-        return self._reward_func(self, action, next_state)
+
+        if self._reward_func.get(action):
+            self._reward_func[action] = {}
+
+        return self._reward_func[action].get(next_state, 0.0)
 
     def legal_actions_mask(self) -> Tuple:
         """Return a tuple of legal action index with mask."""
@@ -94,12 +99,13 @@ class State:
 
         return self._player
 
-    def add_transition(self, action, state):
+    def add_transition(self, action, state, reward: float = 0.0):
         assert action in self.legal_actions_mask, (action, self.legal_actions_mask)
         assert (
             self._action_to_next_state.get(action) is None
         ), self._action_to_next_state[action]
         self._action_to_next_state[action] = state
+        self._reward_func[action][state] = reward
 
     def next(self, action: tabularType.Action) -> "State":
         """Move step and return the next state."""

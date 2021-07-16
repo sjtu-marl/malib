@@ -672,14 +672,17 @@ class AgentInterface(metaclass=ABCMeta):
                 self._observation_spaces[agent_id],
                 self._action_spaces[agent_id],
                 self.policies,
-                weights
-            ) for aid in self.agent_group
+                weights,
+            )
+            for aid in self.agent_group
         }
         if tabular:
             policies = {aid: policy.to_tabular() for aid, policy in policies.items()}
         return policies
 
-    def get_policies_with_mapping(self, policy_mapping: Dict[AgentID, PolicyID]) -> Dict[AgentID, Policy]:
+    def get_policies_with_mapping(
+        self, policy_mapping: Dict[AgentID, PolicyID]
+    ) -> Dict[AgentID, Policy]:
         return {aid: self._policies[pid] for aid, pid in policy_mapping.items()}
 
     @abstractmethod
