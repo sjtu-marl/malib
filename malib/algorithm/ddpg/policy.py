@@ -98,7 +98,7 @@ class DDPG(Policy):
                         requires_grad=False,
                     )
                 pi = pi.clamp(-1, 1)
-        return pi.argmax(-1).item(), pi.numpy(), {Episode.ACTION_DIST: pi.numpy()}
+        return pi.argmax(-1).numpy(), pi.numpy(), {Episode.ACTION_DIST: pi.numpy()}
 
     def compute_actions_by_target_actor(
         self, observation: DataTransferType, **kwargs

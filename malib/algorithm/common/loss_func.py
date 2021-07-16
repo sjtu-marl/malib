@@ -1,5 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from typing import Dict, Any
+from typing import Dict, Any, Sequence
 
 import torch
 
@@ -18,9 +18,21 @@ class LossFunc(metaclass=ABCMeta):
 
     def __init__(self):
         self._policy = None
-        self.optimizers = []
+        self.optimizers = None
         self.loss = []
         self._params = {}
+        self._gradients = []
+
+    @property
+    def stacked_gradients(self):
+        """Return stacked gradients"""
+
+        return self._gradients
+
+    def push_gradients(self, grad):
+        """Push new gradient to gradients"""
+
+        self._gradients.append(grad)
 
     @property
     def optim_cls(self) -> type:
@@ -45,17 +57,30 @@ class LossFunc(metaclass=ABCMeta):
         """ Compute loss function here, but not optimize """
         pass
 
+    @abstractmethod
     def step(self) -> Any:
-        _ = [item.backward() for item in self.loss]
-        _ = [p.step() for p in self.optimizers]
+        pass
 
     def zero_grad(self):
-        _ = [p.zero_grad() for p in self.optimizers]
+        """Clean stacked gradients and optimizers"""
+
+        self._gradients = []
+        if isinstance(self.optimizers, Sequence):
+            _ = [p.zero_grad() for p in self.optimizers]
+        elif isinstance(self.optimizers, Dict):
+            _ = [p.zero_grad() for p in self.optimizers.values()]
+        elif isinstance(self.optimizers, torch.optim.Optimizer):
+            self.optimizers.zero_grad()
+        else:
+            raise TypeError(
+                f"Unexpected optimizers type: {type(self.optimizers)}, expected are included: Sequence, Dict, and torch.optim.Optimizer"
+            )
 
     def reset(self, policy, configs):
-        self._policy = policy
         # reset optimizers
-        self.optimizers = []
+        # self.optimizers = []
         self.loss = []
         self._params.update(configs)
-        self.setup_optimizers()
+        if self._policy is not policy:
+            self._policy = policy
+            self.setup_optimizers()

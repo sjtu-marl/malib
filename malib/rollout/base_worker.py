@@ -10,6 +10,7 @@ import ray
 
 from malib import settings
 from malib.utils.typing import (
+    AgentID,
     TaskDescription,
     TaskRequest,
     TaskType,
@@ -23,8 +24,10 @@ from malib.utils.typing import (
     Dict,
     Any,
     Tuple,
+    List,
 )
 
+from malib.backend.datapool.offline_dataset_server import Episode
 from malib.envs.agent_interface import AgentInterface
 from malib.algorithm.common.policy import Policy
 from malib.utils.logger import get_logger, Log
@@ -61,13 +64,8 @@ class BaseRolloutWorker:
         self._offline_dataset = None
 
         env = env_desc["creator"](**env_desc["config"])
-        # XXX(ming): from muning
-        # if env_desc.get("env", None) is None:
-        #     env = env_desc["creator"](**env_desc["config"])
-        #     env_desc["env"] = env
-        # else:
-        #     env = env_desc.get("env")
         self._agents = env.possible_agents
+        self._kwargs = kwargs
 
         if remote:
             self.init()
@@ -184,7 +182,7 @@ class BaseRolloutWorker:
                         pconfig,
                         parameter_descs[aid].parameter_desc_dict[pid],
                     )
-                agent.reset(pid)
+                agent.reset()
 
             # add policies which need to be trained, and tag it as trainable
         for aid, (pid, description) in trainable_pairs.items():
@@ -196,7 +194,7 @@ class BaseRolloutWorker:
                         description,
                         parameter_descs[aid].parameter_desc_dict[pid],
                     )
-                agent.reset(pid)
+                agent.reset()
             except Exception as e:
                 print(e)
                 print(parameter_descs[aid].parameter_desc_dict)
@@ -305,6 +303,7 @@ class BaseRolloutWorker:
                 logger=self.logger,
                 worker_idx=None,
                 global_step=epoch,
+                group="rollout",
             ) as (
                 statistic_seq,
                 processed_statics,
@@ -316,49 +315,30 @@ class BaseRolloutWorker:
                 if status == Status.LOCKED:
                     break
 
-                episode_piece = task_desc.content.episode_seg
-                seg_num = task_desc.content.num_episodes // episode_piece
-                remain = task_desc.content.num_episodes - episode_piece * seg_num
-
-                num_episode_seg = [episode_piece] * seg_num + (
-                    [remain] if remain else []
-                )
-
-                # wait until all sub tasks done
-                assert len(num_episode_seg) > 0, (
-                    num_episode_seg,
-                    task_desc.content.num_episodes,
-                    seg_num,
-                    remain,
-                )
-
-                res, data2send = self.sample(
+                trainable_behavior_policies = {
+                    aid: pid
+                    for aid, (
+                        pid,
+                        _,
+                    ) in task_desc.content.agent_involve_info.trainable_pairs.items()
+                }
+                # get behavior policies of other fixed agent
+                res, num_frames = self.sample(
                     callback=task_desc.content.callback,
-                    behavior_policy_mapping=None,
-                    num_episodes=num_episode_seg,
-                    trainable_pairs={
-                        aid: pid
-                        for aid, (
-                            pid,
-                            _,
-                        ) in task_desc.content.agent_involve_info.trainable_pairs.items()
-                    },
+                    num_episodes=task_desc.content.num_episodes,
+                    policy_combinations=[trainable_behavior_policies],
                     explore=True,
                     fragment_length=task_desc.content.fragment_length,
                     role="rollout",
+                    policy_distribution=task_desc.content.policy_distribution,
                 )
-                if len(data2send) > 0:
-                    self._offline_dataset.save.remote(data2send)
-
                 end = time.time()
-                print(
-                    f"epoch {epoch}, "
-                    f"{task_desc.content.agent_involve_info.training_handler} "
-                    f"from worker={self._worker_index} time consump={end - start} seconds"
-                )
-
-                for content in res:
-                    statistic_seq.extend(content)
+                # print(
+                #     f"epoch {epoch}, "
+                #     f"{task_desc.content.agent_involve_info.training_handler} "
+                #     f"from worker={self._worker_index} time consump={end - start} seconds"
+                # )
+                statistic_seq.extend(res)
 
             merged_statics = processed_statics[0]
             self.after_rollout(task_desc.content.agent_involve_info.trainable_pairs)
@@ -414,24 +394,26 @@ class BaseRolloutWorker:
         self.set_state(task_desc)
         combinations = task_desc.content.policy_combinations
         callback = task_desc.content.callback
-        num_episode = task_desc.content.num_episodes
         agent_involve_info = task_desc.content.agent_involve_info
-        print(f"simulation for {num_episode}")
+        print(f"simulation for {task_desc.content.num_episodes}")
         statis_list, _ = self.sample(
             callback=callback,
-            behavior_policy_mapping=combinations,
-            num_episodes=num_episode,
-            trainable_pairs=None,
-            explore=False,
+            num_episodes=task_desc.content.num_episodes,
             fragment_length=task_desc.content.max_episode_length,
+            policy_combinations=[
+                {k: p for k, (p, _) in comb.items()} for comb in combinations
+            ],
+            explore=False,
             role="simulation",
         )
         for statistics, combination in zip(statis_list, combinations):
-            with Log.stat_feedback(log=False, logger=self.logger) as (
+            with Log.stat_feedback(
+                log=False, logger=self.logger, group="simulation"
+            ) as (
                 statistic_seq,
                 merged_statistics,
             ):
-                statistic_seq.extend(statistics)
+                statistic_seq.append(statistics)
             merged_statistics = merged_statistics[0]
             rollout_feedback = RolloutFeedback(
                 worker_idx=self._worker_index,
@@ -462,7 +444,18 @@ class BaseRolloutWorker:
                 interface.set_behavior_dist(policy_distribution[aid])
             interface.reset()
 
-    def sample(self, *args, **kwargs) -> Tuple[Sequence[Dict], Sequence[Any]]:
+    def sample(
+        self,
+        callback: type,
+        num_episodes: int,
+        fragment_length: int,
+        role: str,
+        policy_combinations: List,
+        explore: bool = True,
+        threaded: bool = True,
+        policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
+        episodes: Dict[AgentID, Episode] = None,
+    ) -> Tuple[Sequence[Dict], int]:
         """Implement your sample logic here, return the collected data and statistics"""
 
         raise NotImplementedError

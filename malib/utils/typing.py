@@ -158,8 +158,8 @@ class MetaParameterDescription:
 @dataclass
 class BufferDescription:
     env_id: str
-    agent_id: AgentID
-    policy_id: PolicyID
+    agent_id: Union[AgentID, List[AgentID]]
+    policy_id: Union[PolicyID, List[AgentID]]
     batch_size: int = 0
     sample_mode: str = ""
 
@@ -240,6 +240,12 @@ class RolloutFeedback:
 
     statistics: Dict[AgentID, Dict[str, Any]]
     policy_combination: Dict[PolicyID, Tuple[PolicyID, PolicyConfig]] = None
+
+    def __post_init__(self):
+        for res in self.statistics.values():
+            for k, v in res.items():
+                if isinstance(v, MetricEntry):
+                    res[k] = v.value
 
 
 @deprecated
@@ -358,9 +364,13 @@ class EventReportStatus:
     END = "end"
 
 
+# TODO(jing): add docs for MetricEntry
 class MetricEntry:
     def __init__(self, value: Any, agg: str = "mean", tag: str = "", log: bool = True):
         self.value = value
         self.agg = agg
         self.tag = tag
         self.log = log
+
+    def cleaned_data(self):
+        """Return values"""

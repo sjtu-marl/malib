@@ -7,6 +7,7 @@ from functools import reduce
 
 from malib import settings
 from malib.utils.typing import AgentID, MetricType, PolicyID, MetricEntry
+from malib.utils.aggregators import Aggregator
 
 
 def to_metric_entry(data: Dict[str, Any], prefix=""):
@@ -35,23 +36,29 @@ class Metric(metaclass=ABCMeta):
         self._agents = agents
         self._episode_data = dict()
         self._statistics = dict()
+        # single for sequential, vector for simultaneous
+        self._mode = "single"
+
+    @property
+    def step_mode(self) -> str:
+        return self._mode
 
     @abstractmethod
-    def step(self, agent_id, policy_id, **kwargs):
-        pass
+    def step(self, agent_id, policy_id, **kwargs) -> None:
+        """Record sampled data and save to do evaluation."""
 
     @abstractmethod
-    def parse(self, agent_filter=None):
+    def parse(self, agent_filter=None) -> Dict[AgentID, Dict[str, MetricEntry]]:
         """Parse episode data and filter with given keys (agent level)"""
-        pass
 
     @staticmethod
     def merge_parsed(
         agent_result_seq: Sequence[Dict[AgentID, Any]]
     ) -> Dict[AgentID, Dict[str, float]]:
-        pass
+        """Merge multiple evaluated results."""
 
-    def reset(self):
+    def reset(self, mode="single"):
+        self._mode = mode
         self._episode_data = dict()
         self._statistics = dict()
 
@@ -69,48 +76,65 @@ class SimpleMetrics(Metric):
         )
         self._pids = {}
 
-    def step(self, agent_id, policy_id, **kwargs):
+    def step(self, agent_id, policy_id, **kwargs) -> None:
         self._episode_data[MetricType.REWARD][agent_id].append(kwargs["reward"])
         self._pids[agent_id] = policy_id
 
     def parse(self, agent_filter=None) -> Dict[AgentID, Dict[str, MetricEntry]]:
-        # FIXME(ming): un-compatible return
         for item_key, agent_data in self._episode_data.items():
             # if filter is not None use filter else agents
             for aid in agent_filter or self._agents:
-                if self._pids.get(aid) is not None:
-                    prefix = f"{aid}/{self._pids[aid]}"
-                else:
-                    prefix = f"{aid}"
                 if item_key == MetricType.REWARD:
+                    if self.step_mode == "vector":
+                        agent_data[aid] = [
+                            sum(e) / max(1, len(e)) for e in agent_data[aid]
+                        ]
                     self._statistics[aid][MetricType.REWARD] = MetricEntry(
                         value=sum(agent_data[aid]),
-                        agg="mean",
-                        tag=f"{prefix}/{MetricType.REWARD}",
+                        agg=Aggregator.MEAN,
+                        tag=f"{self._pids[aid]}/{MetricType.REWARD}"
+                        if self._pids.get(aid) is not None
+                        else MetricType.REWARD,
                         log=True,
                     )
         return self._statistics
 
     @staticmethod
-    def merge_parsed(agent_result_seq: Sequence):
+    def merge_parsed(
+        agent_result_seq: Sequence,
+    ) -> Dict[AgentID, Dict[str, MetricEntry]]:
+        """Aggregates a sequence of evaluated results in average, and return an agent dict."""
+
         agent_res = {}
+
         for agent_result in agent_result_seq:
             for agent_id, result in agent_result.items():
                 if agent_res.get(agent_id, None) is None:
+                    tmp = result[MetricType.REWARD]
                     agent_res[agent_id] = {
-                        MetricType.REWARD: 0,
-                        # MetricType.LIVE_STEP: 0.0,
+                        MetricType.REWARD: MetricEntry(
+                            value=tmp.value / len(agent_result_seq),
+                            agg=tmp.agg,
+                            tag=tmp.tag,
+                            log=tmp.log,
+                        )
                     }
-                agent_res[agent_id][MetricType.REWARD] += result[
+                agent_res[agent_id][MetricType.REWARD].value += result[
                     MetricType.REWARD
                 ].value / len(agent_result_seq)
+
         return agent_res
 
-    def reset(self):
+    def reset(self, mode: str = "single"):
+        self._mode = mode
         self._episode_data = {
             MetricType.REWARD: defaultdict(lambda: []),
         }
-        self._statistics = defaultdict(lambda: {MetricType.REWARD: 0.0})
+        self._statistics = defaultdict(
+            lambda: defaultdict(
+                lambda: MetricEntry(value=0, agg="mean", tag="", log=False)
+            )
+        )
 
 
 class JointDistMetric(Metric):

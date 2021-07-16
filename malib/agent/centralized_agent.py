@@ -78,10 +78,10 @@ class CentralizedAgent(CTDEAgent):
         for tid, env_agent_ids in self._teams.items():
             trainer = self.get_trainer(tid)
             trainer.reset(t_policies, training_config)
-            batch = trainer.preprocess(batch, other_policies=t_policies)
-            res.update(
-                metrics.to_metric_entry(trainer.optimize(batch.copy()), prefix=tid)
-            )
+            # filter batch with env_agent_ids
+            _batch = {aid: data for aid, data in batch.items()}
+            _batch = trainer.preprocess(_batch, other_policies=t_policies)
+            res.update(metrics.to_metric_entry(trainer.optimize(_batch), prefix=tid))
         return res
 
     def add_policy_for_agent(

@@ -6,9 +6,10 @@ import gym
 import numpy as np
 import torch
 
+from malib.algorithm.common import misc
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.model import get_model
-from malib.utils.typing import DataTransferType, BehaviorMode
+from malib.utils.typing import DataTransferType, BehaviorMode, EvaluateResult
 from malib.backend.datapool.offline_dataset_server import Episode
 
 
@@ -47,24 +48,23 @@ class DQN(Policy):
             observation_space, action_space, self.custom_config.get("use_cuda", False)
         )
 
-        self._exploration = True
         self._step = 0
 
-        self.register_state(self._gamma, "gamma")
-        self.register_state(self._eps_max, "eps_max")
-        self.register_state(self._eps_min, "eps_min")
-        self.register_state(self._eps_decay, "eps_decay")
+        self.register_state(self._gamma, "_gamma")
+        self.register_state(self._eps_max, "_eps_max")
+        self.register_state(self._eps_min, "_eps_min")
+        self.register_state(self._eps_decay, "_eps_decay")
         self.register_state(self._model, "critic")
         self.register_state(self._target_model, "target_critic")
-        self.register_state(self._exploration, "exploration")
-        self.register_state(self._step, "step")
+        self.register_state(self._step, "_step")
         self.set_critic(self._model)
         self.target_critic = self._target_model
 
         self.target_update()
 
     def target_update(self):
-        self._target_model.load_state_dict(self._model.state_dict())
+        with torch.no_grad():
+            misc.hard_update(self.target_critic, self.critic)
 
     def _calc_eps(self):
         return self._eps_min + (self._eps_max - self._eps_min) * np.exp(
@@ -80,46 +80,42 @@ class DQN(Policy):
         """
 
         behavior = kwargs.get("behavior_mode", BehaviorMode.EXPLORATION)
-        if behavior == BehaviorMode.EXPLORATION:
-            self._step += 1
-            if np.random.random() < self._calc_eps():
-                actions = self.action_space.n
-                # XXX(ming): maybe legal moves move to environment APIs could be a better choice.
-                if "legal_moves" in kwargs:
-                    actions = kwargs["legal_moves"]
-                elif "action_mask" in kwargs:
-                    actions = np.where(kwargs["action_mask"] == 1)[0]
-                action = np.random.choice(actions)
-                action_prob = torch.zeros(self.action_space.n)
-                action_prob[action] = 1.0
-                return action, action_prob, {Episode.ACTION_DIST: action_prob}
-        probs = torch.softmax(self._model(np.asarray([observation])), dim=-1)
-        if "legal_moves" in kwargs:
-            mask = torch.zeros_like(probs)
-            mask[:, kwargs["legal_moves"]] = 1
-            probs = mask * probs
-        elif "action_mask" in kwargs:
-            mask = torch.FloatTensor(kwargs["action_mask"]).to(probs.device)
-            mask = mask.long().unsqueeze(0)
-            probs = mask * probs
-        action = probs.argmax().view(1)
-        action_prob = torch.zeros_like(probs, device=probs.device)
-        action_prob[:, action] = 1.0
-        action_prob = action_prob.squeeze(0)
-        extra_info = {Episode.ACTION_DIST: action_prob}
+        batch_size = len(observation)
+        logits = torch.softmax(self.critic(observation), dim=-1)
 
-        return action.item(), action_prob, extra_info
+        # do masking
+        if "action_mask" in kwargs:
+            mask = torch.FloatTensor(kwargs["action_mask"]).to(logits.device)
+        else:
+            mask = torch.ones(logits.shape, device=logits.device, dtype=logits.dtype)
+        assert mask.shape == logits.shape, (mask.shape, logits.shape)
+
+        action_probs = misc.masked_softmax(logits, mask)
+        m = torch.distributions.Categorical(probs=action_probs)
+
+        if behavior == BehaviorMode.EXPLORATION:
+            if np.random.random() < self._calc_eps():
+                actions = m.sample().view((-1, 1))
+                return (
+                    actions.to("cpu").numpy(),
+                    action_probs.detach().to("cpu").numpy(),
+                    {Episode.ACTION_DIST: action_probs.detach().to("cpu").numpy()},
+                )
+
+        actions = torch.argmax(action_probs, dim=-1, keepdim=True)
+        extra_info = {Episode.ACTION_DIST: action_probs.detach().to("cpu").numpy()}
+
+        return (
+            actions.detach().numpy(),
+            action_probs.detach().to("cpu").numpy(),
+            extra_info,
+        )
 
     def compute_actions(
         self, observation: DataTransferType, **kwargs
     ) -> DataTransferType:
         raise NotImplementedError
 
-    def reset_step(self):
-        self._step = 0
-
     def soft_update(self, tau=0.01):
-        for target_param, param in zip(
-            self._target_model.parameters(), self._model.parameters()
-        ):
-            target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
+        with torch.no_grad():
+            misc.soft_update(self.target_critic, self.critic, tau)

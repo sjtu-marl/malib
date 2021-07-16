@@ -11,13 +11,6 @@ class MADDPGLoss(DDPGLoss):
     def __init__(self):
         super(MADDPGLoss, self).__init__()
         self.cnt = 0
-        self._params = {
-            "tau": 0.01,
-            "grad_norm_clipping": 0.5,
-            "actor_lr": 1e-2,
-            "critic_lr": 1e-2,
-            "optimizer": "Adam",
-        }
 
     def _set_centralized_critic(self):
         global_state_space = self.policy.custom_config["global_state_space"]
@@ -55,8 +48,8 @@ class MADDPGLoss(DDPGLoss):
         cliprange = self._params["grad_norm_clipping"]
 
         # print(all_agent_batch[agent_id])
-        rewards = cast_to_tensor(agent_batch[self.main_id][Episode.REWARDS]).view(-1, 1)
-        dones = cast_to_tensor(agent_batch[self.main_id][Episode.DONES]).view(-1, 1)
+        rewards = cast_to_tensor(agent_batch[self.main_id][Episode.REWARD]).view(-1, 1)
+        dones = cast_to_tensor(agent_batch[self.main_id][Episode.DONE]).view(-1, 1)
         cur_obs = cast_to_tensor(agent_batch[self.main_id][Episode.CUR_OBS])
 
         gamma = self.policy.custom_config["gamma"]

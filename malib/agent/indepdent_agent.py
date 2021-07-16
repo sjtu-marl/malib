@@ -79,8 +79,6 @@ class IndependentAgent(AgentInterface):
         """
 
         res = {}
-        # XXX(ziyu): I don't think it should return each env_id's training feedback,
-        #  and also why batch contains all agentID's experience?
         for env_aid, pid in policy_ids.items():
             batch_copy = batch.copy()
             trainer = self.get_trainer(pid)

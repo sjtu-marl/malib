@@ -106,8 +106,6 @@ class AgentInterface:
         if self.policies is None:
             self.policies = {}
 
-        # behavior policy id, reset before rollout/simulation
-        self.behavior_policy = None
         # sample distribution over policy set
         self.sample_dist = {}
         # parameter description dictionary
@@ -116,6 +114,12 @@ class AgentInterface:
         self.parameter_version = defaultdict(lambda: -1)
         self.parameter_buffer = defaultdict(lambda: None)
         self.behavior_mode = BehaviorMode.EXPLORATION
+
+        self._behavior_policy = None
+
+    @property
+    def behavior_policy(self) -> PolicyID:
+        return self._behavior_policy
 
     def set_behavior_dist(self, distribution: Dict[PolicyID, float]) -> None:
         """Set policy distribution with given distribution. The distribution has no need to cover all policies in this
@@ -127,8 +131,7 @@ class AgentInterface:
         for pid in distribution:
             assert pid in self.policies, (pid, list(self.policies.keys()))
 
-        # reset the sample distribution with 0.0 for all policies
-        self.sample_dist = dict.fromkeys(self.policies, 0.0)
+        self.sample_dist = dict.fromkeys(self.policies, 1.0 / len(self.policies))
         self.sample_dist.update(distribution)
 
     def set_behavior_mode(
@@ -142,22 +145,13 @@ class AgentInterface:
 
         self.behavior_mode = behavior_mode
 
-    def reset(
-        self,
-        behavior_policy_id=None,
-    ) -> None:
-        """Reset behavior policy selection. If behavior policy id is None, then agent will randomly select a policy as
-        its behavior policy.
-
-        :param PolicyID behavior_policy_id: Policy id,
-        """
-
-        if behavior_policy_id in self.policies:
-            self.behavior_policy = behavior_policy_id
-        elif len(self.policies) > 0:
-            self.behavior_policy = np.random.choice(
-                list(self.sample_dist.keys()), p=list(self.sample_dist.values())
-            )
+    def reset(self, sample_dist=None) -> None:
+        """Reset agent interface."""
+        # clear sample distribution
+        self.sample_dist = sample_dist or dict.fromkeys(
+            self.policies, 1.0 / len(self.policies)
+        )
+        self._behavior_policy = self._random_select_policy()
 
     def add_policy(
         self,
@@ -192,6 +186,16 @@ class AgentInterface:
             version=-1,
         )
 
+    def _random_select_policy(self) -> PolicyID:
+        """Random select a policy, and return its id."""
+        assert len(self.policies) > 0, "No available policies."
+        res = str(
+            np.random.choice(
+                list(self.sample_dist.keys()), p=list(self.sample_dist.values())
+            )
+        )
+        return res
+
     def compute_action(self, *args, **kwargs):
         """Return an action by calling `compute_action` of a policy instance.
 
@@ -199,11 +203,9 @@ class AgentInterface:
         :param kwargs: dict of args
         :return: A tuple of action, action_dist, extra_info
         """
-
-        policy_id = kwargs.get("policy_id", self.behavior_policy)
-        assert (
-            policy_id is not None
-        ), "Behavior policy cannot be None, run reset before compute_action"
+        policy_id = kwargs.get("policy_id", None)
+        if policy_id is None:
+            policy_id = self._random_select_policy()
         kwargs.update({"behavior_mode": self.behavior_mode})
         return self.policies[policy_id].compute_action(*args, **kwargs)
 
@@ -243,7 +245,7 @@ class AgentInterface:
         :return: A preprocessed observation.
         """
 
-        policy_id = policy_id or self.behavior_policy
+        policy_id = policy_id or self._random_select_policy()
         policy = self.policies[policy_id]
         if policy.preprocessor is not None:
             return policy.preprocessor.transform(observation)

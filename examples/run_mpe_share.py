@@ -6,8 +6,8 @@ import argparse
 
 import yaml
 import os
-import importlib
 
+from malib.envs import MPE
 from malib.runner import run
 
 
@@ -28,14 +28,8 @@ if __name__ == "__main__":
     env_desc = config["env_description"]
     env_desc["config"] = env_desc.get("config", {})
     # load creator
-    env_module = importlib.import_module(f"pettingzoo.mpe.{env_desc['id']}")
-    env_creator = (
-        env_module.parallel_env
-        if config["rollout"]["callback"] == "simultaneous"
-        else env_module.env
-    )
-    env_desc["creator"] = env_creator
-    env = env_creator(**env_desc["config"])
+    env_desc["creator"] = MPE
+    env = MPE(**env_desc["config"])
 
     possible_agents = env.possible_agents
     observation_spaces = env.observation_spaces

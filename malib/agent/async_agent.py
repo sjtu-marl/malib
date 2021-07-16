@@ -181,7 +181,7 @@ class AsyncAgent(IndependentAgent):
             res[env_aid] = trainer.optimize(batch[env_aid])
             assert (
                 res[env_aid].get("gradients") is not None
-            ), "You must return gradients from optimizer"
+            ), f"You must return gradients from optimizer {type(trainer)}"
             gradients = res[env_aid].pop("gradients")
             res[env_aid] = metrics.to_metric_entry(res[env_aid])
             self._cumulative_grads[pid].append(gradients)

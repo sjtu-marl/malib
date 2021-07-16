@@ -20,51 +20,64 @@ def cal_entropy(logits):
 
 class PPOLoss(LossFunc):
     def __init__(self):
-        super(PPOLoss, self).__init__()
-        # default parameters here
-        self._params = {
-            "actor_lr": 1e-4,
-            "critic_lr": 1e-4,
-            "cliprange": 0.2,
-            "entropy_coef": 1e-3,
-            "value_coef": 0.5,
-            "optimizer": "Adam",
-        }
+        super().__init__()
+        self._params.update(
+            {
+                "actor_lr": 1e-2,
+                "critic_lr": 1e-2,
+                "cliprange": 0.2,
+                "entropy_coef": 1e-3,
+                "value_coef": 1e-2,
+            }
+        )
 
     def setup_optimizers(self, *args, **kwargs):
-        optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
-        self.optimizers.append(
-            optim_cls(self.policy.actor.parameters(), lr=self._params["actor_lr"])
-        )
-        self.optimizers.append(
-            optim_cls(self.policy.critic.parameters(), lr=self._params["critic_lr"])
-        )
+        if self.optimizers is None:
+            optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
+            self.optimizers = []
+            self.optimizers.append(
+                optim_cls(self.policy.actor.parameters(), lr=self._params["actor_lr"])
+            )
+            self.optimizers.append(
+                optim_cls(self.policy.critic.parameters(), lr=self._params["critic_lr"])
+            )
+        else:
+            for p in self.optimizers:
+                p.param_groups = []
+            self.optimizers[0].add_param_group(
+                {"params": self.policy.actor.parameters()}
+            )
+            self.optimizers[1].add_param_group(
+                {"params": self.policy.critic.parameters()}
+            )
 
     def step(self) -> Any:
         """ Step optimizers and update target """
 
         # do loss backward and target update
         _ = [item.backward() for item in self.loss]
-        # return gradients here
-        # gradients = {
-        #     "actor": {
-        #         name: -self._params["actor_lr"] * param.grad.numpy()
-        #         for name, param in self.policy.actor.named_parameters()
-        #     },
-        #     "critic": {
-        #         name: -self._params["critic_lr"] * param.grad.numpy()
-        #         for name, param in self.policy.critic.named_parameters()
-        #     },
-        # }
+
+        self.push_gradients(
+            {
+                "actor": {
+                    name: -self._params["actor_lr"] * param.grad.numpy()
+                    for name, param in self.policy.actor.named_parameters()
+                },
+                "critic": {
+                    name: -self._params["critic_lr"] * param.grad.numpy()
+                    for name, param in self.policy.critic.named_parameters()
+                },
+            }
+        )
+
         _ = [p.step() for p in self.optimizers]
-        return None
 
     def __call__(self, batch) -> Dict[str, Any]:
         # empty loss
         self.loss = []
         # total loss = policy_gradient_loss - entropy * entropy_coefficient + value_coefficient * value_loss
-        rewards = torch.from_numpy(batch[Episode.REWARDS].copy())
-        actions = torch.from_numpy(batch[Episode.ACTIONS].copy())
+        rewards = torch.from_numpy(batch[Episode.REWARD].copy())
+        actions = torch.from_numpy(batch[Episode.ACTION].copy())
         cliprange = self._params["cliprange"]
         ent_coef = self._params["entropy_coef"]
         vf_coef = self._params["value_coef"]
@@ -95,7 +108,7 @@ class PPOLoss(LossFunc):
         td_value = (
             rewards
             + self.policy.custom_config["gamma"]
-            * (1.0 - torch.from_numpy(batch[Episode.DONES].copy()).float())
+            * (1.0 - torch.from_numpy(batch[Episode.DONE].copy()).float())
             * next_value
         )
         vf_loss1 = torch.square(vpred - td_value)

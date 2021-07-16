@@ -29,21 +29,17 @@ from malib.envs.tabular.state import State as TabularGameState
 
 
 class SimpleObject:
-    def __init__(self, obj, value):
+    def __init__(self, obj, name):
+        assert hasattr(obj, name), f"Object: {obj} has no such attribute named `{name}`"
         self.obj = obj
-        self.value = value
-
-    def __getstate__(self):
-        return {"value": self.value}
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
+        self.name = name
 
     def load_state_dict(self, v):
-        self.value = v
+        setattr(self.obj, self.name, v)
 
     def state_dict(self):
-        return self.value
+        value = getattr(self.obj, self.name)
+        return value
 
 
 DEFAULT_MODEL_CONFIG = {
@@ -53,7 +49,7 @@ DEFAULT_MODEL_CONFIG = {
             {"units": 64, "activation": "ReLU"},
             {"units": 64, "activation": "ReLU"},
         ],
-        "output": {"activation": "Softmax"},
+        "output": {"activation": False},
     },
     "critic": {
         "network": "mlp",
@@ -218,7 +214,7 @@ class Policy(metaclass=ABCMeta):
         """
 
         if not isinstance(obj, nn.Module):
-            obj = SimpleObject(self, obj)
+            obj = SimpleObject(self, name)
         if self._state_handler_dict.get(name, None) is not None:
             raise errors.RepeatedAssignError(
                 f"state handler named with {name} is not None."
@@ -282,7 +278,8 @@ class Policy(metaclass=ABCMeta):
     def state_dict(self):
         """ Return state dict in real time """
 
-        return {k: v.state_dict() for k, v in self._state_handler_dict.items()}
+        res = {k: v.state_dict() for k, v in self._state_handler_dict.items()}
+        return res
 
     def load_state(self, state_dict: Dict[str, Any]) -> None:
         """Load state dict outside.

@@ -11,7 +11,7 @@ class PPOTrainer(Trainer):
         self._loss = PPOLoss()
         self.cnt = 0
 
-    def optimize(self, batch, other_agent_batches=None):
+    def optimize(self, batch):
         assert isinstance(self._policy, PPO), type(self._policy)
         self.cnt = (self.cnt + 1) % self._training_config.get("update_interval", 5)
 
@@ -20,8 +20,7 @@ class PPOTrainer(Trainer):
 
         self.loss.zero_grad()
         loss_stats = self.loss(batch)
-        gradients = self.loss.step()
-        # loss_stats.update({"gradients": gradients})
+        self.loss.step()
         return loss_stats
 
     def preprocess(self, **kwargs) -> Any:

@@ -14,379 +14,369 @@ Examples:
 In your custom rollout function, you can decide extra data
 you wanna save by specifying extra columns when Episode initialization.
 """
-import time
-from collections import defaultdict
 
+from typing import Callable
+import uuid
+
+import ray
 import numpy as np
 
-from malib.backend.datapool.offline_dataset_server import Episode, MultiAgentEpisode
-from malib.utils.metrics import get_metric
-from malib.utils.typing import AgentID, Dict, Union
+from malib import settings
+from malib.utils.logger import get_logger, Log
+from malib.utils.metrics import get_metric, Metric
+from malib.utils.typing import AgentID, Dict, MetricEntry, PolicyID, Union, Any, Tuple
 from malib.utils.preprocessor import get_preprocessor
+from malib.envs import Environment
+from malib.envs.agent_interface import AgentInterface
+from malib.envs.vector_env import VectorEnv
+from malib.backend.datapool.offline_dataset_server import (
+    Episode,
+    SequentialEpisode,
+)
 
 
 def sequential(
-    trainable_pairs,
-    agent_interfaces,
-    env_desc,
-    metric_type,
-    max_iter,
-    behavior_policy_mapping=None,
+    env: Environment,
+    num_episodes: int,
+    agent_interfaces: Dict[AgentID, AgentInterface],
+    fragment_length: int,
+    behavior_policies: Dict[AgentID, PolicyID],
+    agent_episodes: Dict[AgentID, Episode],
+    metric: Metric,
+    send_interval: int = 50,
+    dataset_server: ray.ObjectRef = None,
 ):
     """ Rollout in sequential manner """
-    res1, res2 = [], []
-    env = env_desc.get("env", env_desc["creator"](**env_desc["config"]))
-    # for _ in range(num_episode):
-    env.reset()
 
-    # metric.add_episode(f"simulation_{policy_combination_mapping}")
-    metric = get_metric(metric_type)(env.possible_agents)
-    if behavior_policy_mapping is None:
-        for agent in agent_interfaces.values():
-            agent.reset()
-    behavior_policy_mapping = behavior_policy_mapping or {
-        _id: agent.behavior_policy for _id, agent in agent_interfaces.items()
-    }
-    agent_episode = {
-        agent: Episode(
-            env_desc["id"], behavior_policy_mapping[agent], capacity=max_iter
-        )
-        for agent in (trainable_pairs or env.possible_agents)
-    }
+    # use env.env as real env
+    env = env.env
+    cnt = 0
+    evaluated_results = []
 
-    (observations, actions, action_dists, next_observations, rewards, dones, infos,) = (
-        defaultdict(lambda: []),
-        defaultdict(lambda: []),
-        defaultdict(lambda: []),
-        defaultdict(lambda: []),
-        defaultdict(lambda: []),
-        defaultdict(lambda: []),
-        defaultdict(lambda: []),
-    )
+    assert fragment_length > 0, fragment_length
 
-    for aid in env.agent_iter(max_iter=max_iter):
-        observation, reward, done, info = env.last()
+    for ith in range(num_episodes):
+        env.reset()
+        metric.reset()
+        for aid in env.agent_iter(max_iter=fragment_length):
+            observation, reward, done, info = env.last()
 
-        if isinstance(observation, dict):
-            info = {"action_mask": observation["action_mask"]}
-            action_mask = observation["action_mask"]
-        else:
-            action_mask = np.ones(
-                get_preprocessor(env.action_spaces[aid])(env.action_spaces[aid]).size
+            if isinstance(observation, dict):
+                info = {"action_mask": np.asarray([observation["action_mask"]])}
+                action_mask = observation["action_mask"]
+            else:
+                action_mask = np.ones(
+                    get_preprocessor(env.action_spaces[aid])(
+                        env.action_spaces[aid]
+                    ).size
+                )
+
+            # observation has been transferred
+            observation = agent_interfaces[aid].transform_observation(
+                observation, behavior_policies[aid]
             )
-        observation = agent_interfaces[aid].transform_observation(
-            observation, behavior_policy_mapping[aid]
-        )
-        observations[aid].append(observation)
-        rewards[aid].append(reward)
-        dones[aid].append(done)
-        info["policy_id"] = behavior_policy_mapping[aid]
 
-        if not done:
-            action, action_dist, extra_info = agent_interfaces[aid].compute_action(
-                observation, **info
+            info["policy_id"] = behavior_policies[aid]
+
+            if not done:
+                action, action_dist, extra_info = agent_interfaces[aid].compute_action(
+                    [observation], **info
+                )
+                if aid in agent_episodes:
+                    agent_episodes[aid].insert(
+                        **{
+                            Episode.CUR_OBS: [observation],
+                            Episode.ACTION_MASK: [action_mask],
+                            Episode.ACTION_DIST: action_dist,
+                            Episode.ACTION: action,
+                            Episode.REWARD: reward,
+                            Episode.DONE: done,
+                        }
+                    )
+                # convert action to scalar
+                action = action[0][0]
+            else:
+                info["policy_id"] = behavior_policies[aid]
+                action = None
+            env.step(action)
+            metric.step(
+                aid,
+                behavior_policies[aid],
+                observation=observation,
+                action=action,
+                action_dist=action_dist,
+                reward=reward,
+                done=done,
+                info=info,
             )
-            actions[aid].append(action)
-            action_dists[aid].append(action_dist)
-        else:
-            info["policy_id"] = behavior_policy_mapping[aid]
-            action = None
-        env.step(action)
-        metric.step(
-            aid,
-            behavior_policy_mapping[aid],
-            observation=observation,
-            action=action,
-            action_dist=action_dist,
-            reward=reward,
-            done=done,
-            info=info,
+            cnt += 1
+        evaluated_results.append(
+            metric.parse(agent_filter=tuple(agent_episodes.keys()))
         )
+        # when dataset_server is not None
+    if dataset_server:
+        for e in agent_episodes.values():
+            e.clean_data()
+        dataset_server.save.remote(agent_episodes, wait_for_ready=False)
+        for e in agent_episodes.values():
+            e.reset()
 
-    # metric.end()
-
-    for k in agent_episode:
-        obs = observations[k]
-        cur_len = len(obs)
-        agent_episode[k].fill(
-            **{
-                Episode.CUR_OBS: np.stack(obs[: cur_len - 1]),
-                Episode.NEXT_OBS: np.stack(obs[1:cur_len]),
-                Episode.DONES: np.stack(dones[k][1:cur_len]),
-                Episode.REWARDS: np.stack(rewards[k][1:cur_len]),
-                Episode.ACTIONS: np.stack(actions[k][: cur_len - 1]),
-                Episode.ACTION_DIST: np.stack(action_dists[k][: cur_len - 1]),
-            }
-        )
-    return (
-        metric.parse(
-            agent_filter=tuple(trainable_pairs.keys())
-            if trainable_pairs is not None
-            else None
-        ),
-        agent_episode,
-    )
+    # aggregated evaluated results groupped in agent wise
+    evaluated_results = metric.merge_parsed(evaluated_results)
+    return evaluated_results, cnt
 
 
 def simultaneous(
-    trainable_pairs,
-    agent_interfaces,
-    env_desc,
-    metric_type,
-    max_iter,
-    behavior_policy_mapping=None,
+    env: type,
+    num_episodes: int,
+    agent_interfaces: Dict[AgentID, AgentInterface],
+    fragment_length: int,
+    behavior_policies: Dict[AgentID, PolicyID],
+    agent_episodes: Dict[AgentID, Episode],
+    metric: Metric,
+    send_interval: int = 50,
+    dataset_server: ray.ObjectRef = None,
 ):
-    """Do not support next action mask.
+    """Rollout in simultaneous mode, support environment vectorization.
 
-    :param trainable_pairs:
-    :param agent_interfaces:
-    :param env_desc:
-    :param metric_type:
-    :param max_iter:
-    :param behavior_policy_mapping:
-    :return:
+    :param type env: The environment instance.
+    :param int num_episodes: Episode number.
+    :param Dict[Agent,AgentInterface] agent_interfaces: The dict of agent interfaces for interacting with environment.
+    :param int fragment_length: The maximum step limitation of environment rollout.
+    :param Dict[AgentID,PolicyID] behavior_policies: The behavior policy mapping for policy
+        specifing when execute `compute_action` `transform_observation. Furthermore, the specified policy id will replace the existing behavior policy if you've reset it before.
+    :param Dict[AgentID,Episode] agent_episodes: A dict of agent episodes, for individual experience buffering.
+    :param Metric metric: The metric handler, for statistics parsing and grouping.
+    :param int send_interval: Specifying the step interval of sending buffering data to remote offline dataset server.
+    :param ray.ObjectRef dataset_server: The offline dataset server handler, buffering data if it is not None.
+    :return: A tuple of statistics and the size of buffered experience.
     """
 
-    env = env_desc.get("env", env_desc["creator"](**env_desc["config"]))
-
-    metric = get_metric(metric_type)(
-        env.possible_agents if trainable_pairs is None else list(trainable_pairs.keys())
-    )
-
-    if behavior_policy_mapping is None:
-        for agent in agent_interfaces.values():
-            agent.reset()
-
-    behavior_policy_mapping = behavior_policy_mapping or {
-        _id: agent.behavior_policy for _id, agent in agent_interfaces.items()
-    }
-
-    agent_episode = {
-        agent: Episode(
-            env_desc["id"],
-            behavior_policy_mapping[agent],
-            capacity=max_iter,
-            other_columns=["times"],
-        )
-        for agent in (trainable_pairs or env.possible_agents)
-    }
-
+    rets = env.reset(limits=num_episodes)
     done = False
-    step = 0
-    observations = env.reset()
+    cnt = 0
 
-    for agent, obs in observations.items():
-        observations[agent] = agent_interfaces[agent].transform_observation(
-            obs, policy_id=behavior_policy_mapping[agent]
-        )
+    agent_ids = list(agent_interfaces.keys())
 
-    while step < max_iter and not done:
-        actions, action_dists = {}, {}
-        for agent, interface in agent_interfaces.items():
-            action, action_dist, extra_info = agent_interfaces[agent].compute_action(
-                observations[agent], policy_id=behavior_policy_mapping[agent]
-            )
-            actions[agent] = action
-            action_dists[agent] = action_dist
-
-        next_observations, rewards, dones, infos = env.step(actions)
-
-        for agent, interface in agent_interfaces.items():
-            obs = next_observations[agent]
-            if obs is not None:
-                next_observations[agent] = interface.transform_observation(
-                    obs, policy_id=behavior_policy_mapping[agent]
+    rets[Episode.CUR_OBS] = dict(
+        zip(
+            agent_ids,
+            [
+                agent_interfaces[aid].transform_observation(
+                    rets[Episode.CUR_OBS][aid], policy_id=behavior_policies[aid]
                 )
-            else:
-                next_observations[agent] = np.zeros_like(observations[agent])
-        time_stamp = time.time()
-        for agent in agent_episode:
-            agent_episode[agent].insert(
-                **{
-                    Episode.CUR_OBS: np.expand_dims(observations[agent], 0),
-                    Episode.ACTIONS: np.asarray([actions[agent]]),
-                    Episode.REWARDS: np.asarray([rewards[agent]]),
-                    Episode.ACTION_DIST: np.expand_dims(action_dists[agent], 0),
-                    Episode.NEXT_OBS: np.expand_dims(next_observations[agent], 0),
-                    Episode.DONES: np.asarray([dones[agent]]),
-                    "times": np.asarray([time_stamp]),
-                }
-            )
-            metric.step(
-                agent,
-                behavior_policy_mapping[agent],
-                observation=observations[agent],
-                action=actions[agent],
-                reward=rewards[agent],
-                action_dist=action_dists[agent],
-                done=dones[agent],
-            )
-        step += 1
-        done = any(dones.values())
-
-    return (
-        metric.parse(agent_filter=tuple(agent_episode)),
-        agent_episode,
+                for aid in agent_ids
+            ],
+        )
     )
 
+    metric.reset(mode="vector")
 
-def rollout_wrapper(
-    agent_episodes: Union[MultiAgentEpisode, Dict[AgentID, Episode]] = None,
-    rollout_type="sequential",
-):
-    """Rollout wrapper accept a dict of episodes outside.
+    while not done and cnt < fragment_length:
+        act_dict = {}
+        act_dist_dict = {}
 
-    :param Union[MultiAgentEpisode,Dict[AgentID,Episode]] agent_episodes: A dict of agent episodes or multiagentepisode instance.
-    :param str rollout_type: Specify rollout styles. Default to `sequential`, choices={sequential, simultaneous}.
-    :return: A function
-    """
+        prets = []
+        for aid in agent_ids:
+            obs_seq = rets[Episode.CUR_OBS][aid]
+            extra_kwargs = {"policy_id": behavior_policies[aid]}
+            if rets.get(Episode.ACTION_MASK) is not None:
+                extra_kwargs["action_mask"] = rets[Episode.ACTION_MASK][aid]
+            prets.append(agent_interfaces[aid].compute_action(obs_seq, **extra_kwargs))
+        for aid, (x, y, _) in zip(agent_ids, prets):
+            act_dict[aid] = x
+            act_dist_dict[aid] = y
 
-    handler = sequential if rollout_type == "sequential" else simultaneous
+        next_rets = env.step(act_dict)
+        rets.update(next_rets)
 
-    def func(
-        trainable_pairs,
-        agent_interfaces,
-        env_desc,
-        metric_type,
-        max_iter,
-        behavior_policy_mapping=None,
-    ):
-        statistic, episodes = handler(
-            trainable_pairs,
-            agent_interfaces,
-            env_desc,
-            metric_type,
-            max_iter,
-            behavior_policy_mapping=behavior_policy_mapping,
+        for k, v in rets.items():
+            if k == Episode.NEXT_OBS:
+                tmpv = []
+                for aid in agent_ids:
+                    tmpv.append(
+                        agent_interfaces[aid].transform_observation(
+                            v[aid], policy_id=behavior_policies[aid]
+                        )
+                    )
+                for aid, e in zip(agent_ids, tmpv):
+                    v[aid] = e
+
+        # stack to episodes
+        for aid in agent_episodes:
+            episode = agent_episodes[aid]
+            items = {
+                Episode.ACTION: np.stack(act_dict[aid]),
+                Episode.ACTION_DIST: np.stack(act_dist_dict[aid]),
+            }
+
+            for k, v in rets.items():
+                items[k] = np.stack(v[aid])
+
+            episode.insert(**items)
+            metric.step(aid, behavior_policies[aid], **items)
+
+        rets[Episode.CUR_OBS] = rets[Episode.NEXT_OBS]
+        done = any(
+            [
+                any(v) if not isinstance(v, bool) else v
+                for v in rets[Episode.DONE].values()
+            ]
         )
-        if isinstance(agent_episodes, MultiAgentEpisode):
-            agent_episodes.insert(**episodes)
-        elif isinstance(agent_episodes, Dict):
-            for agent, episode in episodes.items():
-                agent_episodes[agent].insert(**episode.data)
-        return statistic, episodes
+        cnt += 1
+        # if dataset_server is not None and cnt % send_interval == 0:
+        #     dataset_server.save.remote(agent_episodes)
+        #     # clean agent episode
+        #     for e in agent_episodes.values():
+        #         e.reset()
 
-    return func
+    if dataset_server:
+        dataset_server.save.remote(agent_episodes, wait_for_ready=False)
+    transition_size = cnt * len(agent_episodes) * getattr(env, "num_envs", 1)
+
+    evaluated_results = metric.parse(agent_filter=tuple(agent_episodes.keys()))
+    return evaluated_results, transition_size
 
 
-def multi_agent_rollout(multi_agent_episode):
-    """Not READY"""
+def get_func(name: Union[str, Callable]):
+    if callable(name):
+        return name
+    else:
+        return {"sequential": sequential, "simultaneous": simultaneous}[name]
 
-    def rollout_fn(
-        trainable_pairs,
-        agent_interfaces,
-        env_desc,
-        metric_type,
-        max_iter,
-        behavior_policy_mapping=None,
+
+class Stepping:
+    def __init__(
+        self, exp_cfg: Dict[str, Any], env_desc: Dict[str, Any], dataset_server=None
     ):
-        env = env_desc.get("env", env_desc["creator"](**env_desc["config"]))
-        metric = get_metric(metric_type)(env.possible_agents)
-        behavior_policy_mapping = behavior_policy_mapping or {
-            _id: agent.behavior_policy for _id, agent in agent_interfaces.items()
+        self.logger = get_logger(
+            log_level=settings.LOG_LEVEL,
+            log_dir=settings.LOG_DIR,
+            name=f"rolloutfunc_executor_{uuid.uuid1()}",
+            remote=settings.USE_REMOTE_LOGGER,
+            mongo=settings.USE_MONGO_LOGGER,
+            **exp_cfg,
+        )
+
+        # init environment here
+        self.env_desc = env_desc
+
+        # check whether env is simultaneous
+        env = env_desc["creator"](**env_desc["config"])
+        self._is_sequential = env.is_sequential
+
+        if not env.is_sequential:
+            self.env = VectorEnv.from_envs([env], config=env_desc["config"])
+            self.callback = simultaneous
+        else:
+            self.env = env
+            self.callback = sequential
+
+        self._dataset_server = dataset_server
+
+    @classmethod
+    def as_remote(
+        cls,
+        num_cpus: int = None,
+        num_gpus: int = None,
+        memory: int = None,
+        object_store_memory: int = None,
+        resources: dict = None,
+    ) -> type:
+        """Return a remote class for Actor initialization."""
+
+        return ray.remote(
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            object_store_memory=object_store_memory,
+            resources=resources,
+        )(cls)
+
+    @Log.data_feedback(enable=settings.DATA_FEEDBACK)
+    def run(
+        self,
+        agent_interfaces: Dict[AgentID, AgentInterface],
+        metric_type: Union[str, type],
+        fragment_length: int,
+        desc: Dict[str, Any],
+        callback: type,
+        role: str,
+        episodes: Dict[AgentID, Episode] = None,
+    ) -> Tuple[Dict[str, MetricEntry], int]:
+        """Environment stepping, rollout/simulate with environment vectorization if it is feasible.
+
+        :param Dict[AgentID,AgentInterface] agent_interface: A dict of agent interfaces.
+        :param Union[str,type] metric_type: Metric type or handler.
+        :param int fragment_length: The maximum length of an episode.
+        :param Dict[str,Any] desc: The description of task.
+        :param type callback: Customized/registered rollout function.
+        :param str role: Indicator of stepping type. Values in `rollout` or `simulation`.
+        :returns: A tuple of a dict of MetricEntry and the caculation of total frames.
+        """
+
+        behavior_policies = {}
+        policy_distribution = desc.get("policy_distribution")
+        for agent, interface in agent_interfaces.items():
+            if policy_distribution:
+                interface.reset(policy_distribution[agent])
+            behavior_policies[agent] = interface.behavior_policy
+
+        # behavior policies is a mapping from agents to policy ids
+        # update with external behavior_policies
+        behavior_policies.update(desc["behavior_policies"])
+        # specify the number of running episodes
+        num_episodes = desc["num_episodes"]
+
+        self.add_envs(num_episodes)
+        self.env.reset(limits=num_episodes)
+
+        episode_creator = Episode if not self._is_sequential else SequentialEpisode
+        agent_episodes = episodes or {
+            agent: episode_creator(
+                self.env_desc["config"]["env_id"],
+                desc["behavior_policies"][agent],
+                capacity=fragment_length * num_episodes,
+                other_columns=self.env.extra_returns,
+            )
+            for agent in desc["behavior_policies"]
         }
 
-        observations = defaultdict(list)
-        states = defaultdict(list)
-        actions = defaultdict(list)
-        rewards = defaultdict(list)
-        action_dists = defaultdict(list)
-        next_observations = defaultdict(list)
-        next_states = defaultdict(list)
-        dones = defaultdict(list)
-        next_action_masks = defaultdict(list)
-        infos = defaultdict(list)
+        metric = get_metric(metric_type)(self.env.possible_agents)
+        callback = get_func(callback) if callback else self.callback
 
-        obs_dict, state_dict, action_mask_dict = env.reset()
-
-        cnt = 0
-        while cnt < max_iter:
-            act_dict, act_dist_dict = {}, {}
-            for aid, obs in obs_dict.items():
-                info = {}
-                info["action_mask"] = action_mask_dict[aid]
-
-                # XXX(ziyu): what is "info" we need? I think we may need to pass the true
-                #  info_dict[aid] to compute_action
-                info["policy_id"] = behavior_policy_mapping[aid]
-                act_dict[aid], _, extra_info = agent_interfaces[aid].compute_action(
-                    obs, **info
-                )
-                act_dist_dict[aid] = extra_info["action_probs"]
-            (
-                next_obs_dict,
-                next_state_dict,
-                rew_dict,
-                done_dict,
-                action_mask_dict,
-                info_dict,
-            ) = env.step(act_dict)
-
-            for aid in env.agents:
-                (
-                    _obs,
-                    _state,
-                    _act,
-                    _act_dist,
-                    _rew,
-                    _n_obs,
-                    _n_state,
-                    _done,
-                    _action_mask,
-                    _info,
-                ) = (
-                    obs_dict[aid],
-                    state_dict[aid],
-                    act_dict[aid],
-                    act_dist_dict[aid],
-                    rew_dict[aid],
-                    next_obs_dict[aid],
-                    next_state_dict[aid],
-                    done_dict[aid],
-                    action_mask_dict[aid],
-                    info_dict[aid],
-                )
-                observations[aid].append(_obs)
-                states[aid].append(_state)
-                actions[aid].append(_act)
-                action_dists[aid].append(_act_dist)
-                next_observations[aid].append(_n_obs)
-                next_states[aid].append(_n_state)
-                rewards[aid].append(_rew)
-                dones[aid].append(_done)
-                next_action_masks[aid].append(_action_mask)
-                infos[aid].append(_info)
-
-                # metric.step(aid, _obs, _act, _rew, _done, _info)
-                metric.step(aid, behavior_policy_mapping[aid], reward=_rew, info=_info)
-
-            obs_dict = next_obs_dict
-            state_dict = next_state_dict
-
-            if all(done_dict.values()):
-                break
-
-        multi_agent_episode.insert(
-            **{
-                aid: {
-                    Episode.CUR_OBS: np.stack(observations[aid]),
-                    Episode.CUR_STATE: np.stack(states[aid]),
-                    Episode.NEXT_OBS: np.stack(next_observations[aid]),
-                    Episode.NEXT_STATE: np.stack(next_states[aid]),
-                    Episode.DONES: np.stack(dones[aid]),
-                    Episode.REWARDS: np.stack(rewards[aid]),
-                    Episode.ACTIONS: np.stack(actions[aid]),
-                    Episode.ACTION_DIST: np.stack(action_dists[aid]),
-                    Episode.NEXT_ACTION_MASK: np.stack(next_action_masks[aid]),
-                }
-                for aid in observations
-            }
+        evaluated_results, num_frames = callback(
+            self.env,
+            num_episodes,
+            agent_interfaces,
+            fragment_length,
+            behavior_policies,
+            agent_episodes,
+            metric,
+            dataset_server=self._dataset_server if role == "rollout" else None,
         )
 
-        return metric.parse(), {}
+        return evaluated_results, num_frames
 
-    return rollout_fn
+    def add_envs(self, maximum: int) -> int:
+        """Create environments, if env is an instance of VectorEnv, add these new environment instances into it,
+        otherwise do nothing.
 
+        :returns: The number of nested environments.
+        """
 
-def get_func(name: str):
-    return {"sequential": sequential, "simultaneous": simultaneous}[name]
+        if not isinstance(self.env, VectorEnv):
+            return 1
+
+        existing_env_num = getattr(self.env, "num_envs", 1)
+
+        if existing_env_num >= maximum:
+            return self.env.num_envs
+
+        self.env.add_envs(num=maximum - existing_env_num)
+
+        return self.env.num_envs
+
+    def close(self):
+        if self.env is not None:
+            self.env.close()

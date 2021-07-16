@@ -3,6 +3,7 @@ Basic class of agent interface. Users can implement their custom training workfl
 """
 
 import copy
+from dataclasses import dataclass
 import threading
 import time
 from abc import ABCMeta, abstractmethod
@@ -23,11 +24,9 @@ from malib.utils.typing import (
     Status,
     MetaParameterDescription,
     BufferDescription,
-    TrainingMetric,
     TrainingFeedback,
     TaskRequest,
     AgentID,
-    List,
     MetricEntry,
     DataTransferType,
 )
@@ -296,8 +295,8 @@ class AgentInterface(metaclass=ABCMeta):
         return Status.NORMAL
 
     def request_data(
-        self, buffer_desc: Dict[AgentID, BufferDescription]
-    ) -> Tuple[Dict, str]:
+        self, buffer_desc: Union[BufferDescription, Dict[AgentID, BufferDescription]]
+    ) -> Tuple[Any, str]:
         """Request training data from remote `OfflineDatasetServer`.
 
         Note:
@@ -308,15 +307,41 @@ class AgentInterface(metaclass=ABCMeta):
         :return: A tuple of agent batches and information.
         """
 
-        batch, info = None, ""
-
-        while batch is None:
-            batch, info = ray.get(self._offline_dataset.sample.remote(buffer_desc))
-
-        return batch, info
+        if isinstance(buffer_desc, Dict):
+            res = {}
+            # multiple tasks
+            tasks = [
+                self._offline_dataset.sample.remote(v) for v in buffer_desc.values()
+            ]
+            while len(tasks) > 0:
+                dones, tasks = ray.wait(tasks)
+                for done in dones:
+                    batch, info = ray.get(done)
+                    if batch.data is None:
+                        # push task
+                        tasks.append(
+                            self._offline_dataset.sample.remote(
+                                buffer_desc[batch.identity]
+                            )
+                        )
+                    else:
+                        res[batch.identity] = batch.data
+        else:
+            res = None
+            while True:
+                batch, info = ray.get(self._offline_dataset.sample.remote(buffer_desc))
+                if batch.data is None:
+                    continue
+                else:
+                    res = batch.data
+                    break
+        return res, info
 
     def gen_buffer_description(
-        self, aid: AgentID, pid: PolicyID, batch_size: int, sample_mode: str
+        self,
+        agent_policy_mapping: Dict[AgentID, PolicyID],
+        batch_size: int,
+        sample_mode: str,
     ):
         """Generate buffer description.
 
@@ -327,13 +352,16 @@ class AgentInterface(metaclass=ABCMeta):
         :return: A buffer description entity.
         """
 
-        return BufferDescription(
-            env_id=self._env_desc["id"],
-            agent_id=aid,
-            policy_id=pid,
-            batch_size=batch_size,
-            sample_mode=sample_mode,
-        )
+        return {
+            aid: BufferDescription(
+                env_id=self._env_desc["config"]["env_id"],
+                agent_id=aid,
+                policy_id=pid,
+                batch_size=batch_size,
+                sample_mode=sample_mode,
+            )
+            for aid, (pid, _) in agent_policy_mapping.items()
+        }
 
     @Log.method_timer(enable=settings.PROFILING)
     def train(self, task_desc: TaskDescription, training_config: Dict[str, Any] = None):
@@ -355,11 +383,9 @@ class AgentInterface(metaclass=ABCMeta):
         batch_size = training_config.get("batch_size", 64)
         sample_mode = training_task.mode
 
-        # buffer description is reusable
-        buffer_desc = {
-            aid: self.gen_buffer_description(aid, pid, batch_size, sample_mode)
-            for aid, (pid, _) in agent_involve_info.trainable_pairs.items()
-        }
+        buffer_desc = self.gen_buffer_description(
+            agent_involve_info.trainable_pairs, batch_size, sample_mode
+        )
         policy_id_mapping = {
             env_aid: pid
             for env_aid, (pid, _) in agent_involve_info.trainable_pairs.items()
@@ -381,18 +407,32 @@ class AgentInterface(metaclass=ABCMeta):
         for env_aid, pid in policy_id_mapping.items():
             self.pull(env_aid, pid)
 
+        old_policy_id_mapping = copy.deepcopy(policy_id_mapping)
+
         while not stopper(statistics, global_step=epoch) and not stopper.all():
-            batch, size = self.request_data(buffer_desc)
+            # add timer: key to identify object, tag to log
+            # FIXME(ming): key for logger has been discarded!
+            with Log.timer(
+                log=True,
+                logger=self.logger,
+                tag=f"time/TrainingInterface_{self._id}/data_request",
+                global_step=epoch,
+            ):
+                start = time.time()
+                batch, size = self.request_data(buffer_desc)
 
             with Log.stat_feedback(
                 log=settings.STATISTIC_FEEDBACK,
                 logger=self.logger,
                 worker_idx=self._id,
                 global_step=epoch,
+                group="training",
             ) as (statistic_seq, processed_statistics):
+                # a dict of dict of metric entry {agent: {item: MetricEntry}}
                 statistics = self.optimize(policy_id_mapping, batch, training_config)
                 statistic_seq.append(statistics)
-
+                # NOTE(ming): if it meets the update interval, parameters will be pushed to remote parameter server
+                # the returns `status` code will determine whether we should stop the training or continue it.
                 if (epoch + 1) % training_config["update_interval"] == 0:
                     for env_aid in self._group:
                         pid = policy_id_mapping[env_aid]
@@ -401,6 +441,7 @@ class AgentInterface(metaclass=ABCMeta):
                             # terminate sub task tagged with env_id
                             stopper.set_terminate(env_aid)
                             # and remove buffer request description
+                            assert isinstance(buffer_desc, Dict)
                             buffer_desc.pop(env_aid)
                             # also training poilcy id mapping
                             policy_id_mapping.pop(env_aid)
@@ -408,9 +449,9 @@ class AgentInterface(metaclass=ABCMeta):
                             self.pull(env_aid, pid)
                 epoch += 1
                 self._global_step += 1
-
+        print(f"**** training for mapping: {old_policy_id_mapping} finished")
         if status is not None and not status.locked:
-            for aid, pid in policy_id_mapping.items():
+            for aid, pid in old_policy_id_mapping.items():
                 parameter_desc = copy.copy(self._parameter_desc[pid])
                 parameter_desc.lock = True
                 policy = self._policies[pid]
@@ -452,7 +493,7 @@ class AgentInterface(metaclass=ABCMeta):
         """
 
         return ParameterDescription(
-            env_id=self._env_desc["id"],
+            env_id=self._env_desc["config"]["env_id"],
             identify=env_aid,
             id=policy_id,
             time_stamp=time.time(),

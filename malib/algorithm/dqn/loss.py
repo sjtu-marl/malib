@@ -10,39 +10,40 @@ from .policy import DQN
 
 
 class DQNLoss(LossFunc):
-    def __init__(self):
-        super(DQNLoss, self).__init__()
-        self._params = {"optimizer": "Adam", "lr": 1e-4}
-
     def setup_optimizers(self, *args, **kwargs):
         self._policy: DQN
-        optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
-        self.optimizers.append(
-            optim_cls(self.policy.critic.parameters(), lr=self._params["lr"])
-        )
+        if self.optimizers is None:
+            optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
+            self.optimizers = optim_cls(
+                self.policy.critic.parameters(), lr=self._params["lr"]
+            )
+        else:
+            # update parameters
+            self.optimizers.param_groups = []
+            self.optimizers.add_param_group({"params": self.policy.critic.parameters()})
 
     def step(self) -> Any:
         """ Step optimizers and update target """
         _ = [item.backward() for item in self.loss]
 
         gradients = {
-            "model": {
+            "critic": {
                 name: param.detach().numpy()
                 for name, param in self.policy.critic.named_parameters()
             },
         }
 
-        _ = [p.step() for p in self.optimizers]
+        self.optimizers.step()
 
         return gradients
 
     def __call__(self, batch) -> Dict[str, Any]:
         self.loss = []
-        reward = torch.FloatTensor(batch[Episode.REWARDS].copy()).view(-1, 1)
-        act = torch.LongTensor(batch[Episode.ACTIONS].copy()).view(-1, 1)
+        reward = torch.FloatTensor(batch[Episode.REWARD].copy()).view(-1, 1)
+        act = torch.LongTensor(batch[Episode.ACTION].copy()).view(-1, 1)
         obs = batch[Episode.CUR_OBS].copy()
         next_obs = batch[Episode.NEXT_OBS].copy()
-        done = torch.FloatTensor(batch[Episode.DONES].copy()).view(-1, 1)
+        done = torch.FloatTensor(batch[Episode.DONE].copy()).view(-1, 1)
 
         state_action_values = self.policy.critic(obs).gather(1, act)
         next_state_q = self.policy.target_critic(next_obs)
