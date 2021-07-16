@@ -33,6 +33,7 @@ class State:
         self._value = 0.0
         self._game_over = game_over
         self._discounted = 1.0
+        self._iterated_done = False
 
     def reward(self, action: "Action") -> float:
         """Compute reward."""
@@ -44,6 +45,7 @@ class State:
 
         return self._reward_func[action].get(next_state, 0.0)
 
+    @property
     def legal_actions_mask(self) -> Tuple:
         """Return a tuple of legal action index with mask."""
         # _apply_mask_to_action_space(self._actions, self._mask)
@@ -107,16 +109,24 @@ class State:
         self._action_to_next_state[action] = state
         self._reward_func[action][state] = reward
 
+        self._iterated_done = len(self._action_to_next_state) == len(
+            self.legal_actions_mask
+        )
+
+    @property
+    def iterated_done(self) -> bool:
+        return self._iterated_done
+
     def next(self, action: tabularType.Action) -> "State":
         """Move step and return the next state."""
 
-        assert (
-            self._action_to_next_state is not None
-        ), "Terminal state has no next states."
+        # assert (
+        #     self._action_to_next_state is not None
+        # ), "Terminal state has no next states."
         assert (
             action in self.actions
         ), f"Illegal action: {action}, expected should be in {self.actions}"
-        return self._action_to_next_state[action]
+        return self._action_to_next_state.get(action)
 
     def as_terminal(self):
         self._action_to_next_state = None

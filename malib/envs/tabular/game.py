@@ -1,8 +1,11 @@
 import collections
+import copy
+
 from dataclasses import dataclass
 from typing import Sequence
 
 import gym
+import pickle
 
 from malib.utils.typing import GameType, AgentID, Dict, Tuple
 from malib.envs.tabular.state import State as GameState
@@ -164,9 +167,14 @@ class Game:
         if not state.is_terminal():
             if state.current_player() == self._tracer.player:
                 yield (state, 1.0)
+            if not state.iterated_done:
+                pickle_env = pickle.dumps(self._env)
+            else:
+                pickle_env = None
             for action, p_action in self.transition(state):
-                if not state.iterated:
+                if state.next(action) is None:
                     # cache environment then rollout
+                    self._env = pickle.loads(pickle_env)
                     self._env.step(action)
                     player = next(self._env.agent_iter())
                     observation, reward, done, info = self._env.last()
@@ -189,7 +197,7 @@ class Game:
         """
 
         if state.current_player() == self._tracer.player:
-            return [(action, 1.0) for action in state.legal_actions_mask()]
+            return [(action, 1.0) for action in state.legal_actions_mask]
         elif state.is_chance_node():
             return state.chance_outcomes()
         else:
