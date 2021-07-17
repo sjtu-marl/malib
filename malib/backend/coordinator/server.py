@@ -108,6 +108,34 @@ class CoordinatorServer(BaseCoordinator):
 
         self._logger.info("Coordinator server started")
 
+    def pre_launching(self, init_config):
+        # if init_config["load_model"]:
+        #     self.request(
+        #         TaskRequest(
+        #             task_type=TaskType.LOAD_MODEL,
+        #             content=init_config["model_path"],
+        #         )
+        #     )
+        #     self.request(
+        #         Tasks
+        #     )
+        pass
+
+    @staticmethod
+    def task_handler_register(cls):
+        from functools import wraps
+        print("Registering")
+
+        def decorator(func):
+            @wraps(func)
+            def wrapper(self, *args, **kwargs):
+                return func(*args, **kwargs)
+
+            setattr(cls, func.__name__, func)
+            return func
+
+        return decorator
+
     def request(self, task_request: TaskRequest):
         """ Handling task request """
 
@@ -158,6 +186,12 @@ class CoordinatorServer(BaseCoordinator):
             self.gen_optimization_task(task_request.content.agent_involve_info)
         elif task_request.task_type == TaskType.TERMINATE:
             self._terminate = True
+        elif task_request.task_type in TaskType:
+            generic_task_handler = getattr(self, task_request.task_type, None)
+            if generic_task_handler:
+                generic_task_handler(task_request)
+            else:
+                raise AttributeError(f"Missing handler for task type {task_request.task_type}")
         else:
             raise TypeError(f"Unexpected task type: {task_request.task_type}")
 

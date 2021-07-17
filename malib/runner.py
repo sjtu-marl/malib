@@ -1,4 +1,5 @@
 import copy
+import pprint
 import threading
 import time
 from typing import Dict, Any, List
@@ -47,7 +48,6 @@ def _terminate(recycle_funcs: List[Dict[str, Any]], waiting: bool = True):
 def run(**kwargs):
     config = locals()["kwargs"]
     global_configs = update_configs(config)
-
     if global_configs["training"]["interface"].get("worker_config") is None:
         global_configs["training"]["interface"]["worker_config"] = {
             "num_cpus": None,
@@ -58,7 +58,7 @@ def run(**kwargs):
         }
 
     infos = DefaultConfigFormatter.parse(global_configs)
-    print(f"Logged experiment information:{infos}")
+    pprint.pprint(f"Logged experiment information:{infos}", indent=2)
 
     exp_cfg = logger.start(
         group=global_configs.get("group", "experiment"),
@@ -103,6 +103,15 @@ def run(**kwargs):
                     break
                 else:
                     time.sleep(1)
+
+        tasks = [
+            offline_dataset.shutdown.remote(),
+            parameter_server.shutdown.remote()
+        ]
+        while len(tasks) > 0:
+            dones, tasks = ray.wait(tasks)
+
+        print("Offline Dataset/ Parameter servering closed")
         _terminate(
             [
                 {"func": ray.shutdown, "args": tuple()},
@@ -110,7 +119,6 @@ def run(**kwargs):
             ],
             waiting=True,
         )
-
     except KeyboardInterrupt as e:
         print(
             "Detected KeyboardInterrupt event, start background resources recycling threads ..."

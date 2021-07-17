@@ -23,6 +23,7 @@ DEFAULT_EPISODE_CAPACITY = 30000  # int(1e15)
 DEFAULT_EPISODE_BLOCK_SIZE = int(75)
 PICKLE_PROTOCOL_VER = 5
 
+PARAM_DIR = os.path.join(BASE_DIR, "../checkpoints")
 DATASET_DIR = os.path.join(BASE_DIR, "dataset")
 
 # __sphinx_doc_begin__

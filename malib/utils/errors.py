@@ -46,3 +46,7 @@ class OversampleError(Error):
 
 class NoEnoughDataError(Error):
     pass
+
+
+class RegisterFailure(Error):
+    pass

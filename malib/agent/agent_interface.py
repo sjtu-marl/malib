@@ -439,8 +439,8 @@ class AgentInterface(metaclass=ABCMeta):
                             # terminate sub task tagged with env_id
                             stopper.set_terminate(env_aid)
                             # and remove buffer request description
-                            assert isinstance(buffer_desc, Dict)
-                            buffer_desc.pop(env_aid)
+                            if isinstance(buffer_desc, Dict):
+                                buffer_desc.pop(env_aid)
                             # also training poilcy id mapping
                             policy_id_mapping.pop(env_aid)
                         else:
