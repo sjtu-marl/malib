@@ -585,7 +585,8 @@ class Table:
             name=serial_dict["name"],
             multi_agent=serial_dict["multi_agent"]
         )
-        table.set_episode(serial_dict["data"], serial_dict["data"].capacity)
+        table._episode = serial_dict["data"]
+        table._capacity = table._episode.capacity
         return table
 
     def to_csv(self, fp):
@@ -655,16 +656,26 @@ class ExternalReadOnlyDataset(ExternalDataset):
                 self._tables[table.name] = table
 
     def sample(self, buffer_desc: BufferDescription):
-        res = {}
-        table_name = Table.gen_table_name(
-            env_id=buffer_desc.env_id,
-            main_id=buffer_desc.agent_id,
-            pid=buffer_desc.policy_id,
-        )
-        table = self._tables[table_name]
-        res = table.sample(size=self._sample_rate * buffer_desc.batch_size)
-        res = Batch(identity=buffer_desc.agent_id, data=res)
-        return res
+        info = f"{self._name}(external, read-only): OK"
+        try:
+            table_name = Table.gen_table_name(
+                env_id=buffer_desc.env_id,
+                main_id=buffer_desc.agent_id,
+                pid=buffer_desc.policy_id,
+            )
+            table = self._tables[table_name]
+            res = table.sample(size=self._sample_rate * buffer_desc.batch_size)
+        except KeyError as e:
+            info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
+            res = None
+        except OversampleError as e:
+            info = f"No enough data: table_size={table.size} batch_size={buffer_desc.batch_size} table_name={table_name}"
+            res = None
+        except Exception as e:
+            print(traceback.format_exc())
+            res = None
+            info = "others"
+        return res, info
 
     def save(self, agent_episodes: Dict[AgentID, Episode], wait_for_ready: bool = True):
         raise NotImplementedError
@@ -672,7 +683,7 @@ class ExternalReadOnlyDataset(ExternalDataset):
 
 @ray.remote
 class OfflineDataset:
-    def __init__(self, dataset_config: Dict[str, Any], exp_cfg: Dict[str, Any]):
+    def __init__(self, dataset_config: Dict[str, Any], exp_cfg: Dict[str, Any], test_mode=False):
         self._episode_capacity = dataset_config.get(
             "episode_capacity", settings.DEFAULT_EPISODE_CAPACITY
         )
@@ -680,14 +691,17 @@ class OfflineDataset:
         self._tables: Dict[str, Table] = dict()
         self._threading_lock = threading.Lock()
         self._threading_pool = ThreadPoolExecutor()
-        self.logger = get_logger(
-            log_level=settings.LOG_LEVEL,
-            log_dir=settings.LOG_DIR,
-            name="offline_dataset",
-            remote=settings.USE_REMOTE_LOGGER,
-            mongo=settings.USE_MONGO_LOGGER,
-            **exp_cfg,
-        )
+        if not test_mode:
+            self.logger = get_logger(
+                log_level=settings.LOG_LEVEL,
+                log_dir=settings.LOG_DIR,
+                name="offline_dataset",
+                remote=settings.USE_REMOTE_LOGGER,
+                mongo=settings.USE_MONGO_LOGGER,
+                **exp_cfg,
+            )
+        else:
+            self.logger = logging.getLogger("OfflineDataset")
 
         # parse init tasks
         init_job_config = dataset_config.get("init_job", {})
@@ -708,6 +722,7 @@ class OfflineDataset:
                         path=external_config["path"],
                         sample_rate=sample_rate
                     )
+                    self.external_proxy.append(dataset)
                 else:
                     raise NotImplementedError("External writable dataset is not supported")
 
@@ -790,7 +805,7 @@ class OfflineDataset:
     # @Log.method_timer(enable=settings.PROFILING)
     def load(self, path, mode="replace") -> List[Dict[str, str]]:
         table_descs = []
-        with self._threading_lock():
+        with self._threading_lock:
             for fn in os.listdir(path):
                 if fn.endswith(".tpkl"):
                     conflict_callback_required = False
@@ -808,11 +823,8 @@ class OfflineDataset:
                     self._tables[table.name] = table
                     table_descs.append({
                         "name": table.name,
-                        "env_id": table.env_id,
-                        "policy_id": table.policy_id,
-                        "agent_id": table.agent_id,
-                        "capacity": table.capacity,
-                        "columns": table.columns,
+                        "size": table.size,
+                        "capacity": table.capacity
                     })
 
                     if conflict_callback_required:
@@ -870,20 +882,25 @@ class OfflineDataset:
             )
             table = self._tables[table_name]
             res = table.sample(size=buffer_desc.batch_size)
-            if len(self.external_proxy) > 0:
-                external_res = [dataset.sample(buffer_desc) for dataset in self.external_proxy]
-                res = [res] + external_res
-            res = Batch(identity=buffer_desc.agent_id, data=res)
         except KeyError as e:
             info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
-            res = Batch(identity=buffer_desc.agent_id, data=None)
+            res = None
         except OversampleError as e:
             info = f"No enough data: table_size={table.size} batch_size={buffer_desc.batch_size} table_name={table_name}"
-            res = Batch(identity=buffer_desc.agent_id, data=None)
+            res = None
         except Exception as e:
             print(traceback.format_exc())
-            res = Batch(identity=buffer_desc.agent_id, data=None)
+            res = None
             info = "others"
+
+        if len(self.external_proxy) > 0:
+            external_res = []
+            for dataset in self.external_proxy:
+                tmp_res, tmp_info = dataset.sample(buffer_desc)
+                external_res.append(tmp_res)
+                info += "\n" + tmp_info
+            res = [res] + external_res
+        res = Batch(identity=buffer_desc.agent_id, data=res)
         return res, info
 
     def shutdown(self):

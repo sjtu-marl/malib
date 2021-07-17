@@ -70,14 +70,14 @@ if __name__ == "__main__":
             # ----------------       --------------------
             # | Main Dataset | ---  | External Dataset [i] |
             # ---------------       --------------------
-            # "extern": {
-            #     "links": [{
-            #             "name": "expert data",
-            #             "path": "data/expert/",
-            #             "write": False,
-            #     }],
-            #     "sample_rates": [0.5, 0.5],
-            # },
+            "extern": {
+                "links": [{
+                        "name": "expert data",
+                        "path": "data/expert/",
+                        "write": False,
+                }],
+                "sample_rates": [1],
+            },
             # Define the quitting job here,
             # Again, only dumping is supported now.
             "quit_job": {
