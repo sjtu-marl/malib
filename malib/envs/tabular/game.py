@@ -51,6 +51,7 @@ def _memory_cache(key_fn=lambda *arg: "_".join(arg)):
 class Game:
     def __init__(self, env_desc: Dict[str, Any]):
         """Create a tabular game instance."""
+
         env = env_desc["creator"](**env_desc["config"])
         assert env.is_sequential, "Tabular game supports only sequential games!"
         self._players = list(env.possible_agents)
@@ -63,13 +64,16 @@ class Game:
         )
         # NOTE(ming): this operator is only for sequential games.
         self._env = env.env
+        self._env_desc = env_desc
 
-    def initial_state(self) -> GameState:
+    def initial_state(self, seed=None) -> GameState:
         """Return initialized state.
 
         :raises: NotImplementedError
         :returns: A sequence of states or a single state.
         """
+        self._env = self._env_desc["creator"](**self._env_desc["config"])._env
+        self._env.seed(seed)
         self._env.reset()
         self._states: Dict[AgentID, Sequence[GameState]] = {}
         # pack obsevations to states
@@ -80,6 +84,7 @@ class Game:
             observation,
             range(self._game_spec.action_spaces[player].n),
             observation.get("action_mask"),
+            0,
             done,
         )
         return state
@@ -94,17 +99,17 @@ class Game:
 
         return self._states
 
-    def info_sets(
-        self, player_id: AgentID, policies: Dict[AgentID, "TabularPolicy"]
+    def infosets(
+        self, player_id: AgentID, policies: Dict[AgentID, "TabularPolicy"], seed=None
     ) -> Dict[str, Tuple[GameState, float]]:
         infosets = collections.defaultdict(list)
-        state = self.initial_state()
+        state = self.initial_state(seed)
         self._tracer = Tracer(player_id, policies)
         for s, p in self.iterate_nodes(state):
             infosets[s.information_state_string(player_id)].append((s, p))
         return dict(infosets)
 
-    @_memory_cache(lambda *arg: "_".join(map(str, arg)))
+    # @_memory_cache(lambda *arg: "_".join(map(str, arg)))
     def iterate_nodes(self, state: GameState):
         """Iterate state nodes and return a sequence of (state, prob) pairs."""
 
@@ -115,26 +120,30 @@ class Game:
                 pickle_env = pickle.dumps(self._env)
             else:
                 pickle_env = None
+            # how about state is not current player?
             for action, p_action in self.transition(state):
                 if state.next(action) is None:
                     # cache environment then rollout
                     self._env = pickle.loads(pickle_env)
                     self._env.step(action)
-                    player = next(iter(self._env.agent_iter()))
                     observation, reward, done, info = self._env.last()
+                    player = next(iter(self._env.agent_iter()))
                     next_state = GameState(
                         player,
                         observation,
                         range(self._game_spec.action_spaces[player].n),
                         observation.get("action_mask"),
+                        state.level + 1,
                         done,
                     )
+                    if done:
+                        next_state.set_returns(self._env.rewards.copy())
                     state.add_transition(action, next_state, reward)
                 for next_state, p_state in self.iterate_nodes(state.next(action)):
                     yield (next_state, p_state * p_action)
             del pickle_env
 
-    @_memory_cache(lambda *arg: "_".join(map(str, arg)))
+    # @_memory_cache(lambda *arg: "_".join(map(str, arg)))
     def transition(self, state: GameState):
         """Return a list of (action, prob) pairs from a given parent state.
 

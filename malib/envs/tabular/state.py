@@ -14,6 +14,7 @@ class State:
         information_state_tensor: Any,
         actions: Sequence,
         mask: Sequence,
+        level: int,
         game_over: bool,
     ):
         """Create a state instance with given actions and reward function.
@@ -29,6 +30,7 @@ class State:
         self._player = player_id
         self._actions = tuple(actions)
         self._mask = mask
+        self._level = level
         self._legal_actions_mask = tuple(
             [self._actions[i] for i, v in enumerate(self._mask) if v]
         )
@@ -37,27 +39,28 @@ class State:
         self._game_over = game_over
         self._discounted = 1.0
         self._iterated_done = False
+        self._player_returns = None
 
     def __str__(self) -> str:
         return str(pickle.dumps(self))
+
+    @property
+    def level(self) -> int:
+        return self._level
+
+    @property
+    def player_returns(self):
+        return self._player_returns
+
+    def set_returns(self, returns):
+        assert self._game_over
+        self._player_returns = returns
 
     @property
     def legal_actions_mask(self) -> Tuple:
         """Return a tuple of legal action index with mask."""
         # _apply_mask_to_action_space(self._actions, self._mask)
         return self._legal_actions_mask
-
-    @property
-    def value(self) -> float:
-        """Return the state value. Default by 0."""
-
-        return self._value
-
-    @value.setter
-    def value(self, value: float):
-        """Assign state-value to this state."""
-
-        self._value = value
 
     @property
     def discounted(self) -> float:
@@ -98,7 +101,7 @@ class State:
 
         next_state = self.next(action)
 
-        if self._reward_func.get(action):
+        if self._reward_func.get(action) is None:
             self._reward_func[action] = {}
 
         return self._reward_func[action].get(next_state, 0.0)
@@ -107,7 +110,22 @@ class State:
         return self._information_state_tensor
 
     def information_state_string(self, player: AgentID):
-        return f"player_{player}_value_{self._information_state_tensor}"
+        assert self._player == player, (self._player, player)
+        # convert observation to string
+        obs_str = "".join(
+            map(
+                str,
+                self._information_state_tensor["observation"].astype(np.int).tolist(),
+            )
+        )
+        # convert action_mask to string
+        mask_str = "".join(
+            map(
+                str,
+                self._information_state_tensor["action_mask"].astype(np.int).tolist(),
+            )
+        )
+        return f"level::{self._level}_obs::{obs_str}_mask::{mask_str}"
 
     def is_chance_node(self) -> bool:
         # FIXME(ming): pettingzoo environments do not support dynamics getter, we will fix it in the future.
@@ -150,10 +168,7 @@ class State:
         assert (
             action in self.legal_actions_mask
         ), f"Illegal action: {action}, expected should be in {self.legal_actions_mask}"
-        assert self._action_to_next_state.get(action) is not None, (
-            action,
-            self._action_to_next_state,
-        )
+        return self._action_to_next_state.get(action)
 
     def as_terminal(self):
         self._action_to_next_state = None
