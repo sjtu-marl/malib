@@ -560,7 +560,7 @@ class Table:
                 os.makedirs(fp)
             except:
                 pass
-            tfp = os.path.join(fp, candidate_name+".tpkl")
+            tfp = os.path.join(fp, candidate_name + ".tpkl")
         else:
             paths = os.path.split(fp)[0]
             try:
@@ -585,10 +585,7 @@ class Table:
         with open(fp, "rb") as f:
             serial_dict = pkl.load(f)
 
-        table = Table(
-            name=serial_dict["name"],
-            multi_agent=serial_dict["multi_agent"]
-        )
+        table = Table(name=serial_dict["name"], multi_agent=serial_dict["multi_agent"])
         table._episode = serial_dict["data"]
         table._capacity = table._episode.capacity
         return table
@@ -637,7 +634,7 @@ class Table:
 
 
 class ExternalDataset:
-    def __init__(self, name, path, sample_rate=.5):
+    def __init__(self, name, path, sample_rate=0.5):
         self._name = name
         self._path = path
         self._sample_rate = sample_rate
@@ -650,7 +647,9 @@ class ExternalDataset:
 
 
 class ExternalReadOnlyDataset(ExternalDataset):
-    def __init__(self, name, path, sample_rate=.5, mapping_func=lambda x: x, binary=True):
+    def __init__(
+        self, name, path, sample_rate=0.5, mapping_func=lambda x: x, binary=True
+    ):
         super().__init__(name, path, sample_rate=sample_rate)
 
         self._tables: Dict[str, Table] = {}
@@ -687,7 +686,9 @@ class ExternalReadOnlyDataset(ExternalDataset):
 
 @ray.remote
 class OfflineDataset:
-    def __init__(self, dataset_config: Dict[str, Any], exp_cfg: Dict[str, Any], test_mode=False):
+    def __init__(
+        self, dataset_config: Dict[str, Any], exp_cfg: Dict[str, Any], test_mode=False
+    ):
         self._episode_capacity = dataset_config.get(
             "episode_capacity", settings.DEFAULT_EPISODE_CAPACITY
         )
@@ -714,21 +715,25 @@ class OfflineDataset:
             if path:
                 self.load(path)
 
-
         # Read-only proxies for external offline dataset
         external_resource_config = dataset_config.get("extern")
         self.external_proxy: List[ExternalDataset] = []
         if external_resource_config:
-            for external_config, sample_rate in zip(external_resource_config["links"], external_resource_config["sample_rates"]):
+            for external_config, sample_rate in zip(
+                external_resource_config["links"],
+                external_resource_config["sample_rates"],
+            ):
                 if not external_config["write"]:
                     dataset = ExternalReadOnlyDataset(
                         name=external_config["name"],
                         path=external_config["path"],
-                        sample_rate=sample_rate
+                        sample_rate=sample_rate,
                     )
                     self.external_proxy.append(dataset)
                 else:
-                    raise NotImplementedError("External writable dataset is not supported")
+                    raise NotImplementedError(
+                        "External writable dataset is not supported"
+                    )
 
         # quitting job
         quit_job_config = dataset_config.get("quit_job", {})
@@ -816,20 +821,28 @@ class OfflineDataset:
                     table = Table.load(os.path.join(path, fn))
                     victim_table = None
 
-                    if table.name in self._tables.keys() and mode.lower().equal("replace"):
+                    if table.name in self._tables.keys() and mode.lower().equal(
+                        "replace"
+                    ):
                         victim_table = self.tables[table.name]
-                        self.logger.debug(f"Conflicts in loading table {table.name}, act as replacing")
+                        self.logger.debug(
+                            f"Conflicts in loading table {table.name}, act as replacing"
+                        )
                         try_lock_status = victim_table.lock_push_pull("push")
                         if try_lock_status != Status.NORMAL:
-                            self.logger.error(f"Try to replace an occupied table {victim_table.name}")
+                            self.logger.error(
+                                f"Try to replace an occupied table {victim_table.name}"
+                            )
                         conflict_callback_required = True
 
                     self._tables[table.name] = table
-                    table_descs.append({
-                        "name": table.name,
-                        "size": table.size,
-                        "capacity": table.capacity
-                    })
+                    table_descs.append(
+                        {
+                            "name": table.name,
+                            "size": table.size,
+                            "capacity": table.capacity,
+                        }
+                    )
 
                     if conflict_callback_required:
                         victim_table.unlock_push_pull("push")
@@ -855,7 +868,9 @@ class OfflineDataset:
             for tn, lock_status in status.items():
                 f.write(f"Table {tn} lock status {lock_status}")
                 if lock_status == Status.FAILED:
-                    self.logger.info(f"Failed to lock the table {tn}, skip the dumping.")
+                    self.logger.info(
+                        f"Failed to lock the table {tn}, skip the dumping."
+                    )
                     continue
                 if not as_csv:
                     self._tables[tn].dump(os.path.join(path, tn))

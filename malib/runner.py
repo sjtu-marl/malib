@@ -104,10 +104,7 @@ def run(**kwargs):
                 else:
                     time.sleep(1)
 
-        tasks = [
-            offline_dataset.shutdown.remote(),
-            parameter_server.shutdown.remote()
-        ]
+        tasks = [offline_dataset.shutdown.remote(), parameter_server.shutdown.remote()]
         while len(tasks) > 0:
             dones, tasks = ray.wait(tasks)
 

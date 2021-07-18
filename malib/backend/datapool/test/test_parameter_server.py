@@ -21,7 +21,7 @@ from malib.backend.datapool.parameter_server import (
     ParameterDescription,
     ParameterDescription,
     ParameterServer,
-    PARAMETER_TABLE_NAME_GEN
+    PARAMETER_TABLE_NAME_GEN,
 )
 
 
@@ -52,10 +52,7 @@ def test_dump_and_load():
         y1 = mlp1(x1)
         y2 = mlp2(x2)
 
-    exp_cfg = {
-        "group": "test_parameter_server",
-        "name": "dump_and_load"
-    }
+    exp_cfg = {"group": "test_parameter_server", "name": "dump_and_load"}
 
     # dump
     ray.init(address=None)
@@ -64,7 +61,7 @@ def test_dump_and_load():
         "quit_job": {
             "dump_when_closed": True,
             # must ended with slash to indicate it is a directory
-            "path": "/tmp/test_ps/"
+            "path": "/tmp/test_ps/",
         }
     }
     parameter_server = ParameterServer.options(
@@ -77,32 +74,36 @@ def test_dump_and_load():
         id="mlp1",
         type=ParameterDescription.Type.PARAMETER,
         lock=False,
-        description={
-            "registered_name": "MLP"
-        },
-        data=None
+        description={"registered_name": "MLP"},
+        data=None,
     )
     param_desc2 = copy.copy(param_desc1)
 
     param_desc1.data = mlp1.state_dict()
-    expected_table_name1 = PARAMETER_TABLE_NAME_GEN(
-        env_id=param_desc1.env_id,
-        agent_id=param_desc1.identify,
-        pid=param_desc1.id,
-        policy_type=param_desc1.description["registered_name"]
-    ) + ".pkl"
+    expected_table_name1 = (
+        PARAMETER_TABLE_NAME_GEN(
+            env_id=param_desc1.env_id,
+            agent_id=param_desc1.identify,
+            pid=param_desc1.id,
+            policy_type=param_desc1.description["registered_name"],
+        )
+        + ".pkl"
+    )
     status = ray.get(parameter_server.push.remote(param_desc1))
     print(status)
 
     param_desc2.identify = "test_agent_2"
     param_desc2.id = "mlp2"
     param_desc2.data = mlp2.state_dict()
-    expected_table_name2 = PARAMETER_TABLE_NAME_GEN(
-        env_id=param_desc2.env_id,
-        agent_id=param_desc2.identify,
-        pid=param_desc2.id,
-        policy_type=param_desc2.description["registered_name"]
-    ) + ".pkl"
+    expected_table_name2 = (
+        PARAMETER_TABLE_NAME_GEN(
+            env_id=param_desc2.env_id,
+            agent_id=param_desc2.identify,
+            pid=param_desc2.id,
+            policy_type=param_desc2.description["registered_name"],
+        )
+        + ".pkl"
+    )
     status = ray.get(parameter_server.push.remote(param_desc2))
     print(status)
 
@@ -114,15 +115,17 @@ def test_dump_and_load():
     assert expected_table_name1 in files
     assert expected_table_name2 in files
 
-    parameter_server_config.update({
-        # load the dumped parameters
-        "init_job": {
-            "load_when_start": True,
-            "path": parameter_server_config["quit_job"]["path"]
-        },
-        # clean the properties of quitting schedule
-        "quit_job": {}
-    })
+    parameter_server_config.update(
+        {
+            # load the dumped parameters
+            "init_job": {
+                "load_when_start": True,
+                "path": parameter_server_config["quit_job"]["path"],
+            },
+            # clean the properties of quitting schedule
+            "quit_job": {},
+        }
+    )
     parameter_server = ParameterServer.options(
         name="ParameterServerRec", max_concurrency=1000
     ).remote(test_mode=True, **parameter_server_config, exp_cfg=exp_cfg)
@@ -131,7 +134,9 @@ def test_dump_and_load():
 
     # clean data
     param_desc1.data = None
-    status, mlp1_param = ray.get(parameter_server.pull.remote(param_desc1, keep_return=True))
+    status, mlp1_param = ray.get(
+        parameter_server.pull.remote(param_desc1, keep_return=True)
+    )
     assert mlp1_param.data
     mlp1.load_state_dict(mlp1_param.data)
     with torch.no_grad():
@@ -140,7 +145,9 @@ def test_dump_and_load():
     assert torch.all(res < epsilon).item()
 
     param_desc2.data = None
-    status, mlp2_param = ray.get(parameter_server.pull.remote(param_desc2, keep_return=True))
+    status, mlp2_param = ray.get(
+        parameter_server.pull.remote(param_desc2, keep_return=True)
+    )
     mlp2.load_state_dict(mlp2_param.data)
     with torch.no_grad():
         y2_rec = mlp2(x2)
@@ -149,6 +156,3 @@ def test_dump_and_load():
 
     _ = ray.get(parameter_server.shutdown.remote())
     ray.shutdown()
-
-
-

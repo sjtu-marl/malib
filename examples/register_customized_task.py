@@ -1,6 +1,6 @@
 # -*- encoding: utf-8 -*-
 # -----
-# Created Date: 2021/7/14 
+# Created Date: 2021/7/14
 # Author: Hanjing Wang
 # -----
 # Last Modified:
@@ -14,15 +14,16 @@ import argparse
 from malib.envs import MPE
 from malib.runner import run
 from malib.utils.typing import PolicyID
+
 # from malib.utils.tasks_register import task_handler_register, register_task_type
 from malib.backend.coordinator.server import CoordinatorServer
 
 
 @CoordinatorServer.task_handler_register
 def pre_launching(self, init_config=None):
-    assert (hasattr(self, load_model))
-    assert (hasattr(self, save_model))
-    assert (hasattr(self, load_model))
+    assert hasattr(self, load_model)
+    assert hasattr(self, save_model)
+    assert hasattr(self, load_model)
 
 
 @CoordinatorServer.task_handler_register
@@ -32,7 +33,7 @@ def load_model(self, checkpoint_path):
 
 
 @CoordinatorServer.task_handler_register
-def save_model(self, pid: PolicyID=None):
+def save_model(self, pid: PolicyID = None):
     print("Customize saving model")
     self._training_manager.dump(pid)
 
@@ -43,7 +44,9 @@ def load_data(self, data_path):
     self._offline_data_server.load(data_path)
 
 
-parser = argparse.ArgumentParser("Register customized tasks and handlers to the coordinator")
+parser = argparse.ArgumentParser(
+    "Register customized tasks and handlers to the coordinator"
+)
 parser.add_argument(
     "--num_learner",
     type=int,

@@ -1,6 +1,6 @@
 # -*- encoding: utf-8 -*-
 # -----
-# Created Date: 2021/7/16 
+# Created Date: 2021/7/16
 # Author: Hanjing Wang
 # -----
 # Last Modified:
@@ -52,7 +52,8 @@ if __name__ == "__main__":
     training_config["interface"]["action_spaces"] = action_spaces
 
     dataset_config = config.get("dataset_config", {})
-    dataset_config.update({
+    dataset_config.update(
+        {
             "episode_capacity": 10000,
             # Define the starting job,
             # currently only support data loading
@@ -71,31 +72,36 @@ if __name__ == "__main__":
             # | Main Dataset | ---  | External Dataset [i] |
             # ---------------       --------------------
             "extern": {
-                "links": [{
+                "links": [
+                    {
                         "name": "expert data",
                         "path": "data/expert/",
                         "write": False,
-                }],
+                    }
+                ],
                 "sample_rates": [1],
             },
             # Define the quitting job here,
             # Again, only dumping is supported now.
             "quit_job": {
                 "dump_when_closed": True,
-                "path": "/home/hanjing/malib-custom/data/"
+                "path": "/home/hanjing/malib-custom/data/",
             },
-    })
-    parameter_server_config = config.get("parameter_server", {})
-    parameter_server_config.update({
-        "init_job": {
-            "load_when_start": False,
-            "path": "/home/hanjing/malib-custom/checkpoints/"
-        },
-        "quit_job": {
-            "dump_when_closed": True,
-            "path": "/home/hanjing/malib-custom/checkpoints/"
         }
-    })
+    )
+    parameter_server_config = config.get("parameter_server", {})
+    parameter_server_config.update(
+        {
+            "init_job": {
+                "load_when_start": False,
+                "path": "/home/hanjing/malib-custom/checkpoints/",
+            },
+            "quit_job": {
+                "dump_when_closed": True,
+                "path": "/home/hanjing/malib-custom/checkpoints/",
+            },
+        }
+    )
     run(
         group=config["group"],
         name=config["name"],

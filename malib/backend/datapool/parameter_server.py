@@ -222,9 +222,9 @@ class Table:
                     "agent_id": self.agent_id,
                     "policy_id": self.policy_id,
                     "policy_type": self.policy_type,
-                    "parallel_num": self.parallel_num
+                    "parallel_num": self.parallel_num,
                 },
-                "data": self._data
+                "data": self._data,
             }
             self._save_helper_func(serial_dict, fp, self.name)
 
@@ -340,7 +340,7 @@ class ParameterServer:
                 )
         else:
             # (hanjing): Check for consistence
-            assert (table.parallel_num == parameter_desc.parallel_num)
+            assert table.parallel_num == parameter_desc.parallel_num
         self._table[table_name].insert(parameter_desc)
         status = self._table[table_name].status
         return status

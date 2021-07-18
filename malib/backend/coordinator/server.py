@@ -124,6 +124,7 @@ class CoordinatorServer(BaseCoordinator):
     @staticmethod
     def task_handler_register(cls):
         from functools import wraps
+
         print("Registering")
 
         def decorator(func):
@@ -191,7 +192,9 @@ class CoordinatorServer(BaseCoordinator):
             if generic_task_handler:
                 generic_task_handler(task_request)
             else:
-                raise AttributeError(f"Missing handler for task type {task_request.task_type}")
+                raise AttributeError(
+                    f"Missing handler for task type {task_request.task_type}"
+                )
         else:
             raise TypeError(f"Unexpected task type: {task_request.task_type}")
 
