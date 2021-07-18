@@ -1,3 +1,4 @@
+import logging
 import os
 import threading
 
@@ -198,6 +199,10 @@ class Table:
     @staticmethod
     def _save_helper_func(obj, fp, candidate_name=""):
         if os.path.isdir(fp):
+            try:
+                os.makedirs(fp)
+            except:
+                pass
             tfp = os.path.join(fp, candidate_name + ".pkl")
         else:
             paths = os.path.split(fp)[0]
@@ -223,12 +228,12 @@ class Table:
             }
             self._save_helper_func(serial_dict, fp, self.name)
 
-    @staticmethod
+    @classmethod
     def load(cls, fp):
         with open(fp, "rb") as f:
             serial_dict = pickle.load(f)
-            table = Table(**serial_dict["meta"])
-            table._data = serial_dict.get("_data")
+            table = cls(**serial_dict["meta"])
+            table._data = serial_dict.get("data")
             return table
 
 
@@ -236,18 +241,22 @@ class Table:
 class ParameterServer:
     """Parameter lib can be initialized with existing database or create a new one"""
 
-    def __init__(self, **kwargs):
+    def __init__(self, test_mode=False, **kwargs):
         self._table: Dict[str, Table] = dict()
         self._table_status: Dict[str, Status] = dict()
 
-        self.logger = get_logger(
-            log_level=settings.LOG_LEVEL,
-            log_dir=settings.LOG_DIR,
-            name="parameter_server",
-            remote=settings.USE_REMOTE_LOGGER,
-            mongo=settings.USE_MONGO_LOGGER,
-            **kwargs["exp_cfg"],
-        )
+        if not test_mode:
+            self.logger = get_logger(
+                log_level=settings.LOG_LEVEL,
+                log_dir=settings.LOG_DIR,
+                name="parameter_server",
+                remote=settings.USE_REMOTE_LOGGER,
+                mongo=settings.USE_MONGO_LOGGER,
+                **kwargs["exp_cfg"],
+            )
+        else:
+            self.logger = logging.getLogger("ParameterServer")
+
         self._threading_lock = threading.Lock()
 
         init_job_config = kwargs.get("init_job", {})
@@ -288,14 +297,13 @@ class ParameterServer:
             )
         except Exception as e:
             parameter_desc.data = None
-        table = self._table.get(table_name, None)
         assert (
-            table is not None
+            self._table.get(table_name, None) is not None
         ), f"No such a table named={table_name}, {list(self._table.keys())}"
-        if table.parallel_num != parameter_desc.parallel_num:
+        if self._table[table_name].parallel_num != parameter_desc.parallel_num:
             # (hanjing): Fix the possible conflicts when recovering from dumped files
             self.logger.info("Inconsistence found in parallel num, reassigned")
-            table.parallel_num = parameter_desc.parallel_num
+            self._table[table_name].parallel_num = parameter_desc.parallel_num
 
         parameter = self._table[table_name].get(parameter_desc)
         status = self._table[table_name].status
@@ -353,7 +361,7 @@ class ParameterServer:
             for tn in self._table.keys():
                 dumped_list.append(tn)
                 f.write(f"Trying to dump table {tn}, locked {self._table[tn].locked}\n")
-                self._table[tn].dump(file_path)
+                self._table[tn].dump(os.path.join(file_path, tn))
             f.close()
         return dumped_list
 

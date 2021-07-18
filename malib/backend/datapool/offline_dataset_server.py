@@ -556,6 +556,10 @@ class Table:
     @staticmethod
     def _save_helper_func(obj, fp, candidate_name=""):
         if os.path.isdir(fp):
+            try:
+                os.makedirs(fp)
+            except:
+                pass
             tfp = os.path.join(fp, candidate_name+".tpkl")
         else:
             paths = os.path.split(fp)[0]

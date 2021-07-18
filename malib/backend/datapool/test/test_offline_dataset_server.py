@@ -101,7 +101,7 @@ def test_single_external_dataset():
             },
     }
     exp_config = {
-        "group": "test",
+        "group": "test_offline_dataset_server",
         "name": "external_dataset"
     }
 
