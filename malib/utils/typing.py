@@ -91,8 +91,8 @@ class Status(enum.Enum):
 
 
 class GameType(enum.Enum):
-    Sequential = "sequential"
-    Simultaneous = "simultaneous"
+    sequential = "sequential"
+    simultaneous = "simultaneous"
 
 
 class Paradigm(enum.Enum):

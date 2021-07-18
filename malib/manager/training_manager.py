@@ -12,7 +12,7 @@ import ray
 from malib import settings
 from malib.agent import get_training_agent
 from malib.agent.agent_interface import AgentFeedback, AgentTaggedFeedback
-from malib.gt.algos.exploitability import measure_exploitabilty_v2
+from malib.gt.exploitability import nash_conv_v2
 from malib.utils.logger import get_logger, Log
 from malib.utils.typing import (
     List,
@@ -263,14 +263,25 @@ class TrainingManager:
     ):
         """Compute exploitability"""
 
-        # XXX(ming): partially population retrieving should be supported.
-        # for aid, agent in self._agents.items():
-        #     populations[aid] = ray.get(agent.get_policies.remote())
-        nashconv = measure_exploitabilty_v2(
+        policies = {}
+        _best_responses = {}
+        for interface in self._agents.values():
+            # env_agents = ray.get(interface.agent_group.remote())
+            policies.update(
+                ray.get(
+                    interface.get_policy_pool_mixture.remote(
+                        policy_distribution, tabular=True
+                    )
+                )
+            )
+            _best_responses.update(
+                ray.get(interface.get_policies_with_mapping.remote(brs, tabular=True))
+            )
+
+        nashconv = nash_conv_v2(
             env_desc=env_desc,
-            agent_interfaces=self._agents,
             brs=brs,
-            policy_mixture_dict=policy_distribution,
+            policies=policies,
         )
 
         return nashconv.nash_conv

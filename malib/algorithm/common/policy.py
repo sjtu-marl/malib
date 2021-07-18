@@ -2,6 +2,7 @@
 Implementation of basic PyTorch-based policy class
 """
 
+import logging
 import gym
 
 from abc import ABCMeta, abstractmethod
@@ -80,9 +81,9 @@ class TabularPolicy:
         assert isinstance(
             action_space, gym.spaces.Discrete
         ), f"The action space is illegal, expected should be `gym.spaces.Discrete`, while received {type(action_space)}"
-        assert isinstance(
-            observation_space, gym.spaces.Discrete
-        ), f"The observation space is illegal, expected should be `gym.spaces.Discrete`, while received {type(observation_space)}"
+        # assert isinstance(
+        #     observation_space, gym.spaces.Discrete
+        # ), f"The observation space is illegal, expected should be `gym.spaces.Discrete`, while received {type(observation_space)}"
 
         self._callable_policy = callable_policy
         self._batched_callable_policy = batched_callable_policy
@@ -102,8 +103,9 @@ class TabularPolicy:
             state: np.zeros(self._action_space.n) for state in self._game_states
         }
 
-    def action_probability(self, state: TabularGameState):
-        return self._callable_policy(state)
+    def action_probability(self, state: TabularGameState, prob_clip=0.0):
+        probs = self._callable_policy(state)
+        return {action: prob for action, prob in probs.items() if prob > prob_clip}
 
     def action_probabilities(self, states: Sequence[TabularGameState]):
         return self._batched_callable_policy(states)
@@ -116,6 +118,7 @@ class TabularPolicy:
             return self._value_func(state)
         else:
             # TODO(ming): recursively walk through the game tree to estimate the state value
+            #   for simultaneous games
             raise NotImplementedError
 
     def values(self, states: Sequence[TabularGameState], walk: bool = True):
@@ -126,6 +129,7 @@ class TabularPolicy:
             return self._values_func(states)
         else:
             # TODO(ming): recursively walk through the game tree to estimate the state vlaues
+            #   for simultaneous games
             raise NotImplementedError
 
     def __call__(self, state: Union[TabularGameState, Sequence[TabularGameState]]):
@@ -134,7 +138,12 @@ class TabularPolicy:
         :param Any state: The current state used to compute strategy
         :return: A `dict` of {action: probability}` for the given state
         """
-        return self.action_probability(state)
+        if isinstance(state, TabularGameState):
+            return self.action_probability(state)
+        elif isinstance(state, Sequence):
+            return self.action_probabilities(state)
+        else:
+            raise TypeError(f"Unexpected type: {type(state)}")
 
 
 class Policy(metaclass=ABCMeta):
@@ -345,36 +354,19 @@ class Policy(metaclass=ABCMeta):
         """Convert RL policy to tabular policy."""
 
         def _callable_policy(state: TabularGameState):
-            valid_action_index_with_mask = state.legal_actions_mask()
+            valid_action_index = state.legal_actions_mask
             info_state_vector = state.information_state_tensor()
-            obs = self.preprocessor.transform(
-                {
-                    "observation": np.asarray(info_state_vector),
-                    "action_mask": np.asarray(valid_action_index_with_mask),
-                }
+            obs = self.preprocessor.transform(info_state_vector)
+            action, action_probs, _ = self.compute_action(
+                observation=obs,
+                behavior_mode=BehaviorMode.EXPLOITATION,
+                action_mask=[info_state_vector["action_mask"]],
             )
-            _, action_probs, _ = self.compute_action(
-                observation=obs, behavior_mode=BehaviorMode.EXPLOITATION
-            )
-            return {
-                state.actions[idx]: action_probs[idx]
-                for idx, v in enumerate(valid_action_index_with_mask)
-                if v == 1.0
-            }
+            action_probs = action_probs[0]
+            return {state.actions[idx]: action_probs[idx] for idx in valid_action_index}
 
         def _batched_callable_policy(states: Sequence[TabularGameState]):
-            obs = np.asarray(
-                [
-                    self.preprocessor.transform(
-                        {
-                            "observation": np.asarray(state.information_state_tensor()),
-                            "action_mask": np.asarray(state.legal_actions_mask()),
-                        }
-                    )
-                    for state in states
-                ]
-            )
-
+            obs = self.preprocessor.transform(states, nested=True)
             _, batched_action_probs, _ = self.compute_actions(
                 observation=obs, behavior_mode=BehaviorMode.EXPLOITATION
             )
@@ -382,7 +374,7 @@ class Policy(metaclass=ABCMeta):
             actions = [
                 {
                     state.actions[idx]: action_probs[idx]
-                    for idx, v in enumerate(state.legal_actions_mask())
+                    for idx, v in enumerate(state.legal_actions_mask)
                     if v == 1.0
                 }
                 for state, action_probs in zip(states, batched_action_probs)

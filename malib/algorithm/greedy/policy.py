@@ -1,4 +1,3 @@
-import logging
 import numpy as np
 import torch
 import gym
@@ -8,7 +7,7 @@ from malib.utils.typing import DataTransferType, Any
 from malib.algorithm.common.model import get_model
 
 
-class RandomPolicy(Policy):
+class GreedyPolicy(Policy):
     def __init__(
         self,
         registered_name,

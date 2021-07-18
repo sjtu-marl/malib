@@ -55,3 +55,8 @@ class Environment:
 
     def close(self):
         self._env.close()
+
+    def get_chance(self):
+        """Generate chances with action applying"""
+
+        raise NotImplementedError

@@ -2,12 +2,13 @@ import collections
 import copy
 
 from dataclasses import dataclass
+import logging
 from typing import Sequence
 
 import gym
 import pickle
 
-from malib.utils.typing import GameType, AgentID, Dict, Tuple
+from malib.utils.typing import GameType, AgentID, Dict, Tuple, Any
 from malib.envs.tabular.state import State as GameState
 
 
@@ -25,54 +26,6 @@ class GameSpec:
             GameType.__dict__.get(self.game_type) is not None
         ), f"Invalid game type: {self.game_type}"
 
-
-# class Game:
-#     def __init__(
-#         self,
-#         name: str,
-#         game_type: str,
-#         observation_spaces: Dict[AgentID, gym.Space],
-#         action_spaces: Dict[AgentID, gym.Space],
-#         **kwargs,
-#     ):
-#         """Create a tabular game instance.
-
-#         :param str name: The registered game name
-#         :param str game_type: Game type, should be value in `utils.typing.GameType`
-#         :param int num_players: The number of players
-#         :param kwargs: Game configurations
-#         """
-
-#         self._players = []
-#         self._game_spec = GameSpec(
-#             name=name,
-#             game_type=game_type,
-#             num_players=len(observation_spaces),
-#             action_spaces=action_spaces,
-#             observation_spaces=observation_spaces,
-#         )
-
-#     def initial_state(self) -> GameState:
-#         """Return initialized state.
-
-#         :raises: NotImplementedError
-#         :returns: A sequence of states or a single state.
-#         """
-#         raise NotImplementedError
-
-#     @staticmethod
-#     def from_game_spec(cls, game_spec: GameSpec):
-#         return cls(game_spec.name, game_spec.game_type, game_spec.observation_spaces, game_spec.action_spaces)
-
-#     @property
-#     def game_spec(self) -> GameSpec:
-#         return self._game_spec
-
-#     @property
-#     def states(self):
-#         """States is a dict-like mapping from player to states (has `filter` interface)"""
-
-#         raise NotImplementedError
 
 Tracer = collections.namedtuple("Tracer", "ego_player, policies")
 
@@ -96,22 +49,13 @@ def _memory_cache(key_fn=lambda *arg: "_".join(arg)):
 
 
 class Game:
-    def __init__(
-        self,
-        name: str,
-        env: object,
-    ):
-        """Create a tabular game instance.
-
-        :param str name: The registered game name
-        :param str game_type: Game type, should be value in `utils.typing.GameType`
-        :param int num_players: The number of players
-        :param kwargs: Game configurations
-        """
+    def __init__(self, env_desc: Dict[str, Any]):
+        """Create a tabular game instance."""
+        env = env_desc["creator"](**env_desc["config"])
         assert env.is_sequential, "Tabular game supports only sequential games!"
         self._players = list(env.possible_agents)
         self._game_spec = GameSpec(
-            name=name,
+            name=env_desc["config"]["env_id"],
             game_type="sequential" if env.is_sequential else "simultaneous",
             num_players=len(env.observation_spaces),
             action_spaces=env.action_spaces,
@@ -129,12 +73,12 @@ class Game:
         self._env.reset()
         self._states: Dict[AgentID, Sequence[GameState]] = {}
         # pack obsevations to states
-        player = next(self._env.agent_iter())
+        player = next(iter(self._env.agent_iter()))
         observation, reward, done, info = self._env.last()
         state = GameState(
             player,
             observation,
-            self._game_spec.action_spaces[player],
+            range(self._game_spec.action_spaces[player].n),
             observation.get("action_mask"),
             done,
         )
@@ -160,7 +104,7 @@ class Game:
             infosets[s.information_state_string(player_id)].append((s, p))
         return dict(infosets)
 
-    @_memory_cache()
+    @_memory_cache(lambda *arg: "_".join(map(str, arg)))
     def iterate_nodes(self, state: GameState):
         """Iterate state nodes and return a sequence of (state, prob) pairs."""
 
@@ -176,20 +120,21 @@ class Game:
                     # cache environment then rollout
                     self._env = pickle.loads(pickle_env)
                     self._env.step(action)
-                    player = next(self._env.agent_iter())
+                    player = next(iter(self._env.agent_iter()))
                     observation, reward, done, info = self._env.last()
                     next_state = GameState(
                         player,
                         observation,
-                        self._game_spec.action_spaces[player],
+                        range(self._game_spec.action_spaces[player].n),
                         observation.get("action_mask"),
                         done,
                     )
                     state.add_transition(action, next_state, reward)
                 for next_state, p_state in self.iterate_nodes(state.next(action)):
                     yield (next_state, p_state * p_action)
+            del pickle_env
 
-    @_memory_cache()
+    @_memory_cache(lambda *arg: "_".join(map(str, arg)))
     def transition(self, state: GameState):
         """Return a list of (action, prob) pairs from a given parent state.
 
@@ -201,8 +146,9 @@ class Game:
         elif state.is_chance_node():
             return state.chance_outcomes()
         else:
+            # TODO(ming): we need to filter actions here
             return list(
                 self._tracer.policies[state.current_player()]
-                .action_probability(state)
+                .action_probability(state, prob_clip=0.0)
                 .items()
             )
