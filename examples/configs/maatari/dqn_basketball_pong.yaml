@@ -1,0 +1,62 @@
+group: "maatari/basketball"
+name: "dqn_shared"
+
+training:
+  interface:
+    type: independent
+    population_size: -1
+  config:
+    update_interval: 5
+    batch_size: 128
+
+env_description:
+  creator: "MAAtari"
+  config:
+    env_id: "basketball_pong_v2"
+    # supersuit wrapper
+    # see: https://github.com/PettingZoo-Team/SuperSuit
+    wrappers:
+      # resize_v0: downscale observation for faster processing
+      # max_observation_v0: as per openai baseline's MaxAndSKip wrapper, maxes over the last {param} frames
+      #   to deal with frame flickering
+      # sticky_actions_v0: repeat_action_probability is set to {param} to introduce non-determinism to the system
+      - name: "resize_v0"
+        params:
+          - 84
+          - 84
+      - name: "dtype_v0"
+        params:
+          - "float32"
+      - name: "normalize_obs_v0"
+        params:
+          env_min: 0.
+          env_max: 1.
+    scenario_configs:
+      # must be either 2 or 4
+      obs_type: "grayscale_image"
+      num_players: 2
+
+algorithms:
+  DQN:
+    name: "DQN"
+
+rollout:
+  type: "async"
+  metric_type: "simple"
+  fragment_length: 100
+  # read rollout config to assign nested workers
+  num_episodes: 200
+  episode_seg: 100
+  terminate: "any"
+  stopper: "simple_rollout"
+  stopper_config:
+    stop_num: 1000
+  callback: "simultaneous"
+  # share one rollout worker
+  worker_num: 1
+
+global_evaluator:
+  name: "generic"
+
+dataset_config:
+  episode_capacity: 300

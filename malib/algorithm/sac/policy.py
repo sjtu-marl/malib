@@ -1,11 +1,12 @@
 from typing import Any
 
 import gym
+
 import torch
-from torch.distributions import Categorical, Normal
+from torch.distributions import Normal
 
 from malib.algorithm.common.policy import Policy
-from malib.utils.typing import DataTransferType, Dict, Tuple, BehaviorMode
+from malib.utils.typing import DataTransferType, Dict, Tuple
 from malib.algorithm.common.model import get_model
 from malib.algorithm.common import misc
 

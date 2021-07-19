@@ -123,8 +123,8 @@ class TrainingManager:
 
         :return: None
         """
-        # add policy
         tasks = []
+        # add policy
         for aid, agent_interface in self._agents.items():
             tasks.append(
                 agent_interface.add_policy.remote(
