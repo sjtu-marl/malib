@@ -16,7 +16,7 @@ class ImitationTrainer(Trainer):
 
     @property
     def reward(self) -> Policy:
-        return self._policy
+        return self._reward
 
     @property
     def policy_loss(self) -> LossFunc:
@@ -47,11 +47,5 @@ class ImitationTrainer(Trainer):
 
     def reset(self, policy, reward, training_config):
         """ Reset policy, called before optimize, and read training configuration """
-
-        self._policy = policy
+        super.reset(policy, training_config)
         self._reward = reward
-        self._training_config.update(training_config)
-        if self._loss is not None:
-            self._loss.reset(policy, training_config)
-        # else:
-        #     raise ValueError("Loss has not been initialized yet.")
