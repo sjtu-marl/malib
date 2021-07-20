@@ -13,14 +13,14 @@ class BCLoss(LossFunc):
     def __init__(self, mode="mle"):
         super().__init__()
         assert mode in ["mle", "mse"]
-        self._params.update({"actor_lr": 1e-2, "mode": mode})
+        self._params.update({"lr": 1e-2, "mode": mode})
 
     def setup_optimizers(self, *args, **kwargs):
         if self.optimizers is None:
             optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
             self.optimizers = []
             self.optimizers.append(
-                optim_cls(self.policy.actor.parameters(), lr=self._params["actor_lr"])
+                optim_cls(self.policy.actor.parameters(), lr=self._params["lr"])
             )
         else:
             for p in self.optimizers:
@@ -60,11 +60,12 @@ class BCLoss(LossFunc):
 
         if self._params["mode"] == "mle":
             neglogpac = -distri.log_prob(actions)
-            loss = neglogpac
+            loss = neglogpac.mean()
         elif self._params["mode"] == "mse":
             if self.policy._discrete:
                 loss = torch.nn.CrossEntropyLoss()(prob, actions)
-            loss = torch.square(mu - actions)
+            else:
+                loss = torch.square(mu - actions).mean()
         else:
             raise NotImplementedError
 

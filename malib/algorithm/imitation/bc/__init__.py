@@ -1,8 +1,9 @@
 from .policy import BC
-from .bc_trainer import BCTrainer
+from .trainer import BCTrainer
+from .loss import BCLoss
 
 NAME = "BC"
-LOSS = None
+LOSS = BCLoss
 TRAINER = BCTrainer
 POLICY = BC
 

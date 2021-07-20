@@ -2,11 +2,13 @@ from collections import namedtuple
 
 from . import maddpg, dqn, ppo, ddpg, qmix, sac, discrete_sac
 
+from .imitation import bc
+
 
 Algorithm = namedtuple("Algorithm", "policy, trainer, loss")
 ALGORITHM_LIB = {
     item.NAME: Algorithm(item.POLICY, item.TRAINER, item.LOSS)
-    for item in [maddpg, dqn, ppo, ddpg, qmix, sac, discrete_sac]
+    for item in [maddpg, dqn, ppo, ddpg, qmix, sac, discrete_sac, bc]
 }
 
 

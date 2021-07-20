@@ -48,6 +48,7 @@ class TrainingManager:
         self._env_description = env_desc
         self._training_config = training_config
         self._training_agent_mapping = training_agent_mapping
+        self._offline = training_config["offline"]
 
         # interface config give the agent type used here and the group mapping if needed
         agent_type = interface_config["type"]

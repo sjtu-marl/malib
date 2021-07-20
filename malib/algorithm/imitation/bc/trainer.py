@@ -1,3 +1,5 @@
+from typing import Any
+
 from malib.algorithm.common.trainer import Trainer
 from malib.algorithm.imitation.bc.policy import BC
 from malib.algorithm.imitation.bc.loss import BCLoss
@@ -13,7 +15,7 @@ class BCTrainer(Trainer):
         assert isinstance(self._policy, BC), type(self._policy)
 
         self.loss.zero_grad()
-        loss_stats = self.loss(batch)
+        loss_stats = self.loss(batch[1])
         self.loss.step()
 
         return loss_stats

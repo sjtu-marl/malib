@@ -64,6 +64,8 @@ DEFAULT_CONFIG = {
             "stopper": "none",
             # optimizer you wanna use in optimization stage, default by SGD
             "optimizer": "SGD",
+            # use offline training algorithms, whether or not sampling in the env
+            "offline": False,
             "lr": 1e-4,
             "actor_lr": 1e-4,
             "critic_lr": 1e-4,

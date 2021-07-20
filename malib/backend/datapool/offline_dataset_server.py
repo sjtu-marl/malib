@@ -29,11 +29,16 @@ import pickle as pkl
 
 
 def _gen_table_name(env_id, main_id, pid):
-    if isinstance(main_id, List):
-        main_id = "_".join(sorted(main_id))
-    if isinstance(pid, List):
-        pid = "_".join(sorted(pid))
-    return f"{env_id}_{main_id}_{pid}"
+    res = f"{env_id}"
+    if main_id:
+        if isinstance(main_id, List):
+            main_id = "_".join(sorted(main_id))
+        res += f"_{main_id}"
+    if pid:
+        if isinstance(pid, List):
+            pid = "_".join(sorted(pid))
+        res += f"_{pid}"
+    return res
 
 
 DATASET_TABLE_NAME_GEN = _gen_table_name
@@ -571,14 +576,16 @@ class Table:
         with open(tfp, "wb") as f:
             pkl.dump(obj, f, protocol=settings.PICKLE_PROTOCOL_VER)
 
-    def dump(self, fp):
+    def dump(self, fp, name=None):
+        if name is None:
+            name = self._name
         with self._threading_lock:
             serial_dict = {
                 "name": self._name,
                 "data": self._episode,
                 "multi_agent": self._is_multi_agent,
             }
-            self._save_helper_func(serial_dict, fp, self._name)
+            self._save_helper_func(serial_dict, fp, name)
 
     @classmethod
     def load(cls, fp):
@@ -636,7 +643,10 @@ class Table:
 class ExternalDataset:
     def __init__(self, name, path, sample_rate=0.5):
         self._name = name
-        self._path = path
+        if os.path.isabs(path):
+            self._path = path
+        else:
+            self._path = os.path.join(settings.BASE_DIR, path)
         self._sample_rate = sample_rate
 
     def sample(self):
@@ -661,10 +671,12 @@ class ExternalReadOnlyDataset(ExternalDataset):
     def sample(self, buffer_desc: BufferDescription):
         info = f"{self._name}(external, read-only): OK"
         try:
+            # NOTE(zbzhu): maybe we do not care which policy sampled the (expert) data
             table_name = Table.gen_table_name(
                 env_id=buffer_desc.env_id,
                 main_id=buffer_desc.agent_id,
-                pid=buffer_desc.policy_id,
+                pid=None,
+                # pid=buffer_desc.policy_id,
             )
             table = self._tables[table_name]
             res = table.sample(size=self._sample_rate * buffer_desc.batch_size)

@@ -18,7 +18,10 @@ from malib.utils import logger
 from malib.utils.logger import Log
 from malib.envs import GymEnv
 from malib.rollout.rollout_worker import RolloutWorker
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.backend.datapool.offline_dataset_server import Episode, Table
+# from malib.backend.datapool.offline_dataset_server import OfflineDataset, Table, Episode
+
+import pickle as pkl
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,6 +38,9 @@ parser.add_argument(
 )
 parser.add_argument(
     "--sample_num", type=int, help="Num of samples in the demonstration data.", default=5000,
+)
+parser.add_argument(
+    "--parallel_num", type=int, default=5,
 )
 
 
@@ -58,7 +64,8 @@ if __name__ == "__main__":
 
     agent_mapping_func = lambda agent: "share"
 
-    exp_cfg = logger.start(group="single_instance", name="marl")
+    settings.USE_REMOTE_LOGGER = False
+    exp_cfg = {"expr_group": "single_instance", "expr_name": "sample", "file_stream": False}
     # ========================================================================================================
 
     global_step = 0
@@ -121,13 +128,13 @@ if __name__ == "__main__":
         while min_size < args.sample_num:
             statistics, num_frames = rollout_handler.sample(
                 callback=rollout_func.simultaneous,
-                num_episodes=config["rollout"]["num_episodes"],
+                num_episodes=args.parallel_num,
                 fragment_length=config["rollout"]["fragment_length"],
                 policy_combinations=[trainable_policy_mapping],
                 explore=False,
                 role="rollout",
                 policy_distribution=stationary_policy_distribution,
-                threaded=args.threaded,
+                threaded=False,
                 episodes=agent_episodes,
             )
             statistic_seq.extend(statistics)
@@ -137,3 +144,23 @@ if __name__ == "__main__":
     print("rollout statistics:")
     pprint.pprint(processed_statistics[0])
     print("sampled new frames:", total_frames, "total_size:", min_size)
+
+    save_dir = os.path.join(
+        BASE_DIR,
+        "demos",
+        env_desc["config"]["env_id"],
+        list(config["algorithms"].keys())[0],
+    )
+    os.makedirs(save_dir, exist_ok=True)
+
+    single_agent_id = possible_agents[0]
+    single_agent_episode = list(agent_episodes.values())[0]
+    table_name = "{}_{}".format(env_desc["config"]["env_id"], single_agent_id)
+    single_agent_table = Table(name=table_name, multi_agent=False)
+    single_agent_table._episode = single_agent_episode
+    # single_agent_table.set_episode(
+    #     {single_agent_id: single_agent_episode}, single_agent_episode.capacity
+    # )
+    # single_agent_table.fill(**single_agent_episode.data)
+    print(single_agent_table.size)
+    single_agent_table.dump(save_dir, name=f"demo_{args.sample_num}")

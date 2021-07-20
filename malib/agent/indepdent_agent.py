@@ -152,3 +152,5 @@ class IndependentAgent(AgentInterface):
 
         pid = self.default_policy_id_gen(algorithm_conf)
         self._policies[pid] = policy
+
+        return pid, policy

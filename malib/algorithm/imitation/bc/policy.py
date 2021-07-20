@@ -12,6 +12,7 @@ from torch.distributions import Categorical, Normal
 from copy import deepcopy
 from malib.algorithm.common.model import get_model
 from malib.algorithm.common.policy import Policy
+from malib.utils.typing import DataTransferType, Dict, Tuple, BehaviorMode, Any
 from malib.backend.datapool.offline_dataset_server import Episode
 from malib.utils.typing import TrainingMetric
 
@@ -27,11 +28,11 @@ def combined_shape(length, shape=None):
 class BC(Policy):
     def __init__(
         self,
-        registered_name,
-        observation_space,
-        action_space,
-        model_config,
-        custom_config,
+        registered_name: str,
+        observation_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        model_config: Dict[str, Any] = None,
+        custom_config: Dict[str, Any] = None,
     ):
         super(BC, self).__init__(
             registered_name=registered_name,
@@ -101,7 +102,7 @@ class BC(Policy):
         return actions
 
     def state_dict(self):
-        return {"policy": self.pi.state_dict()}
+        return {"policy": self.actor.state_dict()}
 
     def set_weights(self, parameters):
-        self.pi.load_state_dict(parameters["policy"])
+        self.actor.load_state_dict(parameters["policy"])
