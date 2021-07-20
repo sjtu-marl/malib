@@ -21,7 +21,7 @@ DEFAULT_EPISODE_INIT_CAPACITY = int(1e6)
 DEFAULT_EPISODE_CAPACITY = 30000  # int(1e15)
 # related to each group of expr settings
 DEFAULT_EPISODE_BLOCK_SIZE = int(75)
-PICKLE_PROTOCOL_VER = 5
+PICKLE_PROTOCOL_VER = 4
 
 PARAM_DIR = os.path.join(BASE_DIR, "../checkpoints")
 DATASET_DIR = os.path.join(BASE_DIR, "dataset")

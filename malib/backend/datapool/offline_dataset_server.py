@@ -935,16 +935,15 @@ class OfflineDataset:
             )
             table = self._tables[table_name]
             res = table.sample(size=buffer_desc.batch_size)
-            res = Batch(identity=buffer_desc.agent_id, data=res)
         except KeyError as e:
             info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
-            res = Batch(identity=buffer_desc.agent_id, data=None)
+            res = None
         except OversampleError as e:
             info = f"No enough data: table_size={table.size} batch_size={buffer_desc.batch_size} table_name={table_name}"
-            res = Batch(identity=buffer_desc.agent_id, data=None)
+            res = None
         except Exception as e:
             print(traceback.format_exc())
-            res = Batch(identity=buffer_desc.agent_id, data=None)
+            res = None
             info = "others"
 
         if len(self.external_proxy) > 0:
