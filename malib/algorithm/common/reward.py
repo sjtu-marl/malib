@@ -14,6 +14,8 @@ from malib.utils.preprocessor import get_preprocessor, Mode
 from malib.utils.notations import deprecated
 from malib.algorithm.common.policy import SimpleObject
 
+import torch
+
 DEFAULT_MODEL_CONFIG = {
     "reward": {
         "network": "mlp",
@@ -30,6 +32,7 @@ class Reward(metaclass=ABCMeta):
     def __init__(
         self,
         registered_name: str,
+        reward_type: str,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         model_config: ModelConfig = None,
@@ -38,6 +41,7 @@ class Reward(metaclass=ABCMeta):
         """Create a reward model instance.
 
         :param str registered_name: Registered policy name.
+        :param str reward_type: Reward function deteiled type in practice.
         :param gym.spaces.Space observation_space: Raw observation space of related environment agent(s), determines
             the model input space.
         :param gym.spaces.Space action_space: Raw action space of related environment agent(s).
@@ -46,6 +50,7 @@ class Reward(metaclass=ABCMeta):
         """
 
         self.registered_name = registered_name
+        self.reward_type = reward_type
         self.observation_space = observation_space
         self.action_space = action_space
 
@@ -54,6 +59,11 @@ class Reward(metaclass=ABCMeta):
             "use_cuda": False,
             "use_dueling": False,
             "preprocess_mode": Mode.FLATTEN,
+            "clip_max_rews": False,
+            "clip_min_rews": False,
+            "rew_clip_max": 10,
+            "rew_clip_min": -10,
+
         }
         self.model_config = DEFAULT_MODEL_CONFIG
 
@@ -138,6 +148,14 @@ class Reward(metaclass=ABCMeta):
             "custom_config": self.custom_config,
         }
 
+    def clip_rewards(self, rewards):
+        if self.custom_config['clip_max_rews']:
+            rewards = torch.clamp(rewards, max=self.rew_clip_max)
+        if self.custom_config['clip_min_rews']:
+            rewards = torch.clamp(rewards, min=self.rew_clip_min)
+
+        return rewards
+
     @abstractmethod
     def compute_rewards(
         self, observation: DataTransferType, action: DataTransferType, **kwargs
@@ -151,6 +169,8 @@ class Reward(metaclass=ABCMeta):
         """
 
         pass
+
+            
 
     @abstractmethod
     def compute_reward(

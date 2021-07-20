@@ -38,7 +38,7 @@ class BCLoss(LossFunc):
         self.push_gradients(
             {
                 "actor": {
-                    name: -self._params["actor_lr"] * param.grad.numpy()
+                    name: -self._params["lr"] * param.grad.numpy()
                     for name, param in self.policy.actor.named_parameters()
                 },
             }
