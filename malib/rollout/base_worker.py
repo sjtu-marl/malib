@@ -2,6 +2,7 @@
 Users can implement and register their own rollout worker by inheriting from this class.
 """
 
+import os
 import copy
 import time
 import traceback
@@ -45,6 +46,7 @@ class BaseRolloutWorker:
         metric_type: str,
         test: bool = False,
         remote: bool = False,
+        save: bool = False,
         **kwargs,
     ):
         """Create a rollout worker instance.
@@ -54,11 +56,13 @@ class BaseRolloutWorker:
         :param str metric_type: Name of registered metric handler.
         :param int parallel_num: Number of parallel.
         :param bool remote: Tell this rollout worker work in remote mode or not, default by False.
+        :param int save: Whether or not to save the policy models.
         """
 
         self._worker_index = worker_index
         self._env_description = env_desc
         self._test = test
+        self._save = save
         self.global_step = 0
 
         self._coordinator = None
@@ -349,6 +353,9 @@ class BaseRolloutWorker:
             self.after_rollout(task_desc.content.agent_involve_info.trainable_pairs)
             epoch += 1
 
+        if self._save:
+            self.save_model()
+
         rollout_feedback = RolloutFeedback(
             worker_idx=self._worker_index,
             agent_involve_info=task_desc.content.agent_involve_info,
@@ -448,6 +455,19 @@ class BaseRolloutWorker:
             else:
                 interface.set_behavior_dist(policy_distribution[aid])
             interface.reset()
+
+    def save_model(self):
+        """ Save policy model to log directory. """
+
+        save_dir = os.path.join(
+            settings.LOG_DIR,
+            self._kwargs["exp_cfg"]["expr_group"],
+            self._kwargs["exp_cfg"]["expr_name"],
+            "models",
+        )
+        for aid, interface in self._agent_interfaces.items():
+            _save_dir = os.path.join(save_dir, aid)
+            interface.save(_save_dir)
 
     def sample(
         self,

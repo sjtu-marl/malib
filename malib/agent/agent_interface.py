@@ -2,6 +2,7 @@
 Basic class of agent interface. Users can implement their custom training workflow by inheriting this class.
 """
 
+import os
 import copy
 from dataclasses import dataclass
 import threading
@@ -32,6 +33,8 @@ from malib.utils import errors
 from malib.utils.logger import get_logger, Log
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.trainer import Trainer
+
+import pickle as pkl
 
 
 AgentFeedback = namedtuple("AgentFeedback", "id, trainable_pairs, state_id, statistics")

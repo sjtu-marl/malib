@@ -21,15 +21,16 @@ rollout:
   type: "async"
   stopper: "simple_rollout"
   stopper_config:
-    max_step: 1000
+    max_step: 100
   metric_type: "simple"
   fragment_length: 200
-  num_episodes: 100
-  episode_seg: 25
-  test_num_episodes: 10
+  num_episodes: 4
+  episode_seg: 2
+  test_num_episodes: 0
   test_episode_seg: 5
   terminate: "any"
   callback: "simultaneous"
+  save_model: True
 
 env_description:
   creator: "Gym"

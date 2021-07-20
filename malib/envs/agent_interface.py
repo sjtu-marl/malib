@@ -2,6 +2,7 @@
 Environment agent interface is designed for rollout and simulation.
 """
 
+import os
 import gym
 import ray
 import numpy as np
@@ -10,6 +11,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor
 
+from malib import settings
 from malib.algorithm.common.policy import Policy
 from malib.algorithm import get_algorithm_space
 from malib.utils.typing import (
@@ -22,6 +24,8 @@ from malib.utils.typing import (
     ParameterDescription,
     BehaviorMode,
 )
+
+import pickle as pkl
 
 
 def _update_weights(agent_interface: "AgentInterface", pid: PolicyID) -> None:
@@ -251,6 +255,20 @@ class AgentInterface:
             return policy.preprocessor.transform(observation)
         else:
             return observation
+
+    def save(self, model_dir: str) -> None:
+        """Save policies.
+
+        :param str model_dir: Directory path.
+        :return: None
+        """
+
+        os.makedirs(model_dir)
+
+        for pid, policy in self.policies.items():
+            fp = os.path.join(model_dir, pid + ".pkl")
+            with open(fp, "wb") as f:
+                pkl.dump(policy, f, protocol=settings.PICKLE_PROTOCOL_VER)
 
     def close(self):
         """Terminate and do resource recycling"""
