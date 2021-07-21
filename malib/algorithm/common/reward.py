@@ -63,7 +63,6 @@ class Reward(metaclass=ABCMeta):
             "clip_min_rews": False,
             "rew_clip_max": 10,
             "rew_clip_min": -10,
-
         }
         self.model_config = DEFAULT_MODEL_CONFIG
 
@@ -149,9 +148,9 @@ class Reward(metaclass=ABCMeta):
         }
 
     def clip_rewards(self, rewards):
-        if self.custom_config['clip_max_rews']:
+        if self.custom_config["clip_max_rews"]:
             rewards = torch.clamp(rewards, max=self.rew_clip_max)
-        if self.custom_config['clip_min_rews']:
+        if self.custom_config["clip_min_rews"]:
             rewards = torch.clamp(rewards, min=self.rew_clip_min)
 
         return rewards
@@ -169,8 +168,6 @@ class Reward(metaclass=ABCMeta):
         """
 
         pass
-
-            
 
     @abstractmethod
     def compute_reward(

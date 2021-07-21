@@ -22,10 +22,10 @@ class DiscriminatorLoss(LossFunc):
         self.bce = nn.BCEWithLogitsLoss()
         self.bce_targets = torch.cat(
             [
-                torch.ones(self._params['batch_size'], 1),
-                torch.zeros(self._params['batch_size'], 1)
+                torch.ones(self._params["batch_size"], 1),
+                torch.zeros(self._params["batch_size"], 1),
             ],
-            dim=0
+            dim=0,
         )
         # self.bce.to(device)
         # self.bce_targets = self.bce_targets.to(device)
@@ -40,9 +40,7 @@ class DiscriminatorLoss(LossFunc):
         else:
             for p in self.optimizers:
                 p.param_groups = []
-            self.optimizers[0].add_param_group(
-                {"params": self.reward.parameters()}
-            )
+            self.optimizers[0].add_param_group({"params": self.reward.parameters()})
 
     def step(self) -> Any:
         """ Step optimizers and update target """
@@ -66,7 +64,7 @@ class DiscriminatorLoss(LossFunc):
         self.loss = []
 
         disc_input = torch.cat([expert_batch, agent_batch], dim=0)
-        
+
         disc_logits = self.discriminator(disc_input)
         disc_preds = (disc_logits > 0).type(disc_logits.data.type())
         disc_ce_loss = self.bce(disc_logits, self.bce_targets)
@@ -75,18 +73,20 @@ class DiscriminatorLoss(LossFunc):
         if self.use_grad_pen:
             eps = torch.randn(expert_batch.size(0), 1)
             # eps.to(device)
-            
-            interp_obs = eps*expert_batch + (1-eps)*agent_batch
+
+            interp_obs = eps * expert_batch + (1 - eps) * agent_batch
             interp_obs = interp_obs.detach()
             interp_obs.requires_grad_(True)
 
             gradients = autograd.grad(
                 outputs=self.discriminator(interp_obs).sum(),
                 inputs=[interp_obs],
-                create_graph=True, retain_graph=True, only_inputs=True
+                create_graph=True,
+                retain_graph=True,
+                only_inputs=True,
             )
             total_grad = gradients[0]
-            
+
             # GP from Gulrajani et al.
             gradient_penalty = ((total_grad.norm(2, dim=1) - 1) ** 2).mean()
             disc_grad_pen_loss = gradient_penalty * self.grad_pen_weight

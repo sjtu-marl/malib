@@ -1,7 +1,9 @@
-from malib.algorithm.common.trainer import Trainer
+from typing import Dict, Any
+
 from malib.algorithm.imitation.imitation_trainer import ImitationTrainer
 from malib.algorithm.imitation.advirl.reward import Discriminator
 from malib.algorithm.imitation.advirl.loss import DiscriminatorLoss
+
 
 class AdvIRLTrainer(ImitationTrainer):
     def __init__(self, tid, policy_trainer):
@@ -17,11 +19,10 @@ class AdvIRLTrainer(ImitationTrainer):
 
         pass
 
-
     def optimize_reward(self, batch):
         assert isinstance(self._policy, Discriminator), type(self._reward)
         expert_batch, agent_batch = batch[0], batch[1]
-        
+
         if self.wrap_absorbing:
             pass
             # expert_obs = torch.cat([expert_obs, expert_batch['absorbing'][:, 0:1]], dim=-1)

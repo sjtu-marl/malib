@@ -37,13 +37,20 @@ class PPOLoss(LossFunc):
             optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
             self.optimizers = {
                 "policy": optim_cls(
-                    set(self.policy.actor.parameters()).union(self.policy.critic.parameters()), lr=self._params["lr"]
+                    set(self.policy.actor.parameters()).union(
+                        self.policy.critic.parameters()
+                    ),
+                    lr=self._params["lr"],
                 ),
             }
         else:
             self.optimizers["policy"].param_groups = []
             self.optimizers["policy"].add_param_group(
-                {"params": set(self.policy.actor.parameters()).union(self.policy.critic.parameters())}
+                {
+                    "params": set(self.policy.actor.parameters()).union(
+                        self.policy.critic.parameters()
+                    )
+                }
             )
 
     def __call__(self, batch) -> Dict[str, Any]:
@@ -58,8 +65,8 @@ class PPOLoss(LossFunc):
             if self.policy.custom_config["use_cuda"]
             else torch.LongTensor
         )
-        cast_to_tensor = lambda x : FloatTensor(x.copy())
-        cast_to_long_tensor = lambda x : LongTensor(x.copy())
+        cast_to_tensor = lambda x: FloatTensor(x.copy())
+        cast_to_long_tensor = lambda x: LongTensor(x.copy())
 
         rewards = cast_to_tensor(batch[Episode.REWARD])
         if self.policy._discrete:
@@ -99,7 +106,9 @@ class PPOLoss(LossFunc):
             pg_loss2 = -adv * torch.clip(ratio, 1.0 - cliprange, 1.0 + cliprange)
             pg_loss = torch.mean(torch.maximum(pg_loss, pg_loss2))
             approx_kl = 0.5 * torch.mean(torch.square(neglogpac - old_neglogpac))
-            clip_frac = torch.mean(torch.greater(torch.abs(ratio - 1.0), cliprange).float())
+            clip_frac = torch.mean(
+                torch.greater(torch.abs(ratio - 1.0), cliprange).float()
+            )
 
             vpred = self.policy.value_function(cur_obs).flatten()
             vf_loss = (vpred - target_value).pow(2).mean()
@@ -110,7 +119,8 @@ class PPOLoss(LossFunc):
             self.optimizers["policy"].zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(
-                list(self.policy.actor.parameters()) + list(self.policy.critic.parameters()),
+                list(self.policy.actor.parameters())
+                + list(self.policy.critic.parameters()),
                 grad_cliprange,
             )
             self.optimizers["policy"].step()

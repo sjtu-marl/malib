@@ -13,12 +13,10 @@ from malib.utils.typing import (
     MetricEntry,
 )
 
-)
 from malib.utils import errors
 from malib.agent.indepdent_agent import IndependentAgent
 from malib.algorithm import get_algorithm_space
 from malib.algorithm.common.policy import Policy
-from malib.algorithm.common.reward import Reward
 from malib.utils import metrics
 
 import pickle as pkl
@@ -101,7 +99,7 @@ class IndependentIRLAgent(IndependentAgent):
                 trainer.optimize(batch_copy[env_aid]), prefix=pid
             )
         return res
-    
+
     # def add_reward_for_agent(
     #     self, env_agent_id: AgentID, trainable: bool
     # ) -> Tuple[RewardID, Reward]:
@@ -146,14 +144,15 @@ class IndependentIRLAgent(IndependentAgent):
         reward_alg = get_algorithm_space(reward_alg_conf["name"])
         reward = reward_alg.reward(
             registered_name=reward_alg_conf["name"],
-            reward_type=reward_alg_conf["type"] if "type" in reward_alg_conf["type"] else None,
+            reward_type=reward_alg_conf["type"]
+            if "type" in reward_alg_conf["type"]
+            else None,
             observation_space=self._observation_spaces[env_agent_id],
             action_space=self._action_spaces[env_agent_id],
             model_config=reward_alg_conf.get("model_config", {}),
             custom_config=reward_alg_conf.get("custom_config", {}),
         )
         self._rewards[pid] = reward
-
 
         algorithm_conf = self.get_algorithm_config(env_agent_id)
         algorithm = get_algorithm_space(algorithm_conf["name"])
@@ -167,7 +166,9 @@ class IndependentIRLAgent(IndependentAgent):
 
         pid = self.default_policy_id_gen(algorithm_conf)
         self._policies[pid] = policy
-        self._trainers[pid] = reward_alg.trainer(env_agent_id, algorithm.trainer(env_agent_id)) # bring policy trainer into irl traniner
+        self._trainers[pid] = reward_alg.trainer(
+            env_agent_id, algorithm.trainer(env_agent_id)
+        )  # bring policy trainer into irl traniner
 
         return pid, policy
 
@@ -190,7 +191,7 @@ class IndependentIRLAgent(IndependentAgent):
         # raise NotImplementedError
 
     def load_single_reward(self, env_agent_id, model_dir) -> None:
-        """ Load one reward func for one env_agent.
+        """Load one reward func for one env_agent.
 
         Temporarily used for single agent imitation learning.
         """
@@ -220,7 +221,9 @@ class IndependentIRLAgent(IndependentAgent):
             name = self._reward_alg_mapping_func(*args, **kwargs)
             return self.reward_alg_candidates[name]
         elif self._algorithm_mapping_func is None:
-            return list(self.algorithm_candidates.values())[1] # 1 stands for reward algorithm !!
+            return list(self.algorithm_candidates.values())[
+                1
+            ]  # 1 stands for reward algorithm !!
         else:
             raise errors.TypeError(
                 f"Unexpected algorithm mapping function: {self._algorithm_mapping_func}"

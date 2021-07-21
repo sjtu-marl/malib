@@ -53,7 +53,7 @@ class ImitationTrainer(Trainer):
     def reset(self, policy, reward, training_config):
         """ Reset policy, called before optimize, and read training configuration """
         self._policy_trainer.reset(policy, training_config)
-        
+
         self._reward = reward
         if self._loss is not None:
             self._loss.reset(reward, training_config)

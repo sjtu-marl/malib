@@ -19,6 +19,7 @@ from malib.utils.logger import Log
 from malib.envs import GymEnv
 from malib.rollout.rollout_worker import RolloutWorker
 from malib.backend.datapool.offline_dataset_server import Episode, Table
+
 # from malib.backend.datapool.offline_dataset_server import OfflineDataset, Table, Episode
 
 import pickle as pkl
@@ -34,13 +35,21 @@ parser.add_argument(
     "--config", type=str, help="YAML configuration path.", required=True
 )
 parser.add_argument(
-    "--model_path", type=str, help="Path to the policy model used for sampling.", required=True,
+    "--model_path",
+    type=str,
+    help="Path to the policy model used for sampling.",
+    required=True,
 )
 parser.add_argument(
-    "--sample_num", type=int, help="Num of samples in the demonstration data.", default=5000,
+    "--sample_num",
+    type=int,
+    help="Num of samples in the demonstration data.",
+    default=5000,
 )
 parser.add_argument(
-    "--parallel_num", type=int, default=5,
+    "--parallel_num",
+    type=int,
+    default=5,
 )
 
 
@@ -65,7 +74,11 @@ if __name__ == "__main__":
     agent_mapping_func = lambda agent: "share"
 
     settings.USE_REMOTE_LOGGER = False
-    exp_cfg = {"expr_group": "single_instance", "expr_name": "sample", "file_stream": False}
+    exp_cfg = {
+        "expr_group": "single_instance",
+        "expr_name": "sample",
+        "file_stream": False,
+    }
     # ========================================================================================================
 
     global_step = 0

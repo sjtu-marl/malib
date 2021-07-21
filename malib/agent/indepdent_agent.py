@@ -139,7 +139,7 @@ class IndependentAgent(AgentInterface):
         # raise NotImplementedError
 
     def load_single_policy(self, env_agent_id, model_dir) -> None:
-        """ Load one policy for one env_agent.
+        """Load one policy for one env_agent.
 
         Temporarily used for single agent imitation learning.
         """

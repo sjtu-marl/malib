@@ -80,7 +80,9 @@ class RolloutWorkerManager:
             )
             if rollout_config.get("test_num_episodes", 0) > 0:
                 worker_idx = _get_worker_hash_idx(i + worker_num)
-                self._workers[worker_idx] = worker_cls.options(max_concurrency=100).remote(
+                self._workers[worker_idx] = worker_cls.options(
+                    max_concurrency=100
+                ).remote(
                     worker_index=worker_idx,
                     env_desc=self._env_desc,
                     metric_type=self._metric_type,
