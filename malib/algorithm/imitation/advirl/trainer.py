@@ -46,7 +46,6 @@ class AdvIRLTrainer(Trainer):
 
     def optimize(self, batch) -> Dict[str, Any]:
         agent_batch, expert_batch = batch[0], batch[1]
-        print(type(agent_batch), type(expert_batch))
 
         policy_loss_stats = self.optimize_policy(agent_batch)
 

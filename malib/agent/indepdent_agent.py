@@ -162,7 +162,7 @@ class IndependentAgent(AgentInterface):
         :return: None
         """
 
-        # raise NotImplementedError
+        raise NotImplementedError
 
     def load_single_policy(self, env_agent_id, model_dir) -> None:
         """Load one policy for one env_agent.

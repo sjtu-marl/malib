@@ -34,8 +34,6 @@ from malib.utils.logger import get_logger, Log
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.trainer import Trainer
 
-import pickle as pkl
-
 
 AgentFeedback = namedtuple("AgentFeedback", "id, trainable_pairs, state_id, statistics")
 AgentTaggedFeedback = namedtuple("AgentTaggedFeedback", "id, content")
@@ -126,6 +124,11 @@ class AgentInterface(metaclass=ABCMeta):
         self._training_agent_mapping = training_agent_mapping
         self._group = []
         self._global_step = 0
+
+        # XXX(zbzhu): set default reward in other place
+        # if not specified reward, use env reward by default
+        if len(reward_candidates) == 0:
+            reward_candidates["ENV"] = {"name": "ENV"}
 
         self._param_desc_lock = threading.Lock()
         self.logger = get_logger(
@@ -335,7 +338,7 @@ class AgentInterface(metaclass=ABCMeta):
                 dones, tasks = ray.wait(tasks)
                 for done in dones:
                     batch, info = ray.get(done)
-                    if batch.data is None:
+                    if batch.data is None or None in batch.data:
                         # push task
                         tasks.append(
                             self._offline_dataset.sample.remote(

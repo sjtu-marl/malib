@@ -53,6 +53,7 @@ if __name__ == "__main__":
         agent_mapping_func=lambda agent: "share",
         training=training_config,
         algorithms=config["algorithms"],
+        rewards=config["rewards"],
         # rollout configuration for each learned policy model
         rollout=rollout_config,
         evaluation=config.get("evaluation", {}),

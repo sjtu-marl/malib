@@ -83,11 +83,7 @@ DEFAULT_CONFIG = {
     # {id: {"name": human readable algorithm name, "model_config": {}, "custom_config": {}}}
     "algorithms": {},  #
     # use environment reward by default, and can be replaced with adversarial reward, etc.
-    "rewards": {
-        "ENV": {
-            "name": "ENV",
-        }
-    },
+    "rewards": {},
     # mapping environment agents to training agent interfaces
     "agent_mapping_func": lambda agent: agent,
     # configuration for rollout
