@@ -57,6 +57,8 @@ algorithms:
             activation: ReLU
         output:
           activation: False
+
+rewards:
   ADVIRL:
     name: "ADVIRL"
     type: "GAIL" # choice in [GAIL, GAIL2, AIRL, FAIRL]

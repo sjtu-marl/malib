@@ -29,6 +29,7 @@ class TrainingManager:
     def __init__(
         self,
         algorithms: Dict[str, Any],
+        rewards: Dict[str, Any],
         env_desc: Dict[str, Any],
         interface_config: Dict[str, Any],
         training_agent_mapping: Callable,
@@ -38,7 +39,8 @@ class TrainingManager:
         """Create an TrainingManager instance which is responsible for the multi agent training
         tasks execution and rollout task requests sending.
 
-        :param Dict[str,Any] algorithms: The algorithms configuration candidates
+        :param Dict[str,Any] algorithms: The algorithms configuration candidates.
+        :param Dict[str, Any] rewards: The rewards configuration candidates, use environment reward by default.
         :param Dict[str,Any] env_desc: The description for environment generation.
         :param Callable training_agent_mapping: The mapping function maps agent id to training interface id.
         :param Dict[AgentID,Dict[str,Any]] training_config: The agent configuration dictionary.
@@ -87,6 +89,7 @@ class TrainingManager:
                         training_aid,
                         env_desc,
                         algorithms,
+                        rewards,
                         training_agent_mapping,
                         interface_config["observation_spaces"],
                         interface_config["action_spaces"],

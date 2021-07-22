@@ -26,6 +26,7 @@ class IndependentAgent(AgentInterface):
         assign_id: str,
         env_desc: Dict[str, Any],
         algorithm_candidates: Dict[str, Any],
+        reward_candidates: Dict[str, Any],
         training_agent_mapping: Callable,
         observation_spaces: Dict[AgentID, gym.spaces.Space],
         action_spaces: Dict[AgentID, gym.spaces.Space],
@@ -38,6 +39,7 @@ class IndependentAgent(AgentInterface):
         :param str assign_id: Naming independent agent interface.
         :param Dict[str,Any] env_desc: Environment description.
         :param Dict[str,Any] algorithm_candidates: Mapping from readable name to algorithm configuration.
+        :param Dict[str,Any] reward_candidates: Mapping from readable name to reward configuration.
         :param Callable training_agent_mapping: Mapping from environment agents to training agent interfaces.
         :param Dict[AgentID,gym.spaces.Space] observation_spaces: Dict of raw agent observation spaces, it is a
             completed description of all possible agents' observation spaces.
@@ -56,6 +58,7 @@ class IndependentAgent(AgentInterface):
             assign_id,
             env_desc,
             algorithm_candidates,
+            reward_candidates,
             training_agent_mapping,
             observation_spaces,
             action_spaces,
@@ -114,9 +117,27 @@ class IndependentAgent(AgentInterface):
             custom_config=algorithm_conf.get("custom_config", {}),
         )
 
-        pid = self.default_policy_id_gen(algorithm_conf)
+        reward_conf = self.get_reward_config(env_agent_id)
+        if reward_conf["name"] == "ENV":
+            reward = None
+        else:
+            reward_alg = get_algorithm_space(reward_conf)
+            reward = reward_alg.reward(
+                registered_name=reward_conf["name"],
+                reward_type=reward_conf.get("type", None),
+                observation_space=reward_conf.get("model_config", {}),
+                custom_config=reward_conf.get("custom_config", {}),
+            )
+
+        pid = self.default_policy_id_gen(algorithm_conf, reward_conf)
         self._policies[pid] = policy
-        self._trainers[pid] = algorithm.trainer(env_agent_id)
+        self._rewards[pid] = reward
+        if reward_conf["name"] == "ENV":
+            self._trainers[pid] = algorithm.trainer(env_agent_id)
+        else:
+            self._trainers[pid] = reward_alg.trainer(
+                env_agent_id, algorithm.trainer(env_agent_id)
+            )
 
         return pid, policy
 

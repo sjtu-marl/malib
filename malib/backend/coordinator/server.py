@@ -91,6 +91,7 @@ class CoordinatorServer(BaseCoordinator):
     def start(self):
         self._training_manager = TrainingManager(
             algorithms=self._configs["algorithms"],
+            rewards=self._configs["rewards"],
             env_desc=self._configs["env_description"],
             interface_config=self._configs["training"]["interface"],
             training_agent_mapping=self._configs["agent_mapping_func"],

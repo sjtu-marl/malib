@@ -18,6 +18,7 @@ class DiscriminatorLoss(LossFunc):
         super().__init__()
         self._params.update({"reward_lr": 1e-2})
         self._reward = None
+        self._use_grad_pen = False
 
         self.bce = nn.BCEWithLogitsLoss()
         self.bce_targets = torch.cat(
@@ -30,6 +31,10 @@ class DiscriminatorLoss(LossFunc):
         # self.bce.to(device)
         # self.bce_targets = self.bce_targets.to(device)
 
+    @property
+    def reward(self):
+        return self._reward
+
     def setup_optimizers(self, *args, **kwargs):
         if self.optimizers is None:
             optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
@@ -37,10 +42,15 @@ class DiscriminatorLoss(LossFunc):
             self.optimizers.append(
                 optim_cls(self.reward.parameters(), lr=self._params["lr"])
             )
+            self.optimizers = {
+                "reward": optim_cls(
+                    self.reward.parameters(), lr=self._params["reward_lr"],
+                )
+            }
         else:
             for p in self.optimizers:
                 p.param_groups = []
-            self.optimizers[0].add_param_group({"params": self.reward.parameters()})
+            self.optimizers["reward"].add_param_group({"params": self.reward.parameters()})
 
     def step(self) -> Any:
         """ Step optimizers and update target """
@@ -59,7 +69,7 @@ class DiscriminatorLoss(LossFunc):
 
         _ = [p.step() for p in self.optimizers]
 
-    def __call__(self, expert_batch, agent_batch) -> Dict[str, Any]:
+    def __call__(self, agent_batch, expert_batch) -> Dict[str, Any]:
         # empty loss
         self.loss = []
 
@@ -70,7 +80,7 @@ class DiscriminatorLoss(LossFunc):
         disc_ce_loss = self.bce(disc_logits, self.bce_targets)
         accuracy = (disc_preds == self.bce_targets).type(torch.FloatTensor).mean()
 
-        if self.use_grad_pen:
+        if self._use_grad_pen:
             eps = torch.randn(expert_batch.size(0), 1)
             # eps.to(device)
 

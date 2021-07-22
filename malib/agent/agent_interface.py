@@ -81,6 +81,7 @@ class AgentInterface(metaclass=ABCMeta):
         assign_id: str,
         env_desc: Dict[str, Any],
         algorithm_candidates: Dict[str, Any],
+        reward_candidates: Dict[str, Any],
         training_agent_mapping: Callable,
         observation_spaces: Dict[AgentID, gym.spaces.Space],
         action_spaces: Dict[AgentID, gym.spaces.Space],
@@ -92,6 +93,7 @@ class AgentInterface(metaclass=ABCMeta):
         :param str assign_id: Specify the agent interface id.
         :param Dict[str,Any] env_desc: Environment description.
         :param Dict[str,Any] algorithm_candidates: A dict of feasible algorithms.
+        :param Dict[str,Any] reward_candidates: A dict of feasible rewards.
         :param Dict[AgentID,gym.spaces.Space] observation_spaces: A dict of raw environment observation spaces.
         :param Dict[AgentID,gym.spaces.Space] action_spaces: A dict of raw environment action spaces.
         :param Dict[str,Any] exp_cfg: Experiment description.
@@ -103,10 +105,12 @@ class AgentInterface(metaclass=ABCMeta):
         self._id = assign_id
         self._env_desc = env_desc
         self._algorithm_candidates = algorithm_candidates
+        self._reward_candidates = reward_candidates
         self._observation_spaces = observation_spaces
         self._action_spaces = action_spaces
         self._population_size = population_size
         self._policies = {}
+        self._rewards = {}
         self._trainers = {}
         self._agent_to_pids = {}
         self._offline_dataset = None
@@ -200,6 +204,15 @@ class AgentInterface(metaclass=ABCMeta):
         :return: {algorithm_name: algorithm_configuration}
         """
         return self._algorithm_candidates
+
+    @property
+    def reward_candidates(self) -> Dict[str, Any]:
+        """Return a dict of reward configurations supported in this interface, users can use one of them to create
+        reward instance.
+
+        :return: {reward: reward_configuration}
+        """
+        return self._reward_candidates
 
     def start(self) -> None:
         """Retrieve the handlers of coordinator server, parameter server and offline dataset server.
@@ -601,16 +614,20 @@ class AgentInterface(metaclass=ABCMeta):
 
         return self._trainers[pid]
 
-    def default_policy_id_gen(self, algorithm_conf: Dict[str, Any]) -> str:
-        """Generate policy id based on algorithm name and the count of policies. Default to generate policy id as
+    def default_policy_id_gen(self, algorithm_conf: Dict[str, Any], reward_conf: Dict[str, Any]) -> str:
+        """Generate policy id based on algorithm name, reward name and the count of policies. Default to generate policy id as
 
-            `{algorithm_conf[name]}_{len(self._policies)}`.
+            `{algorithm_conf[name]}_{len(self._policies)}`. if not using environment reward, the reward name will also be included.
 
         :param Dict[str,Any] algorithm_conf: Generate policy id with given algorithm configuration.
+        :param Dict[str,Any] reward_conf: Generate policy id with given reward configuration.
         :return: Generated policy id
         """
 
-        return f"{algorithm_conf['name']}_{len(self._policies)}"
+        pid = f"{algorithm_conf['name']}_{len(self._policies)}"
+        if reward_conf["name"] != "ENV":
+            pid = f"{reward_conf['name']}_" + pid
+        return pid
 
     def get_algorithm_config(self, *args, **kwargs) -> Dict[str, Any]:
         """Get algorithm configuration from algorithm candidates. Default to return the first one element of the

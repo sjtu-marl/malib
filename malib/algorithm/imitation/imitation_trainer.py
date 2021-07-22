@@ -12,10 +12,6 @@ class ImitationTrainer(Trainer):
         self._policy_trainer = None
 
     @property
-    def policy(self) -> Policy:
-        return self._policy
-
-    @property
     def reward(self) -> Policy:
         return self._reward
 

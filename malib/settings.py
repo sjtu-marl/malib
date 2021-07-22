@@ -82,6 +82,12 @@ DEFAULT_CONFIG = {
     # TODO(ming): support multiple algorithms
     # {id: {"name": human readable algorithm name, "model_config": {}, "custom_config": {}}}
     "algorithms": {},  #
+    # use environment reward by default, and can be replaced with adversarial reward, etc.
+    "rewards": {
+        "ENV": {
+            "name": "ENV",
+        }
+    },
     # mapping environment agents to training agent interfaces
     "agent_mapping_func": lambda agent: agent,
     # configuration for rollout
