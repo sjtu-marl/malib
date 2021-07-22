@@ -80,7 +80,7 @@ class Reward(metaclass=ABCMeta):
         )(observation_space)
 
         self._state_handler_dict = {}
-        self._reward_func = None
+        self._discriminator = None
 
     @property
     def exploration_callback(self) -> Callable:
@@ -207,22 +207,6 @@ class Reward(metaclass=ABCMeta):
         for k, v in parameters.items():
             # FIXME(ming): strict mode for parameter reload
             self._state_handler_dict[k].load_state_dict(v)
-
-    def set_reward_func(self, reward_func) -> None:
-        """Set reward model. Note repeated assign will raise a warning
-
-        :raise RuntimeWarning, repeated assign.
-        """
-
-        # if self._actor is not None:
-        #     raise RuntimeWarning("repeated actor assign")
-        self._reward_func = reward_func
-
-    @property
-    def reward_func(self) -> Any:
-        """ Return reward function, cannot be None """
-
-        return self._reward_func
 
     @deprecated
     def train(self):

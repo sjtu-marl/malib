@@ -13,21 +13,15 @@ from malib.backend.datapool.offline_dataset_server import Episode
 from malib.utils.typing import TrainingMetric
 
 
-class DiscriminatorLoss(LossFunc):
+class AdvIRLLoss(LossFunc):
     def __init__(self):
         super().__init__()
-        self._params.update({"reward_lr": 1e-2})
+        self._params.update({"disc_lr": 1e-2})
         self._reward = None
         self._use_grad_pen = False
 
         self.bce = nn.BCEWithLogitsLoss()
-        self.bce_targets = torch.cat(
-            [
-                torch.ones(self._params["batch_size"], 1),
-                torch.zeros(self._params["batch_size"], 1),
-            ],
-            dim=0,
-        )
+        self.bce_targets = None
         # self.bce.to(device)
         # self.bce_targets = self.bce_targets.to(device)
 
@@ -40,17 +34,17 @@ class DiscriminatorLoss(LossFunc):
             optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
             self.optimizers = []
             self.optimizers.append(
-                optim_cls(self.reward.parameters(), lr=self._params["lr"])
+                optim_cls(self.reward.discriminator.parameters(), lr=self._params["disc_lr"])
             )
             self.optimizers = {
-                "reward": optim_cls(
-                    self.reward.parameters(), lr=self._params["reward_lr"],
+                "discriminator": optim_cls(
+                    self.reward.discriminator.parameters(), lr=self._params["disc_lr"],
                 )
             }
         else:
             for p in self.optimizers:
                 p.param_groups = []
-            self.optimizers["reward"].add_param_group({"params": self.reward.parameters()})
+            self.optimizers["discriminator"].add_param_group({"params": self.reward.discriminator.parameters()})
 
     def step(self) -> Any:
         """ Step optimizers and update target """
@@ -60,22 +54,45 @@ class DiscriminatorLoss(LossFunc):
 
         self.push_gradients(
             {
-                "reward_func": {
-                    name: -self._params["reward_lr"] * param.grad.numpy()
-                    for name, param in self.reward.named_parameters()
+                "discriminator": {
+                    name: -self._params["disc_lr"] * param.grad.numpy()
+                    for name, param in self.reward.discriminator.named_parameters()
                 },
             }
         )
 
-        _ = [p.step() for p in self.optimizers]
+        _ = [p.step() for p in self.optimizers.values()]
 
     def __call__(self, agent_batch, expert_batch) -> Dict[str, Any]:
-        # empty loss
-        self.loss = []
 
-        disc_input = torch.cat([expert_batch, agent_batch], dim=0)
+        # allocate static memory for bce_targets
+        if self.bce_targets is None:
+            self.bce_targets = torch.cat(
+                [
+                    torch.ones(self._params["batch_size"], 1),
+                    torch.zeros(self._params["batch_size"], 1),
+                ],
+                dim=0,
+            )
 
-        disc_logits = self.discriminator(disc_input)
+        FloatTensor = (
+            torch.cuda.FloatTensor
+            if self.reward.custom_config["use_cuda"]
+            else torch.FloatTensor
+        )
+        cast_to_tensor = lambda x: FloatTensor(x.copy())
+
+        expert_cur_obs = cast_to_tensor(expert_batch[Episode.CUR_OBS])
+        expert_actions = cast_to_tensor(expert_batch[Episode.ACTION])
+        expert_disc_input = torch.cat([expert_cur_obs, expert_actions], dim=-1)
+
+        agent_cur_obs = cast_to_tensor(agent_batch[Episode.CUR_OBS])
+        agent_actions = cast_to_tensor(agent_batch[Episode.ACTION])
+        agent_disc_input = torch.cat([agent_cur_obs, agent_actions], dim=-1)
+
+        disc_input = torch.cat([expert_disc_input, agent_disc_input], dim=0)
+
+        disc_logits = self.reward.discriminator(disc_input)
         disc_preds = (disc_logits > 0).type(disc_logits.data.type())
         disc_ce_loss = self.bce(disc_logits, self.bce_targets)
         accuracy = (disc_preds == self.bce_targets).type(torch.FloatTensor).mean()
@@ -105,7 +122,7 @@ class DiscriminatorLoss(LossFunc):
             # gradient_penalty = (total_grad.norm(2, dim=1) ** 2).mean()
             # disc_grad_pen_loss = gradient_penalty * 0.5 * self.grad_pen_weight
         else:
-            disc_grad_pen_loss = 0.0
+            disc_grad_pen_loss = torch.zeros_like(disc_ce_loss)
 
         disc_total_loss = disc_ce_loss + disc_grad_pen_loss
         disc_total_loss.backward()
@@ -116,8 +133,6 @@ class DiscriminatorLoss(LossFunc):
             "disc_total_loss",
             "disc_accuracy",
         ]
-
-        self.loss.append(disc_ce_loss, disc_grad_pen_loss, disc_total_loss)
 
         stats_list = [
             disc_ce_loss.detach().numpy(),

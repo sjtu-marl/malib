@@ -14,8 +14,10 @@ class BCTrainer(Trainer):
     def optimize(self, batch):
         assert isinstance(self._policy, BC), type(self._policy)
 
+        expert_batch = batch[1]
+
         self.loss.zero_grad()
-        loss_stats = self.loss(batch[1])
+        loss_stats = self.loss(expert_batch)
         self.loss.step()
 
         return loss_stats

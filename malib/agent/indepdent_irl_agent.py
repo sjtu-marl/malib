@@ -9,7 +9,6 @@ import gym
 from malib.utils.typing import (
     AgentID,
     PolicyID,
-    RewardID,
     MetricEntry,
 )
 

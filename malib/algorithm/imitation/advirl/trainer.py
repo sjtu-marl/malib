@@ -2,8 +2,8 @@ from typing import Dict, Any
 
 from malib.algorithm.common.trainer import Trainer
 from malib.backend.datapool.offline_dataset_server import Episode
-from malib.algorithm.imitation.advirl.reward import Discriminator
-from malib.algorithm.imitation.advirl.loss import DiscriminatorLoss
+from malib.algorithm.imitation.advirl.reward import AdvIRLReward
+from malib.algorithm.imitation.advirl.loss import AdvIRLLoss
 
 
 class AdvIRLTrainer(Trainer):
@@ -19,7 +19,7 @@ class AdvIRLTrainer(Trainer):
         """
 
         super(AdvIRLTrainer, self).__init__(tid)
-        self._loss = DiscriminatorLoss()
+        self._loss = AdvIRLLoss()
         self._policy_trainer = policy_trainer
 
         self._state_only = False
@@ -41,11 +41,12 @@ class AdvIRLTrainer(Trainer):
         batch[Episode.REWARD] = self._reward.compute_rewards(
             batch[Episode.CUR_OBS],
             batch[Episode.ACTION],
-        )
+        ).detach().cpu().numpy()
         return batch
 
     def optimize(self, batch) -> Dict[str, Any]:
         agent_batch, expert_batch = batch[0], batch[1]
+        print(type(agent_batch), type(expert_batch))
 
         policy_loss_stats = self.optimize_policy(agent_batch)
 
@@ -60,7 +61,7 @@ class AdvIRLTrainer(Trainer):
         return loss_stats
 
     def optimize_reward(self, agent_batch, expert_batch) -> Dict[str, Any]:
-        assert isinstance(self._policy, Discriminator), type(self._reward)
+        assert isinstance(self._reward, AdvIRLReward), type(self._reward)
 
         if self._wrap_absorbing:
             raise NotImplementedError

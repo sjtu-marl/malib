@@ -88,6 +88,7 @@ class AgentInterface(metaclass=ABCMeta):
         exp_cfg: Dict[str, Any],
         population_size: int,
         algorithm_mapping: Callable = None,
+        reward_mapping: Callable = None,
     ):
         """
         :param str assign_id: Specify the agent interface id.
@@ -99,6 +100,8 @@ class AgentInterface(metaclass=ABCMeta):
         :param Dict[str,Any] exp_cfg: Experiment description.
         :param int population_size: The maximum size of policy pool.
         :param Optional[Callable] algorithm_mapping: Mapping registered agents to algorithm candidates, optional
+            default is None.
+        :param Optional[Callable] reward_mapping: Mapping registered agents to reward candidates, optional
             default is None.
         """
 
@@ -119,6 +122,7 @@ class AgentInterface(metaclass=ABCMeta):
         self._parameter_desc: Dict[PolicyID, ParameterDescription] = {}
         self._meta_parameter_desc = {}
         self._algorithm_mapping_func = algorithm_mapping
+        self._reward_mapping_func = reward_mapping
         self._training_agent_mapping = training_agent_mapping
         self._group = []
         self._global_step = 0
@@ -628,6 +632,26 @@ class AgentInterface(metaclass=ABCMeta):
         if reward_conf["name"] != "ENV":
             pid = f"{reward_conf['name']}_" + pid
         return pid
+
+    def get_reward_config(self, *args, **kwargs) -> Dict[str, Any]:
+        """Get reward configuration from reward candidates. Default to return the first one element of the
+        listed value of `reward_candidates`.
+
+        :param list args: A list of arg.
+        :param dict kwargs: A dict of args.
+        :raise: errors.TypeError.
+        :return: The reward configuration (dict).
+        """
+
+        if isinstance(self._reward_mapping_func, Callable):
+            name = self._reward_mapping_func(*args, **kwargs)
+            return self.reward_candidates[name]
+        elif self._reward_mapping_func is None:
+            return list(self.reward_candidates.values())[0]
+        else:
+            raise errors.TypeError(
+                f"Unexpected reward mapping function: {self._reward_mapping_func}"
+            )
 
     def get_algorithm_config(self, *args, **kwargs) -> Dict[str, Any]:
         """Get algorithm configuration from algorithm candidates. Default to return the first one element of the

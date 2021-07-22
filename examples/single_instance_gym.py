@@ -83,6 +83,7 @@ if __name__ == "__main__":
                 env_desc=env_desc,
                 training_agent_mapping=None,
                 algorithm_candidates=config["algorithms"],
+                reward_candidates=config["rewards"],
                 observation_spaces=observation_spaces,
                 action_spaces=action_spaces,
                 exp_cfg=exp_cfg,

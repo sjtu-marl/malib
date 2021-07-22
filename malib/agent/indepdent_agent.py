@@ -14,7 +14,7 @@ from malib.utils.typing import (
 
 from malib.agent.agent_interface import AgentInterface
 from malib.algorithm.common.policy import Policy
-from malib.algorithm import get_algorithm_space
+from malib.algorithm import get_algorithm_space, get_reward_algorithm_space
 from malib.utils import metrics
 
 import pickle as pkl
@@ -89,7 +89,10 @@ class IndependentAgent(AgentInterface):
             trainer = self.get_trainer(pid)
             if env_aid not in batch_copy:
                 continue
-            trainer.reset(self.policies[pid], training_config)
+            if self._rewards[pid] is not None:
+                trainer.reset(self.policies[pid], self._rewards[pid], training_config)
+            else:
+                trainer.reset(self.policies[pid], training_config)
             res[env_aid] = metrics.to_metric_entry(
                 trainer.optimize(batch_copy[env_aid]), prefix=pid
             )
@@ -121,11 +124,13 @@ class IndependentAgent(AgentInterface):
         if reward_conf["name"] == "ENV":
             reward = None
         else:
-            reward_alg = get_algorithm_space(reward_conf)
+            reward_alg = get_reward_algorithm_space(reward_conf["name"])
             reward = reward_alg.reward(
                 registered_name=reward_conf["name"],
                 reward_type=reward_conf.get("type", None),
-                observation_space=reward_conf.get("model_config", {}),
+                observation_space=self._observation_spaces[env_agent_id],
+                action_space=self._action_spaces[env_agent_id],
+                model_config=reward_conf.get("model_config", {}),
                 custom_config=reward_conf.get("custom_config", {}),
             )
 

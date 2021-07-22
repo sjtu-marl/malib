@@ -1,10 +1,11 @@
-from .policy import SAC
-from .advirl_trainer import AdvIRLTrainer
+from .reward import AdvIRLReward
+from .trainer import AdvIRLTrainer
+from .loss import AdvIRLLoss
 
-NAME = "AdvIRL"
-LOSS = None
+NAME = "ADVIRL"
+LOSS = AdvIRLLoss
 TRAINER = AdvIRLTrainer
-POLICY = None
+REWARD = AdvIRLReward
 
 
-__all__ = ["NAME", "LOSS", "TRAINER", "POLICY"]
+__all__ = ["NAME", "LOSS", "TRAINER", "REWARD"]

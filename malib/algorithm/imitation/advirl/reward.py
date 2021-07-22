@@ -5,6 +5,7 @@ Support discrete action space only
 from typing import Any
 
 import gym
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -22,7 +23,7 @@ from malib.algorithm.common import misc
 from malib.backend.datapool.offline_dataset_server import Episode
 
 
-class Discriminator(Reward):
+class AdvIRLReward(Reward):
     def __init__(
         self,
         registered_name: str,
@@ -32,7 +33,7 @@ class Discriminator(Reward):
         model_config: Dict[str, Any] = None,
         custom_config: Dict[str, Any] = None,
     ):
-        super(Discriminator, self).__init__(
+        super(AdvIRLReward, self).__init__(
             registered_name=registered_name,
             reward_type=reward_type,
             observation_space=observation_space,
@@ -50,18 +51,18 @@ class Discriminator(Reward):
         # action_dim = get_preprocessor(action_space)(action_space).size
         self._discrete_action = isinstance(action_space, gym.spaces.Discrete)
 
-        self.set_reward_func(
-            get_model(self.reward_typel_config.get("reward_func"))(
-                observation_space, action_space, self.custom_config["use_cuda"]
+        self.set_discriminator(
+            get_model(self.model_config["discriminator"])(
+                observation_space, action_space, self.custom_config["use_cuda"], concat=True,
             )
         )
 
-        self.register_state(self.reward_func, "reward_func")
+        self.register_state(self.discriminator, "discriminator")
 
     def compute_rewards(
         self, observation: DataTransferType, action: DataTransferType, **kwargs
     ) -> DataTransferType:
-        disc_logits = self.reward_func(torch.concat([observation, action], axis=1))
+        disc_logits = self.discriminator(np.concatenate([observation, action], axis=1))
 
         if self.reward_type == "airl":
             # If you compute log(D) - log(1-D) then you just get the logits
@@ -75,7 +76,7 @@ class Discriminator(Reward):
         else:  # fairl
             reward = torch.exp(disc_logits) * (-1.0 * disc_logits)
 
-        return super.clip_rewards(reward)
+        return self.clip_rewards(reward)
 
     def compute_reward(
         self, observation: DataTransferType, action: DataTransferType, **kwargs
@@ -87,4 +88,14 @@ class Discriminator(Reward):
     def discriminator(self) -> Any:
         """ Return reward function, cannot be None """
 
-        return self._reward_func
+        return self._discriminator
+
+    def set_discriminator(self, discriminator) -> None:
+        """Set discriminator model. Note repeated assign will raise a warning
+
+        :raise RuntimeWarning, repeated assign.
+        """
+
+        if self._discriminator is not None:
+            raise RuntimeWarning("repeated discriminator assign")
+        self._discriminator = discriminator
