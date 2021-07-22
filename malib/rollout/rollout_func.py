@@ -94,7 +94,7 @@ def sequential(
                         }
                     )
                 # convert action to scalar
-                action = action[0][0]
+                action = action[0]
             else:
                 info["policy_id"] = behavior_policies[aid]
                 action = None

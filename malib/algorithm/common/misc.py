@@ -73,18 +73,20 @@ def sample_gumbel(shape, eps=1e-20, tens_type=torch.FloatTensor):
     return -torch.log(-torch.log(U + eps) + eps)
 
 
-def gumbel_softmax_sample(logits, temperature):
+def gumbel_softmax_sample(logits, temperature, explore: bool = True):
     """Draw a sample from the Gumbel-Softmax distribution.
 
     Note:
         modified for PyTorch from https://github.com/ericjang/gumbel-softmax/blob/master/Categorical%20VAE.ipynb
     """
 
-    y = logits + sample_gumbel(logits.shape, tens_type=type(logits.data))
+    y = logits
+    if explore:
+        y += sample_gumbel(logits.shape, tens_type=type(logits.data))
     return F.softmax(y / temperature, dim=-1)
 
 
-def gumbel_softmax(logits: DataTransferType, temperature=1.0, hard=False):
+def gumbel_softmax(logits: DataTransferType, temperature=1.0, hard=False, explore=True):
     """Sample from the Gumbel-Softmax distribution and optionally discretize.
 
     Note:
@@ -96,7 +98,7 @@ def gumbel_softmax(logits: DataTransferType, temperature=1.0, hard=False):
     :returns [batch_size, n_class] sample from the Gumbel-Softmax distribution. If hard=True, then the returned sample
         will be one-hot, otherwise it will be a probability distribution that sums to 1 across classes
     """
-    y = gumbel_softmax_sample(logits, temperature)
+    y = gumbel_softmax_sample(logits, temperature, explore)
     if hard:
         y_hard = onehot_from_logits(y)
         y = (y_hard - y).detach() + y

@@ -6,6 +6,9 @@ from typing import Any
 
 import gym
 import torch
+import numpy as np
+
+from torch.nn import functional as F
 
 from malib.algorithm.common.policy import Policy
 from malib.utils.typing import DataTransferType, Dict, Tuple, BehaviorMode
@@ -87,16 +90,18 @@ class DDPG(Policy):
             if self._discrete_action:
                 if behavior == BehaviorMode.EXPLORATION:
                     pi = misc.gumbel_softmax(
-                        self.actor([observation]), temperature=1.0, hard=True
-                    )[0]
+                        self.actor(observation), temperature=1.0, hard=True
+                    )
                 else:
-                    pi = misc.onehot_from_logits(self.actor([observation]))[0]
+                    pi = misc.onehot_from_logits(self.actor([observation]))
             else:
                 if behavior == BehaviorMode.EXPLORATION:
-                    pi += torch.autograd.Variable(
-                        torch.Tensor(self.exploration_callback.noise()),
+                    logits = self.actor(observation)
+                    logits += torch.autograd.Variable(
+                        torch.Tensor(np.random.standard_normal(logits.shape)),
                         requires_grad=False,
                     )
+                pi = F.softmax(logits)
                 pi = pi.clamp(-1, 1)
         return pi.argmax(-1).numpy(), pi.numpy(), {Episode.ACTION_DIST: pi.numpy()}
 

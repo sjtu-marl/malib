@@ -18,14 +18,13 @@ parser.add_argument("--num_epoch", type=int, default=100)
 parser.add_argument("--fragment_length", type=int, default=10240)
 parser.add_argument("--worker_num", type=int, default=3)
 parser.add_argument("--log_dir", type=str, default=settings.LOG_DIR)
-parser.add_argument("--algorithm", type=str, default="DQN")
+parser.add_argument("--algorithm", type=str, default="PPO", choices={"PPO", "DQN"})
 
 args = parser.parse_args()
 
 
 num_total_training_episode = 55
 
-args.algorithm = "DQN"
 # args.algorithm = "SAC"
 args.batch_size = 128
 args.num_epoch = 8
