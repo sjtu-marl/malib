@@ -2,26 +2,27 @@
 Independent agent interface, for independent algorithms training. Policy/Trainer adding rule: one policy one trainer.
 """
 
-from typing import Dict, Tuple, Any, Callable
+from typing import Dict, Tuple, Any, Callable, Union
 
 import gym
+import ray
 
 from malib.utils.typing import (
     AgentID,
     PolicyID,
     MetricEntry,
+    BufferDescription,
 )
 
-from malib.utils import errors
-from malib.agent.indepdent_agent import IndependentAgent
-from malib.algorithm import get_algorithm_space
+from malib.agent.agent_interface import AgentInterface
 from malib.algorithm.common.policy import Policy
-from malib.utils import metrics
+from malib.algorithm import get_algorithm_space, get_reward_algorithm_space
+from malib.utils import metrics, errors
 
 import pickle as pkl
 
 
-class IndependentIRLAgent(IndependentAgent):
+class IndependentIRLAgent(AgentInterface):
     def __init__(
         self,
         assign_id: str,
@@ -33,9 +34,8 @@ class IndependentIRLAgent(IndependentAgent):
         exp_cfg: Dict[str, Any],
         population_size: int = -1,
         algorithm_mapping: Callable = None,
-        reward_alg_mapping: Callable = None,
     ):
-        """Create an independent irl agent instance work in asynchronous mode.
+        """Create an independent agent instance work in asynchronous mode.
 
         :param str assign_id: Naming independent agent interface.
         :param Dict[str,Any] env_desc: Environment description.
@@ -51,12 +51,9 @@ class IndependentIRLAgent(IndependentAgent):
         :param Callable algorithm_mapping: Mapping from agent to algorithm name in `algorithm_candidates`, for
             constructing your custom algorithm configuration getter. It is optional. Default to None, which means
             random selection.
-        :param Callable reward_alg_mapping: Mapping from agent to reward alg name in `reward_alg_candidates`, for
-            constructing your custom algorithm configuration getter. It is optional. Default to None, which means
-            random selection.
         """
 
-        IndependentAgent.__init__(
+        AgentInterface.__init__(
             self,
             assign_id,
             env_desc,
@@ -68,8 +65,8 @@ class IndependentIRLAgent(IndependentAgent):
             population_size,
             algorithm_mapping,
         )
+
         self._rewards = {}
-        self._reward_alg_mapping_func = reward_alg_mapping
 
     def optimize(
         self,
@@ -93,39 +90,11 @@ class IndependentIRLAgent(IndependentAgent):
             trainer = self.get_trainer(pid)
             if env_aid not in batch_copy:
                 continue
-            trainer.reset(self.policies[pid], self.rewards[pid], training_config)
+            trainer.reset(self.policies[pid], self._rewards[pid], training_config)
             res[env_aid] = metrics.to_metric_entry(
                 trainer.optimize(batch_copy[env_aid]), prefix=pid
             )
         return res
-
-    # def add_reward_for_agent(
-    #     self, env_agent_id: AgentID, trainable: bool
-    # ) -> Tuple[RewardID, Reward]:
-
-    #     """Add new policy according to env_agent_id.
-
-    #     :param AgentID env_agent_id: The agent_id with which observation, action space will be determined if is None.
-    #     :param bool trainable: Whether the added policy is trainable or not.
-    #     :return:
-    #     """
-
-    #     assert env_agent_id in self._group, (env_agent_id, self._group)
-    #     reward_alg_conf = self.get_reward_alg_config(env_agent_id)
-    #     reward_alg = get_algorithm_space(reward_alg_conf["name"])
-    #     reward = reward_alg.reward(
-    #         registered_name=reward_alg_conf["name"],
-    #         observation_space=self._observation_spaces[env_agent_id],
-    #         action_space=self._action_spaces[env_agent_id],
-    #         model_config=reward_alg_conf.get("model_config", {}),
-    #         custom_config=reward_alg_conf.get("custom_config", {}),
-    #     )
-
-    #     pid = self.default_reward_id_gen(reward_alg_conf)
-    #     self._rewards[pid] = reward
-    #     self._trainers[pid] = reward_alg.trainer(env_agent_id)
-
-    #     return pid, reward
 
     def add_policy_for_agent(
         self, env_agent_id: AgentID, trainable: bool
@@ -139,20 +108,6 @@ class IndependentIRLAgent(IndependentAgent):
         """
 
         assert env_agent_id in self._group, (env_agent_id, self._group)
-        reward_alg_conf = self.get_reward_alg_config(env_agent_id)
-        reward_alg = get_algorithm_space(reward_alg_conf["name"])
-        reward = reward_alg.reward(
-            registered_name=reward_alg_conf["name"],
-            reward_type=reward_alg_conf["type"]
-            if "type" in reward_alg_conf["type"]
-            else None,
-            observation_space=self._observation_spaces[env_agent_id],
-            action_space=self._action_spaces[env_agent_id],
-            model_config=reward_alg_conf.get("model_config", {}),
-            custom_config=reward_alg_conf.get("custom_config", {}),
-        )
-        self._rewards[pid] = reward
-
         algorithm_conf = self.get_algorithm_config(env_agent_id)
         algorithm = get_algorithm_space(algorithm_conf["name"])
         policy = algorithm.policy(
@@ -163,16 +118,28 @@ class IndependentIRLAgent(IndependentAgent):
             custom_config=algorithm_conf.get("custom_config", {}),
         )
 
-        pid = self.default_policy_id_gen(algorithm_conf)
+        reward_conf = self.get_reward_config(env_agent_id)
+        reward_alg = get_reward_algorithm_space(reward_conf["name"])
+        reward = reward_alg.reward(
+            registered_name=reward_conf["name"],
+            reward_type=reward_conf.get("type", None),
+            observation_space=self._observation_spaces[env_agent_id],
+            action_space=self._action_spaces[env_agent_id],
+            model_config=reward_conf.get("model_config", {}),
+            custom_config=reward_conf.get("custom_config", {}),
+        )
+
+        pid = self.default_policy_id_gen(algorithm_conf, reward_conf)
         self._policies[pid] = policy
+        self._rewards[pid] = reward
         self._trainers[pid] = reward_alg.trainer(
             env_agent_id, algorithm.trainer(env_agent_id)
-        )  # bring policy trainer into irl traniner
+        )
 
         return pid, policy
 
     def save(self, model_dir: str) -> None:
-        """Save policies & rewards and states.
+        """Save policies and states.
 
         :param str model_dir: Model saving directory path.
         :return: None
@@ -181,16 +148,16 @@ class IndependentIRLAgent(IndependentAgent):
         raise NotImplementedError
 
     def load(self, model_dir) -> None:
-        """Load states and policies & rewards from local storage.
+        """Load states and policies from local storage.
 
         :param str model_dir: Local model directory path.
         :return: None
         """
 
-        # raise NotImplementedError
+        raise NotImplementedError
 
-    def load_single_reward(self, env_agent_id, model_dir) -> None:
-        """Load one reward func for one env_agent.
+    def load_single_policy(self, env_agent_id, model_dir) -> None:
+        """Load one policy for one env_agent.
 
         Temporarily used for single agent imitation learning.
         """
@@ -199,42 +166,71 @@ class IndependentIRLAgent(IndependentAgent):
         algorithm_conf = self.get_algorithm_config(env_agent_id)
 
         with open(model_dir, "rb") as f:
-            reward = pkl.load(f)
+            policy = pkl.load(f)
 
-        pid = self.default_reward_id_gen(algorithm_conf)
-        self._rewards[pid] = reward
+        pid = self.default_policy_id_gen(algorithm_conf)
+        self._policies[pid] = policy
 
-        return pid, reward
+        return pid, policy
 
-    def get_reward_alg_config(self, *args, **kwargs) -> Dict[str, Any]:
-        """Get reward alg configuration from reward algorithm candidates. Default to return the first one element of the
-        listed value of `algorithm_candidates`.
+    def request_data(
+        self, buffer_desc: Union[BufferDescription, Dict[AgentID, BufferDescription]]
+    ) -> Tuple[Any, str]:
+        """Request training data from remote `OfflineDatasetServer`.
+        Note:
+            This method could only be called in multi-instance scenarios. Or, `OfflineDataset` and `CoordinatorServer`
+            have been started.
+        :param Dict[AgentID,BufferDescription] buffer_desc: A dictionary of agent buffer descriptions.
+        :return: A tuple of agent batches and information.
+        """
+
+        if isinstance(buffer_desc, Dict):
+            res = {}
+            # multiple tasks
+            tasks = [
+                self._offline_dataset.sample.remote(v) for v in buffer_desc.values()
+            ]
+            while len(tasks) > 0:
+                dones, tasks = ray.wait(tasks)
+                for done in dones:
+                    batch, info = ray.get(done)
+                    if batch.data is None or None in batch.data:
+                        # push task
+                        tasks.append(
+                            self._offline_dataset.sample.remote(
+                                buffer_desc[batch.identity]
+                            )
+                        )
+                    else:
+                        res[batch.identity] = batch.data
+        else:
+            res = None
+            while True:
+                batch, info = ray.get(self._offline_dataset.sample.remote(buffer_desc))
+                if batch.data is None:
+                    continue
+                else:
+                    res = batch.data
+                    break
+        return res, info
+
+    def default_policy_id_gen(self, algorithm_conf: Dict[str, Any], reward_conf: Dict[str, Any]) -> str:
+        """Generate policy id based on algorithm name and the count of policies. Default to generate policy id as
+            `{algorithm_conf[name]}_{len(self._policies)}`.
+        :param Dict[str,Any] algorithm_conf: Generate policy id with given algorithm configuration.
+        :return: Generated policy id
+        """
+
+        return f"{reward_conf['name']}_{algorithm_conf['name']}_{len(self._policies)}"
+
+    def get_reward_config(self, *args, **kwargs) -> Dict[str, Any]:
+        """Get reward configuration from reward candidates. Default to return the first one element of the
+        listed value of `reward_candidates`.
 
         :param list args: A list of arg.
         :param dict kwargs: A dict of args.
         :raise: errors.TypeError.
-        :return: The algorithm configuration (dict).
+        :return: The reward configuration (dict).
         """
 
-        if isinstance(self._reward_alg_mapping_func, Callable):
-            name = self._reward_alg_mapping_func(*args, **kwargs)
-            return self.reward_alg_candidates[name]
-        elif self._algorithm_mapping_func is None:
-            return list(self.algorithm_candidates.values())[
-                1
-            ]  # 1 stands for reward algorithm !!
-        else:
-            raise errors.TypeError(
-                f"Unexpected algorithm mapping function: {self._algorithm_mapping_func}"
-            )
-
-    def default_reward_id_gen(self, reward_alg_conf: Dict[str, Any]) -> str:
-        """Generate reward id based on algorithm name and the count of policies. Default to generate reward id as
-
-            `{reward_alg_conf[name]}_{len(self._rewards)}`.
-
-        :param Dict[str,Any] algorithm_conf: Generate reward id with given algorithm configuration.
-        :return: Generated reward id
-        """
-
-        return f"{reward_alg_conf['name']}_{len(self._rewards)}"
+        return list(self.algorithm_candidates.values())[1]

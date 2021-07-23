@@ -14,7 +14,7 @@ from malib.utils.typing import (
 
 from malib.agent.agent_interface import AgentInterface
 from malib.algorithm.common.policy import Policy
-from malib.algorithm import get_algorithm_space, get_reward_algorithm_space
+from malib.algorithm import get_algorithm_space
 from malib.utils import metrics
 
 import pickle as pkl
@@ -26,7 +26,6 @@ class IndependentAgent(AgentInterface):
         assign_id: str,
         env_desc: Dict[str, Any],
         algorithm_candidates: Dict[str, Any],
-        reward_candidates: Dict[str, Any],
         training_agent_mapping: Callable,
         observation_spaces: Dict[AgentID, gym.spaces.Space],
         action_spaces: Dict[AgentID, gym.spaces.Space],
@@ -35,11 +34,9 @@ class IndependentAgent(AgentInterface):
         algorithm_mapping: Callable = None,
     ):
         """Create an independent agent instance work in asynchronous mode.
-
         :param str assign_id: Naming independent agent interface.
         :param Dict[str,Any] env_desc: Environment description.
         :param Dict[str,Any] algorithm_candidates: Mapping from readable name to algorithm configuration.
-        :param Dict[str,Any] reward_candidates: Mapping from readable name to reward configuration.
         :param Callable training_agent_mapping: Mapping from environment agents to training agent interfaces.
         :param Dict[AgentID,gym.spaces.Space] observation_spaces: Dict of raw agent observation spaces, it is a
             completed description of all possible agents' observation spaces.
@@ -58,7 +55,6 @@ class IndependentAgent(AgentInterface):
             assign_id,
             env_desc,
             algorithm_candidates,
-            reward_candidates,
             training_agent_mapping,
             observation_spaces,
             action_spaces,
@@ -74,7 +70,6 @@ class IndependentAgent(AgentInterface):
         training_config: Dict[str, Any],
     ) -> Dict[AgentID, Dict[str, MetricEntry]]:
         """Execute optimization for a group of policies with given batches.
-
         :param policy_ids: Dict[AgentID, PolicyID], Mapping from environment agent ids to policy ids. The agent ids in
             this dictionary should be registered in groups, and also policy ids should have been existed ones in the
             policy pool.
@@ -89,10 +84,7 @@ class IndependentAgent(AgentInterface):
             trainer = self.get_trainer(pid)
             if env_aid not in batch_copy:
                 continue
-            if self._rewards[pid] is not None:
-                trainer.reset(self.policies[pid], self._rewards[pid], training_config)
-            else:
-                trainer.reset(self.policies[pid], training_config)
+            trainer.reset(self.policies[pid], training_config)
             res[env_aid] = metrics.to_metric_entry(
                 trainer.optimize(batch_copy[env_aid]), prefix=pid
             )
@@ -103,7 +95,6 @@ class IndependentAgent(AgentInterface):
     ) -> Tuple[PolicyID, Policy]:
 
         """Add new policy according to env_agent_id.
-
         :param AgentID env_agent_id: The agent_id with which observation, action space will be determined if is None.
         :param bool trainable: Whether the added policy is trainable or not.
         :return:
@@ -120,35 +111,14 @@ class IndependentAgent(AgentInterface):
             custom_config=algorithm_conf.get("custom_config", {}),
         )
 
-        reward_conf = self.get_reward_config(env_agent_id)
-        if reward_conf["name"] == "ENV":
-            reward = None
-        else:
-            reward_alg = get_reward_algorithm_space(reward_conf["name"])
-            reward = reward_alg.reward(
-                registered_name=reward_conf["name"],
-                reward_type=reward_conf.get("type", None),
-                observation_space=self._observation_spaces[env_agent_id],
-                action_space=self._action_spaces[env_agent_id],
-                model_config=reward_conf.get("model_config", {}),
-                custom_config=reward_conf.get("custom_config", {}),
-            )
-
-        pid = self.default_policy_id_gen(algorithm_conf, reward_conf)
+        pid = self.default_policy_id_gen(algorithm_conf)
         self._policies[pid] = policy
-        self._rewards[pid] = reward
-        if reward_conf["name"] == "ENV":
-            self._trainers[pid] = algorithm.trainer(env_agent_id)
-        else:
-            self._trainers[pid] = reward_alg.trainer(
-                env_agent_id, algorithm.trainer(env_agent_id)
-            )
+        self._trainers[pid] = algorithm.trainer(env_agent_id)
 
         return pid, policy
 
     def save(self, model_dir: str) -> None:
         """Save policies and states.
-
         :param str model_dir: Model saving directory path.
         :return: None
         """
@@ -157,7 +127,6 @@ class IndependentAgent(AgentInterface):
 
     def load(self, model_dir) -> None:
         """Load states and policies from local storage.
-
         :param str model_dir: Local model directory path.
         :return: None
         """
@@ -166,7 +135,6 @@ class IndependentAgent(AgentInterface):
 
     def load_single_policy(self, env_agent_id, model_dir) -> None:
         """Load one policy for one env_agent.
-
         Temporarily used for single agent imitation learning.
         """
 

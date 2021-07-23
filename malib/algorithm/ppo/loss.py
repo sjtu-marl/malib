@@ -80,7 +80,6 @@ class PPOLoss(LossFunc):
         grad_cliprange = self._params["grad_norm_clipping"]
         ent_coef = self._params["entropy_coef"]
         vf_coef = self._params["value_coef"]
-        optim_epoch = self._params["ppo_epoch"]
         gamma = self.policy.custom_config["gamma"]
 
         old_logits = self.policy.actor(cur_obs)
@@ -92,38 +91,37 @@ class PPOLoss(LossFunc):
         next_value = self.policy.value_function(next_obs).detach().flatten()
         target_value = rewards + gamma * (1.0 - dones) * next_value
 
-        for _ in range(optim_epoch):
-            logits = self.policy.actor(cur_obs)
-            if isinstance(logits, tuple):
-                distri = Normal(*logits)
-            else:
-                distri = Categorical(logits=logits)
-            neglogpac = -distri.log_prob(actions)
-            ratio = torch.exp(old_neglogpac.detach() - neglogpac)
-            entropy = distri.entropy().mean()
+        logits = self.policy.actor(cur_obs)
+        if isinstance(logits, tuple):
+            distri = Normal(*logits)
+        else:
+            distri = Categorical(logits=logits)
+        neglogpac = -distri.log_prob(actions)
+        ratio = torch.exp(old_neglogpac.detach() - neglogpac)
+        entropy = distri.entropy().mean()
 
-            pg_loss = -adv * ratio
-            pg_loss2 = -adv * torch.clip(ratio, 1.0 - cliprange, 1.0 + cliprange)
-            pg_loss = torch.mean(torch.maximum(pg_loss, pg_loss2))
-            approx_kl = 0.5 * torch.mean(torch.square(neglogpac - old_neglogpac))
-            clip_frac = torch.mean(
-                torch.greater(torch.abs(ratio - 1.0), cliprange).float()
-            )
+        pg_loss = -adv * ratio
+        pg_loss2 = -adv * torch.clip(ratio, 1.0 - cliprange, 1.0 + cliprange)
+        pg_loss = torch.mean(torch.maximum(pg_loss, pg_loss2))
+        approx_kl = 0.5 * torch.mean(torch.square(neglogpac - old_neglogpac))
+        clip_frac = torch.mean(
+            torch.greater(torch.abs(ratio - 1.0), cliprange).float()
+        )
 
-            vpred = self.policy.value_function(cur_obs).flatten()
-            vf_loss = (vpred - target_value).pow(2).mean()
+        vpred = self.policy.value_function(cur_obs).flatten()
+        vf_loss = (vpred - target_value).pow(2).mean()
 
-            # total loss
-            loss = pg_loss - entropy * ent_coef + vf_loss * vf_coef
+        # total loss
+        loss = pg_loss - entropy * ent_coef + vf_loss * vf_coef
 
-            self.optimizers["policy"].zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(
-                list(self.policy.actor.parameters())
-                + list(self.policy.critic.parameters()),
-                grad_cliprange,
-            )
-            self.optimizers["policy"].step()
+        self.optimizers["policy"].zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(
+            list(self.policy.actor.parameters())
+            + list(self.policy.critic.parameters()),
+            grad_cliprange,
+        )
+        self.optimizers["policy"].step()
 
         loss_names = [
             "policy_loss",

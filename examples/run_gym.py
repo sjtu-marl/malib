@@ -27,8 +27,6 @@ if __name__ == "__main__":
     with open(os.path.join(BASE_DIR, args.config), "r") as f:
         config = yaml.load(f)
 
-    config["rewards"] = config.get("rewards", {})
-
     env_desc = config["env_description"]
     env_desc["config"] = env_desc.get("config", {})
     # load creator
@@ -55,7 +53,6 @@ if __name__ == "__main__":
         agent_mapping_func=lambda agent: "share",
         training=training_config,
         algorithms=config["algorithms"],
-        rewards=config["rewards"],
         # rollout configuration for each learned policy model
         rollout=rollout_config,
         evaluation=config.get("evaluation", {}),

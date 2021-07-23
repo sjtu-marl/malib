@@ -6,7 +6,6 @@ env_description:
   id:
   possible_agents:
 algorithms:
-rewards:
 rollout:
   type:
   stopper:

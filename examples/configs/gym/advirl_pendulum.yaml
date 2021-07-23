@@ -4,7 +4,7 @@ name: "share/advirl_pendulum"
 
 training:
   interface:
-    type: "independent"
+    type: "independentirl"
     population_size: -1
   config:
     # control the frequency of remote parameter update
@@ -62,7 +62,6 @@ algorithms:
         output:
           activation: False
 
-rewards:
   ADVIRL:
     name: "ADVIRL"
     type: "GAIL2" # choice in [GAIL, GAIL2, AIRL, FAIRL]

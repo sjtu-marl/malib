@@ -56,8 +56,6 @@ class CoordinatorServer(BaseCoordinator):
         self._terminate = False
         self._pending_trainable_pairs = {}
 
-        self._offline: bool = self._configs["training"]["config"]["offline"]
-
         # maintain the population sets.
         self._populations = {
             agent: set()
@@ -91,23 +89,21 @@ class CoordinatorServer(BaseCoordinator):
     def start(self):
         self._training_manager = TrainingManager(
             algorithms=self._configs["algorithms"],
-            rewards=self._configs["rewards"],
             env_desc=self._configs["env_description"],
             interface_config=self._configs["training"]["interface"],
             training_agent_mapping=self._configs["agent_mapping_func"],
             training_config=self._configs["training"]["config"],
             exp_cfg=self._exp_cfg,
         )
-        if not self._offline:
-            # one training interface one rollout worker
-            self._configs["rollout"][
-                "worker_num"
-            ] = self._training_manager.get_agent_interface_num()
-            self._rollout_worker_manager = RolloutWorkerManager(
-                rollout_config=self._configs["rollout"],
-                env_desc=self._configs["env_description"],
-                exp_cfg=self._exp_cfg,
-            )
+        # one training interface one rollout worker
+        self._configs["rollout"][
+            "worker_num"
+        ] = self._training_manager.get_agent_interface_num()
+        self._rollout_worker_manager = RolloutWorkerManager(
+            rollout_config=self._configs["rollout"],
+            env_desc=self._configs["env_description"],
+            exp_cfg=self._exp_cfg,
+        )
         self._training_manager.init()
 
         self._logger.info("Coordinator server started")
@@ -145,8 +141,6 @@ class CoordinatorServer(BaseCoordinator):
         """ Handling task request """
 
         if task_request.task_type == TaskType.SIMULATION:
-            if self._offline:
-                return
             # content is TrainingFeedback
             task_request = self._training_manager.retrieve_information(task_request)
             pending_matches = []
@@ -186,9 +180,6 @@ class CoordinatorServer(BaseCoordinator):
             with self._lock:
                 self.update_payoff_table(task_request)
         elif task_request.task_type == TaskType.ROLLOUT:
-            # NOTE(zbzhu): if offline training, do not rollout
-            if self._offline:
-                return
             task_request = self._training_manager.retrieve_information(task_request)
             self.gen_rollout_task(task_request)
         elif task_request.task_type == TaskType.OPTIMIZE:

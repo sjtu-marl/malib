@@ -12,10 +12,9 @@ training:
     optimizer: "Adam"
     lr: 0.01
     grad_norm_clipping: 2.0
-    offline: False
     stopper: "simple_training"
     stopper_config:
-      max_step: 50000
+      max_step: 10000
 
 rollout:
   type: "async"
@@ -25,7 +24,7 @@ rollout:
   num_episodes: 5
   episode_seg: 1
   test_num_episodes: 0
-  test_episode_seg: 5
+  test_episode_seg: 0
   terminate: "any"
   callback: "simultaneous"
   save_model: False
