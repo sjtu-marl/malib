@@ -64,17 +64,19 @@ class AdvIRLReward(Reward):
     ) -> DataTransferType:
         disc_logits = self.discriminator(np.concatenate([observation, action], axis=1))
 
-        if self.reward_type == "airl":
+        if self.reward_type == "AIRL":
             # If you compute log(D) - log(1-D) then you just get the logits
             reward = disc_logits
-        elif self.reward_type == "gail":  # -log (1-D) > 0
+        elif self.reward_type == "GAIL":  # -log (1-D) > 0
             reward = F.softplus(disc_logits, beta=1)  # F.softplus(disc_logits, beta=-1)
-        elif self.reward_type == "gail2":  # log D < 0
+        elif self.reward_type == "GAIL2":  # log D < 0
             reward = F.softplus(
                 disc_logits, beta=-1
             )  # F.softplus(disc_logits, beta=-1)
-        else:  # fairl
+        elif self.reward_type == "FAIRL":
             reward = torch.exp(disc_logits) * (-1.0 * disc_logits)
+        else:
+            raise NotImplementedError
 
         return self.clip_rewards(reward)
 

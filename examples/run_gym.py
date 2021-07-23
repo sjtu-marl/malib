@@ -27,6 +27,8 @@ if __name__ == "__main__":
     with open(os.path.join(BASE_DIR, args.config), "r") as f:
         config = yaml.load(f)
 
+    config["rewards"] = config.get("rewards", {})
+
     env_desc = config["env_description"]
     env_desc["config"] = env_desc.get("config", {})
     # load creator

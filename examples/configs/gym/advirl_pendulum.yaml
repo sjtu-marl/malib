@@ -8,11 +8,12 @@ training:
     population_size: -1
   config:
     # control the frequency of remote parameter update
-    batch_size: 512
+    batch_size: 2048
     optimizer: "Adam"
-    actor_lr: 0.001
-    critic_lr: 0.001
+    actor_lr: 0.01
+    critic_lr: 0.01
     disc_lr: 0.001
+    sac_alpha: 0.2
     tau: 0.01
     grad_norm_clipping: 2.0
     offline: False
@@ -38,24 +39,25 @@ env_description:
     env_id: "Pendulum-v0"
 
 algorithms:
-  DDPG:
-    name: "DDPG"
+  SAC:
+    name: "SAC"
     model_config:
       actor:
         network: mlp
         layers:
-          - units: 64
+          - units: 32
             activation: ReLU
-          - units: 64
+          - units: 32
             activation: ReLU
         output:
+          type: "gaussian"
           activation: False
       critic:
         network: mlp
         layers:
-          - units: 64
+          - units: 32
             activation: ReLU
-          - units: 64
+          - units: 32
             activation: ReLU
         output:
           activation: False
@@ -63,7 +65,7 @@ algorithms:
 rewards:
   ADVIRL:
     name: "ADVIRL"
-    type: "GAIL" # choice in [GAIL, GAIL2, AIRL, FAIRL]
+    type: "GAIL2" # choice in [GAIL, GAIL2, AIRL, FAIRL]
     model_config:
       discriminator:
         network: mlp
