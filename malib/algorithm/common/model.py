@@ -54,7 +54,10 @@ class MLP(Model):
         concat: bool = False,
     ):
         if concat:
-            input_dim = get_preprocessor(observation_space)(observation_space).size + get_preprocessor(action_space)(action_space).size
+            input_dim = (
+                get_preprocessor(observation_space)(observation_space).size
+                + get_preprocessor(action_space)(action_space).size
+            )
             output_dim = 1
             super(MLP, self).__init__(input_dim, output_dim)
         else:
@@ -141,7 +144,9 @@ def get_model(model_config: Dict[str, Any]):
         raise NotImplementedError
 
     def builder(observation_space, action_space, use_cuda=False, **kwargs):
-        model = handler(observation_space, action_space, copy.deepcopy(model_config), **kwargs)
+        model = handler(
+            observation_space, action_space, copy.deepcopy(model_config), **kwargs
+        )
         if use_cuda:
             model.cuda()
         return model

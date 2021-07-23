@@ -214,7 +214,9 @@ class IndependentIRLAgent(AgentInterface):
                     break
         return res, info
 
-    def default_policy_id_gen(self, algorithm_conf: Dict[str, Any], reward_conf: Dict[str, Any]) -> str:
+    def default_policy_id_gen(
+        self, algorithm_conf: Dict[str, Any], reward_conf: Dict[str, Any]
+    ) -> str:
         """Generate policy id based on algorithm name and the count of policies. Default to generate policy id as
             `{algorithm_conf[name]}_{len(self._policies)}`.
         :param Dict[str,Any] algorithm_conf: Generate policy id with given algorithm configuration.

@@ -324,7 +324,9 @@ class CoordinatorServer(BaseCoordinator):
             content=TrainingDescription(
                 agent_involve_info=agent_involve_info,
                 stopper=self._configs["training"]["config"]["stopper"],
-                stopper_config=self._configs["training"]["config"].get("stopper_config", None),
+                stopper_config=self._configs["training"]["config"].get(
+                    "stopper_config", None
+                ),
                 batch_size=self._configs["training"]["config"]["batch_size"],
                 update_interval=self._configs["training"]["config"]["update_interval"],
             ),

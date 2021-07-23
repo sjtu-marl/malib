@@ -13,8 +13,7 @@ ALGORITHM_LIB = {
 
 Reward = namedtuple("Reward", "reward, trainer, loss")
 REWARD_LIB = {
-    item.NAME: Reward(item.REWARD, item.TRAINER, item.LOSS)
-    for item in [advirl]
+    item.NAME: Reward(item.REWARD, item.TRAINER, item.LOSS) for item in [advirl]
 }
 
 

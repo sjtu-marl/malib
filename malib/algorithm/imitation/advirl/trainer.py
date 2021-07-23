@@ -8,7 +8,7 @@ from malib.algorithm.imitation.advirl.loss import AdvIRLLoss
 
 class AdvIRLTrainer(Trainer):
     def __init__(self, tid, policy_trainer: Trainer):
-        """ Serve as a wrapper for RL policy trainer.
+        """Serve as a wrapper for RL policy trainer.
 
         We implement AdvIRLTrainer as a special trainer to wrap other RL trainers, so that one can
         easily utilize different RL algorithms without specifying mutiple AdvIRLTrainer classes.
@@ -38,10 +38,15 @@ class AdvIRLTrainer(Trainer):
         self._policy_trainer.reset(policy, training_config)
 
     def replace_reward(self, batch):
-        batch[Episode.REWARD] = self._reward.compute_rewards(
-            batch[Episode.CUR_OBS],
-            batch[Episode.ACTION],
-        ).detach().cpu().numpy()
+        batch[Episode.REWARD] = (
+            self._reward.compute_rewards(
+                batch[Episode.CUR_OBS],
+                batch[Episode.ACTION],
+            )
+            .detach()
+            .cpu()
+            .numpy()
+        )
         return batch
 
     def optimize(self, batch) -> Dict[str, Any]:

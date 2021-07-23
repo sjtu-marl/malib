@@ -104,9 +104,7 @@ class PPOLoss(LossFunc):
         pg_loss2 = -adv * torch.clip(ratio, 1.0 - cliprange, 1.0 + cliprange)
         pg_loss = torch.mean(torch.maximum(pg_loss, pg_loss2))
         approx_kl = 0.5 * torch.mean(torch.square(neglogpac - old_neglogpac))
-        clip_frac = torch.mean(
-            torch.greater(torch.abs(ratio - 1.0), cliprange).float()
-        )
+        clip_frac = torch.mean(torch.greater(torch.abs(ratio - 1.0), cliprange).float())
 
         vpred = self.policy.value_function(cur_obs).flatten()
         vf_loss = (vpred - target_value).pow(2).mean()

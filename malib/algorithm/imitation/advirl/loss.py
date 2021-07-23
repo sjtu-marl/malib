@@ -33,17 +33,22 @@ class AdvIRLLoss(LossFunc):
             optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
             self.optimizers = []
             self.optimizers.append(
-                optim_cls(self.reward.discriminator.parameters(), lr=self._params["disc_lr"])
+                optim_cls(
+                    self.reward.discriminator.parameters(), lr=self._params["disc_lr"]
+                )
             )
             self.optimizers = {
                 "discriminator": optim_cls(
-                    self.reward.discriminator.parameters(), lr=self._params["disc_lr"],
+                    self.reward.discriminator.parameters(),
+                    lr=self._params["disc_lr"],
                 )
             }
         else:
             for p in self.optimizers:
                 p.param_groups = []
-            self.optimizers["discriminator"].add_param_group({"params": self.reward.discriminator.parameters()})
+            self.optimizers["discriminator"].add_param_group(
+                {"params": self.reward.discriminator.parameters()}
+            )
 
     def step(self) -> Any:
         """ Step optimizers and update target """
