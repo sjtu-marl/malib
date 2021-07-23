@@ -47,8 +47,7 @@ run(
     agent_mapping_func=lambda agent_id: agent_id,
     env_description={
         "creator": leduc_holdem.env,
-        "config": {"fixed_player": True},
-        "id": "leduc_holdem",
+        "config": {"scenario_configs": {"fixed_player": True}, "env_id": "leduc_holdem"}
         "possible_agents": env.possible_agents,
     },
     training={

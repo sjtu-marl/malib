@@ -80,7 +80,6 @@ class DQN(Policy):
         """
 
         behavior = kwargs.get("behavior_mode", BehaviorMode.EXPLORATION)
-        batch_size = len(observation)
         logits = torch.softmax(self.critic(observation), dim=-1)
 
         # do masking
@@ -95,16 +94,15 @@ class DQN(Policy):
 
         if behavior == BehaviorMode.EXPLORATION:
             if np.random.random() < self._calc_eps():
-                actions = m.sample().view((-1, 1))
+                actions = m.sample()
                 return (
                     actions.to("cpu").numpy(),
                     action_probs.detach().to("cpu").numpy(),
                     {Episode.ACTION_DIST: action_probs.detach().to("cpu").numpy()},
                 )
 
-        actions = torch.argmax(action_probs, dim=-1, keepdim=True)
+        actions = torch.argmax(action_probs, dim=-1)
         extra_info = {Episode.ACTION_DIST: action_probs.detach().to("cpu").numpy()}
-
         return (
             actions.detach().numpy(),
             action_probs.detach().to("cpu").numpy(),

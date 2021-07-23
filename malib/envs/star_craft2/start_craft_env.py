@@ -1,7 +1,6 @@
 import numpy as np
 
 from gym import spaces
-from numpy.core.fromnumeric import _cumprod_dispatcher
 from pettingzoo import ParallelEnv
 from smac.env import StarCraft2Env as sc_env
 
