@@ -29,7 +29,10 @@ args = parser.parse_args()
 if __name__ == "__main__":
     env_description = {
         "creator": PokerEnv,
-        "config": {"scenario_configs": {"fixed_player": True}, "env_id": "leduc_holdem"},
+        "config": {
+            "scenario_configs": {"fixed_player": True},
+            "env_id": "leduc_holdem",
+        },
     }
 
     env = PokerEnv(**env_description["config"])
