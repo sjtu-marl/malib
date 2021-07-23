@@ -13,39 +13,18 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 parser = argparse.ArgumentParser("PSRO training on mpe environments.")
 
-parser.add_argument("--batch_size", type=int, default=1024)
-parser.add_argument("--num_epoch", type=int, default=100)
-parser.add_argument("--fragment_length", type=int, default=10240)
+parser.add_argument("--batch_size", type=int, default=128)
+parser.add_argument("--num_epoch", type=int, default=8)
+parser.add_argument("--fragment_length", type=int, default=100)
 parser.add_argument("--worker_num", type=int, default=3)
-parser.add_argument("--log_dir", type=str, default=settings.LOG_DIR)
-parser.add_argument("--algorithm", type=str, default="PPO", choices={"PPO", "DQN"})
+parser.add_argument("--algorithm", type=str, default="DQN")
+parser.add_argument("--num_total_training_episode", type=int, default=55)
+parser.add_argument("--num_episode", type=int, default=1000)
+parser.add_argument("--buffer_size", type=int, default=200000)
+parser.add_argument("--num_simulation", type=int, default=100)
+parser.add_argument("--episode_seg", type=int, default=100)
 
 args = parser.parse_args()
-
-
-num_total_training_episode = 55
-
-# args.algorithm = "SAC"
-args.batch_size = 128
-args.num_epoch = 8
-args.fragment_length = 10
-num_episode = 1000
-
-# TODO(ming): add to offline dataset
-off_policy_start_sample_timestamp = 500
-buffer_size = 200000
-num_simulation = 100
-
-now_time = now = datetime.datetime.now(
-    tz=datetime.timezone(datetime.timedelta(hours=8))
-)
-args.log_dir = os.path.join(
-    # settings.LOG_DIR, f"DQN/{now_time.strftime('%Y%m%d_%H_%M_%S')}"
-    settings.LOG_DIR,
-    f"SAC/{now_time.strftime('%Y%m%d_%H_%M_%S')}",
-)
-args.work_num = 3
-
 
 if __name__ == "__main__":
     env_description = {
@@ -90,15 +69,15 @@ if __name__ == "__main__":
         rollout={
             "type": "async",
             "stopper": "simple_rollout",
-            "stopper_config": {"max_step": num_total_training_episode},
+            "stopper_config": {"max_step": args.num_total_training_episode},
             "metric_type": "simple",
             "fragment_length": args.fragment_length,
-            "num_episodes": num_episode,
-            "episode_seg": 100,
+            "num_episodes": args.num_episode,
+            "episode_seg": args.episode_seg,
         },
         evaluation={
-            "max_episode_length": 5,
-            "num_episode": num_simulation,
+            "max_episode_length": 100,
+            "num_episode": args.num_simulation,
         },  # dict(num_simulation=num_simulation, sim_max_episode_length=5),
         global_evaluator={
             "name": "psro",
@@ -106,5 +85,5 @@ if __name__ == "__main__":
                 "stop_metrics": {"max_iteration": 1000, "loss_threshold": 2.0},
             },
         },
-        dataset_config={"episode_capacity": buffer_size},
+        dataset_config={"episode_capacity": args.buffer_size},
     )
