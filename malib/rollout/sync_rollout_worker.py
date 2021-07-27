@@ -43,12 +43,13 @@ class SyncRolloutWorker(RolloutWorker):
         if isinstance(task_desc.content, RolloutDescription):
             status = Status.FAILED
             while status == Status.FAILED:
+                # lock table to push data
                 status = ray.get(
                     self._offline_dataset.lock.remote(
                         lock_type="push",
                         desc={
                             agent: BufferDescription(
-                                env_id=self._env_description["id"],
+                                env_id=self._env_description["config"]["env_id"],
                                 agent_id=agent,
                                 policy_id=pid,
                             )
@@ -56,15 +57,7 @@ class SyncRolloutWorker(RolloutWorker):
                         },
                     )
                 )
-                tmp = Status.SUCCESS
-                ks = list(status.keys())
-                for k in ks:
-                    v = status[k]
-                    if v == Status.SUCCESS:
-                        wait_list.pop(k)
-                    elif v == Status.FAILED:
-                        tmp = Status.FAILED
-                status = tmp
+            print("rollout lock:", status)
             assert status == Status.SUCCESS, status
         return RolloutWorker.update_state(self, task_desc, waiting)
 
@@ -75,13 +68,12 @@ class SyncRolloutWorker(RolloutWorker):
         :param Dict[AgentID,Tuple[Policy,Any]] trainable_pairs: Training policy configuration.
         """
 
-        # unlock
-        ray.get(
+        status = ray.get(
             self._offline_dataset.unlock.remote(
                 lock_type="push",
                 desc={
                     agent: BufferDescription(
-                        env_id=self._env_description["id"],
+                        env_id=self._env_description["config"]["env_id"],
                         agent_id=agent,
                         policy_id=pid,
                     )
@@ -92,3 +84,4 @@ class SyncRolloutWorker(RolloutWorker):
                 },
             )
         )
+        print("rollout unlock:", status)
