@@ -127,6 +127,11 @@ class NumpyDataArray(DataArray):
     def size(self) -> int:
         return self._length
 
+    def roll(self, shift: int, axis: int = 0):
+        self._data[: self._length] = np.roll(
+            self._data[: self._length], shift, axis=axis
+        )
+
     def fill(self, data: DataTransferType, capacity: int = None) -> "NumpyDataArray":
         """
         Flush fill the array with the input data.
@@ -214,7 +219,6 @@ class NumpyDataArray(DataArray):
 
         :return DataTransferType
         """
-        # FIXME(ming):
         indices = np.roll(np.arange(self._length), self._offset)
         return self._data[indices]
 
@@ -227,11 +231,6 @@ class NumpyDataArray(DataArray):
         """
 
         return self._data.nbytes
-
-    def flush(self, data: DataTransferType):
-        self._length = len(data)
-        self._data = data.copy()
-        self._capacity = max(self._length, self._capacity)
 
 
 class LinkDataArray(DataArray):
