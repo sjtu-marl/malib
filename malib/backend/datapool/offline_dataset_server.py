@@ -221,11 +221,11 @@ class Episode:
         self._capacity = max(self._size, self._capacity)
 
     def insert(self, **kwargs):
-        for column in self.columns:
-            assert self._size == len(self._data[column]), (
-                self._size,
-                {c: len(self._data[c]) for c in self.columns},
-            )
+        # for column in self.columns:
+        #     assert self._size == len(self._data[column]), (
+        #         self._size,
+        #         {c: len(self._data[c]) for c in self.columns},
+        #     )
         for column in self.columns:
             if isinstance(kwargs[column], NumpyDataArray):
                 assert kwargs[column]._data is not None, f"{column} has empty data"
@@ -321,19 +321,10 @@ class SequentialEpisode(Episode):
 
     def clean_data(self):
         # check length
-        length = self._data[Episode.CUR_OBS].size
-        self._data[Episode.NEXT_OBS].flush(
-            np.roll(self._data[Episode.CUR_OBS]._data[:length], 1, axis=0)
-        )
-        self._data[Episode.REWARD].flush(
-            np.roll(self._data[Episode.REWARD]._data[:length], 1, axis=0)
-        )
-        _size = self._data[Episode.CUR_OBS].size
-        for colum in self.columns:
-            assert (
-                _size == self._data[colum].size
-            ), f"Expected size is {_size}, while accpeted {self._data[colum].size} for column={colum}"
-        self._size = _size
+        self._data[Episode.NEXT_OBS].insert(self._data[Episode.CUR_OBS].get_data())
+        self._data[Episode.NEXT_OBS].roll(-1)
+        self._data[Episode.REWARD].roll(-1)
+        self._data[Episode.DONE].roll(-1)
 
 
 class MultiAgentEpisode(Episode):

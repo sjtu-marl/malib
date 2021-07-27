@@ -13,7 +13,7 @@ class DQNLoss(LossFunc):
     def setup_optimizers(self, *args, **kwargs):
         self._policy: DQN
         if self.optimizers is None:
-            optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
+            optim_cls = getattr(torch.optim, self._params["optimizer"])
             self.optimizers = optim_cls(
                 self.policy.critic.parameters(), lr=self._params["lr"]
             )
@@ -28,7 +28,7 @@ class DQNLoss(LossFunc):
 
         gradients = {
             "critic": {
-                name: param.detach().numpy()
+                name: param.grad.numpy() * self._params["lr"]
                 for name, param in self.policy.critic.named_parameters()
             },
         }

@@ -21,6 +21,8 @@ import uuid
 import ray
 import numpy as np
 
+from collections import defaultdict
+
 from malib import settings
 from malib.utils.logger import get_logger, Log
 from malib.utils.metrics import get_metric, Metric
@@ -54,7 +56,6 @@ def sequential(
     evaluated_results = []
 
     assert fragment_length > 0, fragment_length
-
     for ith in range(num_episodes):
         env.reset()
         metric.reset()
@@ -82,23 +83,25 @@ def sequential(
                 action, action_dist, extra_info = agent_interfaces[aid].compute_action(
                     [observation], **info
                 )
-                if aid in agent_episodes:
-                    agent_episodes[aid].insert(
-                        **{
-                            Episode.CUR_OBS: [observation],
-                            Episode.ACTION_MASK: [action_mask],
-                            Episode.ACTION_DIST: action_dist,
-                            Episode.ACTION: action,
-                            Episode.REWARD: reward,
-                            Episode.DONE: done,
-                        }
-                    )
                 # convert action to scalar
                 action = action[0]
             else:
                 info["policy_id"] = behavior_policies[aid]
                 action = None
             env.step(action)
+            if action is None:
+                action = [agent_interfaces[aid].action_space.sample()]
+            if aid in agent_episodes:
+                agent_episodes[aid].insert(
+                    **{
+                        Episode.CUR_OBS: [observation],
+                        Episode.ACTION_MASK: [action_mask],
+                        Episode.ACTION_DIST: action_dist,
+                        Episode.ACTION: action,
+                        Episode.REWARD: reward,
+                        Episode.DONE: done,
+                    }
+                )
             metric.step(
                 aid,
                 behavior_policies[aid],

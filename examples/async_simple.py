@@ -74,7 +74,7 @@ if __name__ == "__main__":
         rollout={
             "type": "async",
             "stopper": "simple_rollout",
-            "metric_type": "simple",
+            "stopper_config" "metric_type": "simple",
             "fragment_length": env_config["scenario_configs"]["max_cycles"],
             "num_episodes": 100,  # episode for each evaluation/training epoch
             "terminate": "any",
