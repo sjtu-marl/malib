@@ -80,13 +80,12 @@ class IndependentAgent(AgentInterface):
 
         res = {}
         for env_aid, pid in policy_ids.items():
-            batch_copy = batch.copy()
             trainer = self.get_trainer(pid)
-            if env_aid not in batch_copy:
+            if env_aid not in batch:
                 continue
             trainer.reset(self.policies[pid], training_config)
             res[env_aid] = metrics.to_metric_entry(
-                trainer.optimize(batch_copy[env_aid]), prefix=pid
+                trainer.optimize(batch[env_aid]), prefix=pid
             )
         return res
 

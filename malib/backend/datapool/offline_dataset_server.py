@@ -86,11 +86,12 @@ class EpisodeLock:
         return Status.SUCCESS
 
     def unlock_pull(self):
+        assert self._pull_lock < 2, self._pull_lock
         if self._pull_lock < 1:
             return Status.FAILED
         else:
-            # self._pull_lock -= 1
-            self._pull_lock = 0
+            self._pull_lock -= 1
+            # self._pull_lock = 0
             # FIXME(ziyu): check ?
             if self._pull_lock == 0:
                 self._state = 1
@@ -503,9 +504,7 @@ class Table:
                 if not self._is_multi_agent:
                     assert len(kwargs) == 1, kwargs
                     kwargs = list(kwargs.values())[0].data
-                # print("ready to insert")
                 self._episode.insert(**kwargs)
-                # print(f"after inserted: {self._episode.size}")
         except Exception as e:
             print(traceback.format_exc())
 
@@ -520,7 +519,8 @@ class Table:
                 # lock for push
                 status = self._lock_status.lock_push()
             else:
-                # lock for pull
+                # lock for pull, when there is no episode assigned, return FAILED directly
+                # otherwise check the lock_status
                 if self._episode is None:
                     status = Status.FAILED
                 else:
@@ -564,35 +564,40 @@ class OfflineDataset:
             **exp_cfg,
         )
 
-    def lock(self, lock_type: str, desc: Dict[AgentID, Any]):
-        status = dict.fromkeys(desc, Status.FAILED)
-        for agent, item in desc.items():
-            table_name = Table.gen_table_name(
-                env_id=item.env_id,
-                main_id=agent,
-                pid=item.policy_id,
-            )
-            self.check_table(table_name, desc[agent])
-            table = self._tables[table_name]
-            status[agent] = table.lock_push_pull(lock_type)
+    def lock(self, lock_type: str, desc: Dict[AgentID, BufferDescription]) -> str:
+        """Lock table ready to push or pull and return the table status."""
+
+        env_id = list(desc.values())[0].env_id
+        main_ids = sorted(list(desc.keys()))
+        table_name = Table.gen_table_name(
+            env_id=env_id,
+            main_id=main_ids,
+            pid=[desc[aid].policy_id for aid in main_ids],
+        )
+        # check it is multi-agent or not
+        self.check_table(table_name, None, is_multi_agent=len(main_ids) > 1)
+        table = self._tables[table_name]
+        status = table.lock_push_pull(lock_type)
         return status
 
     def unlock(self, lock_type: str, desc: Dict[AgentID, BufferDescription]):
-        status = dict.fromkeys(desc, Status.SUCCESS)
-        for agent, item in desc.items():
-            table_name = Table.gen_table_name(
-                env_id=item.env_id,
-                main_id=agent,
-                pid=item.policy_id,
-            )
-            self.check_table(table_name, desc[agent])
-            table = self._tables[table_name]
-            table.unlock_push_pull(lock_type)
-
+        env_id = list(desc.values())[0].env_id
+        main_ids = sorted(list(desc.keys()))
+        table_name = Table.gen_table_name(
+            env_id=env_id,
+            main_id=main_ids,
+            pid=[desc[aid].policy_id for aid in main_ids],
+        )
+        self.check_table(table_name, None, is_multi_agent=len(main_ids) > 1)
+        table = self._tables[table_name]
+        status = table.unlock_push_pull(lock_type)
         return status
 
     def check_table(
-        self, table_name: str, episode: Dict[AgentID, Union[SequentialEpisode, Episode]]
+        self,
+        table_name: str,
+        episode: Dict[AgentID, Union[SequentialEpisode, Episode]],
+        is_multi_agent: bool = False,
     ):
         """Check table existing, if not, create a new table. If `episode` is not None and table has no episode yet, it
         will be used to create an empty episode with default capacity for table.
@@ -602,9 +607,9 @@ class OfflineDataset:
         """
         with self._threading_lock:
             if self._tables.get(table_name, None) is None:
-                self._tables[table_name] = Table(
-                    table_name, multi_agent=len(episode) > 1
-                )
+                print("Some one check me:", table_name)
+                self._tables[table_name] = Table(table_name, multi_agent=is_multi_agent)
+            if episode is not None and self._tables[table_name].episode is None:
                 self._tables[table_name].set_episode(
                     episode, capacity=self._episode_capacity
                 )
@@ -615,14 +620,16 @@ class OfflineDataset:
         """
 
         insert_results = []
-        episode = list(agent_episodes.values())[0]
-        main_ids = list(agent_episodes.keys())
+        env_id = list(agent_episodes.values())[0].env_id
+        main_ids = sorted(list(agent_episodes.keys()))
         table_name = Table.gen_table_name(
-            env_id=episode.env_id,
+            env_id=env_id,
             main_id=main_ids,
             pid=[agent_episodes[aid].policy_id for aid in main_ids],
         )
-        self.check_table(table_name, agent_episodes)
+        self.check_table(
+            table_name, agent_episodes, is_multi_agent=len(agent_episodes) > 1
+        )
         insert_results.append(
             self._threading_pool.submit(
                 self._tables[table_name].insert, **agent_episodes

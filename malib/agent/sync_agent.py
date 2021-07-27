@@ -13,6 +13,7 @@ from malib.utils.typing import (
     PolicyID,
     Any,
     Tuple,
+    Union,
 )
 from malib.agent.indepdent_agent import IndependentAgent
 
@@ -72,7 +73,7 @@ class SyncAgent(IndependentAgent):
         )
 
     def request_data(
-        self, buffer_desc: Dict[AgentID, BufferDescription]
+        self, buffer_desc: Union[BufferDescription, Dict[AgentID, BufferDescription]]
     ) -> Tuple[Dict, str]:
         """Request training data from remote `OfflineDatasetServer`.
 
@@ -85,27 +86,38 @@ class SyncAgent(IndependentAgent):
         """
 
         status = Status.FAILED
-        wait_list = {aid: None for aid in buffer_desc}
-        while status == Status.FAILED:
-            status = ray.get(
-                self._offline_dataset.lock.remote(
-                    lock_type="pull", desc={aid: buffer_desc[aid] for aid in wait_list}
+        if isinstance(buffer_desc, Dict):
+            batch = {}
+            for aid, _buffer_desc in buffer_desc.items():
+                while status == Status.FAILED:
+                    status = ray.get(
+                        self._offline_dataset.lock.remote(
+                            lock_type="pull", desc={aid: _buffer_desc}
+                        )
+                    )
+                assert status == Status.SUCCESS, status
+                _batch, info = ray.get(
+                    self._offline_dataset.sample.remote(_buffer_desc)
                 )
-            )
-            tmp = Status.SUCCESS
-            ks = list(status.keys())
-            for k in ks:
-                v = status[k]
-                if v == Status.SUCCESS:
-                    wait_list.pop(k)
-                elif v == Status.FAILED:
-                    tmp = Status.FAILED
-            status = tmp
-        assert status == Status.SUCCESS, status
-
-        batch, info = ray.get(self._offline_dataset.sample.remote(buffer_desc))
-        if batch is None:
-            batch = dict()
+                if _batch is None:
+                    _batch = dict()
+                else:
+                    _batch = _batch.data
+                batch[aid] = _batch
+            print("training lock:", status)
+        else:
+            while status == Status.FAILED:
+                status = ray.get(
+                    self._offline_dataset.lock.remote(
+                        lock_type="pull", desc={buffer_desc.agent_id: buffer_desc}
+                    )
+                )
+            assert status == Status.SUCCESS, status
+            batch, info = ray.get(self._offline_dataset.sample.remote(buffer_desc))
+            if batch is None:
+                batch = dict()
+            else:
+                batch = batch.data
         return batch, info
 
     def push(self, env_aid: AgentID, pid: PolicyID) -> Status:
@@ -118,15 +130,18 @@ class SyncAgent(IndependentAgent):
 
         status = IndependentAgent.push(self, env_aid, pid)
         # then release table lock
-        ray.get(
+        _status = ray.get(
             self._offline_dataset.unlock.remote(
                 lock_type="pull",
                 desc={
                     env_aid: BufferDescription(
-                        env_id=self._env_desc["id"], agent_id=env_aid, policy_id=pid
+                        env_id=self._env_desc["config"]["env_id"],
+                        agent_id=env_aid,
+                        policy_id=pid,
                     )
                 },
             )
         )
+        print("training unlock:", _status)
 
         return status
