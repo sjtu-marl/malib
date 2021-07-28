@@ -72,6 +72,32 @@ class SyncAgent(IndependentAgent):
             algorithm_mapping,
         )
 
+    def gen_buffer_description(
+        self,
+        agent_policy_mapping: Dict[AgentID, PolicyID],
+        batch_size: int,
+        sample_mode: str,
+    ):
+        """Generate buffer description.
+
+        :param AgentID aid: Environment agent id.
+        :param PolicyID pid: Policy id.
+        :param int batch_size: Sample batch size.
+        :param str sample_mode: sample mode
+        :return: A buffer description entity.
+        """
+
+        return {
+            aid: BufferDescription(
+                env_id=self._env_desc["config"]["env_id"],
+                agent_id=self._group,
+                policy_id=pid,
+                batch_size=batch_size,
+                sample_mode=sample_mode,
+            )
+            for aid, (pid, _) in agent_policy_mapping.items()
+        }
+
     def request_data(
         self, buffer_desc: Union[BufferDescription, Dict[AgentID, BufferDescription]]
     ) -> Tuple[Dict, str]:
@@ -108,6 +134,7 @@ class SyncAgent(IndependentAgent):
         else:
             while status == Status.FAILED:
                 status = ray.get(
+                    # FIXME(ming): support only one agent currently, no parameter sharing
                     self._offline_dataset.lock.remote(
                         lock_type="pull", desc={buffer_desc.agent_id: buffer_desc}
                     )
