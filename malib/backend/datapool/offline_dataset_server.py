@@ -786,7 +786,6 @@ class OfflineDataset:
         """
         with self._threading_lock:
             if self._tables.get(table_name, None) is None:
-                print("Some one check me:", table_name)
                 self._tables[table_name] = Table(table_name, multi_agent=is_multi_agent)
             if episode is not None and self._tables[table_name].episode is None:
                 self._tables[table_name].set_episode(
@@ -962,6 +961,8 @@ class OfflineDataset:
                 tmp_res, tmp_info = dataset.sample(buffer_desc)
                 external_res.append(tmp_res)
                 info += "\n" + tmp_info
+            # XXX(ming): inconsistency of data type, sampled from dataset is a dict, while external_res is a list.
+            #   it is better to use dict for external_res
             res = [res] + external_res
         res = Batch(identity=buffer_desc.agent_id, data=res)
         return res, info
