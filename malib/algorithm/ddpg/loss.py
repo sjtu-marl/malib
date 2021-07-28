@@ -47,7 +47,6 @@ class DDPGLoss(LossFunc):
             )
 
     def __call__(self, batch) -> Dict[str, Any]:
-        self.loss = []
 
         FloatTensor = (
             torch.cuda.FloatTensor

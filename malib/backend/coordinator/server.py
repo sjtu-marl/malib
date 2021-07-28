@@ -108,6 +108,35 @@ class CoordinatorServer(BaseCoordinator):
 
         self._logger.info("Coordinator server started")
 
+    def pre_launching(self, init_config):
+        # if init_config["load_model"]:
+        #     self.request(
+        #         TaskRequest(
+        #             task_type=TaskType.LOAD_MODEL,
+        #             content=init_config["model_path"],
+        #         )
+        #     )
+        #     self.request(
+        #         Tasks
+        #     )
+        pass
+
+    @staticmethod
+    def task_handler_register(cls):
+        from functools import wraps
+
+        print("Registering")
+
+        def decorator(func):
+            @wraps(func)
+            def wrapper(self, *args, **kwargs):
+                return func(*args, **kwargs)
+
+            setattr(cls, func.__name__, func)
+            return func
+
+        return decorator
+
     def request(self, task_request: TaskRequest):
         """ Handling task request """
 
@@ -158,6 +187,14 @@ class CoordinatorServer(BaseCoordinator):
             self.gen_optimization_task(task_request.content.agent_involve_info)
         elif task_request.task_type == TaskType.TERMINATE:
             self._terminate = True
+        elif task_request.task_type in TaskType:
+            generic_task_handler = getattr(self, task_request.task_type, None)
+            if generic_task_handler:
+                generic_task_handler(task_request)
+            else:
+                raise AttributeError(
+                    f"Missing handler for task type {task_request.task_type}"
+                )
         else:
             raise TypeError(f"Unexpected task type: {task_request.task_type}")
 
@@ -287,6 +324,9 @@ class CoordinatorServer(BaseCoordinator):
             content=TrainingDescription(
                 agent_involve_info=agent_involve_info,
                 stopper=self._configs["training"]["config"]["stopper"],
+                stopper_config=self._configs["training"]["config"].get(
+                    "stopper_config", None
+                ),
                 batch_size=self._configs["training"]["config"]["batch_size"],
                 update_interval=self._configs["training"]["config"]["update_interval"],
             ),
@@ -348,6 +388,26 @@ class CoordinatorServer(BaseCoordinator):
         )
 
         self._rollout_worker_manager.rollout(task_desc=task)
+
+        if rollout_config.get("test_num_episodes", 0) > 0:
+            task = TaskDescription(
+                task_type=TaskType.ROLLOUT,
+                content=RolloutDescription(
+                    agent_involve_info=agent_involve_info,
+                    policy_distribution=policy_distribution,
+                    fragment_length=rollout_config["fragment_length"],
+                    num_episodes=rollout_config["test_num_episodes"],
+                    stopper="none",
+                    stopper_config=rollout_config["stopper_config"],
+                    terminate_mode=rollout_config["terminate"],
+                    mode=rollout_config["mode"],
+                    callback=rollout_config["callback"],
+                    episode_seg=rollout_config["episode_seg"],
+                ),
+                state_id=None,
+            )
+
+            self._rollout_worker_manager.rollout(task_desc=task, test=True)
 
     def is_terminate(self):
         return self._terminate

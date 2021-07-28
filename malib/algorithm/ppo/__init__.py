@@ -1,5 +1,5 @@
 from .policy import PPO
-from .ppo_trainer import PPOTrainer
+from .trainer import PPOTrainer
 from .loss import PPOLoss
 
 

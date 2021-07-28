@@ -1,10 +1,20 @@
 from .policy import SAC
-from .sac_trainer import SACTrainer
+from .trainer import SACTrainer
+from .loss import SACLoss
+
 
 NAME = "SAC"
-LOSS = None
+LOSS = SACLoss
 TRAINER = SACTrainer
 POLICY = SAC
 
 
-__all__ = ["NAME", "LOSS", "TRAINER", "POLICY"]
+TRAINING_CONFIG = {
+    "update_interval": 1,
+    "batch_size": 1024,
+    "tau": 0.01,
+    "optimizer": "Adam",
+    "actor_lr": 1e-2,
+    "critic_lr": 1e-2,
+    "grad_norm_clipping": 0.5,
+}
