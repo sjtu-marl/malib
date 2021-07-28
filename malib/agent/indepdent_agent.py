@@ -34,6 +34,7 @@ class IndependentAgent(AgentInterface):
         algorithm_mapping: Callable = None,
     ):
         """Create an independent agent instance work in asynchronous mode.
+
         :param str assign_id: Naming independent agent interface.
         :param Dict[str,Any] env_desc: Environment description.
         :param Dict[str,Any] algorithm_candidates: Mapping from readable name to algorithm configuration.
@@ -70,6 +71,7 @@ class IndependentAgent(AgentInterface):
         training_config: Dict[str, Any],
     ) -> Dict[AgentID, Dict[str, MetricEntry]]:
         """Execute optimization for a group of policies with given batches.
+
         :param policy_ids: Dict[AgentID, PolicyID], Mapping from environment agent ids to policy ids. The agent ids in
             this dictionary should be registered in groups, and also policy ids should have been existed ones in the
             policy pool.
@@ -94,6 +96,7 @@ class IndependentAgent(AgentInterface):
     ) -> Tuple[PolicyID, Policy]:
 
         """Add new policy according to env_agent_id.
+
         :param AgentID env_agent_id: The agent_id with which observation, action space will be determined if is None.
         :param bool trainable: Whether the added policy is trainable or not.
         :return:
@@ -118,6 +121,7 @@ class IndependentAgent(AgentInterface):
 
     def save(self, model_dir: str) -> None:
         """Save policies and states.
+
         :param str model_dir: Model saving directory path.
         :return: None
         """
@@ -126,6 +130,7 @@ class IndependentAgent(AgentInterface):
 
     def load(self, model_dir) -> None:
         """Load states and policies from local storage.
+
         :param str model_dir: Local model directory path.
         :return: None
         """
@@ -134,6 +139,7 @@ class IndependentAgent(AgentInterface):
 
     def load_single_policy(self, env_agent_id, model_dir) -> None:
         """Load one policy for one env_agent.
+
         Temporarily used for single agent imitation learning.
         """
 

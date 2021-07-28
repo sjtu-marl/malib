@@ -128,6 +128,7 @@ class AgentInterface(metaclass=ABCMeta):
 
     def get_policies(self) -> Dict[PolicyID, Policy]:
         """Get a dict of policies.
+
         :return: A dict of policies.
         """
 
@@ -135,6 +136,7 @@ class AgentInterface(metaclass=ABCMeta):
 
     def agent_group(self) -> Tuple[AgentID]:
         """Return a tuple of registered environment agents.
+
         :return: A tuple of agent ids.
         """
 
@@ -161,6 +163,7 @@ class AgentInterface(metaclass=ABCMeta):
         self, env_agent_id: Union[AgentID, Sequence[AgentID]]
     ) -> None:
         """Register environment agents.
+
         :param Union[AgentID,Sequence[AgentID]] env_agent_id: Environment agent id(s), could be an agent id or a list
             of it.
         :return: None
@@ -180,6 +183,7 @@ class AgentInterface(metaclass=ABCMeta):
     @property
     def policies(self) -> Dict[PolicyID, Policy]:
         """Return a dict of policies.
+
         :return: {policy_id: policy}.
         """
 
@@ -189,15 +193,18 @@ class AgentInterface(metaclass=ABCMeta):
     def algorithm_candidates(self) -> Dict[str, Any]:
         """Return a dict of algorithm configurations supported in this interface, users can use one of them to create
         policy instance.
+
         :return: {algorithm_name: algorithm_configuration}
         """
         return self._algorithm_candidates
 
     def start(self) -> None:
         """Retrieve the handlers of coordinator server, parameter server and offline dataset server.
+
         Note:
             This method can only be called when remote servers, i.e. `Coordinator`, `Parameter` and `OfflineDataset`
             servers have been started.
+
         Example:
             >>> coordinator = CoordinatorServer.remote(...)
             >>> offline_dataset = OfflineDatasetServer.remote(...)
@@ -205,6 +212,7 @@ class AgentInterface(metaclass=ABCMeta):
             >>> # you can choose make it work as an actor or not
             >>> agent_interface = AgentInterface(...)
             >>> agent_interface.start()
+
         :return: None
         """
 
@@ -231,6 +239,7 @@ class AgentInterface(metaclass=ABCMeta):
 
     def require_parameter_desc(self, state_id) -> Dict:
         """Return a meta parameter description.
+
         :param ObjectRef state_id: Ray object ref
         """
 
@@ -259,6 +268,7 @@ class AgentInterface(metaclass=ABCMeta):
 
     def push(self, env_aid: AgentID, pid: PolicyID) -> Status:
         """Coordinate with remote parameter server, default behavior is to push parameters.
+
         :param AgentID env_aid: registered agent id
         :param PolicyID pid: registered policy id
         :return a TableStatus code.
@@ -274,6 +284,7 @@ class AgentInterface(metaclass=ABCMeta):
 
     def pull(self, env_aid: AgentID, pid: PolicyID) -> Status:
         """Pull parameter from parameter server, default is None
+
         :param AgentID env_aid: Registered agent id.
         :param PolicyID pid: Registered policy id.
         :return: Status code.
@@ -285,9 +296,11 @@ class AgentInterface(metaclass=ABCMeta):
         self, buffer_desc: Union[BufferDescription, Dict[AgentID, BufferDescription]]
     ) -> Tuple[Any, str]:
         """Request training data from remote `OfflineDatasetServer`.
+
         Note:
             This method could only be called in multi-instance scenarios. Or, `OfflineDataset` and `CoordinatorServer`
             have been started.
+
         :param Dict[AgentID,BufferDescription] buffer_desc: A dictionary of agent buffer descriptions.
         :return: A tuple of agent batches and information.
         """
@@ -329,6 +342,7 @@ class AgentInterface(metaclass=ABCMeta):
         sample_mode: str,
     ):
         """Generate buffer description.
+
         :param AgentID aid: Environment agent id.
         :param PolicyID pid: Policy id.
         :param int batch_size: Sample batch size.
@@ -350,9 +364,11 @@ class AgentInterface(metaclass=ABCMeta):
     @Log.method_timer(enable=settings.PROFILING)
     def train(self, task_desc: TaskDescription, training_config: Dict[str, Any] = None):
         """Handling training task with a given task description.
+
         Note:
             This method could only be called in multi-instance scenarios. Or, `OfflineDataset` and `CoordinatorServer`
             have been started.
+
         :param TaskDescription task_desc: Task description entity, `task_desc.content` must be a `TrainingTask` entity.
         :param Dict[str,Any] training_config: Training configuration. Default to None.
         :return: None
@@ -453,6 +469,7 @@ class AgentInterface(metaclass=ABCMeta):
 
     def register_policy(self, pid: PolicyID, policy: Policy) -> None:
         """Register policy into policy pool.
+
         :param pid: PolicyID, policy id
         :param policy: Policy, a policy instance
         :return: None
@@ -465,6 +482,7 @@ class AgentInterface(metaclass=ABCMeta):
         self, env_aid: AgentID, policy_id: PolicyID, trainable: bool, data=None
     ):
         """Generate a parameter description entity. The returned description will not load policy weights by default.
+
         :param AgentID env_aid: Environment agent id.
         :param PolicyID policy_id: Policy id.
         :param bool trainable: Specify whether the policy is trainable or not.
@@ -484,6 +502,7 @@ class AgentInterface(metaclass=ABCMeta):
 
     def check_population_size(self) -> None:
         """Called before policy adding, to check whether there is enough space to add `len(self._group)` policies.
+
         :raise: errors.NoEnoughSpace
         :return: None
         """
@@ -502,6 +521,7 @@ class AgentInterface(metaclass=ABCMeta):
         description to create new policies for all environment agents registered in this interface (one agent one policy
         ). And then local parameters will be sent to remote parameter server, two task requests will be sent to the
         `CoordinatorServer`.
+
         Note:
             This method could only be called in multi-instance scenarios. Or, `OfflineDataset` and `CoordinatorServer`
             have been started.
@@ -571,6 +591,7 @@ class AgentInterface(metaclass=ABCMeta):
 
     def get_trainer(self, pid: PolicyID) -> Trainer:
         """Return a registered trainer with given policy id.
+
         :param PolicyID pid: Policy id.
         :return: A trainer instance.
         """
@@ -579,7 +600,9 @@ class AgentInterface(metaclass=ABCMeta):
 
     def default_policy_id_gen(self, algorithm_conf: Dict[str, Any]) -> str:
         """Generate policy id based on algorithm name and the count of policies. Default to generate policy id as
+
             `{algorithm_conf[name]}_{len(self._policies)}`.
+
         :param Dict[str,Any] algorithm_conf: Generate policy id with given algorithm configuration.
         :return: Generated policy id
         """
@@ -589,6 +612,7 @@ class AgentInterface(metaclass=ABCMeta):
     def get_algorithm_config(self, *args, **kwargs) -> Dict[str, Any]:
         """Get algorithm configuration from algorithm candidates. Default to return the first one element of the
         listed value of `algorithm_candidates`.
+
         :param list args: A list of arg.
         :param dict kwargs: A dict of args.
         :raise: errors.TypeError.
@@ -613,6 +637,7 @@ class AgentInterface(metaclass=ABCMeta):
         training_config: Dict[str, Any],
     ) -> Dict[AgentID, Dict[str, MetricEntry]]:
         """Execute policy optimization.
+
         :param Dict[AgentID,PolicyID] policy_ids: A dict of policies linked to agents registered in `group` required to be optimized
         :param Dict[AgentID,Any] batch: A dict of agent batch, one batch for one policies.
         :param Dict[str,Any] training_config: A dict of training configuration.
@@ -625,6 +650,7 @@ class AgentInterface(metaclass=ABCMeta):
         self, env_agent_id: AgentID, trainable
     ) -> Tuple[PolicyID, Policy]:
         """Create new policy and trainer for env agent tagged with `env_agent_id`.
+
         :param env_agent_id: AgentID, the environment agent id
         :param trainable: bool, tag added policy is trainable or not
         :return: a tuple of policy id and policy
@@ -635,6 +661,7 @@ class AgentInterface(metaclass=ABCMeta):
     @abstractmethod
     def save(self, model_dir: str) -> None:
         """Save policies.
+
         :param str model_dir: Directory path.
         :return: None
         """
@@ -644,6 +671,7 @@ class AgentInterface(metaclass=ABCMeta):
     @abstractmethod
     def load(self, model_dir: str) -> None:
         """Load policies from local storage.
+
         :param str model_dir: Directory path.
         :return: None
         """
