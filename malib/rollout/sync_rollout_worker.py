@@ -17,7 +17,9 @@ class SyncRolloutWorker(RolloutWorker):
         worker_index: str,
         env_desc: Dict[str, Any],
         metric_type: str,
+        test: bool = False,
         remote: bool = False,
+        save: bool = False,
         **kwargs
     ):
         """Create a rollout worker instance.
@@ -29,7 +31,7 @@ class SyncRolloutWorker(RolloutWorker):
         """
 
         RolloutWorker.__init__(
-            self, worker_index, env_desc, metric_type, remote, **kwargs
+            self, worker_index, env_desc, metric_type, test, remote, save, **kwargs
         )
 
     def update_state(self, task_desc: TaskDescription, waiting=False) -> Status:

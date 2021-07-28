@@ -76,6 +76,7 @@ class Policy(metaclass=ABCMeta):
             "use_cuda": False,
             "use_dueling": False,
             "preprocess_mode": Mode.FLATTEN,
+            "action_squash": False,
         }
         self.model_config = DEFAULT_MODEL_CONFIG
 

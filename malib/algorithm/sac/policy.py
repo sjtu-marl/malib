@@ -1,12 +1,13 @@
 from typing import Any
 
 import gym
+import numpy as np
 
 import torch
 from torch.distributions import Normal
 
 from malib.algorithm.common.policy import Policy
-from malib.utils.typing import DataTransferType, Dict, Tuple
+from malib.utils.typing import DataTransferType, Dict, Tuple, BehaviorMode
 from malib.algorithm.common.model import get_model
 from malib.algorithm.common import misc
 
@@ -50,9 +51,6 @@ class SAC(Policy):
                 for _ in range(2)
             ]
         )
-        self.target_actor = get_model(self.model_config.get("actor"))(
-            observation_space, action_space, self.custom_config["use_cuda"]
-        )
         self.target_critic_1 = get_model(self.model_config.get("critic"))(
             critic_state_space, gym.spaces.Discrete(1), self.custom_config["use_cuda"]
         )
@@ -63,9 +61,10 @@ class SAC(Policy):
         self.register_state(self.actor, "actor")
         self.register_state(self.critic_1, "critic_1")
         self.register_state(self.critic_2, "critic_2")
-        self.register_state(self.target_actor, "target_actor")
         self.register_state(self.target_critic_1, "target_critic_1")
         self.register_state(self.target_critic_2, "target_critic_2")
+
+        self._eps = np.finfo(np.float32).eps.item()
 
         self.update_target()
 
@@ -75,36 +74,45 @@ class SAC(Policy):
         logits = self.actor(observation)
         m = Normal(*logits)
         actions = m.sample()
+        if self.custom_config["action_squash"]:
+            actions = torch.tanh(actions)
         return actions
 
     def compute_action(
         self, observation: DataTransferType, **kwargs
     ) -> Tuple[Any, Any, Any]:
+        behavior = kwargs.get("behavior_mode", BehaviorMode.EXPLORATION)
+
         logits = self.actor(observation)
         m = Normal(*logits)
-        action_probs = torch.cat(logits, dim=-1)
-        actions = m.sample().detach()
+
+        if behavior == BehaviorMode.EXPLORATION:
+            actions = m.sample().detach()
+        else:
+            actions = logits[0]
+
+        log_probs = m.log_prob(actions).sum(dim=-1, keepdim=True)
+
+        if self.custom_config["action_squash"]:
+            actions = torch.tanh(actions)
+            log_probs = log_probs - torch.log(
+                1 - actions.pow(2) + self._eps
+            ).sum(-1, keepdim=True)
+
+        action_probs = torch.exp(log_probs)
 
         extra_info = {}
-        extra_info["action_probs"] = action_probs.detach().to("cpu").numpy()
+        extra_info["log_probs"] = log_probs.detach().to("cpu").numpy()
 
         return (
-            actions.to("cpu").numpy(),
+            actions.detach().to("cpu").numpy(),
             action_probs.detach().to("cpu").numpy(),
             extra_info,
         )
 
-    def compute_actions_by_target_actor(
-        self, observation: DataTransferType, **kwargs
-    ) -> DataTransferType:
-        with torch.no_grad():
-            pi = self.target_actor(observation)
-        return pi
-
     def update_target(self):
         self.target_critic_1.load_state_dict(self._critic_1.state_dict())
         self.target_critic_2.load_state_dict(self._critic_2.state_dict())
-        self.target_actor.load_state_dict(self._actor.state_dict())
 
     def set_critic(self, critic_1, critic_2):
         self._critic_1 = critic_1
@@ -121,4 +129,3 @@ class SAC(Policy):
     def soft_update(self, tau=0.01):
         misc.soft_update(self.target_critic_1, self.critic_1, tau)
         misc.soft_update(self.target_critic_2, self.critic_2, tau)
-        misc.soft_update(self.target_actor, self.actor, tau)
