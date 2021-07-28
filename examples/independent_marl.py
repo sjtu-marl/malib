@@ -49,6 +49,7 @@ if __name__ == "__main__":
                     "action_spaces": env.action_spaces,
                 },
                 "batch_size": args.batch_size,
+                "grad_norm_clipping": 0.5,
             },
         },
         algorithms={"PPO": {"name": "PPO"}},

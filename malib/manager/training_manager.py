@@ -38,7 +38,7 @@ class TrainingManager:
         """Create an TrainingManager instance which is responsible for the multi agent training
         tasks execution and rollout task requests sending.
 
-        :param Dict[str,Any] algorithms: The algorithms configuration candidates
+        :param Dict[str,Any] algorithms: The algorithms configuration candidates.
         :param Dict[str,Any] env_desc: The description for environment generation.
         :param Callable training_agent_mapping: The mapping function maps agent id to training interface id.
         :param Dict[AgentID,Dict[str,Any]] training_config: The agent configuration dictionary.
@@ -123,8 +123,8 @@ class TrainingManager:
 
         :return: None
         """
-        # add policy
         tasks = []
+        # add policy
         for aid, agent_interface in self._agents.items():
             tasks.append(
                 agent_interface.add_policy.remote(
@@ -261,7 +261,7 @@ class TrainingManager:
         for aid, agent in self._agents.items():
             populations[aid] = ray.get(agent.get_policies.remote())
         nashconv, _ = measure_exploitability(
-            "leduc_poker",
+            self._env_description["config"]["env_id"],
             populations=populations,
             policy_mixture_dict=policy_distribution,
         )

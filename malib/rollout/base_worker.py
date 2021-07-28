@@ -2,6 +2,7 @@
 Users can implement and register their own rollout worker by inheriting from this class.
 """
 
+import os
 import copy
 import time
 import traceback
@@ -43,7 +44,9 @@ class BaseRolloutWorker:
         worker_index: Any,
         env_desc: Dict[str, Any],
         metric_type: str,
+        test: bool = False,
         remote: bool = False,
+        save: bool = False,
         **kwargs,
     ):
         """Create a rollout worker instance.
@@ -53,10 +56,13 @@ class BaseRolloutWorker:
         :param str metric_type: Name of registered metric handler.
         :param int parallel_num: Number of parallel.
         :param bool remote: Tell this rollout worker work in remote mode or not, default by False.
+        :param int save: Whether or not to save the policy models.
         """
 
         self._worker_index = worker_index
         self._env_description = env_desc
+        self._test = test
+        self._save = save
         self.global_step = 0
 
         self._coordinator = None
@@ -94,6 +100,9 @@ class BaseRolloutWorker:
 
     def get_status(self):
         return self._status
+
+    def get_test(self):
+        return self._test
 
     def set_status(self, status):
         if status == self._status:
@@ -150,7 +159,7 @@ class BaseRolloutWorker:
                         settings.PARAMETER_SERVER_ACTOR
                     )
 
-                if self._offline_dataset is None:
+                if self._offline_dataset is None and not self._test:
                     self._offline_dataset = ray.get_actor(
                         settings.OFFLINE_DATASET_ACTOR
                     )
@@ -303,7 +312,7 @@ class BaseRolloutWorker:
                 logger=self.logger,
                 worker_idx=None,
                 global_step=epoch,
-                group="rollout",
+                group="testing" if self._test else "rollout",
             ) as (
                 statistic_seq,
                 processed_statics,
@@ -327,7 +336,7 @@ class BaseRolloutWorker:
                     callback=task_desc.content.callback,
                     num_episodes=task_desc.content.num_episodes,
                     policy_combinations=[trainable_behavior_policies],
-                    explore=True,
+                    explore=False if self._test else True,
                     fragment_length=task_desc.content.fragment_length,
                     role="rollout",
                     policy_distribution=task_desc.content.policy_distribution,
@@ -343,6 +352,9 @@ class BaseRolloutWorker:
             merged_statics = processed_statics[0]
             self.after_rollout(task_desc.content.agent_involve_info.trainable_pairs)
             epoch += 1
+
+        if self._save:
+            self.save_model()
 
         rollout_feedback = RolloutFeedback(
             worker_idx=self._worker_index,
@@ -443,6 +455,19 @@ class BaseRolloutWorker:
             else:
                 interface.set_behavior_dist(policy_distribution[aid])
             interface.reset()
+
+    def save_model(self):
+        """ Save policy model to log directory. """
+
+        save_dir = os.path.join(
+            settings.LOG_DIR,
+            self._kwargs["exp_cfg"]["expr_group"],
+            self._kwargs["exp_cfg"]["expr_name"],
+            "models",
+        )
+        for aid, interface in self._agent_interfaces.items():
+            _save_dir = os.path.join(save_dir, aid)
+            interface.save(_save_dir)
 
     def sample(
         self,

@@ -17,6 +17,8 @@ from malib.algorithm.common.policy import Policy
 from malib.algorithm import get_algorithm_space
 from malib.utils import metrics
 
+import pickle as pkl
+
 
 class IndependentAgent(AgentInterface):
     def __init__(
@@ -134,3 +136,20 @@ class IndependentAgent(AgentInterface):
         """
 
         raise NotImplementedError
+
+    def load_single_policy(self, env_agent_id, model_dir) -> None:
+        """Load one policy for one env_agent.
+
+        Temporarily used for single agent imitation learning.
+        """
+
+        assert env_agent_id in self._group, (env_agent_id, self._group)
+        algorithm_conf = self.get_algorithm_config(env_agent_id)
+
+        with open(model_dir, "rb") as f:
+            policy = pkl.load(f)
+
+        pid = self.default_policy_id_gen(algorithm_conf)
+        self._policies[pid] = policy
+
+        return pid, policy

@@ -1,0 +1,57 @@
+# battle: https://github.com/wsjeon/maddpg-rllib
+group: "Gym"
+name: "share/dqn_cartpole"
+
+training:
+  interface:
+    type: "independent"
+    population_size: -1
+  config:
+    # control the frequency of remote parameter update
+    update_interval: 1
+    saving_interval: 10
+    batch_size: 20
+    optimizer: "Adam"
+    lr: 0.05
+    tau: 0.001  # soft update
+    grad_norm_clipping: 2.0
+
+rollout:
+  type: "async"
+  stopper: "simple_rollout"
+  stopper_config:
+    max_step: 1000
+  metric_type: "simple"
+  fragment_length: 200
+  num_episodes: 10
+  episode_seg: 5
+  test_num_episodes: 0
+  test_episode_seg: 5
+  terminate: "any"
+  callback: "simultaneous"
+
+env_description:
+  creator: "Gym"
+  config:
+    env_id: "CartPole-v1"
+
+algorithms:
+  DQN:
+    name: "DQN"
+    model_cofig:
+      critic:
+        network: mlp
+        layers:
+          - units: 64
+            activation: ReLU
+          - units: 64
+            activation: ReLU
+        output:
+          activation: False
+
+global_evaluator:
+  name: "generic"
+
+dataset_config:
+  episode_capacity: 100000
+  learning_start: 500

@@ -5,7 +5,7 @@ from functools import reduce
 from operator import mul
 
 from torch.nn import functional as F
-from torch.distributions import Categorical
+from torch.distributions import Categorical, Normal
 
 from malib.utils.typing import BehaviorMode, Tuple, DataTransferType, Dict, Any
 from malib.backend.datapool.offline_dataset_server import Episode
@@ -45,15 +45,7 @@ class PPO(Policy):
         actor = get_model(self.model_config["actor"])(
             observation_space, action_space, custom_config.get("use_cuda", False)
         )
-        self._target_actor = get_model(self.model_config["actor"])(
-            observation_space, action_space, custom_config.get("use_cuda", False)
-        )
         critic = get_model(self.model_config["critic"])(
-            observation_space,
-            gym.spaces.Discrete(1),
-            custom_config.get("use_cuda", False),
-        )
-        self._target_critic = get_model(self.model_config["critic"])(
             observation_space,
             gym.spaces.Discrete(1),
             custom_config.get("use_cuda", False),
@@ -65,20 +57,6 @@ class PPO(Policy):
 
         self.register_state(self._actor, "actor")
         self.register_state(self._critic, "critic")
-        self.register_state(self._target_critic, "target_critic")
-        self.register_state(self._target_actor, "target_actor")
-
-        self.update_target()
-
-        self._action_dist = None
-
-    @property
-    def target_actor(self):
-        return self._target_actor
-
-    @property
-    def target_critic(self):
-        return self._target_critic
 
     def compute_action(self, observation, **kwargs):
         behavior = kwargs.get("behavior_mode", BehaviorMode.EXPLORATION)
@@ -88,36 +66,33 @@ class PPO(Policy):
             # gumbel softmax convert to differentiable one-hot
             if self._discrete_action:
                 if behavior == BehaviorMode.EXPLORATION:
-                    logits += torch.autograd.Variable(
-                        torch.Tensor(np.random.standard_normal(logits.shape)),
-                        requires_grad=False,
-                    )
+                    logits += -torch.log(-torch.log(torch.rand(logits.shape)))
 
                 if action_mask is not None:
                     action_mask = torch.FloatTensor(action_mask).to(logits.device)
                     pi = misc.masked_softmax(logits, action_mask)
                 else:
-                    pi = F.softmax(logits)
+                    pi = F.softmax(logits, dim=-1)
+                actions = pi.argmax(-1)
             else:
-                if behavior == BehaviorMode.EXPLORATION:
-                    logits += torch.autograd.Variable(
-                        torch.Tensor(np.random.standard_normal(logits.shape)),
-                        requires_grad=False,
-                    )
-                pi = F.softmax(logits)
-                pi = pi.clamp(-1, 1)
+                m = Normal(*logits)
+                pi = torch.cat(logits, dim=-1)
+                actions = m.sample().detach()
         # print(f"------ action: {pi.argmax(-1).numpy()} {pi.numpy()}")
-        return pi.argmax(-1).numpy(), pi.numpy(), {Episode.ACTION_DIST: pi.numpy()}
+        return actions.numpy(), pi.numpy(), {Episode.ACTION_DIST: pi.numpy()}
 
     def compute_actions(self, observation, **kwargs):
         logits = self.actor(observation)
-        m = Categorical(logits=logits)
+        if self._discrete_action:
+            m = Categorical(logits=logits)
+        else:
+            m = Normal(*logits)
         actions = m.sample()
         return actions
 
     def compute_advantage(self, batch):
         # td_value - value
-        next_value = self.target_critic(batch[Episode.NEXT_OBS].copy())
+        next_value = self.critic(batch[Episode.NEXT_OBS].copy())
         td_value = (
             torch.from_numpy(batch[Episode.REWARD].copy())
             + self.gamma
@@ -131,13 +106,6 @@ class PPO(Policy):
     def value_function(self, states):
         values = self.critic(states)
         return values
-
-    def update_target(self):
-        self._target_critic.load_state_dict(self.critic.state_dict())
-        self._target_actor.load_state_dict(self.actor.state_dict())
-
-    def target_value_function(self, states):
-        return self._target_critic(states)
 
     def export(self, export_format: str):
         raise NotImplementedError

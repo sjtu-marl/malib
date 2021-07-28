@@ -29,11 +29,16 @@ import pickle as pkl
 
 
 def _gen_table_name(env_id, main_id, pid):
-    if isinstance(main_id, List):
-        main_id = "_".join(sorted(main_id))
-    if isinstance(pid, List):
-        pid = "_".join(sorted(pid))
-    return f"{env_id}_{main_id}_{pid}"
+    res = f"{env_id}"
+    if main_id:
+        if isinstance(main_id, List):
+            main_id = "_".join(sorted(main_id))
+        res += f"_{main_id}"
+    if pid:
+        if isinstance(pid, List):
+            pid = "_".join(sorted(pid))
+        res += f"_{pid}"
+    return res
 
 
 DATASET_TABLE_NAME_GEN = _gen_table_name
@@ -544,10 +549,149 @@ class Table:
         with self._rwlock.gen_wlock():
             self._episode.reset(**kwargs)
 
+    @staticmethod
+    def _save_helper_func(obj, fp, candidate_name=""):
+        if os.path.isdir(fp):
+            try:
+                os.makedirs(fp)
+            except:
+                pass
+            tfp = os.path.join(fp, candidate_name + ".tpkl")
+        else:
+            paths = os.path.split(fp)[0]
+            try:
+                os.makedirs(paths)
+            except:
+                pass
+            tfp = fp + ".tpkl"
+        with open(tfp, "wb") as f:
+            pkl.dump(obj, f, protocol=settings.PICKLE_PROTOCOL_VER)
+
+    def dump(self, fp, name=None):
+        if name is None:
+            name = self._name
+        with self._threading_lock:
+            serial_dict = {
+                "name": self._name,
+                "data": self._episode,
+                "multi_agent": self._is_multi_agent,
+            }
+            self._save_helper_func(serial_dict, fp, name)
+
+    @classmethod
+    def load(cls, fp):
+        with open(fp, "rb") as f:
+            serial_dict = pkl.load(f)
+
+        table = Table(name=serial_dict["name"], multi_agent=serial_dict["multi_agent"])
+        table._episode = serial_dict["data"]
+        table._capacity = table._episode.capacity
+        return table
+
+    def to_csv(self, fp):
+        def _dump_episode(fname, episode):
+            class _InternelColumnGenerator:
+                def __init__(self, column_data_dict):
+                    self.idx = 0
+                    self.data = column_data_dict
+                    self.columns = list(column_data_dict.keys())
+                    self.length = len(next(iter(column_data_dict.values)))
+
+                def getline(self):
+                    column_info = ",".join(self.columns)
+                    yield column_info
+                    while self.idx < self.length:
+                        line = []
+                        for c in self.columns:
+                            line.append(str(self.data[c][self.idx]))
+                        line = ",".join(line)
+                        self.idx += 1
+                        yield line
+
+            wg = _InternelColumnGenerator(episode.data)
+            with open(fname, "w") as f:
+                while True:
+                    line = wg.getline()
+                    if line:
+                        f.write(line)
+                    else:
+                        break
+
+        with self._threading_lock:
+            try:
+                os.makedirs(fp)
+            except:
+                pass
+
+            if self.multi_agent:
+                for aid in self._data.keys():
+                    episode = self._episode[aid]
+                    _dump_episode(os.path.join(fp, aid), episode)
+            else:
+                _dump_episode(fp, self._episode)
+
+
+class ExternalDataset:
+    def __init__(self, name, path, sample_rate=0.5):
+        self._name = name
+        if os.path.isabs(path):
+            self._path = path
+        else:
+            self._path = os.path.join(settings.BASE_DIR, path)
+        self._sample_rate = sample_rate
+
+    def sample(self):
+        raise NotImplementedError
+
+    def save(self):
+        raise NotImplementedError
+
+
+class ExternalReadOnlyDataset(ExternalDataset):
+    def __init__(
+        self, name, path, sample_rate=0.5, mapping_func=lambda x: x, binary=True
+    ):
+        super().__init__(name, path, sample_rate=sample_rate)
+
+        self._tables: Dict[str, Table] = {}
+        for fn in os.listdir(self._path):
+            if fn.endswith(".tpkl"):
+                table = Table.load(os.path.join(self._path, fn))
+                self._tables[table.name] = table
+
+    def sample(self, buffer_desc: BufferDescription):
+        info = f"{self._name}(external, read-only): OK"
+        try:
+            # NOTE(zbzhu): maybe we do not care which policy sampled the (expert) data
+            table_name = Table.gen_table_name(
+                env_id=buffer_desc.env_id,
+                main_id=buffer_desc.agent_id,
+                pid=None,
+                # pid=buffer_desc.policy_id,
+            )
+            table = self._tables[table_name]
+            res = table.sample(size=self._sample_rate * buffer_desc.batch_size)
+        except KeyError as e:
+            info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
+            res = None
+        except OversampleError as e:
+            info = f"No enough data: table_size={table.size} batch_size={buffer_desc.batch_size} table_name={table_name}"
+            res = None
+        except Exception as e:
+            print(traceback.format_exc())
+            res = None
+            info = "others"
+        return res, info
+
+    def save(self, agent_episodes: Dict[AgentID, Episode], wait_for_ready: bool = True):
+        raise NotImplementedError
+
 
 @ray.remote
 class OfflineDataset:
-    def __init__(self, dataset_config: Dict[str, Any], exp_cfg: Dict[str, Any]):
+    def __init__(
+        self, dataset_config: Dict[str, Any], exp_cfg: Dict[str, Any], test_mode=False
+    ):
         self._episode_capacity = dataset_config.get(
             "episode_capacity", settings.DEFAULT_EPISODE_CAPACITY
         )
@@ -555,14 +699,49 @@ class OfflineDataset:
         self._tables: Dict[str, Table] = dict()
         self._threading_lock = threading.Lock()
         self._threading_pool = ThreadPoolExecutor()
-        self.logger = get_logger(
-            log_level=settings.LOG_LEVEL,
-            log_dir=settings.LOG_DIR,
-            name="offline_dataset",
-            remote=settings.USE_REMOTE_LOGGER,
-            mongo=settings.USE_MONGO_LOGGER,
-            **exp_cfg,
-        )
+        if not test_mode:
+            self.logger = get_logger(
+                log_level=settings.LOG_LEVEL,
+                log_dir=settings.LOG_DIR,
+                name="offline_dataset",
+                remote=settings.USE_REMOTE_LOGGER,
+                mongo=settings.USE_MONGO_LOGGER,
+                **exp_cfg,
+            )
+        else:
+            self.logger = logging.getLogger("OfflineDataset")
+
+        # parse init tasks
+        init_job_config = dataset_config.get("init_job", {})
+        if init_job_config.get("load_when_start"):
+            path = init_job_config.get("path")
+            if path:
+                self.load(path)
+
+        # Read-only proxies for external offline dataset
+        external_resource_config = dataset_config.get("extern")
+        self.external_proxy: List[ExternalDataset] = []
+        if external_resource_config:
+            for external_config, sample_rate in zip(
+                external_resource_config["links"],
+                external_resource_config["sample_rates"],
+            ):
+                if not external_config["write"]:
+                    dataset = ExternalReadOnlyDataset(
+                        name=external_config["name"],
+                        path=external_config["path"],
+                        sample_rate=sample_rate,
+                    )
+                    self.external_proxy.append(dataset)
+                else:
+                    raise NotImplementedError(
+                        "External writable dataset is not supported"
+                    )
+
+        # quitting job
+        quit_job_config = dataset_config.get("quit_job", {})
+        self.dump_when_closed = quit_job_config.get("dump_when_closed")
+        self.dump_path = quit_job_config.get("path")
 
     def lock(self, lock_type: str, desc: Dict[AgentID, BufferDescription]) -> str:
         """Lock table ready to push or pull and return the table status."""
@@ -607,7 +786,6 @@ class OfflineDataset:
         """
         with self._threading_lock:
             if self._tables.get(table_name, None) is None:
-                print("Some one check me:", table_name)
                 self._tables[table_name] = Table(table_name, multi_agent=is_multi_agent)
             if episode is not None and self._tables[table_name].episode is None:
                 self._tables[table_name].set_episode(
@@ -676,53 +854,74 @@ class OfflineDataset:
                 assert isinstance(batch, Dict)
                 self._tables[table_name].insert(**batch)
 
-            self.logger.debug(
-                f"table={table_name} capacity={self._tables[table_name].capacity} size={self._tables[table_name].size}"
-            )
+    # @Log.method_timer(enable=settings.PROFILING)
+    def load(self, path, mode="replace") -> List[Dict[str, str]]:
+        table_descs = []
+        with self._threading_lock:
+            for fn in os.listdir(path):
+                if fn.endswith(".tpkl"):
+                    conflict_callback_required = False
+                    table = Table.load(os.path.join(path, fn))
+                    victim_table = None
 
-    @Log.method_timer(enable=settings.PROFILING)
-    def load(self, file) -> List[Dict[str, str]]:
-        # FIXME(ming): check its functionality
-        with open(file, "rb") as f:
-            self._tables = pkl.load(f)
-            table_size = len(self._tables)
-            table_descs: List[Dict[str, str]] = [None] * table_size
+                    if table.name in self._tables.keys() and mode.lower().equal(
+                        "replace"
+                    ):
+                        victim_table = self.tables[table.name]
+                        self.logger.debug(
+                            f"Conflicts in loading table {table.name}, act as replacing"
+                        )
+                        try_lock_status = victim_table.lock_push_pull("push")
+                        if try_lock_status != Status.NORMAL:
+                            self.logger.error(
+                                f"Try to replace an occupied table {victim_table.name}"
+                            )
+                        conflict_callback_required = True
 
-            idx = 0
-            for table_name, table in self._tables.items():
-                table_descs[idx] = {
-                    "name": table.name,
-                    "env_id": table.env_id,
-                    "policy_id": table.policy_id,
-                    "agent_id": table.agent_id,
-                    "capacity": table.capacity,
-                    "columns": table.columns,
-                }
-                idx += 1
+                    self._tables[table.name] = table
+                    table_descs.append(
+                        {
+                            "name": table.name,
+                            "size": table.size,
+                            "capacity": table.capacity,
+                        }
+                    )
+
+                    if conflict_callback_required:
+                        victim_table.unlock_push_pull("push")
 
             return table_descs
 
-    @Log.method_timer(enable=settings.PROFILING)
-    def dump(self, file, protocol=None, *args, **kwargs):
-        protocol = protocol or settings.PICKLE_PROTOCOL_VER
-        with open(file, "wb") as f:
-            pkl.dump(self._tables, file=f, protocol=protocol, *args, **kwargs)
+    # @Log.method_timer(enable=settings.PROFILING)
+    def dump(self, path, table_names=None, as_csv=False):
+        with self._threading_lock:
+            if table_names is None:
+                table_names = list(self._tables.keys())
+            elif isinstance(table_names, str):
+                table_names = [table_names]
 
-    @Log.method_timer(enable=settings.PROFILING)
-    def dump_to_dataset(self, protocol=None, root=None):
-        protocol = protocol or settings.PICKLE_PROTOCOL_VER
-        output_dir = os.path.join(root or settings.DATASET_DIR, str(time.time()))
-        try:
-            os.makedirs(output_dir)
-        except Exception as e:
-            pass
+            # Locking required tables
+            status = dict.fromkeys(table_names, Status.FAILED)
+            for tn in table_names:
+                table = self._tables[tn]
+                status[tn] = table.lock_push_pull("push")
 
-        for table_name, table in self._tables.items():
-            dataset_path = os.path.join(output_dir, f"episode_{id(table)}")
-            # FIXME(ming): no such an interface - format_to_dataset
-            dataset = table.format_to_dataset()
-            with open(dataset_path + ".pkl", "wb") as f:
-                pkl.dump(obj=dataset, file=f, protocol=protocol)
+            # Check locking status
+            f = open("ds.log", "w")
+            for tn, lock_status in status.items():
+                f.write(f"Table {tn} lock status {lock_status}")
+                if lock_status == Status.FAILED:
+                    self.logger.info(
+                        f"Failed to lock the table {tn}, skip the dumping."
+                    )
+                    continue
+                if not as_csv:
+                    self._tables[tn].dump(os.path.join(path, tn))
+                else:
+                    self._tables[tn].to_csv(os.path.join(path, tn))
+                self._tables[tn].unlock_push_pull("push")
+            f.close()
+            return status
 
     # @Log.method_timer(enable=settings.PROFILING)
     def sample(self, buffer_desc: BufferDescription) -> Tuple[Batch, str]:
@@ -745,18 +944,33 @@ class OfflineDataset:
             )
             table = self._tables[table_name]
             res = table.sample(size=buffer_desc.batch_size)
-            res = Batch(identity=buffer_desc.agent_id, data=res)
         except KeyError as e:
             info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
-            res = Batch(identity=buffer_desc.agent_id, data=None)
+            res = None
         except OversampleError as e:
             info = f"No enough data: table_size={table.size} batch_size={buffer_desc.batch_size} table_name={table_name}"
-            res = Batch(identity=buffer_desc.agent_id, data=None)
+            res = None
         except Exception as e:
             print(traceback.format_exc())
-            res = Batch(identity=buffer_desc.agent_id, data=None)
+            res = None
             info = "others"
+
+        if len(self.external_proxy) > 0:
+            external_res = []
+            for dataset in self.external_proxy:
+                tmp_res, tmp_info = dataset.sample(buffer_desc)
+                external_res.append(tmp_res)
+                info += "\n" + tmp_info
+            # XXX(ming): inconsistency of data type, sampled from dataset is a dict, while external_res is a list.
+            #   it is better to use dict for external_res
+            res = [res] + external_res
+        res = Batch(identity=buffer_desc.agent_id, data=res)
         return res, info
 
     def shutdown(self):
+        status = None
+        if self.dump_when_closed:
+            self.logger.info("Begin OfflineDataset dumping.")
+            status = self.dump(self.dump_path)
         self.logger.info("Server terminated.")
+        return status

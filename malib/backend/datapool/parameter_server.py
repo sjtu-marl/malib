@@ -1,3 +1,4 @@
+import logging
 import os
 import threading
 
@@ -195,24 +196,76 @@ class Table:
                 else:
                     raise IndexError("reached maximum")
 
+    @staticmethod
+    def _save_helper_func(obj, fp, candidate_name=""):
+        if os.path.isdir(fp):
+            try:
+                os.makedirs(fp)
+            except:
+                pass
+            tfp = os.path.join(fp, candidate_name + ".pkl")
+        else:
+            paths = os.path.split(fp)[0]
+            try:
+                os.makedirs(paths)
+            except:
+                pass
+            tfp = fp + ".pkl"
+        with open(tfp, "wb") as f:
+            pickle.dump(obj, f, protocol=settings.PICKLE_PROTOCOL_VER)
+
+    def dump(self, fp):
+        with self._threading_lock:
+            serial_dict = {
+                "meta": {
+                    "env_id": self.env_id,
+                    "agent_id": self.agent_id,
+                    "policy_id": self.policy_id,
+                    "policy_type": self.policy_type,
+                    "parallel_num": self.parallel_num,
+                },
+                "data": self._data,
+            }
+            self._save_helper_func(serial_dict, fp, self.name)
+
+    @classmethod
+    def load(cls, fp):
+        with open(fp, "rb") as f:
+            serial_dict = pickle.load(f)
+            table = cls(**serial_dict["meta"])
+            table._data = serial_dict.get("data")
+            return table
+
 
 @ray.remote
 class ParameterServer:
     """Parameter lib can be initialized with existing database or create a new one"""
 
-    def __init__(self, **kwargs):
+    def __init__(self, test_mode=False, **kwargs):
         self._table: Dict[str, Table] = dict()
         self._table_status: Dict[str, Status] = dict()
 
-        self.logger = get_logger(
-            log_level=settings.LOG_LEVEL,
-            log_dir=settings.LOG_DIR,
-            name="parameter_server",
-            remote=settings.USE_REMOTE_LOGGER,
-            mongo=settings.USE_MONGO_LOGGER,
-            **kwargs["exp_cfg"],
-        )
+        if not test_mode:
+            self.logger = get_logger(
+                log_level=settings.LOG_LEVEL,
+                log_dir=settings.LOG_DIR,
+                name="parameter_server",
+                remote=settings.USE_REMOTE_LOGGER,
+                mongo=settings.USE_MONGO_LOGGER,
+                **kwargs["exp_cfg"],
+            )
+        else:
+            self.logger = logging.getLogger("ParameterServer")
+
         self._threading_lock = threading.Lock()
+
+        init_job_config = kwargs.get("init_job", {})
+        if init_job_config.get("load_when_start"):
+            self.load(init_job_config.get("path"))
+
+        quit_job_config = kwargs.get("quit_job", {})
+        self.dump_when_closed = quit_job_config.get("dump_when_closed")
+        self.dump_path = quit_job_config.get("path")
 
     def check_ready(self, parameter_desc):
         table_name = PARAMETER_TABLE_NAME_GEN(
@@ -247,6 +300,10 @@ class ParameterServer:
         assert (
             self._table.get(table_name, None) is not None
         ), f"No such a table named={table_name}, {list(self._table.keys())}"
+        if self._table[table_name].parallel_num != parameter_desc.parallel_num:
+            # (hanjing): Fix the possible conflicts when recovering from dumped files
+            self.logger.info("Inconsistence found in parallel num, reassigned")
+            self._table[table_name].parallel_num = parameter_desc.parallel_num
 
         parameter = self._table[table_name].get(parameter_desc)
         status = self._table[table_name].status
@@ -271,7 +328,8 @@ class ParameterServer:
             policy_type=parameter_desc.description["registered_name"],
         )
 
-        if self._table.get(table_name, None) is None:
+        table = self._table.get(table_name, None)
+        if table is None:
             with self._threading_lock:
                 self._table[table_name] = Table(
                     env_id=parameter_desc.env_id,
@@ -280,27 +338,51 @@ class ParameterServer:
                     policy_type=parameter_desc.description["registered_name"],
                     parallel_num=parameter_desc.parallel_num,
                 )
-
+        else:
+            # (hanjing): Check for consistence
+            assert table.parallel_num == parameter_desc.parallel_num
         self._table[table_name].insert(parameter_desc)
         status = self._table[table_name].status
         return status
 
-    def dump(self, file_path=None, protocol=None):
+    def dump(self, file_path=None):
         """ Export parameters to local storage """
+        # (hanjing): The original implementation directly serialize the table,
+        # however, which contains a threading lock that can not be serialized.
+        # Now reorganize the table when dumping, each table is dumped as a separated
+        # file. Note that consider possible changes in the  parallel num, we will trust
+        # the parallel num recovered from the serialized files. Hence it will be checked and
+        # modified during each pull request if there is a conflict with parameter_desc.parallel_num
+        with self._threading_lock:
+            file_path = file_path or settings.PARAM_DIR
 
-        protocol = protocol or settings.PICKLE_PROTOCOL_VER
-        file_path = file_path or "parameters.pkl"
-        file_path = os.path.join(settings.DATASET_DIR, file_path)
-        raise NotImplementedError
+            f = open("ps.log", "w")
+            dumped_list = []
+            for tn in self._table.keys():
+                dumped_list.append(tn)
+                f.write(f"Trying to dump table {tn}, locked {self._table[tn].locked}\n")
+                self._table[tn].dump(os.path.join(file_path, tn))
+            f.close()
+        return dumped_list
 
     def load(self, file_path=None, protocol=None):
         """ Load parameters from local storage """
 
-        protocol = protocol or settings.PICKLE_PROTOCOL_VER
-        file_path = file_path or "parameters.pkl"
-        with open(os.path.join(settings.DATASET_DIR, file_path), "rb") as f:
-            data = pickle.load(f)
-        raise NotImplementedError
+        with self._threading_lock:
+            protocol = protocol or settings.PICKLE_PROTOCOL_VER
+            file_path = file_path or settings.PARAM_DIR
+
+            for fn in os.listdir(file_path):
+                if fn.endswith(".pkl"):
+                    try:
+                        table = Table.load(os.path.join(file_path, fn))
+                        self._table[table.name] = table
+                    except Exception as e:
+                        self.logger.error(f"Loading {fn} failed ({e})")
 
     def shutdown(self):
+        result = None
+        if self.dump_when_closed:
+            result = self.dump(self.dump_path)
         self.logger.info(f"Parameter server closed.")
+        return result

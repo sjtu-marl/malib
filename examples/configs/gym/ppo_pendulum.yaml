@@ -1,0 +1,71 @@
+# battle: https://github.com/wsjeon/maddpg-rllib
+group: "Gym"
+name: "share/ppo_pendulum"
+
+training:
+  interface:
+    type: "independent"
+    population_size: -1
+  config:
+    # control the frequency of remote parameter update
+    saving_interval: 10
+    batch_size: 512
+    optimizer: "Adam"
+    lr: 0.01
+    ppo_epoch: 2
+    value_coef: 0.5
+    entropy_coef: 0.01
+    grad_norm_clipping: 2.0
+
+rollout:
+  type: "async"
+  stopper: "simple_rollout"
+  stopper_config:
+    max_step: 300
+  metric_type: "simple"
+  fragment_length: 200
+  num_episodes: 100
+  episode_seg: 25
+  terminate: "any"
+  callback: "simultaneous"
+
+evaluation:
+  fragment_length: 200
+  num_episodes: 2
+  callback: "simultaneous"
+
+env_description:
+  creator: "Gym"
+  config:
+    env_id: "Pendulum-v0"
+
+algorithms:
+  PPO:
+    name: "PPO"
+    model_config:
+      actor:
+        network: mlp
+        layers:
+          - units: 64
+            activation: ReLU
+          - units: 64
+            activation: ReLU
+        output:
+          type: "gaussian"
+          activation: False
+      critic:
+        network: mlp
+        layers:
+          - units: 64
+            activation: ReLU
+          - units: 64
+            activation: ReLU
+        output:
+          activation: False
+
+global_evaluator:
+  name: "generic"
+
+dataset_config:
+  episode_capacity: 1000000
+  learning_start: 1000
