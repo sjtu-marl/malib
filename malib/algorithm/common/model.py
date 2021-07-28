@@ -51,17 +51,8 @@ class MLP(Model):
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         model_config: Dict[str, Any],
-        concat: bool = False,
     ):
-        if concat:
-            input_dim = (
-                get_preprocessor(observation_space)(observation_space).size
-                + get_preprocessor(action_space)(action_space).size
-            )
-            output_dim = 1
-            super(MLP, self).__init__(input_dim, output_dim)
-        else:
-            super(MLP, self).__init__(observation_space, action_space)
+        super(MLP, self).__init__(observation_space, action_space)
 
         layers_config: list = (
             self._default_layers()

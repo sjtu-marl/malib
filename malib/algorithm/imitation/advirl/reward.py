@@ -53,10 +53,9 @@ class AdvIRLReward(Reward):
 
         self.set_discriminator(
             get_model(self.model_config["discriminator"])(
-                observation_space,
-                action_space,
+                gym.space.Dict({"_obs": observation_space, "_act": action_space}),
+                gym.space.Discrete(1),
                 self.custom_config["use_cuda"],
-                concat=True,
             )
         )
 

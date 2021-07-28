@@ -31,6 +31,8 @@ class SAC(Policy):
 
         assert isinstance(action_space, gym.spaces.Box), action_space
 
+        self.action_squash = self.custom_config.get("action_squash", False)
+
         self.set_actor(
             get_model(self.model_config.get("actor"))(
                 observation_space, action_space, self.custom_config["use_cuda"]

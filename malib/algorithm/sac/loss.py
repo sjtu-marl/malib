@@ -71,7 +71,7 @@ class SACLoss(LossFunc):
         cliprange = self._params["grad_norm_clipping"]
         alpha = self._params["sac_alpha"]
         gamma = self.policy.custom_config["gamma"]
-        action_squash = self.policy.custom_config["action_squash"]
+        action_squash = self.policy.action_squash
 
         # critic update
         vf_in = torch.cat([cur_obs, actions], dim=-1)
@@ -104,12 +104,12 @@ class SACLoss(LossFunc):
 
         self.optimizers["critic_1"].zero_grad()
         critic_loss_1.backward()
-        # torch.nn.utils.clip_grad_norm_(self.policy.critic_1.parameters(), cliprange)
+        torch.nn.utils.clip_grad_norm_(self.policy.critic_1.parameters(), cliprange)
         self.optimizers["critic_1"].step()
 
         self.optimizers["critic_2"].zero_grad()
         critic_loss_2.backward()
-        # torch.nn.utils.clip_grad_norm_(self.policy.critic_2.parameters(), cliprange)
+        torch.nn.utils.clip_grad_norm_(self.policy.critic_2.parameters(), cliprange)
         self.optimizers["critic_2"].step()
 
         # actor update
@@ -130,7 +130,7 @@ class SACLoss(LossFunc):
         ).mean()
         self.optimizers["actor"].zero_grad()
         actor_loss.backward()
-        # torch.nn.utils.clip_grad_norm_(self.policy.actor.parameters(), cliprange)
+        torch.nn.utils.clip_grad_norm_(self.policy.actor.parameters(), cliprange)
         self.optimizers["actor"].step()
 
         loss_names = [
