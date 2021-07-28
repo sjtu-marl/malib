@@ -31,7 +31,7 @@ if __name__ == "__main__":
         "creator": PokerEnv,
         "config": {
             "scenario_configs": {"fixed_player": True},
-            "env_id": "leduc_holdem",
+            "env_id": "leduc_poker",
         },
     }
 

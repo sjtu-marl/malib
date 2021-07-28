@@ -261,7 +261,7 @@ class TrainingManager:
         for aid, agent in self._agents.items():
             populations[aid] = ray.get(agent.get_policies.remote())
         nashconv, _ = measure_exploitability(
-            "leduc_poker",
+            self._env_description["config"]["env_id"],
             populations=populations,
             policy_mixture_dict=policy_distribution,
         )
