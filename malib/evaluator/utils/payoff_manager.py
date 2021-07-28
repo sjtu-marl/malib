@@ -2,6 +2,7 @@
 
 import copy
 import itertools
+import logging
 from typing import List, Union, Sequence, Dict, Tuple, Any
 
 import nashpy as nash
@@ -18,7 +19,13 @@ from malib.utils.typing import (
     PolicyConfig,
     MetricType,
 )
-from open_spiel.python.egt import alpharank, utils as alpharank_utils
+
+try:
+    from open_spiel.python.egt import alpharank, utils as alpharank_utils
+except ImportError as e:
+    logging.warning(
+        "Cannot import alpharank utils, if you wanna run meta game experiments, please install open_spiel before that."
+    )
 
 
 class DefaultSolver:
@@ -109,9 +116,9 @@ class DefaultSolver:
         return marginals
 
     def solve(self, payoffs_seq):
-        if len(payoffs_seq) <= 2:  # or self._solve_method == "fictitious_play":
+        if self._solve_method == "fictitious_play":
             return self.fictitious_play(payoffs_seq)
-        elif len(payoffs_seq) > 2:  # or self._solve_method == "alpharank":
+        elif self._solve_method == "alpharank":  # when number of players > 2
             return self.alpharank(payoffs_seq)
 
 
