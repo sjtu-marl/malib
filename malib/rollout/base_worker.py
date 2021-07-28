@@ -342,11 +342,11 @@ class BaseRolloutWorker:
                     policy_distribution=task_desc.content.policy_distribution,
                 )
                 end = time.time()
-                # print(
-                #     f"epoch {epoch}, "
-                #     f"{task_desc.content.agent_involve_info.training_handler} "
-                #     f"from worker={self._worker_index} time consump={end - start} seconds"
-                # )
+                print(
+                    f"epoch {epoch}, "
+                    f"{task_desc.content.agent_involve_info.training_handler} "
+                    f"from worker={self._worker_index} time consump={end - start} seconds"
+                )
                 statistic_seq.extend(res)
 
             merged_statics = processed_statics[0]

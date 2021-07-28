@@ -149,7 +149,7 @@ class PokerEnv(AECEnv):
 
 
 def env(**kwargs):
-    env = PokerEnv(**kwargs)
+    env = PokerEnv(**kwargs["scenario_configs"])
     env = wrappers.CaptureStdoutWrapper(env)
     env = wrappers.TerminateIllegalWrapper(env, illegal_reward=-1)
     env = wrappers.AssertOutOfBoundsWrapper(env)

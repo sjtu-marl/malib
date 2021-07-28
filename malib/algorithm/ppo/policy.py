@@ -4,13 +4,14 @@ import numpy as np
 from functools import reduce
 from operator import mul
 
-from typing import Dict, Any
 from torch.nn import functional as F
 from torch.distributions import Categorical, Normal
 
+from malib.utils.typing import BehaviorMode, Tuple, DataTransferType, Dict, Any
 from malib.backend.datapool.offline_dataset_server import Episode
 from malib.algorithm.common.model import get_model
 from malib.algorithm.common.policy import Policy
+from malib.algorithm.common import misc
 
 
 def cal_neglogp(logits):
@@ -36,8 +37,10 @@ class PPO(Policy):
         self.gamma = custom_config.get("gamma", 0.98)
 
         self._obs_dim = reduce(mul, self.preprocessor.observation_space.shape)
-        self._discrete = isinstance(action_space, gym.spaces.Discrete)
-        self._action_dim = action_space.n if self._discrete else action_space.shape[0]
+        self._discrete_action = isinstance(action_space, gym.spaces.Discrete)
+        self._action_dim = (
+            action_space.n if self._discrete_action else action_space.shape[0]
+        )
 
         actor = get_model(self.model_config["actor"])(
             observation_space, action_space, custom_config.get("use_cuda", False)
@@ -56,42 +59,71 @@ class PPO(Policy):
         self.register_state(self._critic, "critic")
 
     def compute_action(self, observation, **kwargs):
-        logits = self.actor(observation)
+#         logits = self.actor(observation)
 
-        if self._discrete:
-            assert len(logits.shape) > 1, logits.shape
-            if "action_mask" in kwargs:
-                mask = torch.FloatTensor(kwargs["action_mask"]).to(logits.device)
+#         if self._discrete:
+#             assert len(logits.shape) > 1, logits.shape
+#             if "action_mask" in kwargs:
+#                 mask = torch.FloatTensor(kwargs["action_mask"]).to(logits.device)
+#             else:
+#                 mask = torch.ones_like(logits, device=logits.device, dtype=logits.dtype)
+#             logits = logits * mask
+#             assert len(logits.shape) > 1, logits.shape
+#             m = Categorical(logits=logits)
+#             probs = m.probs
+#             actions = m.sample().unsqueeze(-1).detach()
+#         else:
+#             m = Normal(*logits)
+#             probs = torch.cat(logits, dim=-1)
+#             actions = m.sample().detach()
+
+#         extra_info = {}
+#         if self._discrete and mask is not None:
+#             action_probs = torch.zeros_like(probs, device=probs.device)
+#             active_indices = mask > 0
+#             tmp = probs[active_indices].reshape(mask.shape) / torch.sum(
+#                 probs, dim=-1, keepdim=True
+#             )
+#             action_probs[active_indices] = tmp.reshape(-1)
+#         else:
+#             action_probs = probs
+
+#         extra_info["action_probs"] = action_probs.detach().to("cpu").numpy()
+
+#         return (
+#             actions.to("cpu").numpy(),
+#             action_probs.detach().to("cpu").numpy(),
+#             extra_info,
+#         )
+        behavior = kwargs.get("behavior_mode", BehaviorMode.EXPLORATION)
+        action_mask = kwargs.get("action_mask")
+        with torch.no_grad():
+            logits = self.actor(observation)
+            # gumbel softmax convert to differentiable one-hot
+            if self._discrete_action:
+                if behavior == BehaviorMode.EXPLORATION:
+                    logits += torch.autograd.Variable(
+                        torch.Tensor(np.random.standard_normal(logits.shape)),
+                        requires_grad=False,
+                    )
+
+                if action_mask is not None:
+                    action_mask = torch.FloatTensor(action_mask).to(logits.device)
+                    pi = misc.masked_softmax(logits, action_mask)
+                else:
+                    pi = F.softmax(logits)
+                action = pi.argmax(-1)
             else:
-                mask = torch.ones_like(logits, device=logits.device, dtype=logits.dtype)
-            logits = logits * mask
-            assert len(logits.shape) > 1, logits.shape
-            m = Categorical(logits=logits)
-            probs = m.probs
-            actions = m.sample().unsqueeze(-1).detach()
-        else:
-            m = Normal(*logits)
-            probs = torch.cat(logits, dim=-1)
-            actions = m.sample().detach()
-
-        extra_info = {}
-        if self._discrete and mask is not None:
-            action_probs = torch.zeros_like(probs, device=probs.device)
-            active_indices = mask > 0
-            tmp = probs[active_indices].reshape(mask.shape) / torch.sum(
-                probs, dim=-1, keepdim=True
-            )
-            action_probs[active_indices] = tmp.reshape(-1)
-        else:
-            action_probs = probs
-
-        extra_info["action_probs"] = action_probs.detach().to("cpu").numpy()
-
-        return (
-            actions.to("cpu").numpy(),
-            action_probs.detach().to("cpu").numpy(),
-            extra_info,
-        )
+                if behavior == BehaviorMode.EXPLORATION:
+                    logits += torch.autograd.Variable(
+                        torch.Tensor(np.random.standard_normal(logits.shape)),
+                        requires_grad=False,
+                    )
+                m = Normal(*logits)
+                pi = torch.cat(logits, dim=-1)
+                actions = m.sample().detach()
+        # print(f"------ action: {pi.argmax(-1).numpy()} {pi.numpy()}")
+        return actions.numpy(), pi.numpy(), {Episode.ACTION_DIST: pi.numpy()}
 
     def compute_actions(self, observation, **kwargs):
         logits = self.actor(observation)

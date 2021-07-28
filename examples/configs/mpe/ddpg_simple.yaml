@@ -1,41 +1,49 @@
+# battle: https://github.com/wsjeon/maddpg-rllib
 group: "MPE"
-name: "psro/ppo"
+name: "share/ddpg_simple"
 
 training:
   interface:
-    type: "independent"
+    type: "sync"
     population_size: -1
   config:
     # control the frequency of remote parameter update
     update_interval: 1
     saving_interval: 10
     batch_size: 1024
-    optimizer: "adam"
-    actor_lr: !!float 1e-2
-    critic_lr: !!float 1e-2
+    optimizer: "Adam"
+    actor_lr: 0.01
+    critic_lr: 0.01
+    lr: 0.01
     tau: 0.01  # soft update
     grad_norm_clipping: 0.5
 
 rollout:
-  type: "async"
+  type: "sync"
   stopper: "simple_rollout"
   stopper_config:
     max_step: 1000
   metric_type: "simple"
-  fragment_length: 1000
-  num_episodes: 1000
-  episode_seg: 100
+  fragment_length: 25
+  num_episodes: 250
+  episode_seg: 25
   terminate: "any"
-  callback: "sequential"
+
+evaluation:
+  fragment_length: 25
+  num_episodes: 100
 
 env_description:
-  id: "simple_push_v2"
+  #  scenario_name: "simple_spread"
+  creator: "MPE"
   config:
-    max_cycles: 25
+    env_id: "simple_v2"
+    scenario_configs:
+      max_cycles: 25
 
 algorithms:
-  PPO:
-    name: "PPO"
+  DDPG:
+    name: "DDPG"
     model_config:
       actor:
         network: mlp
@@ -62,7 +70,8 @@ algorithms:
       use_cuda: False  # enable cuda or not
 
 global_evaluator:
-  name: "psro"
+  name: "generic"
 
 dataset_config:
   episode_capacity: 1000000
+  learning_start: 2560

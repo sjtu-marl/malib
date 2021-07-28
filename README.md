@@ -1,5 +1,5 @@
 
-<div align=center><img src="docs/imgs/logo.png" width="35%"></div>
+<div align=center><img src="docs/imgs/logo.svg" width="35%"></div>
 
 
 # MALib: A parallel framework for population-based multi-agent reinforcement learning
@@ -29,7 +29,7 @@ pip install -e .
 
 External environments are integrated in MALib, such as StarCraftII and vizdoom, you can install them via `pip install -e .[envs]`. For users who wanna contribute to our repository, run `pip install -e .[dev]` to complete the development dependencies.
 
-**optional**: if you wanna use alpha-rank to solve meta-game, install open-spiel with its [installation guides](https://github.com/deepmind/open_spiel)
+**NOTE**: if you wanna use alpha-rank (default solver for meta game) to solve meta-game, install open-spiel with its [installation guides](https://github.com/deepmind/open_spiel)
 
 ## Quick Start
 
@@ -47,8 +47,7 @@ run(
     agent_mapping_func=lambda agent_id: agent_id,
     env_description={
         "creator": leduc_holdem.env,
-        "config": {"fixed_player": True},
-        "id": "leduc_holdem",
+        "config": {"scenario_configs": {"fixed_player": True}, "env_id": "leduc_holdem"}
         "possible_agents": env.possible_agents,
     },
     training={
