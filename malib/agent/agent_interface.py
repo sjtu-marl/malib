@@ -350,16 +350,13 @@ class AgentInterface(metaclass=ABCMeta):
         :return: A buffer description entity.
         """
 
-        return {
-            aid: BufferDescription(
-                env_id=self._env_desc["config"]["env_id"],
-                agent_id=aid,
-                policy_id=pid,
-                batch_size=batch_size,
-                sample_mode=sample_mode,
-            )
-            for aid, (pid, _) in agent_policy_mapping.items()
-        }
+        return BufferDescription(
+            env_id=self._env_desc["config"]["env_id"],
+            agent_id=self._group,
+            policy_id=[agent_policy_mapping[aid][0] for aid in self._group],
+            batch_size=batch_size,
+            sample_mode=sample_mode,
+        )
 
     @Log.method_timer(enable=settings.PROFILING)
     def train(self, task_desc: TaskDescription, training_config: Dict[str, Any] = None):
