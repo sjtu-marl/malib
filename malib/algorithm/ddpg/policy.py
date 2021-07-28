@@ -95,7 +95,7 @@ class DDPG(Policy):
                     pi = misc.onehot_from_logits(self.actor(observation))
                 act = pi.argmax(-1)
             else:
-                pi = self.actor([observation])[0]
+                pi = self.actor(observation)
                 if behavior == BehaviorMode.EXPLORATION:
                     logits = self.actor(observation)
                     logits += torch.autograd.Variable(

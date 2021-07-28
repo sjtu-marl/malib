@@ -69,7 +69,7 @@ class PPOLoss(LossFunc):
         cast_to_long_tensor = lambda x: LongTensor(x.copy())
 
         rewards = cast_to_tensor(batch[Episode.REWARD])
-        if self.policy._discrete:
+        if self.policy._discrete_action:
             actions = cast_to_long_tensor(batch[Episode.ACTION].reshape(-1))
         else:
             actions = cast_to_tensor(batch[Episode.ACTION])

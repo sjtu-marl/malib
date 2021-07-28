@@ -59,42 +59,6 @@ class PPO(Policy):
         self.register_state(self._critic, "critic")
 
     def compute_action(self, observation, **kwargs):
-#         logits = self.actor(observation)
-
-#         if self._discrete:
-#             assert len(logits.shape) > 1, logits.shape
-#             if "action_mask" in kwargs:
-#                 mask = torch.FloatTensor(kwargs["action_mask"]).to(logits.device)
-#             else:
-#                 mask = torch.ones_like(logits, device=logits.device, dtype=logits.dtype)
-#             logits = logits * mask
-#             assert len(logits.shape) > 1, logits.shape
-#             m = Categorical(logits=logits)
-#             probs = m.probs
-#             actions = m.sample().unsqueeze(-1).detach()
-#         else:
-#             m = Normal(*logits)
-#             probs = torch.cat(logits, dim=-1)
-#             actions = m.sample().detach()
-
-#         extra_info = {}
-#         if self._discrete and mask is not None:
-#             action_probs = torch.zeros_like(probs, device=probs.device)
-#             active_indices = mask > 0
-#             tmp = probs[active_indices].reshape(mask.shape) / torch.sum(
-#                 probs, dim=-1, keepdim=True
-#             )
-#             action_probs[active_indices] = tmp.reshape(-1)
-#         else:
-#             action_probs = probs
-
-#         extra_info["action_probs"] = action_probs.detach().to("cpu").numpy()
-
-#         return (
-#             actions.to("cpu").numpy(),
-#             action_probs.detach().to("cpu").numpy(),
-#             extra_info,
-#         )
         behavior = kwargs.get("behavior_mode", BehaviorMode.EXPLORATION)
         action_mask = kwargs.get("action_mask")
         with torch.no_grad():
@@ -102,23 +66,15 @@ class PPO(Policy):
             # gumbel softmax convert to differentiable one-hot
             if self._discrete_action:
                 if behavior == BehaviorMode.EXPLORATION:
-                    logits += torch.autograd.Variable(
-                        torch.Tensor(np.random.standard_normal(logits.shape)),
-                        requires_grad=False,
-                    )
+                    logits += -torch.log(-torch.log(torch.rand(logits.shape)))
 
                 if action_mask is not None:
                     action_mask = torch.FloatTensor(action_mask).to(logits.device)
                     pi = misc.masked_softmax(logits, action_mask)
                 else:
-                    pi = F.softmax(logits)
-                action = pi.argmax(-1)
+                    pi = F.softmax(logits, dim=-1)
+                actions = pi.argmax(-1)
             else:
-                if behavior == BehaviorMode.EXPLORATION:
-                    logits += torch.autograd.Variable(
-                        torch.Tensor(np.random.standard_normal(logits.shape)),
-                        requires_grad=False,
-                    )
                 m = Normal(*logits)
                 pi = torch.cat(logits, dim=-1)
                 actions = m.sample().detach()
@@ -127,7 +83,7 @@ class PPO(Policy):
 
     def compute_actions(self, observation, **kwargs):
         logits = self.actor(observation)
-        if self._discrete:
+        if self._discrete_action:
             m = Categorical(logits=logits)
         else:
             m = Normal(*logits)
