@@ -97,9 +97,9 @@ class SAC(Policy):
 
         if self.custom_config["action_squash"]:
             actions = torch.tanh(actions)
-            log_probs = log_probs - torch.log(
-                1 - actions.pow(2) + self._eps
-            ).sum(-1, keepdim=True)
+            log_probs = log_probs - torch.log(1 - actions.pow(2) + self._eps).sum(
+                -1, keepdim=True
+            )
 
         action_probs = torch.exp(log_probs)
 
