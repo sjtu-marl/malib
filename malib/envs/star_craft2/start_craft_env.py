@@ -43,6 +43,7 @@ class _SC2Env(ParallelEnv):
 
         n_obs = env_info["obs_shape"]
         num_actions = env_info["n_actions"]
+        n_state = env_info["state_shape"]
         self.observation_spaces = dict(
             zip(
                 self.possible_agents,
@@ -61,6 +62,9 @@ class _SC2Env(ParallelEnv):
                 ],
             )
         )
+        self.state_space = spaces.Box(
+            low=-np.inf, high=+np.inf, shape=(n_state,), dtype=np.int8
+        )
 
         self.action_spaces = dict(
             zip(
@@ -68,6 +72,11 @@ class _SC2Env(ParallelEnv):
                 [spaces.Discrete(num_actions) for _ in range(self.n_agents)],
             )
         )
+        self.env_info = env_info
+
+    @property
+    def global_state_space(self):
+        return self.state_space
 
     def seed(self, seed=None):
         self.smac_env = sc_env(**self.kwargs)
@@ -142,6 +151,14 @@ class SC2Env(Environment):
             Episode.ACTION_MASK,
             "next_action_mask",
         ]
+
+    @property
+    def env_info(self):
+        return self._env.env_info
+
+    @property
+    def global_state_space(self):
+        return self._env.global_state_space
 
     def step(self, actions: Dict[AgentID, Any]):
         states, observations, action_masks, rewards, dones, infos = self._env.step(
