@@ -193,6 +193,7 @@ def simultaneous(
         next_rets = env.step(act_dict)
         rets.update(next_rets)
 
+        # FIXME(ming): too ugly an implementation!
         for k, v in rets.items():
             if k == Episode.NEXT_OBS:
                 tmpv = []
@@ -220,6 +221,8 @@ def simultaneous(
             metric.step(aid, behavior_policies[aid], **items)
 
         rets[Episode.CUR_OBS] = rets[Episode.NEXT_OBS]
+        if "next_action_mask" in rets:
+            rets[Episode.ACTION_MASK] = rets["next_action_mask"]
         done = any(
             [
                 any(v) if not isinstance(v, bool) else v

@@ -71,10 +71,10 @@ class QMIXLoss(LossFunc):
         self.loss = []
         state = self._cast_to_tensor(list(batch.values())[0][Episode.CUR_STATE])
         next_state = self._cast_to_tensor(list(batch.values())[0][Episode.NEXT_STATE])
-        rewards = self._cast_to_tensor(list(batch.values())[0][Episode.REWARDS]).view(
+        rewards = self._cast_to_tensor(list(batch.values())[0][Episode.REWARD]).view(
             -1, 1
         )
-        dones = self._cast_to_tensor(list(batch.values())[0][Episode.DONES]).view(-1, 1)
+        dones = self._cast_to_tensor(list(batch.values())[0][Episode.DONE]).view(-1, 1)
 
         # ================= handle for each agent ====================================
         q_vals, next_max_q_vals = [], []
@@ -82,7 +82,7 @@ class QMIXLoss(LossFunc):
             _batch = batch[env_agent_id]
             obs = self._cast_to_tensor(_batch[Episode.CUR_OBS])
             next_obs = self._cast_to_tensor(_batch[Episode.NEXT_OBS])
-            act = torch.LongTensor(_batch[Episode.ACTIONS])
+            act = torch.LongTensor(_batch[Episode.ACTION])
             next_action_mask = self._cast_to_tensor(_batch[Episode.NEXT_ACTION_MASK])
             policy: DQN = self.policy[env_agent_id]
             q = policy.critic(obs).gather(-1, act.unsqueeze(1)).squeeze()

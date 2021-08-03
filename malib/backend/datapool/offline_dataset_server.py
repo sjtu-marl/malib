@@ -42,7 +42,7 @@ def _gen_table_name(env_id, main_id, pid):
 
 
 DATASET_TABLE_NAME_GEN = _gen_table_name
-Batch = namedtuple("Batch", "identity, data")
+Batch = namedtuple("Batch", "identify, data")
 
 
 class EpisodeLock:
@@ -130,6 +130,7 @@ class Episode:
     STATE_ACTION_VALUE = "state_action_value_estimation"
     CUR_STATE = "cur_state"  # current global state
     NEXT_STATE = "next_state"  # next global state
+    NEXT_ACTION_MASK = "next_action_mask"
     LAST_REWARD = "last_reward"
 
     def __init__(
@@ -967,7 +968,7 @@ class OfflineDataset:
             # XXX(ming): inconsistency of data type, sampled from dataset is a dict, while external_res is a list.
             #   it is better to use dict for external_res
             res = [res] + external_res
-        res = Batch(identity=buffer_desc.agent_id, data=res)
+        res = Batch(identify=buffer_desc.identify, data=res)
         return res, info
 
     def shutdown(self):

@@ -320,7 +320,7 @@ class AgentInterface(metaclass=ABCMeta):
                         # push task
                         tasks.append(
                             self._offline_dataset.sample.remote(
-                                buffer_desc[batch.identity]
+                                buffer_desc[batch.identify]
                             )
                         )
                     else:

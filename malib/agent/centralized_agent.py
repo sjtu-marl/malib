@@ -9,6 +9,7 @@ import gym
 from malib.algorithm import get_algorithm_space
 from malib.utils import metrics
 from malib.utils.typing import (
+    BufferDescription,
     Dict,
     Any,
     AgentID,
@@ -16,6 +17,7 @@ from malib.utils.typing import (
     MetricEntry,
     Callable,
     Tuple,
+    Union,
 )
 from malib.agent.ctde_agent import CTDEAgent
 from malib.algorithm.common.policy import Policy
@@ -40,7 +42,9 @@ class CentralizedAgent(CTDEAgent):
         population_size: int = -1,
         algorithm_mapping: Callable = None,
     ):
-        assert hasattr(env_desc, "teams"), "Env description should specify the teams"
+        assert "teams" in env_desc, (
+            "Env description should specify the teams: %s" % env_desc
+        )
 
         CTDEAgent.__init__(
             self,
@@ -63,6 +67,25 @@ class CentralizedAgent(CTDEAgent):
             for k, ids in self._teams.items()
         ]
 
+    def gen_buffer_description(
+        self,
+        agent_policy_mapping: Dict[AgentID, PolicyID],
+        batch_size: int,
+        sample_mode: str,
+    ):
+        """Generate buffer description by team"""
+        res = {}
+        for tid, agents in self._teams.items():
+            res[tid] = BufferDescription(
+                env_id=self._env_desc["config"]["env_id"],
+                agent_id=agents,
+                policy_id=[agent_policy_mapping[aid][0] for aid in agents],
+                batch_size=batch_size,
+                sample_mode=sample_mode,
+                identify=tid,
+            )
+        return res
+
     def optimize(
         self,
         policy_ids: Dict[AgentID, PolicyID],
@@ -79,9 +102,9 @@ class CentralizedAgent(CTDEAgent):
             trainer = self.get_trainer(tid)
             trainer.reset(t_policies, training_config)
             # filter batch with env_agent_ids
-            _batch = {aid: data for aid, data in batch.items()}
-            _batch = trainer.preprocess(_batch, other_policies=t_policies)
-            res.update(metrics.to_metric_entry(trainer.optimize(_batch), prefix=tid))
+            # _batch = {aid: data for aid, data in batch.items()}
+            batch = trainer.preprocess(batch, other_policies=t_policies)
+            res[tid] = metrics.to_metric_entry(trainer.optimize(batch), prefix=tid)
         return res
 
     def add_policy_for_agent(
@@ -98,22 +121,6 @@ class CentralizedAgent(CTDEAgent):
             custom_config = algorithm_conf.get("custom_config", {})
             # group spaces into a new space
             team_agents = self._teams[self._agent_to_team[env_agent_id]]
-            custom_config.update(
-                {
-                    "global_state_space": gym.spaces.Dict(
-                        {
-                            "obs": gym.spaces.Dict(
-                                **{
-                                    aid: self._observation_spaces[aid]
-                                    for aid in team_agents
-                                }
-                            ),
-                            "act": gym.spaces.Discrete(len(team_agents)),
-                        }
-                    )
-                }
-            )
-
             policy = algorithm_space.policy(
                 registered_name=algorithm_conf["name"],
                 observation_space=self._observation_spaces[env_agent_id],

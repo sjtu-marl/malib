@@ -116,7 +116,7 @@ class DefaultSolver:
         return marginals
 
     def solve(self, payoffs_seq):
-        if self._solve_method == "fictitious_play":
+        if self._solve_method == "fictitious_play" and len(payoffs_seq) == 2:
             return self.fictitious_play(payoffs_seq)
         elif self._solve_method == "alpharank":  # when number of players > 2
             return self.alpharank(payoffs_seq)
@@ -336,7 +336,7 @@ class PayoffManager:
             self._payoff_tables[agent][population_mapping] for agent in self.agents
         ]
         # print("Compute NE, payoff matrix", sub_payoff_matrix)
-        if sub_payoff_matrix[0].shape == (1, 1):
+        if sub_payoff_matrix[0].shape[-1] == 1:
             res = {
                 agent: dict(zip(p, [1 / max(1, len(p))] * len(p)))
                 for agent, p in population_mapping.items()

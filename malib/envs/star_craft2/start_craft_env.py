@@ -91,7 +91,11 @@ class _SC2Env(ParallelEnv):
             aid: {"observation": obs_t[i], "action_mask": np.array(action_mask[i])}
             for i, aid in enumerate(self.agents)
         }
-        return {aid: state for aid in obs}, obs
+        return (
+            {aid: state for aid in obs},
+            obs,
+            {aid: _obs["action_mask"] for aid, _obs in obs.items()},
+        )
 
     def step(self, actions):
         act_list = [actions[aid] for aid in self.agents]
@@ -118,7 +122,7 @@ class _SC2Env(ParallelEnv):
         return (
             {aid: next_state for aid in next_obs_dict},
             next_obs_dict,
-            next_action_mask,
+            {aid: _next_obs["action_mask"] for aid, _next_obs in next_obs_dict.items()},
             rew_dict,
             done_dict,
             info_dict,
@@ -169,7 +173,7 @@ class SC2Env(Environment):
             Episode.NEXT_OBS: observations,
             Episode.REWARD: rewards,
             Episode.DONE: dones,
-            Episode.INFO: infos,
+            # Episode.INFO: infos,
             "next_action_mask": action_masks,
         }
 
@@ -177,8 +181,12 @@ class SC2Env(Environment):
         self._env.render()
 
     def reset(self):
-        states, observations = self._env.reset()
-        return {Episode.CUR_STATE: states, Episode.CUR_OBS: observations}
+        states, observations, action_masks = self._env.reset()
+        return {
+            Episode.CUR_STATE: states,
+            Episode.CUR_OBS: observations,
+            Episode.ACTION_MASK: action_masks,
+        }
 
 
 if __name__ == "__main__":

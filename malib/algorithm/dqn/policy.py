@@ -1,15 +1,11 @@
-from functools import reduce
-from operator import mul
-from typing import Dict, Any
-
 import gym
-import numpy as np
 import torch
+import numpy as np
 
+from malib.utils.typing import DataTransferType, BehaviorMode, Dict, Any
 from malib.algorithm.common import misc
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.model import get_model
-from malib.utils.typing import DataTransferType, BehaviorMode, EvaluateResult
 from malib.backend.datapool.offline_dataset_server import Episode
 
 
@@ -32,14 +28,16 @@ class DQN(Policy):
 
         assert isinstance(action_space, gym.spaces.Discrete)
 
-        self._gamma = custom_config.get("gamma", 0.98)
-        self._eps_min = custom_config.get("eps_min", 1e-2)
-        self._eps_max = custom_config.get("eps_max", 1.0)
-        self._eps_decay = custom_config.get("eps_decay", 2000)
-
-        if self._eps_decay <= 1.0:
-            # convert to decay step
-            self._eps_decay = int((self._eps_max - self._eps_min) / self._eps_decay)
+        self._gamma = self.custom_config["gamma"]
+        self._eps_min = self.custom_config[
+            "eps_min"
+        ]  # custom_config.get("eps_min", 1e-2)
+        self._eps_max = self.custom_config[
+            "eps_max"
+        ]  # custom_config.get("eps_max", 1.0)
+        self._eps_decay = self.custom_config[
+            "eps_anneal_time"
+        ]  # custom_config.get("eps_decay", 2000)
 
         self._model = get_model(self.model_config["critic"])(
             observation_space, action_space, self.custom_config.get("use_cuda", False)
@@ -67,9 +65,15 @@ class DQN(Policy):
             misc.hard_update(self.target_critic, self.critic)
 
     def _calc_eps(self):
-        return self._eps_min + (self._eps_max - self._eps_min) * np.exp(
-            -self._step / self._eps_decay
+        # linear decay
+        return max(
+            self._eps_min,
+            self._eps_max
+            - (self._eps_max - self._eps_min) / self._eps_decay * self._step,
         )
+        # return self._eps_min + (self._eps_max - self._eps_min) * np.exp(
+        #     -self._step / self._eps_decay
+        # )
 
     def compute_action(self, observation: DataTransferType, **kwargs):
         """Compute action with one piece of observation. Behavior mode is used to do exploration/exploitation trade-off.

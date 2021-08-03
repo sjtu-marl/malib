@@ -157,6 +157,11 @@ class BufferDescription:
     policy_id: Union[PolicyID, List[AgentID]]
     batch_size: int = 0
     sample_mode: str = ""
+    identify: str = None
+
+    def __post_init__(self):
+        if self.identify is None:
+            self.identify = self.agent_id
 
 
 @dataclass
