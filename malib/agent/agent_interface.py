@@ -305,8 +305,9 @@ class AgentInterface(metaclass=ABCMeta):
         :return: A tuple of agent batches and information.
         """
 
+        res = {}
+        # returned batch.data is a dict of agent batch if it is not None.
         if isinstance(buffer_desc, Dict):
-            res = {}
             # multiple tasks
             tasks = [
                 self._offline_dataset.sample.remote(v) for v in buffer_desc.values()
@@ -323,15 +324,14 @@ class AgentInterface(metaclass=ABCMeta):
                             )
                         )
                     else:
-                        res[batch.identity] = batch.data
+                        res.update(batch.data)
         else:
-            res = None
             while True:
                 batch, info = ray.get(self._offline_dataset.sample.remote(buffer_desc))
                 if batch.data is None:
                     continue
                 else:
-                    res = batch.data
+                    res.update(batch.data)
                     break
         return res, info
 

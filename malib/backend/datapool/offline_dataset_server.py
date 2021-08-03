@@ -944,6 +944,9 @@ class OfflineDataset:
             )
             table = self._tables[table_name]
             res = table.sample(size=buffer_desc.batch_size)
+            # convert to agent dict
+            if not table.is_multi_agent:
+                res = {buffer_desc.agent_id: res}
         except KeyError as e:
             info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
             res = None
