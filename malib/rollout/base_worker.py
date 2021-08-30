@@ -208,7 +208,7 @@ class BaseRolloutWorker:
                 print(e)
                 print(parameter_descs[aid].parameter_desc_dict)
 
-            # check whether there is policy_combinations
+        # check whether there is policy_combinations
         if hasattr(task_desc.content, "policy_combinations"):
             for combination in task_desc.content.policy_combinations:
                 for aid, (pid, description) in combination.items():

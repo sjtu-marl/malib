@@ -1,0 +1,3 @@
+[submodule "malib/envs/smarts/_env"]
+	path = malib/envs/smarts/_env
+	url = https://github.com/huawei-noah/SMARTS.git
