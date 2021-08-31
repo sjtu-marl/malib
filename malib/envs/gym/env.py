@@ -33,7 +33,12 @@ class GymEnv(Environment):
         dones = dones or self.cnt >= self._max_step
         agent = self._default_agent
 
-        super(GymEnv, self).step(actions, rewards=rewards, dones=dones, infos=infos)
+        super(GymEnv, self).step(
+            actions,
+            rewards={agent: rewards},
+            dones={agent: dones},
+            infos={agent: infos},
+        )
 
         return {
             Episode.CUR_OBS: {agent: observations},

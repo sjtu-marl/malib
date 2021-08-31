@@ -285,9 +285,10 @@ class PayoffManager:
             agent: pid for agent, (pid, _) in content.policy_combination.items()
         }
         for agent in self.agents:
-            self._payoff_tables[agent][population_combination] = content.statistics[
-                agent
-            ][MetricType.REWARD]
+            for k, v in content.statistics.items():
+                if "total_reward" in k:
+                    agent = k.split("/")[-1]
+                    self._payoff_tables[agent][population_combination] = v
             self._payoff_tables[agent].set_simulation_done(population_combination)
             # self._done_table[agent][population_combination] = True
 
@@ -296,15 +297,15 @@ class PayoffManager:
             f"\tcurrent payoff table: {self._payoff_tables}\n"
         )
 
-        update_entries = {
-            "Agents-Reward": [
-                (agent, content.statistics[agent][MetricType.REWARD])
-                for agent in self.agents
-            ],
-            "Population": population_combination,
-        }
-        if hasattr(self.logger, "send_obj"):
-            self.logger.send_obj(tag="__Payoff__", obj=update_entries)
+        # update_entries = {
+        #     "Agents-Reward": [
+        #         (agent, content.statistics[agent][MetricType.REWARD])
+        #         for agent in self.agents
+        #     ],
+        #     "Population": population_combination,
+        # }
+        # if hasattr(self.logger, "send_obj"):
+        #     self.logger.send_obj(tag="__Payoff__", obj=update_entries)
 
     @deprecated
     def _add_matchup_result(

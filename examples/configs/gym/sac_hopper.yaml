@@ -31,7 +31,7 @@ rollout:
   fragment_length: 1000
   num_episodes: 1
   episode_seg: 1
-  test_num_episodes: 10
+  # test_num_episodes: 10
   test_episode_seg: 5
   terminate: "any"
   callback: "simultaneous"

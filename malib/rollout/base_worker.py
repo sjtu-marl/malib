@@ -2,6 +2,7 @@
 Users can implement and register their own rollout worker by inheriting from this class.
 """
 
+from collections import defaultdict
 import os
 import copy
 import time
@@ -305,52 +306,59 @@ class BaseRolloutWorker:
         merged_statics = {}
         epoch = 0
         self.set_state(task_desc)
+        start_time = time.time()
+        total_num_frames = 0
 
         while not stopper(merged_statics, global_step=epoch):
-            with Log.stat_feedback(
-                log=settings.STATISTIC_FEEDBACK,
-                logger=self.logger,
-                worker_idx=None,
-                global_step=epoch,
-                group="testing" if self._test else "rollout",
-            ) as (
-                statistic_seq,
-                processed_statics,
-            ):
-                # async update parameter
-                start = time.time()
-                status = self.update_state(task_desc, waiting=False)
+            status = self.update_state(task_desc, waiting=False)
+            if status == Status.LOCKED:
+                break
 
-                if status == Status.LOCKED:
-                    break
+            trainable_behavior_policies = {
+                aid: pid
+                for aid, (
+                    pid,
+                    _,
+                ) in task_desc.content.agent_involve_info.trainable_pairs.items()
+            }
+            # get behavior policies of other fixed agent
+            raw_statistics, num_frames = self.sample(
+                callback=task_desc.content.callback,
+                num_episodes=task_desc.content.num_episodes,
+                policy_combinations=[trainable_behavior_policies],
+                explore=False if self._test else True,
+                fragment_length=task_desc.content.fragment_length,
+                role="rollout",
+                policy_distribution=task_desc.content.policy_distribution,
+            )
 
-                trainable_behavior_policies = {
-                    aid: pid
-                    for aid, (
-                        pid,
-                        _,
-                    ) in task_desc.content.agent_involve_info.trainable_pairs.items()
-                }
-                # get behavior policies of other fixed agent
-                res, num_frames = self.sample(
-                    callback=task_desc.content.callback,
-                    num_episodes=task_desc.content.num_episodes,
-                    policy_combinations=[trainable_behavior_policies],
-                    explore=False if self._test else True,
-                    fragment_length=task_desc.content.fragment_length,
-                    role="rollout",
-                    policy_distribution=task_desc.content.policy_distribution,
-                )
-                end = time.time()
-                print(
-                    f"epoch {epoch}, "
-                    f"{task_desc.content.agent_involve_info.training_handler} "
-                    f"from worker={self._worker_index} time consump={end - start} seconds"
-                )
-                statistic_seq.extend(res)
+            # print(
+            #     f"epoch {epoch}, "
+            #     f"{task_desc.content.agent_involve_info.training_handler} "
+            #     f"from worker={self._worker_index} time consump={end - start} seconds"
+            # )
 
-            merged_statics = processed_statics[0]
+            # merge statis
+            res = defaultdict(list)
+            for statistics in raw_statistics:
+                for k, v in statistics.items():
+                    res[k].extend(v)
+            res = dict(map(lambda kv: (kv[0], sum(kv[1]) / len(kv[1])), res.items()))
             self.after_rollout(task_desc.content.agent_involve_info.trainable_pairs)
+            total_num_frames += num_frames
+            time_consump = time.time() - start_time
+
+            # log to tensorboard
+            print(f"(evaluation / {epoch})", res)
+            for k, v in res.items():
+                self.logger.send_scalar(
+                    tag=f"evaluation/{k}", content=v, global_step=epoch
+                )
+            self.logger.send_scalar(
+                tag=f"rollout/TFPS",
+                content=total_num_frames / time_consump,
+                global_step=epoch,
+            )
             epoch += 1
 
         if self._save:
@@ -359,7 +367,7 @@ class BaseRolloutWorker:
         rollout_feedback = RolloutFeedback(
             worker_idx=self._worker_index,
             agent_involve_info=task_desc.content.agent_involve_info,
-            statistics=merged_statics,
+            statistics=res,
         )
         self.callback(status, rollout_feedback, role="rollout", relieve=True)
 
@@ -407,8 +415,8 @@ class BaseRolloutWorker:
         combinations = task_desc.content.policy_combinations
         callback = task_desc.content.callback
         agent_involve_info = task_desc.content.agent_involve_info
-        print(f"simulation for {task_desc.content.num_episodes}")
-        statis_list, _ = self.sample(
+        # print(f"simulation for {task_desc.content.num_episodes}")
+        raw_statistics, num_frames = self.sample(
             callback=callback,
             num_episodes=task_desc.content.num_episodes,
             fragment_length=task_desc.content.max_episode_length,
@@ -418,19 +426,15 @@ class BaseRolloutWorker:
             explore=False,
             role="simulation",
         )
-        for statistics, combination in zip(statis_list, combinations):
-            with Log.stat_feedback(
-                log=False, logger=self.logger, group="simulation"
-            ) as (
-                statistic_seq,
-                merged_statistics,
-            ):
-                statistic_seq.append(statistics)
-            merged_statistics = merged_statistics[0]
+        for statistics, combination in zip(raw_statistics, combinations):
+            # merge statistics
+            statistics = dict(
+                map(lambda kv: (kv[0], sum(kv[1]) / len(kv[1])), statistics.items())
+            )
             rollout_feedback = RolloutFeedback(
                 worker_idx=self._worker_index,
                 agent_involve_info=agent_involve_info,
-                statistics=merged_statistics,
+                statistics=statistics,
                 policy_combination=combination,
             )
             task_req = TaskRequest(
@@ -480,7 +484,7 @@ class BaseRolloutWorker:
         threaded: bool = True,
         policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
         episodes: Dict[AgentID, Episode] = None,
-    ) -> Tuple[Sequence[Dict], int]:
+    ) -> Tuple[Sequence[Dict[str, List]], int]:
         """Implement your sample logic here, return the collected data and statistics"""
 
         raise NotImplementedError

@@ -15,6 +15,8 @@ In your custom rollout function, you can decide extra data
 you wanna save by specifying extra columns when Episode initialization.
 """
 
+from dataclasses import dataclass
+from malib.envs.env import EpisodeInfo
 from typing import Callable
 import uuid
 
@@ -35,6 +37,7 @@ from malib.utils.typing import (
     Union,
     Any,
     Tuple,
+    List,
 )
 from malib.utils.preprocessor import get_preprocessor
 from malib.envs import Environment
@@ -138,21 +141,40 @@ def sequential(
     return evaluated_results, cnt
 
 
+def _parse_episode_infos(episode_infos: List[EpisodeInfo]) -> Dict[str, List]:
+    res = {}
+    for episode_info in episode_infos:
+        for k, v in episode_info.step_cnt.items():
+            k = f"step_cnt/{k}"
+            if res.get(k) is None:
+                res[k] = []
+            res[k].append(v)
+        for k, v in episode_info.total_rewards.items():
+            k = f"total_reward/{k}"
+            if res.get(k) is None:
+                res[k] = []
+            res[k].append(v)
+        # extra_info = episode_info.extra_info
+        # if len(extra_info) > 0:
+        #     for k, v in extra_info.items():
+        #         res["custom_metric"]
+    return res
+
+
 def simultaneous(
-    env: type,
+    env: VectorEnv,
     num_envs: int,
     agent_interfaces: Dict[AgentID, AgentInterface],
     fragment_length: int,
     max_step: int,
     behavior_policies: Dict[AgentID, PolicyID],
     agent_episodes: Dict[AgentID, Episode],
-    metric: Metric,
     send_interval: int = 50,
     dataset_server: ray.ObjectRef = None,
 ):
     """Rollout in simultaneous mode, support environment vectorization.
 
-    :param type env: The environment instance.
+    :param VectorEnv env: The environment instance.
     :param int num_envs: The number of parallel environments.
     :param Dict[Agent,AgentInterface] agent_interfaces: The dict of agent interfaces for interacting with environment.
     :param int fragment_length: The maximum step limitation of environment rollout.
@@ -171,18 +193,10 @@ def simultaneous(
         env_reset_kwargs={"max_step": max_step},
     )
 
-    # metric.reset(mode="vector")
-    episode_length = []
-    episode_rewards = {aid: [] for aid in agent_episodes}
-
-    cnt = 0
-
     observations = {
         aid: agent_interfaces[aid].transform_observation(obs)
         for aid, obs in rets[Episode.CUR_OBS].items()
     }
-
-    metric.reset(mode="vector")
 
     while not env.is_terminated():
         actions, action_dists, action_masks = {}, {}, {}
@@ -198,13 +212,6 @@ def simultaneous(
                 action_mask=action_masks[aid],
             )
         rets = env.step(actions)
-
-        if "total_rewards" in rets:
-            for e in rets["total_rewards"]:
-                for aid, v in e.items():
-                    episode_rewards[aid].append(v)
-        if "cnt" in rets:
-            episode_length.extend(rets["cnt"])
 
         next_observations = {
             aid: agent_interfaces[aid].transform_observation(obs)
@@ -224,14 +231,12 @@ def simultaneous(
                     }
                 )
         observations = next_observations
-        cnt += 1
 
     if dataset_server:
         dataset_server.save.remote(agent_episodes, wait_for_ready=False)
-    transition_size = cnt * len(agent_episodes) * getattr(env, "num_envs", 1)
 
-    evaluated_results = metric.parse(agent_filter=tuple(agent_episodes.keys()))
-    return evaluated_results, transition_size
+    results = _parse_episode_infos(env.epsiode_infos)
+    return results, env.batched_step_cnt * len(env.possible_agents)
 
 
 def get_func(name: Union[str, Callable]):
@@ -293,13 +298,12 @@ class Stepping:
     def run(
         self,
         agent_interfaces: Dict[AgentID, AgentInterface],
-        metric_type: Union[str, type],
         fragment_length: int,
         desc: Dict[str, Any],
         callback: type,
         role: str,
         episode_buffers: Dict[AgentID, Episode] = None,
-    ) -> Tuple[Dict[str, MetricEntry], int]:
+    ) -> Tuple[Dict[str, List], int]:
         """Environment stepping, rollout/simulate with environment vectorization if it is feasible.
 
         :param Dict[AgentID,AgentInterface] agent_interface: A dict of agent interfaces.
@@ -334,7 +338,7 @@ class Stepping:
                 agent: episode_creator(
                     self.env_desc["config"]["env_id"],
                     desc["behavior_policies"][agent],
-                    capacity=self._rollout_config["fragment_length"],
+                    capacity=fragment_length,
                     other_columns=self.env.extra_returns,
                 )
                 for agent in desc["behavior_policies"]
@@ -342,7 +346,6 @@ class Stepping:
         else:
             episode_buffers = None
 
-        metric = get_metric(metric_type)(self.env.possible_agents)
         callback = get_func(callback) if callback else self.callback
 
         evaluated_results, num_frames = callback(
@@ -353,7 +356,6 @@ class Stepping:
             max_step,
             behavior_policies,
             episode_buffers,
-            metric,
             dataset_server=self._dataset_server if role == "rollout" else None,
         )
 

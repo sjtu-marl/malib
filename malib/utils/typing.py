@@ -238,14 +238,15 @@ class RolloutFeedback:
     agent_involve_info: AgentInvolveInfo
     """agent involve info describes the ..."""
 
-    statistics: Dict[AgentID, Dict[str, Any]]
+    statistics: Dict[str, Any]
     policy_combination: Dict[PolicyID, Tuple[PolicyID, PolicyConfig]] = None
 
     def __post_init__(self):
-        for res in self.statistics.values():
-            for k, v in res.items():
-                if isinstance(v, MetricEntry):
-                    res[k] = v.value
+        pass
+        # for res in self.statistics.values():
+        # for k, v in res.items():
+        #     if isinstance(v, MetricEntry):
+        #         res[k] = v.value
 
 
 @deprecated

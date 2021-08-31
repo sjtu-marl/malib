@@ -79,7 +79,7 @@ class Environment:
         self._total_rewards = dict.fromkeys(self._trainable_agents, 0.0)
         self._cnt = 0
         self.episode_info = EpisodeInfo(
-            total_rewards=dict.fromkeys(self.possible_agents),
+            total_rewards=dict.fromkeys(self.possible_agents, 0.0),
             step_cnt=dict.fromkeys(self.possible_agents, 0),
         )
         if kwargs.get("extra_epsiode_info_keys") is not None:

@@ -118,7 +118,7 @@ class RolloutWorker(BaseRolloutWorker):
         threaded: bool = True,
         policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
         episode_buffers: Dict[AgentID, Episode] = None,
-    ) -> Tuple[Sequence[Dict], Sequence[Any]]:
+    ) -> Tuple[Sequence[Dict[str, List]], int]:
         """Sample function. Support rollout and simulation. Default in threaded mode."""
 
         if explore:
@@ -139,8 +139,6 @@ class RolloutWorker(BaseRolloutWorker):
             y = num_episodes - seg_num * x
             episode_segs = [x] * seg_num + ([y] if y else [])
             assert len(policy_combinations) == 1
-            # FIXME(ming): here the policy combinations[0] is actually produced from the trainiable pairs.
-            #   so we need to init behavior policies for other fixed agents
             assert policy_distribution is not None
             tasks = [
                 {
@@ -158,7 +156,6 @@ class RolloutWorker(BaseRolloutWorker):
             rets = self.actor_pool.map(
                 lambda a, task: a.run.remote(
                     agent_interfaces=self._agent_interfaces,
-                    metric_type=self._metric_type,
                     fragment_length=fragment_length,
                     desc=task,
                     callback=callback,
@@ -174,7 +171,6 @@ class RolloutWorker(BaseRolloutWorker):
             rets = [
                 step_func.run(
                     self._agent_interfaces,
-                    self._metric_type,
                     fragment_length=fragment_length,
                     desc=task,
                     callback=callback,

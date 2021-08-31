@@ -80,6 +80,14 @@ class VectorEnv:
         return self._envs[0].trainable_agents
 
     @property
+    def batched_step_cnt(self) -> int:
+        return self._step_cnt
+
+    @property
+    def epsiode_infos(self) -> List[EpisodeInfo]:
+        return self._episode_infos
+
+    @property
     def num_envs(self) -> int:
         """The total number of environments"""
 
@@ -95,7 +103,7 @@ class VectorEnv:
     def extra_returns(self) -> List[str]:
         """Return extra columns required by this environment"""
 
-        return self.envs[0].extra_returns
+        return self._envs[0].extra_returns
 
     @property
     def env_creator(self):
@@ -148,6 +156,7 @@ class VectorEnv:
     ) -> Dict:
         self._limits = limits or self.num_envs
         self._fragment_length = fragment_length or self._fragment_length
+        self._step_cnt = 0
         assert self._fragment_length is not None
 
         self._episode_infos: List[EpisodeInfo] = []
@@ -187,7 +196,7 @@ class VectorEnv:
         return data
 
     def is_terminated(self):
-        self._step_cnt >= self._fragment_length
+        return self._step_cnt >= self._fragment_length
 
     def close(self):
         for env in self._envs:
