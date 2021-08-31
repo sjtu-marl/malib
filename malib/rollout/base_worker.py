@@ -45,7 +45,6 @@ class BaseRolloutWorker:
         worker_index: Any,
         env_desc: Dict[str, Any],
         metric_type: str,
-        test: bool = False,
         remote: bool = False,
         save: bool = False,
         **kwargs,
@@ -62,7 +61,6 @@ class BaseRolloutWorker:
 
         self._worker_index = worker_index
         self._env_description = env_desc
-        self._test = test
         self._save = save
         self.global_step = 0
 
@@ -101,9 +99,6 @@ class BaseRolloutWorker:
 
     def get_status(self):
         return self._status
-
-    def get_test(self):
-        return self._test
 
     def set_status(self, status):
         if status == self._status:
@@ -160,7 +155,7 @@ class BaseRolloutWorker:
                         settings.PARAMETER_SERVER_ACTOR
                     )
 
-                if self._offline_dataset is None and not self._test:
+                if self._offline_dataset is None:
                     self._offline_dataset = ray.get_actor(
                         settings.OFFLINE_DATASET_ACTOR
                     )
@@ -326,17 +321,11 @@ class BaseRolloutWorker:
                 callback=task_desc.content.callback,
                 num_episodes=task_desc.content.num_episodes,
                 policy_combinations=[trainable_behavior_policies],
-                explore=False if self._test else True,
+                explore=True,
                 fragment_length=task_desc.content.fragment_length,
                 role="rollout",
                 policy_distribution=task_desc.content.policy_distribution,
             )
-
-            # print(
-            #     f"epoch {epoch}, "
-            #     f"{task_desc.content.agent_involve_info.training_handler} "
-            #     f"from worker={self._worker_index} time consump={end - start} seconds"
-            # )
 
             # merge statis
             res = defaultdict(list)
@@ -355,7 +344,7 @@ class BaseRolloutWorker:
                     tag=f"evaluation/{k}", content=v, global_step=epoch
                 )
             self.logger.send_scalar(
-                tag=f"rollout/TFPS",
+                tag="performance/RFPS",
                 content=total_num_frames / time_consump,
                 global_step=epoch,
             )

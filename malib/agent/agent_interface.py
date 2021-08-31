@@ -12,6 +12,7 @@ from typing import Dict, Any, Tuple, Callable, Union, Sequence
 
 import gym
 import ray
+from six import b
 
 from malib import settings
 from malib.utils.stoppers import get_stopper
@@ -306,6 +307,7 @@ class AgentInterface(metaclass=ABCMeta):
         """
 
         res = {}
+        size = 0
         # returned batch.data is a dict of agent batch if it is not None.
         if isinstance(buffer_desc, Dict):
             # multiple tasks
@@ -324,6 +326,7 @@ class AgentInterface(metaclass=ABCMeta):
                             )
                         )
                     else:
+                        size += buffer_desc[batch.identify].batch_size
                         res.update(batch.data)
         else:
             while True:
@@ -331,9 +334,10 @@ class AgentInterface(metaclass=ABCMeta):
                 if batch.data is None:
                     continue
                 else:
+                    size += buffer_desc.batch_size
                     res.update(batch.data)
                     break
-        return res, info
+        return res, size
 
     def gen_buffer_description(
         self,
@@ -408,48 +412,61 @@ class AgentInterface(metaclass=ABCMeta):
             self.pull(env_aid, pid)
 
         old_policy_id_mapping = copy.deepcopy(policy_id_mapping)
-
+        start_time = time.time()
+        total_size = 0
         while not stopper(statistics, global_step=epoch) and not stopper.all():
             # add timer: key to identify object, tag to log
             # FIXME(ming): key for logger has been discarded!
-            with Log.timer(
-                log=True,
-                logger=self.logger,
-                tag=f"time/TrainingInterface_{self._id}/data_request",
-                global_step=epoch,
-            ):
-                start = time.time()
-                batch, size = self.request_data(buffer_desc)
+            # with Log.timer(
+            #     log=True,
+            #     logger=self.logger,
+            #     tag=f"time/TrainingInterface_{self._id}/data_request",
+            #     global_step=epoch,
+            # ):
+            #     start = time.time()
 
-            with Log.stat_feedback(
-                log=settings.STATISTIC_FEEDBACK,
-                logger=self.logger,
-                worker_idx=self._id,
+            batch, size = self.request_data(buffer_desc)
+            time_consump = time.time() - start_time
+            total_size += size
+
+            self.logger.send_scalar(
+                tag="performance/TFPS",
+                content=total_size / time_consump,
                 global_step=epoch,
-                group="training",
-            ) as (statistic_seq, processed_statistics):
-                # a dict of dict of metric entry {agent: {item: MetricEntry}}
-                statistics = self.optimize(policy_id_mapping, batch, training_config)
-                statistic_seq.append(statistics)
-                # NOTE(ming): if it meets the update interval, parameters will be pushed to remote parameter server
-                # the returns `status` code will determine whether we should stop the training or continue it.
-                if (epoch + 1) % training_config["update_interval"] == 0:
-                    for env_aid in self._group:
-                        pid = policy_id_mapping[env_aid]
-                        status = self.push(env_aid, pid)
-                        if status.locked:
-                            # terminate sub task tagged with env_id
-                            stopper.set_terminate(env_aid)
-                            # and remove buffer request description
-                            if isinstance(buffer_desc, Dict):
-                                buffer_desc.pop(env_aid)
-                            # also training poilcy id mapping
-                            policy_id_mapping.pop(env_aid)
-                        else:
-                            self.pull(env_aid, pid)
-                epoch += 1
-                self._global_step += 1
-        print(f"**** training for mapping: {old_policy_id_mapping} finished")
+            )
+
+            # with Log.stat_feedback(
+            #     log=settings.STATISTIC_FEEDBACK,
+            #     logger=self.logger,
+            #     worker_idx=self._id,
+            #     global_step=epoch,
+            #     group="training",
+            # ) as (statistic_seq, processed_statistics):
+            # a dict of dict of metric entry {agent: {item: MetricEntry}}
+            statistics = self.optimize(policy_id_mapping, batch, training_config)
+            for k, v in statistics.items():
+                self.logger.send_scalar(
+                    tag=f"training/{k}", content=v, global_step=epoch
+                )
+            # statistic_seq.append(statistics)
+            # NOTE(ming): if it meets the update interval, parameters will be pushed to remote parameter server
+            # the returns `status` code will determine whether we should stop the training or continue it.
+            if (epoch + 1) % training_config["update_interval"] == 0:
+                for env_aid in self._group:
+                    pid = policy_id_mapping[env_aid]
+                    status = self.push(env_aid, pid)
+                    if status.locked:
+                        # terminate sub task tagged with env_id
+                        stopper.set_terminate(env_aid)
+                        # and remove buffer request description
+                        if isinstance(buffer_desc, Dict):
+                            buffer_desc.pop(env_aid)
+                        # also training poilcy id mapping
+                        policy_id_mapping.pop(env_aid)
+                    else:
+                        self.pull(env_aid, pid)
+            epoch += 1
+            self._global_step += 1
         if status is not None and not status.locked:
             for aid, pid in old_policy_id_mapping.items():
                 parameter_desc = copy.copy(self._parameter_desc[pid])
@@ -637,7 +654,7 @@ class AgentInterface(metaclass=ABCMeta):
         policy_ids: Dict[AgentID, PolicyID],
         batch: Dict[AgentID, Any],
         training_config: Dict[str, Any],
-    ) -> Dict[AgentID, Dict[str, MetricEntry]]:
+    ) -> Dict[str, float]:
         """Execute policy optimization.
 
         :param Dict[AgentID,PolicyID] policy_ids: A dict of policies linked to agents registered in `group` required to be optimized

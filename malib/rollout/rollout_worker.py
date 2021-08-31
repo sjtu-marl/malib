@@ -1,25 +1,17 @@
 """
 Implementation of async rollout worker.
 """
-from collections import defaultdict
-from malib.algorithm.common.policy import Policy
 
-import ray
 from ray.util import ActorPool
 
-import uuid
-from malib import settings
-from malib import rollout
-from malib.backend.datapool.offline_dataset_server import Episode, MultiAgentEpisode
+from malib.backend.datapool.offline_dataset_server import Episode
 from malib.envs.agent_interface import AgentInterface
 from malib.rollout import rollout_func
 from malib.rollout.base_worker import BaseRolloutWorker
-from malib.utils.logger import Log, get_logger
 from malib.utils.typing import (
     AgentID,
     Any,
     Dict,
-    BehaviorMode,
     PolicyID,
     Tuple,
     Sequence,
@@ -35,7 +27,6 @@ class RolloutWorker(BaseRolloutWorker):
         worker_index: Any,
         env_desc: Dict[str, Any],
         metric_type: str,
-        test: bool = False,
         remote: bool = False,
         save: bool = False,
         **kwargs,
@@ -50,10 +41,11 @@ class RolloutWorker(BaseRolloutWorker):
         """
 
         BaseRolloutWorker.__init__(
-            self, worker_index, env_desc, metric_type, test, remote, save, **kwargs
+            self, worker_index, env_desc, metric_type, remote, save, **kwargs
         )
 
         self._parallel_num = kwargs.get("parallel_num", 1)
+        self._evaluation_worker_num = kwargs.get("evaluation_worker_num", 1)
         self._resources = kwargs.get(
             "resources",
             {
@@ -76,6 +68,12 @@ class RolloutWorker(BaseRolloutWorker):
                 Stepping.remote(kwargs["exp_cfg"], env_desc, self._offline_dataset)
                 for _ in range(self._parallel_num)
             ]
+            self.actors.extend(
+                [
+                    Stepping.remote(kwargs["exp_cfg"], env_desc, None)
+                    for _ in range(self._evaluation_worker_num)
+                ]
+            )
             self.actor_pool = ActorPool(self.actors)
 
     def check_actor_pool_available(self):
@@ -97,6 +95,14 @@ class RolloutWorker(BaseRolloutWorker):
                 )
                 for _ in range(self._parallel_num)
             ]
+            self.actors.extend(
+                [
+                    Stepping.remote(
+                        self._kwargs["exp_cfg"], self._env_description, None
+                    )
+                    for _ in self._evaluation_worker_num
+                ]
+            )
             self.actor_pool = ActorPool(self.actors)
 
     def ready_for_sample(self, policy_distribution=None):
@@ -121,16 +127,13 @@ class RolloutWorker(BaseRolloutWorker):
     ) -> Tuple[Sequence[Dict[str, List]], int]:
         """Sample function. Support rollout and simulation. Default in threaded mode."""
 
-        if explore:
-            for interface in self._agent_interfaces.values():
-                interface.set_behavior_mode(BehaviorMode.EXPLORATION)
-        else:
-            for interface in self._agent_interfaces.values():
-                interface.set_behavior_mode(BehaviorMode.EXPLOITATION)
-
         if role == "simulation":
             tasks = [
-                {"num_episodes": num_episodes, "behavior_policies": comb}
+                {
+                    "num_episodes": num_episodes,
+                    "behavior_policies": comb,
+                    "flag": "simulation",
+                }
                 for comb in policy_combinations
             ]
         elif role == "rollout":
@@ -142,12 +145,25 @@ class RolloutWorker(BaseRolloutWorker):
             assert policy_distribution is not None
             tasks = [
                 {
+                    "flag": "rollout",
                     "num_episodes": episode,
                     "behavior_policies": policy_combinations[0],
                     "policy_distribution": policy_distribution,
                 }
                 for episode in episode_segs
             ]
+            # add tasks for evaluation
+            tasks.extend(
+                [
+                    {
+                        "flag": "evaluation",
+                        "num_episodes": max(1 // self._evaluation_worker_num, 1),
+                        "behavior_policies": policy_combinations[0],
+                        "policy_distribution": policy_distribution,
+                    }
+                    for _ in range(self._evaluation_worker_num)
+                ]
+            )
         else:
             raise TypeError(f"Unkown role: {role}")
 
@@ -159,7 +175,6 @@ class RolloutWorker(BaseRolloutWorker):
                     fragment_length=fragment_length,
                     desc=task,
                     callback=callback,
-                    role=role,
                     episode_buffers=episode_buffers,
                 ),
                 tasks,
@@ -174,7 +189,6 @@ class RolloutWorker(BaseRolloutWorker):
                     fragment_length=fragment_length,
                     desc=task,
                     callback=callback,
-                    role=role,
                     episode_buffers=episode_buffers,
                 )
                 for task in tasks
@@ -182,8 +196,11 @@ class RolloutWorker(BaseRolloutWorker):
 
         num_frames, stats_list = 0, []
         for ret in rets:
-            stats_list.append(ret[0])
-            num_frames += ret[1]
+            # we save only evaluation ret[0] from evaluation workers
+            if ret[0] in ["evaluation", "simulation"]:
+                stats_list.append(ret[1])
+            if ret[0] == "rollout":
+                num_frames += ret[2]
 
         return stats_list, num_frames
 

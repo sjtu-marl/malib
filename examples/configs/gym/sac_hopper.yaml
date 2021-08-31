@@ -8,7 +8,7 @@ training:
     population_size: -1
   config:
     # control the frequency of remote parameter update
-    update_interval: 1
+    update_interval: 1000
     saving_interval: 10
     batch_size: 256
     optimizer: "Adam"
@@ -31,7 +31,7 @@ rollout:
   fragment_length: 1000
   num_episodes: 1
   episode_seg: 1
-  # test_num_episodes: 10
+  test_num_episodes: 0
   test_episode_seg: 5
   terminate: "any"
   callback: "simultaneous"
@@ -71,5 +71,5 @@ global_evaluator:
   name: "generic"
 
 dataset_config:
-  episode_capacity: 100000
-  learning_start: 2000
+  episode_capacity: 1000000
+  learning_start: 10000

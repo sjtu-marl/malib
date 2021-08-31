@@ -69,7 +69,7 @@ class IndependentAgent(AgentInterface):
         policy_ids: Dict[AgentID, PolicyID],
         batch: Dict[AgentID, Any],
         training_config: Dict[str, Any],
-    ) -> Dict[AgentID, Dict[str, MetricEntry]]:
+    ) -> Dict[str, float]:
         """Execute optimization for a group of policies with given batches.
 
         :param policy_ids: Dict[AgentID, PolicyID], Mapping from environment agent ids to policy ids. The agent ids in
@@ -86,9 +86,15 @@ class IndependentAgent(AgentInterface):
             if env_aid not in batch:
                 continue
             trainer.reset(self.policies[pid], training_config)
-            res[env_aid] = metrics.to_metric_entry(
-                trainer.optimize(batch[env_aid]), prefix=pid
+            training_info = trainer.optimize(batch[env_aid])
+            res.update(
+                dict(
+                    map(lambda kv: (f"{env_aid}/{kv[0]}", kv[1]), training_info.items())
+                )
             )
+            # res[env_aid] = metrics.to_metric_entry(
+            # trainer.optimize(batch[env_aid]), prefix=pid
+            # )
         return res
 
     def add_policy_for_agent(

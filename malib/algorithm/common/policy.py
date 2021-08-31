@@ -72,7 +72,7 @@ class Policy(metaclass=ABCMeta):
         self.action_space = action_space
 
         self.custom_config = {
-            "gamma": 0.98,
+            "gamma": 0.99,
             "use_cuda": False,
             "use_dueling": False,
             "preprocess_mode": Mode.FLATTEN,

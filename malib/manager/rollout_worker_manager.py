@@ -70,7 +70,6 @@ class RolloutWorkerManager:
                 worker_index=worker_idx,
                 env_desc=self._env_desc,
                 metric_type=self._metric_type,
-                test=False,
                 remote=True,
                 save=rollout_config.get("save_model", False),
                 # parallel_num: the size of actor pool for rollout and simulation
@@ -125,8 +124,7 @@ class RolloutWorkerManager:
         while status == Status.FAILED:
             for idx, t in self._workers.items():
                 wstatus = ray.get(t.get_status.remote())
-                wtest = ray.get(t.get_test.remote())
-                if wstatus == Status.IDLE and wtest == test:
+                if wstatus == Status.IDLE:
                     status = ray.get(t.set_status.remote(Status.LOCKED))
                 if status == Status.SUCCESS:
                     worker_idx = idx

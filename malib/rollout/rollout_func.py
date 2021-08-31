@@ -38,6 +38,7 @@ from malib.utils.typing import (
     Any,
     Tuple,
     List,
+    BehaviorMode,
 )
 from malib.utils.preprocessor import get_preprocessor
 from malib.envs import Environment
@@ -49,6 +50,26 @@ from malib.backend.datapool.offline_dataset_server import (
 )
 
 
+def _parse_episode_infos(episode_infos: List[EpisodeInfo]) -> Dict[str, List]:
+    res = {}
+    for episode_info in episode_infos:
+        for k, v in episode_info.step_cnt.items():
+            k = f"step_cnt/{k}"
+            if res.get(k) is None:
+                res[k] = []
+            res[k].append(v)
+        for k, v in episode_info.total_rewards.items():
+            k = f"total_reward/{k}"
+            if res.get(k) is None:
+                res[k] = []
+            res[k].append(v)
+        # extra_info = episode_info.extra_info
+        # if len(extra_info) > 0:
+        #     for k, v in extra_info.items():
+        #         res["custom_metric"]
+    return res
+
+
 def sequential(
     env: Environment,
     num_episodes: int,
@@ -56,7 +77,6 @@ def sequential(
     fragment_length: int,
     behavior_policies: Dict[AgentID, PolicyID],
     agent_episodes: Dict[AgentID, Episode],
-    metric: Metric,
     send_interval: int = 50,
     dataset_server: ray.ObjectRef = None,
 ):
@@ -70,7 +90,6 @@ def sequential(
     assert fragment_length > 0, fragment_length
     for ith in range(num_episodes):
         env.reset()
-        metric.reset()
         for aid in env.agent_iter(max_iter=fragment_length):
             observation, reward, done, info = env.last()
 
@@ -139,26 +158,6 @@ def sequential(
     # aggregated evaluated results groupped in agent wise
     evaluated_results = metric.merge_parsed(evaluated_results)
     return evaluated_results, cnt
-
-
-def _parse_episode_infos(episode_infos: List[EpisodeInfo]) -> Dict[str, List]:
-    res = {}
-    for episode_info in episode_infos:
-        for k, v in episode_info.step_cnt.items():
-            k = f"step_cnt/{k}"
-            if res.get(k) is None:
-                res[k] = []
-            res[k].append(v)
-        for k, v in episode_info.total_rewards.items():
-            k = f"total_reward/{k}"
-            if res.get(k) is None:
-                res[k] = []
-            res[k].append(v)
-        # extra_info = episode_info.extra_info
-        # if len(extra_info) > 0:
-        #     for k, v in extra_info.items():
-        #         res["custom_metric"]
-    return res
 
 
 def simultaneous(
@@ -233,7 +232,7 @@ def simultaneous(
         observations = next_observations
 
     if dataset_server:
-        dataset_server.save.remote(agent_episodes, wait_for_ready=False)
+        dataset_server.save.remote(agent_episodes, wait_for_ready=True)
 
     results = _parse_episode_infos(env.epsiode_infos)
     return results, env.batched_step_cnt * len(env.possible_agents)
@@ -301,9 +300,8 @@ class Stepping:
         fragment_length: int,
         desc: Dict[str, Any],
         callback: type,
-        role: str,
         episode_buffers: Dict[AgentID, Episode] = None,
-    ) -> Tuple[Dict[str, List], int]:
+    ) -> Tuple[str, Dict[str, List], int]:
         """Environment stepping, rollout/simulate with environment vectorization if it is feasible.
 
         :param Dict[AgentID,AgentInterface] agent_interface: A dict of agent interfaces.
@@ -315,7 +313,15 @@ class Stepping:
         :returns: A tuple of a dict of MetricEntry and the caculation of total frames.
         """
 
+        task_type = desc["flag"]
         behavior_policies = {}
+        if task_type == "rollout":
+            for interface in agent_interfaces.values():
+                interface.set_behavior_mode(BehaviorMode.EXPLORATION)
+        else:
+            for interface in agent_interfaces.values():
+                interface.set_behavior_mode(BehaviorMode.EXPLOITATION)
+
         # desc: policy_distribution, behavior_policies, num_episodes
         policy_distribution = desc.get("policy_distribution")
         for agent, interface in agent_interfaces.items():
@@ -332,7 +338,7 @@ class Stepping:
 
         self.add_envs(num_episodes)
 
-        if role == "rollout":
+        if task_type == "rollout":
             episode_creator = Episode if not self._is_sequential else SequentialEpisode
             episode_buffers = episode_buffers or {
                 agent: episode_creator(
@@ -356,10 +362,9 @@ class Stepping:
             max_step,
             behavior_policies,
             episode_buffers,
-            dataset_server=self._dataset_server if role == "rollout" else None,
+            dataset_server=self._dataset_server if task_type == "rollout" else None,
         )
-
-        return evaluated_results, num_frames
+        return task_type, evaluated_results, num_frames
 
     def add_envs(self, maximum: int) -> int:
         """Create environments, if env is an instance of VectorEnv, add these new environment instances into it,

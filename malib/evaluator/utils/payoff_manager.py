@@ -284,12 +284,12 @@ class PayoffManager:
         population_combination = {
             agent: pid for agent, (pid, _) in content.policy_combination.items()
         }
-        for agent in self.agents:
-            for k, v in content.statistics.items():
-                if "total_reward" in k:
-                    agent = k.split("/")[-1]
-                    self._payoff_tables[agent][population_combination] = v
-            self._payoff_tables[agent].set_simulation_done(population_combination)
+        # for agent in self.agents:
+        for k, v in content.statistics.items():
+            if "total_reward" in k:
+                agent = k.split("/")[-1]
+                self._payoff_tables[agent][population_combination] = v
+                self._payoff_tables[agent].set_simulation_done(population_combination)
             # self._done_table[agent][population_combination] = True
 
         self.logger.debug(
