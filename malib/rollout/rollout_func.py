@@ -23,17 +23,12 @@ import uuid
 import ray
 import numpy as np
 
-from collections import defaultdict
-
 from malib import settings
 from malib.utils.logger import get_logger, Log
-from malib.utils.metrics import get_metric, Metric
 from malib.utils.typing import (
     AgentID,
     Dict,
-    MetricEntry,
     PolicyID,
-    RolloutConfig,
     Union,
     Any,
     Tuple,
