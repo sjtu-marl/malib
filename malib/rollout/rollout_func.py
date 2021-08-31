@@ -26,7 +26,16 @@ from collections import defaultdict
 from malib import settings
 from malib.utils.logger import get_logger, Log
 from malib.utils.metrics import get_metric, Metric
-from malib.utils.typing import AgentID, Dict, MetricEntry, PolicyID, Union, Any, Tuple
+from malib.utils.typing import (
+    AgentID,
+    Dict,
+    MetricEntry,
+    PolicyID,
+    RolloutConfig,
+    Union,
+    Any,
+    Tuple,
+)
 from malib.utils.preprocessor import get_preprocessor
 from malib.envs import Environment
 from malib.envs.agent_interface import AgentInterface
@@ -131,9 +140,10 @@ def sequential(
 
 def simultaneous(
     env: type,
-    num_episodes: int,
+    num_envs: int,
     agent_interfaces: Dict[AgentID, AgentInterface],
     fragment_length: int,
+    max_step: int,
     behavior_policies: Dict[AgentID, PolicyID],
     agent_episodes: Dict[AgentID, Episode],
     metric: Metric,
@@ -143,7 +153,7 @@ def simultaneous(
     """Rollout in simultaneous mode, support environment vectorization.
 
     :param type env: The environment instance.
-    :param int num_episodes: Episode number.
+    :param int num_envs: The number of parallel environments.
     :param Dict[Agent,AgentInterface] agent_interfaces: The dict of agent interfaces for interacting with environment.
     :param int fragment_length: The maximum step limitation of environment rollout.
     :param Dict[AgentID,PolicyID] behavior_policies: The behavior policy mapping for policy
@@ -155,86 +165,66 @@ def simultaneous(
     :return: A tuple of statistics and the size of buffered experience.
     """
 
-    rets = env.reset(limits=num_episodes)
-    done = False
+    rets = env.reset(
+        limits=num_envs,
+        fragment_length=fragment_length,
+        env_reset_kwargs={"max_step": max_step},
+    )
+
+    # metric.reset(mode="vector")
+    episode_length = []
+    episode_rewards = {aid: [] for aid in agent_episodes}
+
     cnt = 0
 
-    agent_ids = list(agent_interfaces.keys())
-
-    rets[Episode.CUR_OBS] = dict(
-        zip(
-            agent_ids,
-            [
-                agent_interfaces[aid].transform_observation(
-                    rets[Episode.CUR_OBS][aid], policy_id=behavior_policies[aid]
-                )
-                for aid in agent_ids
-            ],
-        )
-    )
+    observations = {
+        aid: agent_interfaces[aid].transform_observation(obs)
+        for aid, obs in rets[Episode.CUR_OBS].items()
+    }
 
     metric.reset(mode="vector")
 
-    while not done and cnt < fragment_length:
-        act_dict = {}
-        act_dist_dict = {}
+    while not env.is_terminated():
+        actions, action_dists, action_masks = {}, {}, {}
+        for aid, observation in observations.items():
+            action_masks[aid] = (
+                rets[Episode.ACTION_MASK][aid]
+                if rets.get(Episode.ACTION_MASK) is not None
+                else None
+            )
+            actions[aid], action_dists[aid], _ = agent_interfaces[aid].compute_action(
+                observation,
+                policy_id=behavior_policies[aid],
+                action_mask=action_masks[aid],
+            )
+        rets = env.step(actions)
 
-        prets = []
-        for aid in agent_ids:
-            obs_seq = rets[Episode.CUR_OBS][aid]
-            extra_kwargs = {"policy_id": behavior_policies[aid]}
-            if rets.get(Episode.ACTION_MASK) is not None:
-                extra_kwargs["action_mask"] = rets[Episode.ACTION_MASK][aid]
-            prets.append(agent_interfaces[aid].compute_action(obs_seq, **extra_kwargs))
-        for aid, (x, y, _) in zip(agent_ids, prets):
-            act_dict[aid] = x
-            act_dist_dict[aid] = y
+        if "total_rewards" in rets:
+            for e in rets["total_rewards"]:
+                for aid, v in e.items():
+                    episode_rewards[aid].append(v)
+        if "cnt" in rets:
+            episode_length.extend(rets["cnt"])
 
-        next_rets = env.step(act_dict)
-        rets.update(next_rets)
+        next_observations = {
+            aid: agent_interfaces[aid].transform_observation(obs)
+            for aid, obs in rets[Episode.CUR_OBS].items()
+        }
 
-        # FIXME(ming): too ugly an implementation!
-        for k, v in rets.items():
-            if k == Episode.NEXT_OBS:
-                tmpv = []
-                for aid in agent_ids:
-                    tmpv.append(
-                        agent_interfaces[aid].transform_observation(
-                            v[aid], policy_id=behavior_policies[aid]
-                        )
-                    )
-                for aid, e in zip(agent_ids, tmpv):
-                    v[aid] = e
-
-        # stack to episodes
-        for aid in agent_episodes:
-            episode = agent_episodes[aid]
-            items = {
-                Episode.ACTION: np.stack(act_dict[aid]),
-                Episode.ACTION_DIST: np.stack(act_dist_dict[aid]),
-            }
-
-            for k, v in rets.items():
-                items[k] = np.stack(v[aid])
-
-            episode.insert(**items)
-            metric.step(aid, behavior_policies[aid], **items)
-
-        rets[Episode.CUR_OBS] = rets[Episode.NEXT_OBS]
-        if "next_action_mask" in rets:
-            rets[Episode.ACTION_MASK] = rets["next_action_mask"]
-        done = any(
-            [
-                any(v) if not isinstance(v, bool) else v
-                for v in rets[Episode.DONE].values()
-            ]
-        )
+        if dataset_server:
+            for aid in env.trainable_agents:
+                agent_episodes[aid].insert(
+                    **{
+                        Episode.CUR_OBS: observations[aid],
+                        Episode.NEXT_OBS: next_observations[aid],
+                        Episode.REWARD: rets[Episode.REWARD][aid],
+                        Episode.ACTION: actions[aid],
+                        Episode.DONE: rets[Episode.DONE][aid],
+                        Episode.ACTION_DIST: action_dists[aid],
+                    }
+                )
+        observations = next_observations
         cnt += 1
-        # if dataset_server is not None and cnt % send_interval == 0:
-        #     dataset_server.save.remote(agent_episodes)
-        #     # clean agent episode
-        #     for e in agent_episodes.values():
-        #         e.reset()
 
     if dataset_server:
         dataset_server.save.remote(agent_episodes, wait_for_ready=False)
@@ -308,7 +298,7 @@ class Stepping:
         desc: Dict[str, Any],
         callback: type,
         role: str,
-        episodes: Dict[AgentID, Episode] = None,
+        episode_buffers: Dict[AgentID, Episode] = None,
     ) -> Tuple[Dict[str, MetricEntry], int]:
         """Environment stepping, rollout/simulate with environment vectorization if it is feasible.
 
@@ -322,6 +312,7 @@ class Stepping:
         """
 
         behavior_policies = {}
+        # desc: policy_distribution, behavior_policies, num_episodes
         policy_distribution = desc.get("policy_distribution")
         for agent, interface in agent_interfaces.items():
             if policy_distribution:
@@ -333,20 +324,23 @@ class Stepping:
         behavior_policies.update(desc["behavior_policies"])
         # specify the number of running episodes
         num_episodes = desc["num_episodes"]
+        max_step = desc.get("max_step", 1000)
 
         self.add_envs(num_episodes)
-        self.env.reset(limits=num_episodes)
 
-        episode_creator = Episode if not self._is_sequential else SequentialEpisode
-        agent_episodes = episodes or {
-            agent: episode_creator(
-                self.env_desc["config"]["env_id"],
-                desc["behavior_policies"][agent],
-                capacity=fragment_length * num_episodes,
-                other_columns=self.env.extra_returns,
-            )
-            for agent in desc["behavior_policies"]
-        }
+        if role == "rollout":
+            episode_creator = Episode if not self._is_sequential else SequentialEpisode
+            episode_buffers = episode_buffers or {
+                agent: episode_creator(
+                    self.env_desc["config"]["env_id"],
+                    desc["behavior_policies"][agent],
+                    capacity=self._rollout_config["fragment_length"],
+                    other_columns=self.env.extra_returns,
+                )
+                for agent in desc["behavior_policies"]
+            }
+        else:
+            episode_buffers = None
 
         metric = get_metric(metric_type)(self.env.possible_agents)
         callback = get_func(callback) if callback else self.callback
@@ -356,8 +350,9 @@ class Stepping:
             num_episodes,
             agent_interfaces,
             fragment_length,
+            max_step,
             behavior_policies,
-            agent_episodes,
+            episode_buffers,
             metric,
             dataset_server=self._dataset_server if role == "rollout" else None,
         )

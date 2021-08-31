@@ -5,6 +5,8 @@ with shared multi-agent policies. Currently, the `VectorEnv` support parallel ro
 
 from collections import defaultdict
 import logging
+from malib.envs.env import EpisodeInfo
+from malib.backend.datapool.offline_dataset_server import Episode
 import gym
 import numpy as np
 
@@ -37,6 +39,7 @@ class VectorEnv:
         creator: type,
         configs: Dict[str, Any],
         num_envs: int = 0,
+        fragment_length: int = 1000,
     ):
         """Create a VectorEnv instance.
 
@@ -45,6 +48,7 @@ class VectorEnv:
         :param type creator: The handler to create environment
         :param Dict[str,Any] configs: Environment configuration
         :param int num_envs: The number of nested environment
+        :param int fragment_length: The maximum of batched frames
 
         """
         self.observation_spaces = observation_spaces
@@ -55,6 +59,9 @@ class VectorEnv:
         self._creator = creator
         self._configs = configs.copy()
         self._envs: List[Environment] = []
+        self._step_cnt = 0
+        self._fragment_length = fragment_length
+        self._episode_infos: List[EpisodeInfo] = []
 
         if num_envs > 0:
             self._envs.append(creator(**configs))
@@ -103,7 +110,7 @@ class VectorEnv:
         return self._limits
 
     @classmethod
-    def from_envs(cls, envs: List, config: Dict[str, Any]):
+    def from_envs(cls, envs: List[Environment], config: Dict[str, Any]):
         """Generate vectorization environment from exisiting environments."""
 
         observation_spaces = envs[0].observation_spaces
@@ -133,11 +140,22 @@ class VectorEnv:
                 self._num_envs += 1
             logger.debug(f"created {num} new environments.")
 
-    def reset(self, limits: int = None) -> Dict:
+    def reset(
+        self,
+        limits: int = None,
+        fragment_length: int = None,
+        env_reset_kwargs: Dict = None,
+    ) -> Dict:
         self._limits = limits or self.num_envs
+        self._fragment_length = fragment_length or self._fragment_length
+        assert self._fragment_length is not None
+
+        self._episode_infos: List[EpisodeInfo] = []
+        self._env_reset_kwargs = env_reset_kwargs or {}
+
         transitions = defaultdict(lambda: AgentItems())
         for i, env in enumerate(self.envs[: self._limits]):
-            ret = env.reset()
+            ret = env.reset(**self._env_reset_kwargs)
             for k, agent_items in ret.items():
                 transitions[k].update(agent_items)
         data = {k: v.cleaned_data() for k, v in transitions.items()}
@@ -145,6 +163,8 @@ class VectorEnv:
 
     def step(self, actions: Dict[AgentID, List]) -> Dict:
         transitions = defaultdict(lambda: AgentItems())
+        self._step_cnt += len(self.envs)
+
         for i, env in enumerate(self.envs):
             ret = env.step(
                 {
@@ -152,12 +172,22 @@ class VectorEnv:
                     for _agent, array in actions.items()
                 }
             )
+            # hard clipping for done
+            done = any(ret[Episode.DONE].values())
+            if done or self.is_terminated():
+                # collect episode info
+                self._episode_infos.append(env.episode_info)
+                ret.update(env.reset(**self._env_reset_kwargs))
+
             for k, agent_items in ret.items():
                 transitions[k].update(agent_items)
 
         # merge transitions by keys
         data = {k: v.cleaned_data() for k, v in transitions.items()}
         return data
+
+    def is_terminated(self):
+        self._step_cnt >= self._fragment_length
 
     def close(self):
         for env in self._envs:

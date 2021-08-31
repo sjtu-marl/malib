@@ -117,7 +117,7 @@ class RolloutWorker(BaseRolloutWorker):
         explore: bool = True,
         threaded: bool = True,
         policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
-        episodes: Dict[AgentID, Episode] = None,
+        episode_buffers: Dict[AgentID, Episode] = None,
     ) -> Tuple[Sequence[Dict], Sequence[Any]]:
         """Sample function. Support rollout and simulation. Default in threaded mode."""
 
@@ -163,7 +163,7 @@ class RolloutWorker(BaseRolloutWorker):
                     desc=task,
                     callback=callback,
                     role=role,
-                    episodes=episodes,
+                    episode_buffers=episode_buffers,
                 ),
                 tasks,
             )
@@ -179,7 +179,7 @@ class RolloutWorker(BaseRolloutWorker):
                     desc=task,
                     callback=callback,
                     role=role,
-                    episodes=episodes,
+                    episode_buffers=episode_buffers,
                 )
                 for task in tasks
             ]
