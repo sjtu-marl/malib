@@ -60,15 +60,14 @@ def _make_config(config):
     env_action_space = common.ActionSpace.from_type(action_type)
 
     """ Parse policy configuration """
-    policy_obs_space = wrapper_cls.get_observation_space(frame_space, wrapper_config)
-    policy_action_space = wrapper_cls.get_action_space(env_action_space, wrapper_config)
+    policy_obs_space = frame_space
+    policy_action_space = env_action_space
 
-    observation_adapter = wrapper_cls.get_observation_adapter(
-        policy_obs_space, feature_configs=features_config, wrapper_config=wrapper_config
-    )
-    action_adapter = wrapper_cls.get_action_adapter(
-        action_type, policy_action_space, wrapper_config
-    )
+    observation_adapter = common.ObservationAdapter(frame_space, features_config)
+    # wrapper_cls.get_observation_adapter(
+    #     policy_obs_space, feature_configs=features_config, wrapper_config=wrapper_config
+    # )
+    action_adapter = common.ActionAdapter.from_type(action_type)
     # policy observation space is related to the wrapper usage
     # policy_config = (
     #     None,
@@ -100,7 +99,7 @@ def _make_config(config):
     config["env_config"] = {
         "custom_config": {
             **wrapper_config,
-            "reward_adapter": wrapper_cls.get_reward_adapter(observation_adapter),
+            "reward_adapter": lambda x: x,
             "observation_adapter": observation_adapter,
             "action_adapter": action_adapter,
             "observation_space": policy_obs_space,

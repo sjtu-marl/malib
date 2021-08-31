@@ -829,6 +829,14 @@ class SimpleCallbacks(DefaultCallbacks):
         logger.info(f"episode {episode.episode_id} ended with {episode.length} steps")
 
 
+def ObservationAdapter(observation_space, feature_configs):
+    def func(env_obs):
+        obs = cal_obs(env_obs, observation_space, feature_configs)
+        return obs
+
+    return func
+
+
 class ActionAdapter:
     @staticmethod
     def from_type(space_type):

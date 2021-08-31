@@ -1,4 +1,5 @@
 import importlib
+from malib.envs.smarts._env.smarts.core.agent import AgentSpec
 import gym
 
 from malib.envs import Environment
@@ -16,25 +17,22 @@ class SMARTS(Environment):
         parsed_configs = gen_config(**scenario_configs)
 
         env_config = parsed_configs["env_config"]
-        agent_config = parsed_configs["agent"]
 
         # build agent specs with agent interfaces
-        agent_specs = {
-            agent: interface for agent, interface in agent_config["interface"]
-        }
-
         self.is_sequential = False
         self._env = gym.make(
             "smarts.env:hiway-v0",
             scenarios=[env_id],
-            agent_specs=agent_specs,
+            **env_config,
         )
-        self._env.possible_agents = None
-        self._trainable_agents = self._env.agents
+        self._env.possible_agents = list(self._env.agent_specs.keys())
+        self._trainable_agents = self._env.possible_agents
         self._max_step = 1000
 
     def step(self, actions: Dict[AgentID, Any]) -> Dict[str, Any]:
         observations, rewards, dones, infos = self._env.step(actions)
+        # remove dones all
+        dones.pop("__all__")
         super(SMARTS, self).step(actions, rewards=rewards, dones=dones, infos=infos)
 
         return {
