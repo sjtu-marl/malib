@@ -18,13 +18,17 @@ class MPE(Environment):
         self.is_sequential = False
         self._env = ori_caller(**scenario_configs)
         self._trainable_agents = self._env.possible_agents
+        self._max_step = 25  # default is 25
 
     def step(self, actions: Dict[AgentID, Any]) -> Dict[str, Any]:
         # for agent, action in actions.items():
         #     assert self.action_spaces[agent].contains(action), f"Action is not in space: {action} with type={type(action)}"
         observations, rewards, dones, infos = self._env.step(actions)
+        if self.cnt >= self._max_step:
+            dones = dict.fromkeys(self.possible_agents, True)
+        super(MPE, self).step(actions, rewards=rewards, dones=dones, infos=infos)
         return {
-            Episode.NEXT_OBS: observations,
+            Episode.CUR_OBS: observations,
             Episode.REWARD: rewards,
             Episode.DONE: dones,
             Episode.INFO: infos,
@@ -33,6 +37,7 @@ class MPE(Environment):
     def render(self, *args, **kwargs):
         self._env.render()
 
-    def reset(self):
-        observations = self._env.reset()
+    def reset(self, *args, **kwargs):
+        observations = self._env.reset(*args, **kwargs)
+        self._max_step = self._max_step or kwargs.get("max_step", None)
         return {Episode.CUR_OBS: observations}

@@ -1,5 +1,6 @@
 import logging
 import importlib
+from numpy import mat
 import supersuit
 
 from malib.envs import Environment
@@ -46,11 +47,16 @@ class MAAtari(Environment):
         self.is_sequential = False
         self._env = wrapped_caller(**scenario_configs)
         self._trainable_agents = self._env.possible_agents
+        self._max_step = 1000
 
     def step(self, actions: Dict[AgentID, Any]):
         observations, rewards, dones, infos = self._env.step(actions)
+        # hard clipping
+        if self.cnt >= self._max_step:
+            dones = dict.fromkeys(self.possible_agents, True)
+        super(MAAtari, self).step(actions, rewards=rewards, dones=dones, infos=infos)
         return {
-            Episode.NEXT_OBS: observations,
+            Episode.CUR_OBS: observations,
             Episode.REWARD: rewards,
             Episode.DONE: dones,
             Episode.INFO: infos,
@@ -59,6 +65,7 @@ class MAAtari(Environment):
     def render(self, *args, **kwargs):
         pass
 
-    def reset(self):
-        observations = self._env.reset()
+    def reset(self, *args, **kwargs):
+        observations = self._env.reset(*args, **kwargs)
+        self._max_step = self._max_step or kwargs.get("max_step", None)
         return {Episode.CUR_OBS: observations}

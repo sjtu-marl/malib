@@ -156,6 +156,8 @@ class SC2Env(Environment):
             "next_action_mask",
         ]
 
+        self._max_step = 1000
+
     @property
     def env_info(self):
         return self._env.env_info
@@ -164,24 +166,28 @@ class SC2Env(Environment):
     def global_state_space(self):
         return self._env.global_state_space
 
-    def step(self, actions: Dict[AgentID, Any]):
+    def step(self, actions: Dict[AgentID, Any]) -> Dict[str, Any]:
         states, observations, action_masks, rewards, dones, infos = self._env.step(
             actions
         )
+        if self.cnt >= self._max_step:
+            dones = dict.fromkeys(self.possible_agents, True)
+        super(SC2Env, self).step(actions, rewards=rewards, dones=dones, infos=infos)
         return {
-            Episode.NEXT_STATE: states,
-            Episode.NEXT_OBS: observations,
+            Episode.CUR_STATE: states,
+            Episode.CUR_OBS: observations,
             Episode.REWARD: rewards,
             Episode.DONE: dones,
             # Episode.INFO: infos,
-            "next_action_mask": action_masks,
+            Episode.ACTION_MASK: action_masks,
         }
 
     def render(self, *args, **kwargs):
         self._env.render()
 
-    def reset(self):
-        states, observations, action_masks = self._env.reset()
+    def reset(self, *args, **kwargs):
+        states, observations, action_masks = self._env.reset(*args, **kwargs)
+        self._max_step = self._max_step or kwargs.get("max_step", None)
         return {
             Episode.CUR_STATE: states,
             Episode.CUR_OBS: observations,
@@ -197,19 +203,18 @@ if __name__ == "__main__":
     for aid, obsp in env.observation_spaces.items():
         print(aid, type(obsp))
 
-    obs = env.reset()
+    rets = env.reset()
 
     while True:
         act_dict = {}
         for i, aid in enumerate(env.agents):
-            legal_act = np.nonzero(obs[aid]["action_mask"])[0]
+            legal_act = np.nonzero(rets[Episode.ACTION_MASK][aid])[0]
             act_dict[aid] = np.random.choice(legal_act, 1)
         print(act_dict)
-        print(obs)
-        next_obs, rew, done, info = env.step(act_dict)
-        print(rew, done)
-        print(info)
-        obs = next_obs
-        if all(done.values()):
+        print(rets[Episode.CUR_OBS])
+        rets = env.step(act_dict)
+        print(rets[Episode.REWARD], rets[Episode.DONE])
+        print(rets[Episode.INFO])
+        if all(rets[Episode.DONE].values()):
             break
         print()
