@@ -2,9 +2,9 @@
 Usage:
 
 ```bash
-
 cd malib
 export PYTHONPATH=./malib/envs/smarts/_env:$PYTHONPATH
+python examples/run_smarts.py --config examples/configs/smarts/ddpg.yaml
 ```
 """
 
