@@ -26,6 +26,8 @@ import re
 import yaml
 
 from pathlib import Path
+
+from malib.utils.typing import Dict, Sequence
 from malib.envs.smarts.agents import load_config
 from malib.envs.smarts._env.smarts.core.agent import AgentSpec
 from malib.envs.smarts._env.smarts.core.scenario import Scenario
@@ -140,48 +142,29 @@ def load_config(config_file):
     return _make_config(raw_config)
 
 
-def gen_config(**kwargs):
-    scenario_path = Path(kwargs["scenario"]).absolute()
+def gen_config(
+    scenarios: Sequence,
+    agent_config_file: str,
+    headless: bool = True,
+):
+    assert len(scenarios) == 1, "Accept only one scenarios now!"
+    scenario_path = Path(scenarios[0]).absolute()
     agent_missions_count = Scenario.discover_agent_missions_count(scenario_path)
     if agent_missions_count == 0:
         agent_ids = ["default_policy"]
     else:
         agent_ids = [f"AGENT-{i}" for i in range(agent_missions_count)]
 
-    config = load_config(kwargs["config_file"])
+    config = load_config(agent_config_file)
     agents = {agent_id: AgentSpec(**config["agent"]) for agent_id in agent_ids}
 
     config["env_config"].update(
         {
             "seed": 42,
             "scenarios": [str(scenario_path)],
-            "headless": kwargs["headless"],
+            "headless": headless,
             "agent_specs": agents,
         }
     )
-
-    # if kwargs["paradigm"] == "centralized":
-    #     config["env_config"].update(
-    #         {
-    #             "obs_space": gym.spaces.Tuple([obs_space] * agent_missions_count),
-    #             "act_space": gym.spaces.Tuple([act_space] * agent_missions_count),
-    #             "groups": {"group": agent_ids},
-    #         }
-    #     )
-    #     tune_config.update(config["policy"][-1])
-    # else:
-    #     policies = {}
-    #     for k in agents:
-    #         policies[k] = config["policy"][:-1] + (
-    #             {**config["policy"][-1], "agent_id": k},
-    #         )
-    #     tune_config.update(
-    #         {
-    #             "multiagent": {
-    #                 "policies": policies,
-    #                 "policy_mapping_fn": lambda agent_id: agent_id,
-    #             }
-    #         }
-    #     )
 
     return config
