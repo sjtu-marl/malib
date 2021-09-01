@@ -154,6 +154,6 @@ def env(**kwargs):
     env = wrappers.TerminateIllegalWrapper(env, illegal_reward=-1)
     env = wrappers.AssertOutOfBoundsWrapper(env)
     env = wrappers.OrderEnforcingWrapper(env)
-    env = Environment.from_sequential_game(env, **kwargs)
-    env._extra_returns = [Episode.ACTION_MASK]
+    # env = Environment.from_sequential_game(env, **kwargs)
+    # env._extra_returns = [Episode.ACTION_MASK]
     return env

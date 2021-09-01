@@ -15,13 +15,12 @@ In your custom rollout function, you can decide extra data
 you wanna save by specifying extra columns when Episode initialization.
 """
 
-from dataclasses import dataclass
-from malib.envs.env import EpisodeInfo
-from typing import Callable
 import uuid
-
 import ray
+import collections
 import numpy as np
+
+from pettingzoo.utils.env import AECEnv
 
 from malib import settings
 from malib.utils.logger import get_logger, Log
@@ -34,8 +33,10 @@ from malib.utils.typing import (
     Tuple,
     List,
     BehaviorMode,
+    Callable,
 )
 from malib.utils.preprocessor import get_preprocessor
+from malib.envs.env import EpisodeInfo
 from malib.envs import Environment
 from malib.envs.agent_interface import AgentInterface
 from malib.envs.vector_env import VectorEnv
@@ -65,11 +66,17 @@ def _parse_episode_infos(episode_infos: List[EpisodeInfo]) -> Dict[str, List]:
     return res
 
 
+_TimeStep = collections.namedtuple(
+    "_TimeStep", "observation, action_mask, reward, action, done, action_dist"
+)
+
+
 def sequential(
-    env: Environment,
+    env: AECEnv,
     num_episodes: int,
     agent_interfaces: Dict[AgentID, AgentInterface],
     fragment_length: int,
+    max_step: int,
     behavior_policies: Dict[AgentID, PolicyID],
     agent_episodes: Dict[AgentID, Episode],
     send_interval: int = 50,
@@ -77,82 +84,137 @@ def sequential(
 ):
     """ Rollout in sequential manner """
 
-    # use env.env as real env
-    env = env.env
     cnt = 0
-    evaluated_results = []
 
-    assert fragment_length > 0, fragment_length
-    for ith in range(num_episodes):
+    if agent_episodes is not None:
+        agent_filters = list(agent_episodes.keys())
+    else:
+        agent_filters = list(agent_interfaces.keys())
+
+    total_cnt = {agent: 0 for agent in agent_filters}
+    mean_episode_reward = collections.defaultdict(list)
+    mean_episode_len = collections.defaultdict(list)
+    win_rate = collections.defaultdict(list)
+
+    while any(
+        [agent_total_cnt < fragment_length for agent_total_cnt in total_cnt.values()]
+    ):
         env.reset()
-        for aid in env.agent_iter(max_iter=fragment_length):
-            observation, reward, done, info = env.last()
+        cnt = collections.defaultdict(lambda: 0)
+        tmp_buffer = collections.defaultdict(list)
+        episode_reward = collections.efaultdict(lambda: 0.0)
 
-            if isinstance(observation, dict):
-                info = {"action_mask": np.asarray([observation["action_mask"]])}
-                action_mask = observation["action_mask"]
-            else:
-                action_mask = np.ones(
-                    get_preprocessor(env.action_spaces[aid])(
-                        env.action_spaces[aid]
-                    ).size
-                )
+        for aid in env.agent_iter(max_iter=max_step):
+            observation, reward, done, info = env.last()
+            action_mask = np.asarray(observation["action_mask"])
 
             # observation has been transferred
             observation = agent_interfaces[aid].transform_observation(
                 observation, behavior_policies[aid]
             )
-
-            info["policy_id"] = behavior_policies[aid]
-
             if not done:
-                action, action_dist, extra_info = agent_interfaces[aid].compute_action(
-                    [observation], **info
+                action, action_dist, _ = agent_interfaces[aid].compute_action(
+                    observation,
+                    action_mask=action_mask,
+                    policy_id=behavior_policies[aid],
                 )
                 # convert action to scalar
-                action = action[0]
             else:
                 info["policy_id"] = behavior_policies[aid]
                 action = None
             env.step(action)
-            if action is None:
-                action = [agent_interfaces[aid].action_space.sample()]
-            if aid in agent_episodes:
-                agent_episodes[aid].insert(
-                    **{
-                        Episode.CUR_OBS: [observation],
-                        Episode.ACTION_MASK: [action_mask],
-                        Episode.ACTION_DIST: action_dist,
-                        Episode.ACTION: action,
-                        Episode.REWARD: reward,
-                        Episode.DONE: done,
-                    }
+
+            if dataset_server and aid in agent_episodes:
+                tmp_buffer[aid].append(
+                    _TimeStep(
+                        observation,
+                        action_mask,
+                        reward,
+                        action
+                        if action is not None
+                        else env.action_spaces[aid].sample(),
+                        done,
+                        action_dist,
+                    )
                 )
-            metric.step(
-                aid,
-                behavior_policies[aid],
-                observation=observation,
-                action=action,
-                action_dist=action_dist,
-                reward=reward,
-                done=done,
-                info=info,
-            )
-            cnt += 1
-        evaluated_results.append(
-            metric.parse(agent_filter=tuple(agent_episodes.keys()))
-        )
-        # when dataset_server is not None
+            episode_reward[aid] += reward
+            cnt[aid] += 1
+
+            if all([agent_cnt >= fragment_length for agent_cnt in cnt.values()]):
+                break
+        winner, max_reward = None, -float("inf")
+
+        for k, v in episode_reward.items():
+            mean_episode_reward[k].append(v)
+            mean_episode_len[k].append(cnt[k])
+            if v > max_reward:
+                winner = k
+                max_reward = v
+        for k in agent_filters:
+            if k == winner:
+                win_rate[winner].append(1)
+            else:
+                win_rate[k].append(0)
+
     if dataset_server:
-        for e in agent_episodes.values():
-            e.clean_data()
+        for player, data_tups in tmp_buffer.items():
+            (
+                observations,
+                action_masks,
+                pre_rewards,
+                actions,
+                dones,
+                action_dists,
+            ) = tuple(map(np.stack, list(zip(*data_tups))))
+
+            rewards = pre_rewards[1:].copy()
+            dones = dones[1:].copy()
+            next_observations = observations[1:].copy()
+            next_action_masks = action_masks[1:].copy()
+
+            observations = observations[:-1].copy()
+            action_masks = action_masks[:-1].copy()
+            actions = actions[:-1].copy()
+            action_dists = action_dists[:-1].copy()
+
+            agent_episodes[player].insert(
+                **{
+                    Episode.CUR_OBS: observations,
+                    Episode.NEXT_OBS: next_observations,
+                    Episode.REWARD: rewards,
+                    Episode.ACTION: actions,
+                    Episode.DONE: dones,
+                    Episode.ACTION_DIST: action_dists,
+                    Episode.ACTION_MASK: action_masks,
+                    Episode.NEXT_ACTION_MASK: next_action_masks,
+                }
+            )
         dataset_server.save.remote(agent_episodes, wait_for_ready=False)
         for e in agent_episodes.values():
             e.reset()
 
+    results = {
+        f"total_reward/{k}": sum(v) / len(v)
+        for k, v in mean_episode_reward.items()
+        if k in agent_filters
+    }
+    results.update(
+        {
+            f"step_cnt/{k}": sum(v) / len(v)
+            for k, v in mean_episode_len.items()
+            if k in agent_filters
+        }
+    )
+    results.update(
+        {
+            f"win_rate/{k}": sum(v) / len(v)
+            for k, v in win_rate.items()
+            if k in agent_filters
+        }
+    )
+
     # aggregated evaluated results groupped in agent wise
-    evaluated_results = metric.merge_parsed(evaluated_results)
-    return evaluated_results, cnt
+    return results, sum(total_cnt.values())
 
 
 def simultaneous(
@@ -334,9 +396,8 @@ class Stepping:
         self.add_envs(num_episodes)
 
         if task_type == "rollout":
-            episode_creator = Episode if not self._is_sequential else SequentialEpisode
             episode_buffers = episode_buffers or {
-                agent: episode_creator(
+                agent: Episode(
                     self.env_desc["config"]["env_id"],
                     desc["behavior_policies"][agent],
                     capacity=fragment_length,
