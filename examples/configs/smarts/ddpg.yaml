@@ -40,9 +40,9 @@ env_description:
     scenario_configs:
       path:
         - scenarios/double_merge/cross
-        - scenarios/double_merge/nocross
-        - scenarios/intersections/4lane
-        - scenarios/intersections/4lane_sv
+        # - scenarios/double_merge/nocross
+        # - scenarios/intersections/4lane
+        # - scenarios/intersections/4lane_sv
       max_step: 1000
       agent_type: baseline-lane-control.yaml
 

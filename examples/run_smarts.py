@@ -1,26 +1,35 @@
+"""
+Usage:
+
+```bash
+
+cd malib
+export PYTHONPATH=./malib/envs/smarts/_env:$PYTHONPATH
+```
+"""
+
 import argparse
-from re import M
-from malib.envs.smarts.common import ObservationAdapter
+from malib.backend.datapool.offline_dataset_server import Episode
 import os
 import yaml
-
-from examples.run_sc2_share import BASE_DIR
 
 from malib.runner import run
 from malib.envs import SMARTS
 
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("General training on SMARTS marl benchmarking.")
     parser.add_argument(
-        "--config", type=str, default="examples/configs/smarts/ppo.yaml"
+        "--config", type=str, default="examples/configs/smarts/ddpg.yaml"
     )
 
     args = parser.parse_args()
 
     with open(os.path.join(BASE_DIR, args.config), "r") as f:
-        config = yaml.load(f)
+        config = yaml.safe_load(f)
 
     env_desc = config["env_description"]
     env_desc["cretor"] = SMARTS
@@ -33,15 +42,22 @@ if __name__ == "__main__":
     scenarios = env.scenarios
 
     print(
-        "observation_spaces: {}\naction spaces: {}\nscenario: {}".format(
-            observation_spaces, action_spaces, scenarios
+        "observation_spaces: {}\naction spaces: {}\nscenario: {}\nagents: {}".format(
+            observation_spaces, action_spaces, scenarios, possible_agents
         )
     )
 
     done = False
     cnt = 0
-    # while not done:
-
+    obs = env.reset()
+    while not done:
+        actions = {agent: space.sample() for agent, space in action_spaces.items()}
+        rets = env.step(actions)
+        rewards = rets[Episode.REWARD]
+        done = any(rets[Episode.DONE].values())
+        print("step: {}, actions: {}, rewards: {}".format(cnt, actions, rewards))
+        cnt += 1
+    env.close()
     # training_config = config["training"]
     # rollout_config = config["rollout"]
 

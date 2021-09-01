@@ -30,10 +30,10 @@ from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
 from ray.rllib.policy import Policy
 
-from malib.envs.smarts._env.smarts.core.controllers import ActionSpaceType
-from malib.envs.smarts._env.smarts.core.scenario import PositionalGoal
-from malib.envs.smarts._env.smarts.core.sensors import Observation
-from malib.envs.smarts._env.smarts.core.utils.math import vec_2d
+from smarts.core.controllers import ActionSpaceType
+from smarts.core.scenario import PositionalGoal
+from smarts.core.sensors import Observation
+from smarts.core.utils.math import vec_2d
 
 SPACE_LIB = dict(
     # normalized distance to lane center
@@ -157,6 +157,7 @@ class ActionSpace:
         elif space_type == ActionSpaceType.Lane:
             return gym.spaces.Discrete(4)
         else:
+            print("action space:", space_type)
             raise NotImplementedError
 
 
