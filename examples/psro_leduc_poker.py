@@ -64,7 +64,7 @@ if __name__ == "__main__":
                     "gamma": 1.0,
                     "eps_min": 0,
                     "eps_max": 1.0,
-                    "eps_decay": 100,
+                    "eps_anneal_time": 100,
                     "lr": 1e-2,
                 },
             }

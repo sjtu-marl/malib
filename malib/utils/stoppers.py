@@ -50,8 +50,11 @@ class SimpleRolloutStopper(Stopper):
     def __init__(self, config, tasks: List = None):
         super(SimpleRolloutStopper, self).__init__(config, tasks)
         self._config["max_step"] = self._config.get("max_step", 100)
-        print("build SimpleRolloutStopper:", self._config["max_step"])
         self._info = {MetricType.REACH_MAX_STEP: False}
+
+    @property
+    def max_iteration(self):
+        return self._config["max_step"]
 
     def __call__(self, results: Dict[str, MetricEntry], global_step):
         """ Default rollout stopper will return true when global_step reaches to an oracle """

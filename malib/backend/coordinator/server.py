@@ -26,7 +26,7 @@ from malib.utils.typing import (
     AgentInvolveInfo,
     BColors,
 )
-from malib.utils.logger import get_logger
+from malib.utils.logger import get_logger, Logger
 from malib.evaluator import get_evaluator, Evaluator
 from malib.manager.rollout_worker_manager import RolloutWorkerManager
 from malib.manager.training_manager import TrainingManager
@@ -109,16 +109,6 @@ class CoordinatorServer(BaseCoordinator):
         self._logger.info("Coordinator server started")
 
     def pre_launching(self, init_config):
-        # if init_config["load_model"]:
-        #     self.request(
-        #         TaskRequest(
-        #             task_type=TaskType.LOAD_MODEL,
-        #             content=init_config["model_path"],
-        #         )
-        #     )
-        #     self.request(
-        #         Tasks
-        #     )
         pass
 
     @staticmethod
@@ -142,6 +132,7 @@ class CoordinatorServer(BaseCoordinator):
 
         if task_request.task_type == TaskType.SIMULATION:
             # content is TrainingFeedback
+            Logger.info("Request for simulation")
             task_request = self._training_manager.retrieve_information(task_request)
             pending_matches = []
             for (
@@ -159,6 +150,7 @@ class CoordinatorServer(BaseCoordinator):
             """Requests from rollout worker after rollout tasks done, or agent.AgentInterface after optimize tasks done.
             Evaluate task here aims to determine whether to do simulation or terminate task directly.
             """
+            Logger.info("Rollout done, request for evaluation")
             populations = task_request.content.agent_involve_info.populations
             trainable_pairs = task_request.content.agent_involve_info.trainable_pairs
             pending_matches = []
@@ -224,9 +216,9 @@ class CoordinatorServer(BaseCoordinator):
 
         all_done = self._payoff_manager.check_done(population_mapping)
         if all_done and len(self._pending_trainable_pairs) == len(self._populations):
-            self._logger.info("All pending payoffs have been updated")
+            Logger.debug("All pending payoffs have been updated")
 
-            self._logger.debug(
+            Logger.debug(
                 f"sending policy adding task with pending trainable pairs:"
                 f"\n{pp(self._pending_trainable_pairs)}"
             )
@@ -266,12 +258,15 @@ class CoordinatorServer(BaseCoordinator):
                 # XXX(ming): PSRO is a special case, require improvement
                 if self._configs["global_evaluator"]["name"] == "psro":
                     exp = self._training_manager.get_exp(equilibrium)
-                    print("######### payoff:")
-                    print(list(self._payoff_manager.payoffs.values())[0].table)
-                    print("######### equilibriumn:", equilibrium)
-                    print("######### exploitability:", exp)
+                    Logger.info("Update payoff table")
+                    Logger.info(
+                        "\t* payoff: %s",
+                        list(self._payoff_manager.payoffs.values())[0].table,
+                    )
+                    Logger.info("\t* equilibrium: %s", equilibrium)
+                    Logger.info("\t* exploitability: %s", exp)
                     self._logger.send_scalar(
-                        tag="metric/exp",
+                        tag="evaluation/Exploitability",
                         content=exp,
                         global_step=len(equilibrium["player_0"]),
                     )
@@ -352,6 +347,7 @@ class CoordinatorServer(BaseCoordinator):
 
         assert isinstance(task_request.content, TrainingFeedback)
 
+        Logger.info("Generated one rollout task")
         populations = task_request.content.agent_involve_info.populations
         population_mapping = {}
         for k, v in populations.items():

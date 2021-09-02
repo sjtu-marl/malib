@@ -15,6 +15,7 @@ In your custom rollout function, you can decide extra data
 you wanna save by specifying extra columns when Episode initialization.
 """
 
+from sys import version_info
 import uuid
 import ray
 import collections
@@ -23,7 +24,7 @@ import numpy as np
 from pettingzoo.utils.env import AECEnv
 
 from malib import settings
-from malib.utils.logger import get_logger, Log
+from malib.utils.logger import Log, Logger
 from malib.utils.typing import (
     AgentID,
     Dict,
@@ -102,7 +103,7 @@ def sequential(
         env.reset()
         cnt = collections.defaultdict(lambda: 0)
         tmp_buffer = collections.defaultdict(list)
-        episode_reward = collections.efaultdict(lambda: 0.0)
+        episode_reward = collections.defaultdict(lambda: 0.0)
 
         for aid in env.agent_iter(max_iter=max_step):
             observation, reward, done, info = env.last()
@@ -143,6 +144,7 @@ def sequential(
             if all([agent_cnt >= fragment_length for agent_cnt in cnt.values()]):
                 break
         winner, max_reward = None, -float("inf")
+        total_cnt = {aid: v + cnt[aid] for aid, v in total_cnt.items()}
 
         for k, v in episode_reward.items():
             mean_episode_reward[k].append(v)
@@ -156,6 +158,7 @@ def sequential(
             else:
                 win_rate[k].append(0)
 
+    Logger.debug("agent total_cnt: %s fragment length: %s", total_cnt, fragment_length)
     if dataset_server:
         for player, data_tups in tmp_buffer.items():
             (
@@ -194,23 +197,15 @@ def sequential(
             e.reset()
 
     results = {
-        f"total_reward/{k}": sum(v) / len(v)
+        f"total_reward/{k}": v
         for k, v in mean_episode_reward.items()
         if k in agent_filters
     }
     results.update(
-        {
-            f"step_cnt/{k}": sum(v) / len(v)
-            for k, v in mean_episode_len.items()
-            if k in agent_filters
-        }
+        {f"step_cnt/{k}": v for k, v in mean_episode_len.items() if k in agent_filters}
     )
     results.update(
-        {
-            f"win_rate/{k}": sum(v) / len(v)
-            for k, v in win_rate.items()
-            if k in agent_filters
-        }
+        {f"win_rate/{k}": v for k, v in win_rate.items() if k in agent_filters}
     )
 
     # aggregated evaluated results groupped in agent wise
@@ -306,14 +301,14 @@ class Stepping:
     def __init__(
         self, exp_cfg: Dict[str, Any], env_desc: Dict[str, Any], dataset_server=None
     ):
-        self.logger = get_logger(
-            log_level=settings.LOG_LEVEL,
-            log_dir=settings.LOG_DIR,
-            name=f"rolloutfunc_executor_{uuid.uuid1()}",
-            remote=settings.USE_REMOTE_LOGGER,
-            mongo=settings.USE_MONGO_LOGGER,
-            **exp_cfg,
-        )
+        # self.logger = get_logger(
+        #     log_level=settings.LOG_LEVEL,
+        #     log_dir=settings.LOG_DIR,
+        #     name=f"rolloutfunc_executor_{uuid.uuid1()}",
+        #     remote=settings.USE_REMOTE_LOGGER,
+        #     mongo=settings.USE_MONGO_LOGGER,
+        #     **exp_cfg,
+        # )
 
         # init environment here
         self.env_desc = env_desc

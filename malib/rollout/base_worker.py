@@ -32,7 +32,7 @@ from malib.utils.typing import (
 from malib.backend.datapool.offline_dataset_server import Episode
 from malib.envs.agent_interface import AgentInterface
 from malib.algorithm.common.policy import Policy
-from malib.utils.logger import get_logger, Log
+from malib.utils.logger import Logger, get_logger, Log
 from malib.utils.stoppers import get_stopper
 
 PARAMETER_GET_TIMEOUT = 3
@@ -303,7 +303,7 @@ class BaseRolloutWorker:
         self.set_state(task_desc)
         start_time = time.time()
         total_num_frames = 0
-
+        print_every = stopper.max_iteration // 3
         while not stopper(merged_statics, global_step=epoch):
             status = self.update_state(task_desc, waiting=False)
             if status == Status.LOCKED:
@@ -338,7 +338,8 @@ class BaseRolloutWorker:
             time_consump = time.time() - start_time
 
             # log to tensorboard
-            print(f"(evaluation / {epoch})", res)
+            if (epoch + 1) % print_every == 0:
+                Logger.info("\tepoch: %s (evaluation) %s", epoch, res)
             for k, v in res.items():
                 self.logger.send_scalar(
                     tag=f"evaluation/{k}", content=v, global_step=epoch
@@ -415,6 +416,7 @@ class BaseRolloutWorker:
             explore=False,
             role="simulation",
         )
+        Logger.debug("simulation done with return: %s", raw_statistics)
         for statistics, combination in zip(raw_statistics, combinations):
             # merge statistics
             statistics = dict(

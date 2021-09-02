@@ -62,6 +62,9 @@ class DQNLoss(LossFunc):
             + self.policy.custom_config["gamma"] * (1 - done) * next_state_action_values
         )
         loss = F.mse_loss(state_action_values, expected_state_values)
+
         self.loss.append(loss)
 
-        return {TrainingMetric.LOSS: loss.detach().numpy()}
+        return {
+            TrainingMetric.LOSS: loss.detach().item(),
+        }
