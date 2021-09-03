@@ -2,13 +2,13 @@ import copy
 import pprint
 import threading
 import time
-from typing import Dict, Any, List
+from typing import Counter, Dict, Any, List
 
 import ray
 
 from malib import settings
 from malib.utils import logger
-from malib.utils.logger import get_logger, Log
+from malib.utils.logger import get_logger, Log, start
 from malib.utils.configs.formatter import DefaultConfigFormatter
 
 
@@ -85,19 +85,37 @@ def run(**kwargs):
 
         _ = ray.get(coordinator_server.start.remote())
 
+        start_time = time.time()
+        tmp_start_time = start_time
+
+        performance_logger = get_logger(
+            name="performance",
+            expr_group=exp_cfg["expr_group"],
+            expr_name=exp_cfg["expr_name"],
+            remote=settings.USE_REMOTE_LOGGER,
+            mongo=settings.USE_MONGO_LOGGER,
+            info=infos,
+        )
+
         with Log.timer(
             log=settings.PROFILING,
-            logger=get_logger(
-                name="runner",
-                expr_group=exp_cfg["expr_group"],
-                expr_name=exp_cfg["expr_name"],
-                remote=settings.USE_REMOTE_LOGGER,
-                mongo=settings.USE_MONGO_LOGGER,
-                info=infos,
-            ),
+            logger=performance_logger,
         ):
+            # counter = 0
             while True:
                 terminate = ray.get(coordinator_server.is_terminate.remote())
+                end_time = time.time()
+                # 3min RFPS report
+                # if end_time - tmp_start_time >= 5:
+                #     data_size = ray.get(offline_dataset.get_data_size.remote())
+                #     if data_size > 0:
+                #         performance_logger.send_scalar(
+                #             tag="performance/RFPS",
+                #             content=data_size,
+                #             global_step=counter
+                #         )
+                #         counter += 1
+                #     tmp_start_time = end_time
                 if terminate:
                     print("ALL task done")
                     break

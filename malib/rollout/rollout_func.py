@@ -15,7 +15,6 @@ In your custom rollout function, you can decide extra data
 you wanna save by specifying extra columns when Episode initialization.
 """
 
-from sys import version_info
 import uuid
 import ray
 import collections
@@ -41,10 +40,7 @@ from malib.envs.env import EpisodeInfo
 from malib.envs import Environment
 from malib.envs.agent_interface import AgentInterface
 from malib.envs.vector_env import VectorEnv
-from malib.backend.datapool.offline_dataset_server import (
-    Episode,
-    SequentialEpisode,
-)
+from malib.backend.datapool.offline_dataset_server import Episode
 
 
 def _parse_episode_infos(episode_infos: List[EpisodeInfo]) -> Dict[str, List]:

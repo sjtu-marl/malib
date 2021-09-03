@@ -3,9 +3,11 @@ Basic class of agent interface. Users can implement their custom training workfl
 """
 
 import copy
-from dataclasses import dataclass
+import os
 import threading
 import time
+
+from dataclasses import dataclass
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 from typing import Dict, Any, Tuple, Callable, Union, Sequence
@@ -430,7 +432,7 @@ class AgentInterface(metaclass=ABCMeta):
             total_size += size
 
             self.logger.send_scalar(
-                tag="performance/TFPS",
+                tag="performance/TFPS/{}".format(os.getpid()),
                 content=total_size / time_consump,
                 global_step=epoch,
             )

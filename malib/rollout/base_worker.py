@@ -345,7 +345,7 @@ class BaseRolloutWorker:
                     tag=f"evaluation/{k}", content=v, global_step=epoch
                 )
             self.logger.send_scalar(
-                tag="performance/RFPS",
+                tag="performance/RFPS/{}".format(os.getpid()),
                 content=total_num_frames / time_consump,
                 global_step=epoch,
             )

@@ -285,55 +285,6 @@ class Episode:
         raise NotImplementedError
 
 
-class SequentialEpisode(Episode):
-    def __init__(
-        self,
-        env_id: str,
-        policy_id: Union[PolicyID, Dict],
-        capacity: int,
-        other_columns: List[str],
-    ):
-        """Sequential episode is designed for sequential rollout. Different from `Episode`, it allows partially insertion, but require
-        data clean mannually.
-
-        Examples:
-            >>> ep = SequentialEpisode(...)
-            >>> ep.insert(**{Episode.OBS: .., Episode.ACTION: ...})
-            >>> ep.insert(**{Episode.ACTION_MASK: ..., Episode.NEXT_OBS: ...})
-            >>> # before send to offline dataset server or sampling, you need to do data alighment via executing `clean_data`
-            >>> ep.clean_data()
-            >>> # send to dataset server
-            >>> server.save.remote(ep)
-            >>> # or sampling
-            >>> ep.sample(size=64)
-            >>> # ...
-        """
-        super(SequentialEpisode, self).__init__(
-            env_id, policy_id, capacity=capacity, other_columns=other_columns
-        )
-        self._cleaned = False
-
-    def insert(self, **kwargs):
-        self._cleaned = False
-        for column, value in kwargs.items():
-            assert column in self.columns, f"unregistered column: {column}"
-            if isinstance(value, NumpyDataArray):
-                self._data[column].insert(value.get_data())
-            else:
-                self._data[column].insert(value)
-
-    def sample(self, idxes, size) -> Any:
-        assert self._cleaned, "Data alignment is required before sampling!"
-        return super(SequentialEpisode, self).sample(idxes=idxes, size=size)
-
-    def clean_data(self):
-        # check length
-        self._data[Episode.NEXT_OBS].insert(self._data[Episode.CUR_OBS].get_data())
-        self._data[Episode.NEXT_OBS].roll(-1)
-        self._data[Episode.REWARD].roll(-1)
-        self._data[Episode.DONE].roll(-1)
-
-
 class MultiAgentEpisode(Episode):
     def __init__(
         self,
@@ -463,17 +414,15 @@ class Table:
 
     @property
     def size(self):
-        with self._rwlock.gen_rlock():
+        with self._threading_lock:
             return self._episode.size if self._episode is not None else 0
 
     @property
     def capacity(self):
-        with self._rwlock.gen_rlock():
+        with self._threading_lock:
             return self._episode.capacity
 
-    def set_episode(
-        self, episode: Dict[AgentID, Union[Episode, SequentialEpisode]], capacity: int
-    ):
+    def set_episode(self, episode: Dict[AgentID, Episode], capacity: int):
         """If the current table has no episode, inititalize one for it."""
 
         with self._rwlock.gen_wlock():
@@ -690,9 +639,7 @@ class ExternalReadOnlyDataset(ExternalDataset):
 
 @ray.remote
 class OfflineDataset:
-    def __init__(
-        self, dataset_config: Dict[str, Any], exp_cfg: Dict[str, Any], test_mode=False
-    ):
+    def __init__(self, dataset_config: Dict[str, Any], exp_cfg: Dict[str, Any]):
         self._episode_capacity = dataset_config.get(
             "episode_capacity", settings.DEFAULT_EPISODE_CAPACITY
         )
@@ -700,17 +647,15 @@ class OfflineDataset:
         self._tables: Dict[str, Table] = dict()
         self._threading_lock = threading.Lock()
         self._threading_pool = ThreadPoolExecutor()
-        if not test_mode:
-            self.logger = get_logger(
-                log_level=settings.LOG_LEVEL,
-                log_dir=settings.LOG_DIR,
-                name="offline_dataset",
-                remote=settings.USE_REMOTE_LOGGER,
-                mongo=settings.USE_MONGO_LOGGER,
-                **exp_cfg,
-            )
-        else:
-            self.logger = logging.getLogger("OfflineDataset")
+        self.logger = get_logger(
+            log_level=settings.LOG_LEVEL,
+            log_dir=settings.LOG_DIR,
+            name="offline_dataset",
+            remote=settings.USE_REMOTE_LOGGER,
+            mongo=settings.USE_MONGO_LOGGER,
+            **exp_cfg,
+        )
+        self.cnt = 0
 
         # parse init tasks
         init_job_config = dataset_config.get("init_job", {})
@@ -760,6 +705,9 @@ class OfflineDataset:
         status = table.lock_push_pull(lock_type)
         return status
 
+    def get_data_size(self):
+        return sum([table.size for table in self._tables.values()])
+
     def unlock(self, lock_type: str, desc: Dict[AgentID, BufferDescription]):
         env_id = list(desc.values())[0].env_id
         main_ids = sorted(list(desc.keys()))
@@ -776,7 +724,7 @@ class OfflineDataset:
     def check_table(
         self,
         table_name: str,
-        episode: Dict[AgentID, Union[SequentialEpisode, Episode]],
+        episode: Dict[AgentID, Episode],
         is_multi_agent: bool = False,
     ):
         """Check table existing, if not, create a new table. If `episode` is not None and table has no episode yet, it
