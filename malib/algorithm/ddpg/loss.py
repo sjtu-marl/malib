@@ -98,8 +98,8 @@ class DDPGLoss(LossFunc):
         loss_names = ["policy_loss", "value_loss", "target_value_est", "eval_value_est"]
 
         stats_list = [
-            policy_loss.detach().numpy(),
-            value_loss.detach().numpy(),
+            policy_loss.detach().item(),
+            value_loss.detach().item(),
             target_value.mean().item(),
             actual_value.mean().item(),
         ]

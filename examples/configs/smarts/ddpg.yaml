@@ -9,7 +9,7 @@ training:
     # control the frequency of remote parameter update
     update_interval: 1
     saving_interval: 10
-    batch_size: 1024
+    batch_size: 256
     optimizer: Adam
     actor_lr: 0.01
     critic_lr: 0.01

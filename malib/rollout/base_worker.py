@@ -303,7 +303,7 @@ class BaseRolloutWorker:
         self.set_state(task_desc)
         start_time = time.time()
         total_num_frames = 0
-        print_every = stopper.max_iteration // 3
+        print_every = 1  # stopper.max_iteration // 3
         while not stopper(merged_statics, global_step=epoch):
             status = self.update_state(task_desc, waiting=False)
             if status == Status.LOCKED:

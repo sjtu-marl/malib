@@ -32,7 +32,7 @@ from malib.utils.typing import (
     MetricEntry,
 )
 from malib.utils import errors
-from malib.utils.logger import get_logger, Log
+from malib.utils.logger import Logger, get_logger, Log
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.trainer import Trainer
 
@@ -322,6 +322,7 @@ class AgentInterface(metaclass=ABCMeta):
                     batch, info = ray.get(done)
                     if batch.data is None:
                         # push task
+                        Logger.warning(info)
                         tasks.append(
                             self._offline_dataset.sample.remote(
                                 buffer_desc[batch.identify]
@@ -334,6 +335,7 @@ class AgentInterface(metaclass=ABCMeta):
             while True:
                 batch, info = ray.get(self._offline_dataset.sample.remote(buffer_desc))
                 if batch.data is None:
+                    Logger.warning(info)
                     continue
                 else:
                     size += buffer_desc.batch_size
@@ -356,16 +358,24 @@ class AgentInterface(metaclass=ABCMeta):
         :return: A buffer description entity.
         """
 
-        return {
-            agent: BufferDescription(
-                env_id=self._env_desc["config"]["env_id"],
-                agent_id=agent,
-                policy_id=[agent_policy_mapping[aid] for aid in self._group],
-                batch_size=batch_size,
-                sample_mode=sample_mode,
-            )
-            for agent in self._group
-        }
+        # return {
+        #     agent: BufferDescription(
+        #         env_id=self._env_desc["config"]["env_id"],
+        #         agent_id=agent,
+        #         policy_id=[agent_policy_mapping[aid] for aid in self._group],
+        #         batch_size=batch_size,
+        #         sample_mode=sample_mode,
+        #     )
+        #     for agent in self._group
+        # }
+        # agents = sorted(self._group)
+        return BufferDescription(
+            env_id=self._env_desc["config"]["env_id"],
+            agent_id=self._group,
+            policy_id=[agent_policy_mapping[aid] for aid in self._group],
+            batch_size=batch_size,
+            sample_mode=sample_mode,
+        )
 
     @Log.method_timer(enable=settings.PROFILING)
     def train(self, task_desc: TaskDescription, training_config: Dict[str, Any] = None):
