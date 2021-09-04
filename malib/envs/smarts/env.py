@@ -91,7 +91,11 @@ def _make_config(config):
             "action_space": policy_action_space,
         },
     }
-    config["agent"] = {"interface": AgentInterface(**interface_config)}
+    config["agent"] = {
+        "interface": AgentInterface(**interface_config),
+        "observation_adapter": observation_adapter,
+        "action_adapter": action_adapter,
+    }
     # config["trainer"] = _get_trainer(**config["policy"]["trainer"])
     # config["policy"] = policy_config
 

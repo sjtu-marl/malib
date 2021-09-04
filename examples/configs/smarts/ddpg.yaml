@@ -47,8 +47,8 @@ env_description:
       agent_type: baseline-lane-control.yaml
 
 algorithms:
-  DDPG:
-    name: ddpg
+  ddpg:
+    name: DDPG
     model_config:
       actor:
         network: mlp
