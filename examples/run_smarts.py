@@ -23,7 +23,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("General training on SMARTS marl benchmarking.")
     parser.add_argument(
-        "--config", type=str, default="examples/configs/smarts/ppo.yaml"
+        "--config", type=str, default="examples/configs/smarts/dqn.yaml"
     )
 
     args = parser.parse_args()

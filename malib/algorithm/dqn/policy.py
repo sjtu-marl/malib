@@ -87,7 +87,7 @@ class DQN(Policy):
         logits = torch.softmax(self.critic(observation), dim=-1)
 
         # do masking
-        if "action_mask" in kwargs:
+        if "action_mask" in kwargs and kwargs["action_mask"] is not None:
             mask = torch.FloatTensor(kwargs["action_mask"]).to(logits.device)
         else:
             mask = torch.ones(logits.shape, device=logits.device, dtype=logits.dtype)
