@@ -16,8 +16,10 @@ class EpisodeInfo:
     def extra_info(self) -> Dict[str, Any]:
         return self._extra
 
-    def register_extra(self, **kwargs):
-        self._extra.update(kwargs)
+    def register_extra(self, **placeholder_dict):
+        agents = list(self.step_cnt.keys())
+        for k, placeholder in placeholder_dict.items():
+            self._extra.update({k: {agent: placeholder() for agent in agents}})
 
 
 class Environment:

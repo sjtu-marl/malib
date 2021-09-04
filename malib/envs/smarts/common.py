@@ -838,6 +838,15 @@ def ObservationAdapter(observation_space, feature_configs):
     return func
 
 
+def InfoAdapter(env_obs, reward, raw_info):
+    events = env_obs.events
+    raw_info["reached_goal"] = events.reached_goal
+    raw_info["collision"] = len(events.collisons)
+    raw_info["reached_max_step"] = events.reached_max_episode_steps
+    raw_info["off_road"] = events.off_road
+    return raw_info
+
+
 class ActionAdapter:
     @staticmethod
     def from_type(space_type):
