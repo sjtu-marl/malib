@@ -9,7 +9,7 @@ training:
     # control the frequency of remote parameter update
     update_interval: 1
     saving_interval: 10
-    batch_size: 1024
+    batch_size: 256
     optimizer: Adam
     actor_lr: 0.01
     critic_lr: 0.01
@@ -23,9 +23,9 @@ rollout:
   stopper_config:
     max_step: 1000
   # metric_type: "simple"
-  fragment_length: 25
-  num_episodes: 250
-  episode_seg: 25
+  fragment_length: 1000
+  num_episodes: 1
+  episode_seg: 1
   terminate: "any"
 
 evaluation:
@@ -40,15 +40,17 @@ env_description:
     scenario_configs:
       path:
         - scenarios/double_merge/cross
-        - scenarios/double_merge/nocross
-        - scenarios/intersections/4lane
-        - scenarios/intersections/4lane_sv
+#        - scenarios/double_merge/nocross
+#        - scenarios/intersections/4lane
+#        - scenarios/intersections/4lane_sv
+#        - scenarios/two_ways/bid
+#        - scenarios/two_ways/bid_sv
       max_step: 1000
       agent_type: baseline-lane-control.yaml
 
 algorithms:
   PPO:
-    name: "PPO"
+    name: PPO
     model_config:
       actor:
         network: mlp

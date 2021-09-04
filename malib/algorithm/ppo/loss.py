@@ -130,14 +130,14 @@ class PPOLoss(LossFunc):
         ]
 
         stats_list = [
-            pg_loss.detach().numpy(),
-            vf_loss.detach().numpy(),
-            entropy.detach().numpy(),
-            approx_kl.detach().numpy(),
-            clip_frac.detach().numpy(),
+            pg_loss.detach().item(),
+            vf_loss.detach().item(),
+            entropy.detach().item(),
+            approx_kl.detach().item(),
+            clip_frac.detach().item(),
         ]
 
         return {
-            TrainingMetric.LOSS: loss.detach().numpy(),
+            TrainingMetric.LOSS: loss.detach().item(),
             **dict(zip(loss_names, stats_list)),
         }
