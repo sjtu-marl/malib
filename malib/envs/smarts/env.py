@@ -200,6 +200,19 @@ class SMARTS(Environment):
         self._trainable_agents = self._env.possible_agents
         self._max_step = max_step
 
+    def record_episode_info(self, **kwargs):
+        super(SMARTS, self).record_episode_info(**kwargs)
+        infos = kwargs["infos"]
+        for agent, info in infos.items():
+            self.episode_info.extra_info["reached_goal"][agent] += info["reached_goal"]
+            self.episode_info.extra_info["collision"][agent] = info["collision"]
+            self.episode_info.extra_info["reached_max_step"][agent] = (
+                1 if info["reached_max_step"] else 0
+            )
+            self.episode_info.extra_info["off_road"][agent] = (
+                1 if info["off_road"] else 0
+            )
+
     def step(self, actions: Dict[AgentID, Any]) -> Dict[str, Any]:
         observations, rewards, dones, infos = self._env.step(actions)
         # remove dones all
@@ -217,6 +230,16 @@ class SMARTS(Environment):
         self._env.render()
 
     def reset(self, *args, **kwargs):
+        kwargs.update(
+            {
+                "extra_episode_info_keys": {
+                    "reached_goal": lambda: 0,
+                    "collision": lambda: 0,
+                    "reached_max_step": lambda: 0,
+                    "off_road": lambda: 0,
+                }
+            }
+        )
         observations = super(SMARTS, self).reset(*args, **kwargs)
         self._max_step = self._max_step or kwargs.get("max_step", None)
         return {Episode.CUR_OBS: observations}

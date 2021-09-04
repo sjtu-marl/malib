@@ -844,8 +844,7 @@ def InfoAdapter(env_obs, reward, raw_info):
     raw_info["collision"] = len(events.collisons)
     raw_info["reached_max_step"] = events.reached_max_episode_steps
     raw_info["off_road"] = events.off_road
-    raw_agent_info.update(event_report)
-    return raw_agent_info
+    return raw_info
 
 
 class ActionAdapter:

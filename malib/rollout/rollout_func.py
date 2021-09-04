@@ -56,10 +56,14 @@ def _parse_episode_infos(episode_infos: List[EpisodeInfo]) -> Dict[str, List]:
             if res.get(k) is None:
                 res[k] = []
             res[k].append(v)
-        # extra_info = episode_info.extra_info
-        # if len(extra_info) > 0:
-        #     for k, v in extra_info.items():
-        #         res["custom_metric"]
+        extra_info = episode_info.extra_info
+        if len(extra_info) > 0:
+            for k, agent_items in extra_info.items():
+                for agent, v in agent_items.items():
+                    key = f"custom_metric/{k}/{agent}"
+                    if res.get(key) is None:
+                        res[key] = []
+                    res[key].append(v)
     return res
 
 
