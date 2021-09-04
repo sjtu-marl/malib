@@ -53,6 +53,7 @@ def _make_config(config):
     #     policy_obs_space, feature_configs=features_config, wrapper_config=wrapper_config
     # )
     action_adapter = common.ActionAdapter.from_type(action_type)
+    info_adapter = common.InfoAdapter
     # policy observation space is related to the wrapper usage
     # policy_config = (
     #     None,
@@ -95,6 +96,7 @@ def _make_config(config):
         "interface": AgentInterface(**interface_config),
         "observation_adapter": observation_adapter,
         "action_adapter": action_adapter,
+        "info_adapter": info_adapter,
     }
     # config["trainer"] = _get_trainer(**config["policy"]["trainer"])
     # config["policy"] = policy_config
@@ -208,6 +210,7 @@ class SMARTS(Environment):
             Episode.CUR_OBS: observations,
             Episode.REWARD: rewards,
             Episode.DONE: dones,
+            Episode.INFO: infos,
         }
 
     def render(self, *args, **kwargs):

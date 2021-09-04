@@ -78,5 +78,5 @@ global_evaluator:
   name: "generic"
 
 dataset_config:
-  episode_capacity: 1000000
+  episode_capacity: 100000
   learning_start: 2560
