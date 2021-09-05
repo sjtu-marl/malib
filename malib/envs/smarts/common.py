@@ -841,7 +841,7 @@ def ObservationAdapter(observation_space, feature_configs):
 def InfoAdapter(env_obs, reward, raw_info):
     # events: collision: list, off_road: bool, on_shoulder: bool, wrong_way: bool, not_moving: bool, reached_goal: bool, reached_max_episode_steps: bool, agents_live_done: bool
     events = env_obs.events
-    print("event:", events)
+    # print("event:", events)
     raw_info["reached_goal"] = events.reached_goal
     raw_info["collision"] = len(events.collisions)
     raw_info["reached_max_step"] = events.reached_max_episode_steps
