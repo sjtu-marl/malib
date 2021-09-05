@@ -84,7 +84,7 @@ class Environment:
             total_rewards=dict.fromkeys(self.possible_agents, 0.0),
             step_cnt=dict.fromkeys(self.possible_agents, 0),
         )
-        if kwargs.get("extra_epsiode_info_keys") is not None:
+        if kwargs.get("extra_episode_info_keys") is not None:
             self.episode_info.register_extra(**kwargs["extra_episode_info_keys"])
         return self._env.reset()
 
