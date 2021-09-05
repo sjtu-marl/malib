@@ -85,7 +85,7 @@ def _make_config(config):
     config["env_config"] = {
         "custom_config": {
             **wrapper_config,
-            "reward_adapter": lambda x: x,
+            "reward_adapter": common.RewardAdapter,
             "observation_adapter": observation_adapter,
             "action_adapter": action_adapter,
             "observation_space": policy_obs_space,

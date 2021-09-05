@@ -24,6 +24,9 @@ from typing import Dict, Sequence
 import cv2
 import gym
 import numpy as np
+
+from scipy.spatial import distance
+
 from ray import logger
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
@@ -837,6 +840,65 @@ def ObservationAdapter(observation_space, feature_configs):
 
     return func
 
+def RewardAdapter(observation_adapter):
+    def func(env_obs, env_reward):
+        penalty, bonus = 0.0, 0.0
+        obs = observation_adapter(env_obs)
+        last_env_obs = env_obs
+
+        # ======== Penalty: distance to goal =========
+        goal = last_env_obs.ego_vehicle_state.mission.goal
+        ego_2d_position = last_env_obs.ego_vehicle_state.position[:2]
+        if hasattr(goal, "position"):
+            goal_position = goal.position
+        else:
+            goal_position = ego_2d_position
+        goal_dist = distance.euclidean(ego_2d_position, goal_position)
+        penalty += -0.01 * goal_dist
+
+        # ======== Penalty & Bonus: event (collision, off_road, reached_goal, reached_max_episode_steps)
+        ego_events = last_env_obs.events
+        # ::collision
+        penalty += -50.0 if len(ego_events.collisions) > 0 else 0.0
+        # ::off road
+        penalty += -50.0 if ego_events.off_road else 0.0
+        # ::reach goal
+        if ego_events.reached_goal:
+            bonus += 20.0
+
+        # ::reached max_episode_step
+        if ego_events.reached_max_episode_steps:
+            penalty += -0.5
+        else:
+            bonus += 0.5
+
+        # ======== Penalty: heading error penalty
+        if obs.get("heading_errors", None):
+            heading_errors = obs["heading_errors"][-1]
+            penalty_heading_errors = -0.03 * heading_errors[:2]
+        
+            heading_errors2 = obs["heading_errors"][-2]
+            penalty_heading_errors += -0.01 * (heading_errors[:2] - heading_errors2[:2])
+            penalty += np.mean(penalty_heading_errors)
+
+        # ======== Penalty: penalise sharp turns done at high speeds =======
+        if last_env_obs.ego_vehicle_state.speed > 60:
+            steering_penalty = -pow(
+                (last_env_obs.ego_vehicle_state.speed - 60)
+                / 20
+                * last_env_obs.ego_vehicle_state.steering
+                / 4,
+                2,
+            )
+        else:
+            steering_penalty = 0
+        penalty += 0.1 * steering_penalty
+
+        # ========= Bonus: environment reward (distance travelled) ==========
+        bonus += 0.05 * env_reward
+        return bonus + penalty
+
+    return func
 
 def InfoAdapter(env_obs, reward, raw_info):
     # events: collision: list, off_road: bool, on_shoulder: bool, wrong_way: bool, not_moving: bool, reached_goal: bool, reached_max_episode_steps: bool, agents_live_done: bool

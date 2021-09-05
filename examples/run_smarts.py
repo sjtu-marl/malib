@@ -48,8 +48,6 @@ if __name__ == "__main__":
         )
     )
 
-    # env.close()
-
     # done = False
     # cnt = 0
     # obs = env.reset()
