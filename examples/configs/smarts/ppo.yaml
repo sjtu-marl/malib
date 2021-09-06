@@ -11,9 +11,9 @@ training:
     saving_interval: 10
     batch_size: 256
     optimizer: Adam
-    actor_lr: 0.0001
-    critic_lr: 0.0001
-    lr: 0.0001
+    actor_lr: 0.01
+    critic_lr: 0.05
+    lr: 0.02
     tau: 0.01  # soft update
     grad_norm_clipping: 0.5
 
@@ -24,7 +24,7 @@ rollout:
     max_step: 1000
   # metric_type: "simple"
   fragment_length: 1000
-  num_episodes: 24
+  num_episodes: 12
   episode_seg: 1
   terminate: "any"
 
