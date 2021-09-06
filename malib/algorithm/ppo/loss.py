@@ -73,20 +73,18 @@ class PPOLoss(LossFunc):
             actions = cast_to_long_tensor(batch[Episode.ACTION].reshape(-1))
         else:
             actions = cast_to_tensor(batch[Episode.ACTION])
+
         cur_obs = cast_to_tensor(batch[Episode.CUR_OBS])
         next_obs = cast_to_tensor(batch[Episode.NEXT_OBS])
         dones = cast_to_tensor(batch[Episode.DONE])
+        pi = cast_to_tensor(batch[Episode.ACTION_DIST])
+
         cliprange = self._params["cliprange"]
         grad_cliprange = self._params["grad_norm_clipping"]
         ent_coef = self._params["entropy_coef"]
         vf_coef = self._params["value_coef"]
         gamma = self.policy.custom_config["gamma"]
 
-        old_logits = self.policy.actor(cur_obs)
-        if isinstance(old_logits, tuple):
-            old_neglogpac = -Normal(*old_logits).log_prob(actions).detach()
-        else:
-            old_neglogpac = -Categorical(logits=old_logits).log_prob(actions).detach()
         adv = self.policy.compute_advantage(batch).detach()
         next_value = self.policy.value_function(next_obs).detach().flatten()
         target_value = rewards + gamma * (1.0 - dones) * next_value
@@ -96,14 +94,15 @@ class PPOLoss(LossFunc):
             distri = Normal(*logits)
         else:
             distri = Categorical(logits=logits)
-        neglogpac = -distri.log_prob(actions)
-        ratio = torch.exp(old_neglogpac.detach() - neglogpac)
+        logpi = distri.log_prob(actions)
+        old_logpi = torch.log(pi.gather(-1, actions.unsqueeze(-1)).squeeze(-1))
+        ratio = torch.exp(logpi - old_logpi.detach())
         entropy = distri.entropy().mean()
 
-        pg_loss = -adv * ratio
-        pg_loss2 = -adv * torch.clip(ratio, 1.0 - cliprange, 1.0 + cliprange)
-        pg_loss = torch.mean(torch.maximum(pg_loss, pg_loss2))
-        approx_kl = 0.5 * torch.mean(torch.square(neglogpac - old_neglogpac))
+        pg_loss = adv * ratio
+        pg_loss2 = adv * torch.clip(ratio, 1.0 - cliprange, 1.0 + cliprange)
+        pg_loss = -torch.mean(torch.minimum(pg_loss, pg_loss2))
+        approx_kl = 0.5 * torch.mean(torch.square(logpi - old_logpi))
         clip_frac = torch.mean(torch.greater(torch.abs(ratio - 1.0), cliprange).float())
 
         vpred = self.policy.value_function(cur_obs).flatten()

@@ -1,5 +1,5 @@
 group: SMARTS
-name: share/ppo
+name: share/dqn
 
 training:
   interface:
@@ -11,10 +11,10 @@ training:
     saving_interval: 10
     batch_size: 256
     optimizer: Adam
-    actor_lr: 0.01
-    critic_lr: 0.01
-    lr: 0.01
-    tau: 0.01  # soft update
+    actor_lr: 0.001
+    critic_lr: 0.001
+    lr: 0.001
+    tau: 0.1  # soft update
     grad_norm_clipping: 0.5
 
 rollout:
@@ -24,7 +24,7 @@ rollout:
     max_step: 1000
   # metric_type: "simple"
   fragment_length: 1000
-  num_episodes: 1
+  num_episodes: 24
   episode_seg: 1
   terminate: "any"
 
@@ -73,11 +73,11 @@ algorithms:
 
     # set hyper parameter
     custom_config:
-      gamma: 0.95
+      gamma: 0.99
       use_cuda: False  # enable cuda or not
-      eps_min: 0.01
+      eps_min: 0.05
       eps_max: 1.0
-      eps_anneal_time: 2000
+      eps_anneal_time: 10000
 
 global_evaluator:
   name: "generic"

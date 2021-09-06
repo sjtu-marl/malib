@@ -65,15 +65,17 @@ class PPO(Policy):
             logits = self.actor(observation)
             # gumbel softmax convert to differentiable one-hot
             if self._discrete_action:
-                if behavior == BehaviorMode.EXPLORATION:
-                    logits += -torch.log(-torch.log(torch.rand(logits.shape)))
-
                 if action_mask is not None:
                     action_mask = torch.FloatTensor(action_mask).to(logits.device)
                     pi = misc.masked_softmax(logits, action_mask)
                 else:
                     pi = F.softmax(logits, dim=-1)
-                actions = pi.argmax(-1)
+
+                if behavior == BehaviorMode.EXPLORATION:
+                    m = Categorical(probs=pi)
+                    actions = m.sample()
+                else:
+                    actions = pi.argmax(-1)
             else:
                 m = Normal(*logits)
                 pi = torch.cat(logits, dim=-1)
