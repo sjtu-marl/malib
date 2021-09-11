@@ -129,6 +129,7 @@ class Table:
         capacity: int,
         data_shapes: Dict[str, Tuple],
         sample_start_size: int = 0,
+        mode: str = "queue",
     ):
         """One table for one episode."""
 
@@ -141,13 +142,19 @@ class Table:
         self._is_fixed = False
         self._sample_start_size = sample_start_size
         self._size = 0
+        self._flag = 0
         self._capacity = capacity
         self._data_shapes = data_shapes
+        self._mode = mode
 
-        self._consumer_queue = queue.Queue(maxsize=capacity)
-        self._producer_queue = queue.Queue(maxsize=capacity)
-        # ready index
-        self._producer_queue.put_nowait_batch([i for i in range(capacity)])
+        if mode == "queue":
+            self._consumer_queue = queue.Queue(maxsize=capacity)
+            self._producer_queue = queue.Queue(maxsize=capacity)
+            # ready index
+            self._producer_queue.put_nowait_batch([i for i in range(capacity)])
+        else:
+            self._consumer_queue = None
+            self._producer_queue = None
 
         # build episode
         self._buffer = BufferDict()
@@ -176,16 +183,21 @@ class Table:
         return self._size
 
     @property
+    def flag(self):
+        return self._flag
+
+    @property
     def capacity(self):
-        self._capacity
+        return self._capacity
 
     def sample_activated(self) -> bool:
         return self._consumer_queue.size() >= self._sample_start_size
 
     def fix_table(self):
         self._is_fixed = True
-        self._producer_queue.shutdown()
-        self._consumer_queue.shutdown()
+        if self._mode == "queue":
+            self._producer_queue.shutdown()
+            self._consumer_queue.shutdown()
 
     def get_producer_index(self, buffer_size: int) -> Union[List[int], None]:
         buffer_size = min(self._producer_queue.size(), buffer_size)
@@ -211,13 +223,19 @@ class Table:
     def gen_table_name(*args, **kwargs):
         return DATASET_TABLE_NAME_GEN(*args, **kwargs)
 
-    def insert(self, indices: List[int], data: Dict[str, Any]):
-        assert indices is not None, "indices: {}".format(indices)
+    def insert(self, data: Dict[str, Any], indices: List[int] = None, size: int = None):
+        if indices is None:
+            # generate indices
+            indices = np.arange(self._flag, self._flag + size) % self._capacity
+        # assert indices is not None, "indices: {}".format(indices)
         self._buffer.set_data(indices, data)
         self._size += len(indices)
+        self._size = min(self._size, self._capacity)
+        self._flag = (self._flag + len(indices)) % self._capacity
 
-    def sample(self, indices: List[int]) -> Dict[str, Any]:
-        assert indices is not None
+    def sample(self, indices: List[int] = None, size: int = None) -> Dict[str, Any]:
+        if indices is None:
+            indices = np.random.choice(self.size, size)
         return self._buffer.index(indices)
 
     @staticmethod
@@ -455,7 +473,7 @@ class OfflineDataset:
         #     table_name, buffer_desc.data, is_multi_agent=len(buffer_desc.data) > 1
         # )
         table = self._tables[table_name]
-        table.insert(buffer_desc.indices, buffer_desc.data)
+        table.insert(buffer_desc.data, indices=buffer_desc.indices)
         table.free_producer_index(buffer_desc.indices)
 
     @Log.method_timer(enable=settings.PROFILING)
@@ -578,7 +596,7 @@ class OfflineDataset:
                 pid=buffer_desc.policy_id,
             )
             table = self._tables[table_name]
-            res = table.sample(buffer_desc.indices)
+            res = table.sample(indices=buffer_desc.indices)
             table.free_consumer_index(buffer_desc.indices)
         except KeyError:
             info = "table {} has not been created yet".format(table_name)

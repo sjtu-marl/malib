@@ -29,12 +29,12 @@ from malib.utils.typing import (
     TrainingFeedback,
     TaskRequest,
     AgentID,
-    MetricEntry,
 )
 from malib.utils import errors
 from malib.utils.logger import Logger, get_logger, Log
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.trainer import Trainer
+from malib.backend.datapool.offline_dataset_server import BufferDict, Table
 
 
 AgentFeedback = namedtuple("AgentFeedback", "id, trainable_pairs, state_id, statistics")
@@ -87,6 +87,7 @@ class AgentInterface(metaclass=ABCMeta):
         exp_cfg: Dict[str, Any],
         population_size: int,
         algorithm_mapping: Callable = None,
+        local_buffer_size: int = 0,
     ):
         """
         :param str assign_id: Specify the agent interface id.
@@ -127,6 +128,12 @@ class AgentInterface(metaclass=ABCMeta):
             remote=settings.USE_REMOTE_LOGGER,
             mongo=settings.USE_MONGO_LOGGER,
             **exp_cfg,
+        )
+        self._local_buffer = Table(
+            ["agent"],
+            capacity=100000,
+            data_shapes=self._env_desc["config"]["data_shapes"],
+            mode="local",
         )
 
     def get_policies(self) -> Dict[PolicyID, Policy]:
@@ -349,7 +356,10 @@ class AgentInterface(metaclass=ABCMeta):
                 )
                 if batch.data is None:
                     # Logger.warning("inex not ready")
-                    continue
+                    if self._local_buffer.size >= buffer_desc.batch_size:
+                        break
+                    else:
+                        continue
                 else:
                     buffer_desc.indices = batch.data
                     batch, info = ray.get(
@@ -358,10 +368,15 @@ class AgentInterface(metaclass=ABCMeta):
                     assert batch.data is not None
                     size += buffer_desc.batch_size
                     res.update(batch.data)
+                    # print("likffe:", list(batch.data.keys()))
+                    self._local_buffer.insert(
+                        data=batch.data, size=len(buffer_desc.indices)
+                    )
 
                     buffer_desc.data = None
                     buffer_desc.indices = None
                     break
+        res = self._local_buffer.sample(size=buffer_desc.batch_size)
         Logger.debug("Trainer got {} data".format(buffer_desc.batch_size))
         return res, size
 
@@ -380,17 +395,6 @@ class AgentInterface(metaclass=ABCMeta):
         :return: A buffer description entity.
         """
 
-        # return {
-        #     agent: BufferDescription(
-        #         env_id=self._env_desc["config"]["env_id"],
-        #         agent_id=agent,
-        #         policy_id=[agent_policy_mapping[aid] for aid in self._group],
-        #         batch_size=batch_size,
-        #         sample_mode=sample_mode,
-        #     )
-        #     for agent in self._group
-        # }
-        # agents = sorted(self._group)
         return BufferDescription(
             env_id=self._env_desc["config"]["env_id"],
             agent_id=self._group,

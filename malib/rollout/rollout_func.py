@@ -163,6 +163,7 @@ def sequential(
 
     Logger.debug("agent total_cnt: %s fragment length: %s", total_cnt, fragment_length)
     if dataset_server:
+        shuffle_idx = np.random.permutation(fragment_length)
         for player, data_tups in tmp_buffer.items():
             (
                 observations,
@@ -184,14 +185,14 @@ def sequential(
             action_dists = action_dists[:-1].copy()
 
             agent_buffers[player] = {
-                Episode.CUR_OBS: observations[:fragment_length],
-                Episode.NEXT_OBS: next_observations[:fragment_length],
-                Episode.REWARD: rewards[:fragment_length],
-                Episode.ACTION: actions[:fragment_length],
-                Episode.DONE: dones[:fragment_length],
-                Episode.ACTION_DIST: action_dists[:fragment_length],
-                Episode.ACTION_MASK: action_masks[:fragment_length],
-                Episode.NEXT_ACTION_MASK: next_action_masks[:fragment_length],
+                Episode.CUR_OBS: observations[shuffle_idx],
+                Episode.NEXT_OBS: next_observations[shuffle_idx],
+                Episode.REWARD: rewards[shuffle_idx],
+                Episode.ACTION: actions[shuffle_idx],
+                Episode.DONE: dones[shuffle_idx],
+                Episode.ACTION_DIST: action_dists[shuffle_idx],
+                Episode.ACTION_MASK: action_masks[shuffle_idx],
+                Episode.NEXT_ACTION_MASK: next_action_masks[shuffle_idx],
             }
         buffer_desc.batch_size = fragment_length
         buffer_desc.data = None
@@ -300,6 +301,7 @@ def simultaneous(
         observations = next_observations
 
     if dataset_server:
+        shuffle_idx = np.random.permutation(fragment_length)
         for agent, data_tups in agent_buffers.items():
             (
                 obs,
@@ -320,12 +322,12 @@ def simultaneous(
                 )
             )
             agent_buffers[agent] = {
-                Episode.CUR_OBS: obs[:fragment_length],
-                Episode.NEXT_OBS: next_obs[:fragment_length],
-                Episode.REWARD: rew[:fragment_length].squeeze(),
-                Episode.ACTION: actions[:fragment_length].squeeze(),
-                Episode.DONE: dones[:fragment_length].squeeze(),
-                Episode.ACTION_DIST: action_dists[:fragment_length],
+                Episode.CUR_OBS: obs[shuffle_idx],
+                Episode.NEXT_OBS: next_obs[shuffle_idx],
+                Episode.REWARD: rew[shuffle_idx].squeeze(),
+                Episode.ACTION: actions[shuffle_idx].squeeze(),
+                Episode.DONE: dones[shuffle_idx].squeeze(),
+                Episode.ACTION_DIST: action_dists[shuffle_idx],
             }
         buffer_desc.batch_size = fragment_length
         buffer_desc.data = None
