@@ -1,130 +1,157 @@
-# -*- encoding: utf-8 -*-
-# -----
-# Created Date: 2021/7/16
-# Author: Hanjing Wang
-# -----
-# Last Modified:
-# Modified By:
-# -----
-# Copyright (c) 2020 MARL @ SJTU
-# -----
-
+import logging
 import ray
 import pytest
-import numpy as np
-from typing import List
+import time
+import yaml
+import os
+import copy
 
-from malib.backend.datapool.data_array import NumpyDataArray
-from malib.backend.datapool.offline_dataset_server import OfflineDataset, Table, Episode
-from malib.utils.typing import BufferDescription
+from malib import settings
+from malib.utils import logger
+from malib.utils.preprocessor import get_preprocessor
+
+from malib.backend.datapool.parameter_server import ParameterServer
+from malib.backend.datapool.offline_dataset_server import Episode, OfflineDataset
+from malib.backend.coordinator.light_server import LightCoordinator
+from malib.envs.gym.env import GymEnv
 
 
-def test_single_external_dataset():
-    ray.init(address=None)
+def update_configs(update_dict, ori_dict=None):
+    """ Update global configs with a given dict """
 
-    default_columns = [
-        Episode.CUR_OBS,
-        Episode.ACTION,
-        Episode.NEXT_OBS,
-        Episode.DONE,
-        Episode.REWARD,
-        Episode.ACTION_DIST,
-    ]
-
-    single_agent_id = "single_agent"
-    single_agent_params = {
-        "env_id": "single_env",
-        "policy_id": "single_policy",
-        "capacity": 10000,
-        "init_capacity": 10000,
-        "other_columns": ["single_other_column1", "single_other_column2"],
-    }
-
-    single_agent_data = {
-        column_name: np.random.randn(10000, 10, 10)
-        for column_name in default_columns + single_agent_params["other_columns"]
-    }
-    params = single_agent_params.copy()
-    params.pop("init_capacity")
-    single_agent_episode = Episode(**params)
-    single_agent_episode.fill(**single_agent_data)
-    print(single_agent_episode.size)
-    print(single_agent_episode.capacity)
-    table_name = Table.gen_table_name(
-        env_id=single_agent_episode.env_id,
-        main_id=[single_agent_id],
-        pid=[single_agent_episode.policy_id],
+    ori_configs = (
+        copy.copy(ori_dict)
+        if ori_dict is not None
+        else copy.copy(settings.DEFAULT_CONFIG)
     )
-    single_agent_table = Table(name=table_name, multi_agent=False)
-    single_agent_table.set_episode(
-        {single_agent_id: single_agent_episode}, single_agent_episode.capacity
-    )
-    single_agent_table.fill(**single_agent_data)
-    single_agent_table.dump("/tmp/")
 
-    dataset_config = {
-        "episode_capacity": 10000,
-        # Define the starting job,
-        # currently only support data loading
-        "init_job": {
-            # main dataset loads the data
-            "load_when_start": True,
-            "path": "/tmp/",
-        },
-        # Configuration for external resources,
-        # possibly multiple dataset shareds with
-        # extensive optimization like load balancing,
-        # heterogeneously organized data and etc.
-        # currently only support Read-Only dataset
-        # Datasets and returned data are organized as:
-        # ----------------       --------------------
-        # | Main Dataset | ---  | External Dataset [i] |
-        # ---------------       --------------------
-        "extern": {
-            "links": [
-                {
-                    "name": "expert data",
-                    "path": "/tmp/",
-                    "write": False,
-                }
-            ],
-            "sample_rates": [1],
-        },
+    for k, v in update_dict.items():
+        # assert k in ori_configs, f"Illegal key: {k}, {list(ori_configs.keys())}"
+        if isinstance(v, dict):
+            ph = ori_configs[k] if isinstance(ori_configs.get(k), dict) else {}
+            ori_configs[k] = update_configs(v, ph)
+        else:
+            ori_configs[k] = copy.copy(v)
+    return ori_configs
+
+
+def exp_config():
+    return {
+        "expr_group": "datasetserver_test",
+        "expr_name": "oneline_learning_test",
     }
-    exp_config = {"group": "test_offline_dataset_server", "name": "external_dataset"}
 
-    offline_dataset_server = OfflineDataset.options(
-        name="OfflineDataset", max_concurrency=1000
-    ).remote(dataset_config, exp_config, test_mode=True)
 
-    # major_dataset_keys = list(offline_dataset_server._tables.keys())
-    # extern_dataset_keys = list(offline_dataset_server.external_proxy[0]._tables.keys())
-    # assert len(major_dataset_keys) == 1
-    # assert len(extern_dataset_keys) == 1
-    # expected_table_name = Table.gen_table_name(
-    #     env_id=single_agent_params["env_id"],
-    #     main_id=single_agent_id,
-    #     pid=single_agent_params["policy_id"]
-    # )
-    # assert expected_table_name in major_dataset_keys
-    # assert expected_table_name in extern_dataset_keys
+def dataset_config():
+    return {"episode_capacity": 100000, "learning_start": 500}
 
-    res, info = ray.get(
-        offline_dataset_server.sample.remote(
-            BufferDescription(
-                env_id=single_agent_params["env_id"],
-                agent_id=single_agent_id,
-                policy_id=single_agent_params["policy_id"],
-                batch_size=32,
-                sample_mode=None,
+
+def parameter_server_config():
+    return {}
+
+
+@pytest.mark.parametrize(
+    "config_path,mode",
+    [
+        # ("examples/configs/gym/dqn_cartpole.yaml", "async"),
+        ("examples/configs/gym/sac_hopper.yaml", "async"),
+    ],
+)
+class TestOnlineLearning:
+    @pytest.fixture
+    def env_desc(self):
+        env = GymEnv(env_id="Hopper-v2")
+        observation_spaces = env.observation_spaces
+        action_spaces = env.action_spaces
+        possible_agents = env.possible_agents
+
+        def data_shape_func(agent):
+            preprosessor = get_preprocessor(observation_spaces[agent])(
+                observation_spaces[agent]
             )
+            return {
+                Episode.CUR_OBS: preprosessor.shape,
+                Episode.NEXT_OBS: preprosessor.shape,
+                Episode.ACTION_DIST: action_spaces[agent].shape,
+                Episode.ACTION: action_spaces[agent].shape,
+                Episode.DONE: (),
+                Episode.REWARD: (),
+            }
+
+        agent_data_shapes = {agent: data_shape_func(agent) for agent in possible_agents}
+        env.close()
+
+        return {
+            "creator": GymEnv,
+            "config": {
+                "env_id": "Hopper-v2",
+                "scenario_configs": {},
+                "observation_spaces": observation_spaces,
+                "action_spaces": action_spaces,
+                "data_shapes": agent_data_shapes,
+            },
+            "possible_agents": possible_agents,
+        }
+
+    @pytest.fixture
+    def dataset_server(self):
+        if not ray.is_initialized():
+            ray.init()
+        return OfflineDataset.options(
+            name=settings.OFFLINE_DATASET_ACTOR, max_concurrency=1000
+        ).remote(dataset_config(), exp_config())
+
+    @pytest.fixture
+    def parameter_server(self):
+        if not ray.is_initialized():
+            ray.init()
+        return ParameterServer.options(
+            name=settings.PARAMETER_SERVER_ACTOR, max_concurrency=1000
+        ).remote(exp_cfg=exp_config(), **parameter_server_config())
+
+    def test_ind_learner_ind_sample(
+        self,
+        config_path,
+        mode,
+        env_desc,
+        dataset_server: OfflineDataset,
+        parameter_server: ParameterServer,
+    ):
+
+        with open(os.path.join(settings.BASE_DIR, config_path), "r") as f:
+            yaml_config = yaml.load(f)
+
+        if not ray.is_initialized():
+            ray.init()
+        # return a fake coordinator
+        logging.debug("ray has beed init")
+
+        yaml_config["training"]["interface"]["observation_spaces"] = env_desc["config"][
+            "observation_spaces"
+        ]
+        yaml_config["training"]["interface"]["action_spaces"] = env_desc["config"][
+            "action_spaces"
+        ]
+
+        yaml_config = update_configs(yaml_config)
+
+        exp_cfg = logger.start(
+            group=yaml_config.get("group", "experiment"),
+            name=yaml_config.get("name", "case") + f"_{time.time()}",
         )
-    )
-    print(info)
-    assert isinstance(res.data, List)
-    # res.data expected to be
-    # List[Dict[ColumnName:str, numpy.ndarray]] of length 2
-    assert len(res.data) == 2
-    assert list(res.data[0].values())[0].shape == (32, 10, 10)
-    assert list(res.data[1].values())[0].shape == (32, 10, 10)
-    ray.shutdown()
+
+        controller = LightCoordinator.options(
+            name=settings.COORDINATOR_SERVER_ACTOR, max_concurrency=100
+        ).remote()
+
+        start = time.time()
+        est_time_limit = 3600
+        controller.start.remote(yaml_config, env_desc, exp_cfg)
+
+        while time.time() - start <= est_time_limit:
+            pass
+
+        dataset_server.shutdown()
+        parameter_server.shutdown()
+        controller.shutdown()
+        ray.shutdown()

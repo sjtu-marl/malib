@@ -1,4 +1,3 @@
-from collections import namedtuple
 import logging
 import os
 import sys
@@ -6,23 +5,30 @@ import traceback
 import threading
 import time
 import traceback
-from typing import Dict, List, Any, Type, Union, Sequence
-
 import numpy as np
-from numpy.core.fromnumeric import trace
+import torch
 import ray
 
-from typing import Dict, List, Any, Union, Sequence, Tuple
+from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from readerwriterlock import rwlock
 
+from ray.util import queue
+
 from malib import settings
-from malib.backend.datapool.data_array import NumpyDataArray
-from malib.utils.errors import OversampleError, NoEnoughDataError
-from malib.utils.typing import BufferDescription, PolicyID, AgentID, Status
-from malib.utils.logger import get_logger, Log
-from malib.utils.logger import get_logger
-from malib.utils.typing import BufferDescription, PolicyID, AgentID
+from malib.utils.errors import OversampleError
+from malib.utils.logger import Log, Logger
+from malib.utils.typing import (
+    BufferDescription,
+    PolicyID,
+    AgentID,
+    Dict,
+    List,
+    Any,
+    Union,
+    Tuple,
+    Status,
+)
 
 import threading
 import pickle as pkl
@@ -42,74 +48,7 @@ def _gen_table_name(env_id, main_id, pid):
 
 
 DATASET_TABLE_NAME_GEN = _gen_table_name
-Batch = namedtuple("Batch", "identify, data")
-
-
-class EpisodeLock:
-    def __init__(self):
-        self._pull_lock = 0
-        self._push_lock = 0
-        self._state = 1  # 1 for rollout, 0 for train
-
-    @property
-    def size(self):
-        return 0
-
-    def pull_and_push(self):
-        return (self._pull_lock, self._push_lock)
-
-    @property
-    def lock(self):
-        return self
-
-    @property
-    def push_lock_status(self):
-        return self._push_lock
-
-    @property
-    def pull_lock_status(self):
-        return self._pull_lock
-
-    def lock_pull(self):
-        if self._push_lock > 0:
-            return Status.FAILED
-        else:
-            if self._state == 1:
-                return Status.FAILED
-            else:
-                self._pull_lock += 1
-        return Status.SUCCESS
-
-    def lock_push(self):
-        if self._pull_lock > 0:
-            return Status.FAILED
-        else:
-            if self._state == 0:
-                return Status.FAILED
-            else:
-                self._push_lock = self._push_lock + 1
-        return Status.SUCCESS
-
-    def unlock_pull(self):
-        assert self._pull_lock < 2, self._pull_lock
-        if self._pull_lock < 1:
-            return Status.FAILED
-        else:
-            self._pull_lock -= 1
-            # self._pull_lock = 0
-            # FIXME(ziyu): check ?
-            if self._pull_lock == 0:
-                self._state = 1
-        return Status.SUCCESS
-
-    def unlock_push(self):
-        if self._push_lock < 1:
-            return Status.FAILED
-        else:
-            self._push_lock -= 1
-            if self._push_lock == 0:
-                self._state = 0
-        return Status.SUCCESS
+Batch = namedtuple("Batch", "identity, data")
 
 
 class Episode:
@@ -130,374 +69,156 @@ class Episode:
     STATE_ACTION_VALUE = "state_action_value_estimation"
     CUR_STATE = "cur_state"  # current global state
     NEXT_STATE = "next_state"  # next global state
-    NEXT_ACTION_MASK = "next_action_mask"
     LAST_REWARD = "last_reward"
 
-    def __init__(
-        self,
-        env_id: str,
-        policy_id: Union[PolicyID, Dict],
-        capacity: int = None,
-        other_columns: List[str] = None,
-    ):
-        """Create an episode instance
 
-        :param str env_id: Environment id
-        :param PolicyID policy_id: Policy id
-        :param int capacity: Capacity
-        :param List[str] other_columns: Extra columns you wanna collect
-        """
-
-        self.env_id = env_id
-        self.policy_id = policy_id
-        self._columns = [
-            Episode.CUR_OBS,
-            Episode.ACTION,
-            Episode.NEXT_OBS,
-            Episode.DONE,
-            Episode.REWARD,
-            Episode.ACTION_DIST,
-        ]
-        if other_columns:
-            self._other_columns = other_columns
+def iterate_recursively(d: Dict):
+    for k, v in d.items():
+        if isinstance(v, (dict, BufferDict)):
+            yield from iterate_recursively(v)
         else:
-            self._other_columns = []
+            yield d, k, v
 
-        assert isinstance(self._other_columns, List), self._other_columns
 
-        self._size = 0
-        self._capacity = capacity or settings.DEFAULT_EPISODE_CAPACITY
-        self._data = None
+class BufferDict(dict):
+    @property
+    def capacity(self) -> int:
+        capacities = []
+        for _, _, v in iterate_recursively(self):
+            capacities.append(v.shape[0])
+        return max(capacities)
 
-        if capacity is not None:
-            self._data = {
-                col: NumpyDataArray(name=str(col), capacity=capacity)
-                for col in self.columns
-            }
+    def index(self, indices):
+        return self.index_func(self, indices)
+
+    def index_func(self, x, indices):
+        if isinstance(x, (dict, BufferDict)):
+            res = BufferDict()
+            for k, v in x.items():
+                res[k] = self.index_func(v, indices)
+            return res
         else:
-            self._data = {
-                col: NumpyDataArray(
-                    name=str(col), init_capacity=settings.DEFAULT_EPISODE_INIT_CAPACITY
+            t = x[indices]
+            # Logger.debug("sampled data shape: {} {}".format(t.shape, indices))
+            return t
+
+    def set_data(self, index, new_data):
+        return self.set_data_func(self, index, new_data)
+
+    def set_data_func(self, x, index, new_data):
+        if isinstance(new_data, (dict, BufferDict)):
+            for nk, nv in new_data.items():
+                self.set_data_func(x[nk], index, nv)
+        else:
+            if isinstance(new_data, torch.Tensor):
+                t = new_data.cpu().numpy()
+            elif isinstance(new_data, np.ndarray):
+                t = new_data
+            else:
+                raise TypeError(
+                    f"Unexpected type for new insert data: {type(new_data)}, expected is np.ndarray"
                 )
-                for col in self.columns
-            }
-
-    def reset(self, **kwargs):
-        self.policy_id = kwargs.get("policy_id", self.policy_id)
-        self._size = 0
-        self._data = {
-            col: NumpyDataArray(name=str(col), capacity=self.capacity)
-            for col in self.columns
-        }
-
-    def empty(self) -> bool:
-        return self._size == 0
-
-    @property
-    def capacity(self):
-        return self._capacity
-
-    @property
-    def nbytes(self) -> int:
-        return sum([e.nbytes for e in self._data.values()])
-
-    @property
-    def data(self):
-        return self._data
-
-    @property
-    def columns(self):
-        return self._columns + self._other_columns
-
-    @property
-    def other_columns(self):
-        return self._other_columns
-
-    @property
-    def size(self):
-        return self._size
-
-    @property
-    def data_bytes(self):
-        return sum([col.nbytes for key, col in self._data.items()])
-
-    def fill(self, **kwargs):
-        for column in self.columns:
-            self._data[column].fill(kwargs[column])
-        self._size = len(self._data[Episode.CUR_OBS])
-        self._capacity = max(self._size, self._capacity)
-
-    def insert(self, **kwargs):
-        # for column in self.columns:
-        #     assert self._size == len(self._data[column]), (
-        #         self._size,
-        #         {c: len(self._data[c]) for c in self.columns},
-        #     )
-        for column in self.columns:
-            if isinstance(kwargs[column], NumpyDataArray):
-                assert kwargs[column]._data is not None, f"{column} has empty data"
-                self._data[column].insert(kwargs[column].get_data())
-            else:
-                self._data[column].insert(kwargs[column])
-        self._size = len(self._data[Episode.CUR_OBS])
-
-    def sample(self, idxes=None, size=None) -> Any:
-        assert idxes is None or size is None
-        size = size or len(idxes)
-
-        if self.size < size:
-            raise OversampleError(f"batch size={size} data size={self.size}")
-
-        if idxes is not None:
-            return {k: self._data[k][idxes] for k in self.columns}
-
-        if size is not None:
-            indices = np.random.choice(self._size, size)
-            return {k: self._data[k][indices] for k in self.columns}
-
-    @classmethod
-    def from_episode(cls, episode, capacity=None, fix_class=None):
-        """Create an empty episode like episode with given capacity"""
-
-        other_columns = episode.other_columns
-        episode_class = fix_class or cls
-        return episode_class(
-            episode.env_id,
-            episode.policy_id,
-            capacity or episode.capacity,
-            other_columns=other_columns,
-        )
-
-    @staticmethod
-    def concatenate(*episodes, capacity=None):
-        episodes = [e for e in episodes if e is not None]
-        columns = episodes[0].columns
-        other_columns = episodes[0].other_columns
-        policy_id = episodes[0].policy_id
-        env_id = episodes[0].env_id
-        ans = Episode(env_id, policy_id, capacity=capacity, other_columns=other_columns)
-        for e in episodes:
-            data = {col: e.data[col].get_data() for col in columns}
-            ans.insert(**data)
-        return ans
-
-    def format_to_dataset(self) -> List[Dict[str, Any]]:
-        raise NotImplementedError
-
-
-class MultiAgentEpisode(Episode):
-    def __init__(
-        self,
-        env_id: str,
-        agent_policy_mapping: Dict[AgentID, PolicyID],
-        capacity: int = None,
-        other_columns: Sequence[str] = None,
-    ):
-        super(MultiAgentEpisode, self).__init__(
-            env_id, agent_policy_mapping, capacity, other_columns
-        )
-        self._data: Dict[AgentID, Episode] = {
-            agent: Episode(pid, env_id, capacity, other_columns)
-            for agent, pid in agent_policy_mapping.items()
-        }
-
-    @property
-    def data(self):
-        return {agent: episode.data for agent, episode in self._data.items()}
-
-    @property
-    def episodes(self):
-        return self._data
-
-    def fill(self, **kwargs):
-        """ Format: {agent: {column: np.array, ...}, ...} """
-
-        pre_size = list(kwargs.values())[0].size
-        for agent, episode in kwargs.items():
-            assert (
-                episode.size == pre_size
-            ), f"Inconsistency of episode size: {agent} {pre_size}/{episode.size}"
-
-        _sizes = set()
-        for agent, episode in self._data.items():
-            episode.fill(**kwargs[agent])
-            _sizes.add(episode.size)
-        assert len(_sizes) == 1, f"Multiple size is not allowed: {_sizes}"
-        self._size = _sizes.pop()
-
-    def insert(self, **kwargs):
-        """ Format: {agent: {column: np.array, ...}, ...} """
-        _selected = list(kwargs.values())[0]
-        if isinstance(_selected, Episode):
-            _size = _selected.size
-        elif isinstance(_selected, Dict):
-            _size = len(list(_selected.values())[0])
-        else:
-            raise TypeError(f"Unexpected type: {type(_selected)}")
-        for agent, episode in self._data.items():
-            if isinstance(kwargs[agent], Episode):
-                assert (
-                    _size == kwargs[agent].size
-                ), f"Inconsistency of inserted episodes, expect {_size} while actual {episode.size}"
-                episode.insert(**kwargs[agent].data)
-            else:
-                assert _size == len(list(kwargs[agent].values())[0])
-                episode.insert(**kwargs[agent])
-            self._size = episode.size
-
-    def sample(self, idxes=None, size=None):
-        return {
-            agent: episode.sample(idxes, size) for agent, episode in self._data.items()
-        }
-
-    @classmethod
-    def from_data(cls, env_id, policy_id_mapping, data):
-        columns = list(list(data.values())[0].keys())
-        episode = cls(env_id, policy_id_mapping)
-        episode._columns = columns
-        episode._data = data
-        episode._size = len(list(list(data.values())[0].values())[0])
-        return episode
-
-    @classmethod
-    def from_episodes(cls, env_id, policy_id_mapping, episodes: Dict[str, Episode]):
-        columns = list(episodes.values())[0].columns
-        episode = cls(env_id, policy_id_mapping)
-        episode._columns = columns
-        episode._data = episodes
-        episode._size = list(episodes.values())[0].size
-        return episode
-
-    @staticmethod
-    def concatenate(*multiagent_episodes, capacity=None):
-        # FIXME(ming): check columns equivalence
-        if multiagent_episodes[0] is None:
-            multiagent_episodes = multiagent_episodes[1:]
-        policy_ids = multiagent_episodes[0].policy_id
-        env_id = multiagent_episodes[0].env_id
-
-        episodes = {}
-        # concatenate by agent wise
-        for agent in multiagent_episodes[0].episodes.keys():
-            episodes[agent] = Episode.concatenate(
-                *[me.episodes[agent] for me in multiagent_episodes], capacity=capacity
-            )
-
-        return MultiAgentEpisode.from_episodes(env_id, policy_ids, episodes)
-
-    def format_to_dataset(self) -> List[Dict[str, Any]]:
-        raise NotImplementedError
+            # Logger.debug("index: {}".format(index))
+            x[index] = t.copy()
 
 
 class Table:
-    def __init__(self, name, multi_agent: bool = False):
+    def __init__(
+        self,
+        keys,
+        capacity: int,
+        data_shapes: Dict[str, Tuple],
+        sample_start_size: int = 0,
+    ):
         """One table for one episode."""
 
-        self._name = name
-        self._lock_status: EpisodeLock = EpisodeLock()
+        self._keys = keys
         self._threading_lock = threading.Lock()
         self._rwlock = rwlock.RWLockFairD()
-        self._episode: Union[Episode, MultiAgentEpisode] = None
-        self._is_multi_agent = multi_agent
+        self._is_multi_agent = len(keys) > 1
+        self._consumer_queue = None
+        self._producer_queue = None
+        self._is_fixed = False
+        self._sample_start_size = sample_start_size
+        self._size = 0
+        self._capacity = capacity
+        self._data_shapes = data_shapes
+
+        self._consumer_queue = queue.Queue(maxsize=capacity)
+        self._producer_queue = queue.Queue(maxsize=capacity)
+        # ready index
+        self._producer_queue.put_nowait_batch([i for i in range(capacity)])
+
+        # build episode
+        self._buffer = BufferDict()
+        for agent, _dshapes in data_shapes.items():
+            if agent not in keys:
+                continue
+            t = BufferDict()
+            for dk, dshape in _dshapes.items():
+                t[dk] = np.zeros((capacity,) + dshape)
+            self._buffer[agent] = t
 
     @property
-    def name(self):
-        return self._name
+    def is_fixed(self):
+        return self._is_fixed
 
     @property
     def is_multi_agent(self) -> bool:
         return self._is_multi_agent
 
     @property
-    def episode(self) -> Union[Episode, MultiAgentEpisode]:
-        return self._episode
+    def buffer(self) -> BufferDict:
+        return self._buffer
 
     @property
     def size(self):
-        with self._threading_lock:
-            return self._episode.size if self._episode is not None else 0
+        return self._size
 
     @property
     def capacity(self):
-        with self._threading_lock:
-            return self._episode.capacity
+        self._capacity
 
-    def set_episode(self, episode: Dict[AgentID, Episode], capacity: int):
-        """If the current table has no episode, inititalize one for it."""
+    def sample_activated(self) -> bool:
+        return self._consumer_queue.size() >= self._sample_start_size
 
-        with self._rwlock.gen_wlock():
-            assert self._episode is None
-            _episode = list(episode.values())[0]
-            if self._is_multi_agent:
-                self._episode = MultiAgentEpisode(
-                    env_id=_episode.env_id,
-                    agent_policy_mapping={
-                        aid: e.policy_id for aid, e in episode.items()
-                    },
-                    capacity=capacity,
-                    other_columns=_episode.other_columns,
-                )
-            else:
-                self._episode = Episode(
-                    env_id=_episode.env_id,
-                    policy_id=_episode.policy_id,
-                    capacity=capacity,
-                    other_columns=_episode.other_columns,
-                )
+    def fix_table(self):
+        self._is_fixed = True
+        self._producer_queue.shutdown()
+        self._consumer_queue.shutdown()
+
+    def get_producer_index(self, buffer_size: int) -> Union[List[int], None]:
+        buffer_size = min(self._producer_queue.size(), buffer_size)
+        if buffer_size == 0:
+            return None
+        else:
+            return self._producer_queue.get_nowait_batch(buffer_size)
+
+    def get_consumer_index(self, buffer_size: int) -> Union[List[int], None]:
+        buffer_size = min(self._consumer_queue.size(), buffer_size)
+        if buffer_size == 0:
+            return None
+        else:
+            return self._consumer_queue.get_nowait_batch(buffer_size)
+
+    def free_consumer_index(self, indices: List[int]):
+        self._producer_queue.put_nowait_batch(indices)
+
+    def free_producer_index(self, indices: List[int]):
+        self._consumer_queue.put_nowait_batch(indices)
 
     @staticmethod
     def gen_table_name(*args, **kwargs):
         return DATASET_TABLE_NAME_GEN(*args, **kwargs)
 
-    def fill(self, **kwargs):
-        with self._rwlock.gen_wlock():
-            self._episode.fill(**kwargs)
+    def insert(self, indices: List[int], data: Dict[str, Any]):
+        assert indices is not None, "indices: {}".format(indices)
+        self._buffer.set_data(indices, data)
+        self._size += len(indices)
 
-    def insert(self, **kwargs):
-        try:
-            with self._rwlock.gen_wlock():
-                if not self._is_multi_agent:
-                    assert len(kwargs) == 1, kwargs
-                    kwargs = list(kwargs.values())[0].data
-                self._episode.insert(**kwargs)
-        except Exception as e:
-            print(traceback.format_exc())
-
-    def sample(self, idxes=None, size=None) -> Tuple[Any, str]:
-        with self._rwlock.gen_rlock():
-            data = self._episode.sample(idxes, size)
-        return data
-
-    def lock_push_pull(self, lock_type):
-        with self._threading_lock:
-            if lock_type == "push":
-                # lock for push
-                status = self._lock_status.lock_push()
-            else:
-                # lock for pull, when there is no episode assigned, return FAILED directly
-                # otherwise check the lock_status
-                if self._episode is None:
-                    status = Status.FAILED
-                else:
-                    status = self._lock_status.lock_pull()
-        return status
-
-    def unlock_push_pull(self, lock_type):
-        with self._threading_lock:
-            if lock_type == "push":
-                status = self._lock_status.unlock_push()
-            else:
-                status = self._lock_status.unlock_pull()
-        return status
-
-    @property
-    def lock(self) -> EpisodeLock:
-        with self._threading_lock:
-            return self._lock_status
-
-    def reset(self, **kwargs):
-        with self._rwlock.gen_wlock():
-            self._episode.reset(**kwargs)
+    def sample(self, indices: List[int]) -> Dict[str, Any]:
+        assert indices is not None
+        return self._buffer.index(indices)
 
     @staticmethod
     def _save_helper_func(obj, fp, candidate_name=""):
@@ -522,9 +243,11 @@ class Table:
             name = self._name
         with self._threading_lock:
             serial_dict = {
-                "name": self._name,
-                "data": self._episode,
+                "keys": self._keys,
+                "data": self._buffer,
                 "multi_agent": self._is_multi_agent,
+                "sample_start_size": self._sample_start_size,
+                "data_shapes": self._data_shapes,
             }
             self._save_helper_func(serial_dict, fp, name)
 
@@ -533,9 +256,14 @@ class Table:
         with open(fp, "rb") as f:
             serial_dict = pkl.load(f)
 
-        table = Table(name=serial_dict["name"], multi_agent=serial_dict["multi_agent"])
-        table._episode = serial_dict["data"]
-        table._capacity = table._episode.capacity
+        table = Table(
+            keys=serial_dict["keys"],
+            capacity=serial_dict["capacity"],
+            data_shapes=serial_dict["data_shapes"],
+            sample_start_size=serial_dict["sample_start_size"],
+        )
+        table._buffer = serial_dict["data"]
+        table._capacity = table.buffer.capacity
         return table
 
     def to_csv(self, fp):
@@ -579,6 +307,293 @@ class Table:
                     _dump_episode(os.path.join(fp, aid), episode)
             else:
                 _dump_episode(fp, self._episode)
+
+
+@ray.remote
+class OfflineDataset:
+    def __init__(
+        self, dataset_config: Dict[str, Any], exp_cfg: Dict[str, Any], test_mode=False
+    ):
+        self._episode_capacity = dataset_config.get(
+            "episode_capacity", settings.DEFAULT_EPISODE_CAPACITY
+        )
+        self._learning_start = dataset_config.get("learning_start", 64)
+        self._tables: Dict[str, Table] = dict()
+        self._threading_lock = threading.Lock()
+        self._threading_pool = ThreadPoolExecutor()
+
+        # parse init tasks
+        init_job_config = dataset_config.get("init_job", {})
+        if init_job_config.get("load_when_start"):
+            path = init_job_config.get("path")
+            if path:
+                self.load(path)
+
+        # Read-only proxies for external offline dataset
+        external_resource_config = dataset_config.get("extern")
+        self.external_proxy: List[ExternalDataset] = []
+        if external_resource_config:
+            for external_config, sample_rate in zip(
+                external_resource_config["links"],
+                external_resource_config["sample_rates"],
+            ):
+                if not external_config["write"]:
+                    dataset = ExternalReadOnlyDataset(
+                        name=external_config["name"],
+                        path=external_config["path"],
+                        sample_rate=sample_rate,
+                    )
+                    self.external_proxy.append(dataset)
+                else:
+                    raise NotImplementedError(
+                        "External writable dataset is not supported"
+                    )
+
+        # quitting job
+        quit_job_config = dataset_config.get("quit_job", {})
+        self.dump_when_closed = quit_job_config.get("dump_when_closed")
+        self.dump_path = quit_job_config.get("path")
+        Logger.info(
+            "dataset server initialized with (table_capacity={} table_learning_start={})".format(
+                self._episode_capacity, self._learning_start
+            )
+        )
+
+    def lock(self, lock_type: str, desc: Dict[AgentID, BufferDescription]) -> str:
+        """Lock table ready to push or pull and return the table status."""
+
+        env_id = list(desc.values())[0].env_id
+        main_ids = sorted(list(desc.keys()))
+        table_name = Table.gen_table_name(
+            env_id=env_id,
+            main_id=main_ids,
+            pid=[desc[aid].policy_id for aid in main_ids],
+        )
+        # check it is multi-agent or not
+        self.check_table(table_name, None, is_multi_agent=len(main_ids) > 1)
+        table = self._tables[table_name]
+        status = table.lock_push_pull(lock_type)
+        return status
+
+    def unlock(self, lock_type: str, desc: Dict[AgentID, BufferDescription]):
+        env_id = list(desc.values())[0].env_id
+        main_ids = sorted(list(desc.keys()))
+        table_name = Table.gen_table_name(
+            env_id=env_id,
+            main_id=main_ids,
+            pid=[desc[aid].policy_id for aid in main_ids],
+        )
+        self.check_table(table_name, None, is_multi_agent=len(main_ids) > 1)
+        table = self._tables[table_name]
+        status = table.unlock_push_pull(lock_type)
+        return status
+
+    def create_table(self, buffer_desc: BufferDescription):
+        name = Table.gen_table_name(
+            env_id=buffer_desc.env_id,
+            main_id=buffer_desc.agent_id,
+            pid=buffer_desc.policy_id,
+        )
+
+        if name in self._tables:
+            raise Warning("Repeated table definite: {}".format(name))
+            # return None
+        else:
+            self._tables[name] = Table(
+                buffer_desc.agent_id,
+                self._episode_capacity,
+                buffer_desc.data_shapes,
+                self._learning_start,
+            )
+            Logger.info("created data table: {}".format(name))
+
+    def get_consumer_index(
+        self, buffer_desc: BufferDescription
+    ) -> Union[List[int], None]:
+        """Before saving, get index"""
+
+        try:
+            table_name = Table.gen_table_name(
+                env_id=buffer_desc.env_id,
+                main_id=buffer_desc.agent_id,
+                pid=buffer_desc.policy_id,
+            )
+            table = self._tables[table_name]
+            indices = table.get_consumer_index(buffer_desc.batch_size)
+        except KeyError:
+            # Logger.warn("table {} not ready yet for indexing".format(table_name))
+            indices = None
+
+        return Batch(buffer_desc.identify, indices)
+
+    def get_producer_index(
+        self, buffer_desc: BufferDescription
+    ) -> Union[List[int], None]:
+        """Before saving, get index"""
+
+        try:
+            table_name = Table.gen_table_name(
+                env_id=buffer_desc.env_id,
+                main_id=buffer_desc.agent_id,
+                pid=buffer_desc.policy_id,
+            )
+            table = self._tables[table_name]
+            indices = table.get_producer_index(buffer_desc.batch_size)
+        except KeyError:
+            # Logger.warn("table {} not ready yet for indexing".format(table_name))
+            indices = None
+
+        return Batch(buffer_desc.identify, indices)
+
+    def save(self, buffer_desc: BufferDescription):
+        table_name = Table.gen_table_name(
+            env_id=buffer_desc.env_id,
+            main_id=buffer_desc.agent_id,
+            pid=buffer_desc.policy_id,
+        )
+        # self.check_table(
+        #     table_name, buffer_desc.data, is_multi_agent=len(buffer_desc.data) > 1
+        # )
+        table = self._tables[table_name]
+        table.insert(buffer_desc.indices, buffer_desc.data)
+        table.free_producer_index(buffer_desc.indices)
+
+    @Log.method_timer(enable=settings.PROFILING)
+    def load_from_dataset(
+        self,
+        file: str,
+        env_id: str,
+        policy_id: PolicyID,
+        agent_id: AgentID,
+    ):
+        """
+        Expect the dataset to be in the form of List[ Dict[str, Any] ]
+        """
+
+        # FIXME(ming): check its functionality
+        with open(file, "rb") as f:
+            dataset = pkl.load(file=f)
+            keys = set()
+            for batch in dataset:
+                keys = keys.union(batch.keys())
+
+            table_size = len(dataset)
+            table_name = DATASET_TABLE_NAME_GEN(
+                env_id=env_id,
+                main_id=agent_id,
+                pid=policy_id,
+            )
+            if self._tables.get(table_name, None) is None:
+                self._tables[table_name] = Episode(
+                    env_id, policy_id, other_columns=None
+                )
+
+            for batch in dataset:
+                assert isinstance(batch, Dict)
+                self._tables[table_name].insert(**batch)
+
+    # @Log.method_timer(enable=settings.PROFILING)
+    def load(self, path, mode="replace") -> List[Dict[str, str]]:
+        table_descs = []
+        with self._threading_lock:
+            for fn in os.listdir(path):
+                if fn.endswith(".tpkl"):
+                    conflict_callback_required = False
+                    table = Table.load(os.path.join(path, fn))
+                    victim_table = None
+
+                    if table.name in self._tables.keys() and mode.lower().equal(
+                        "replace"
+                    ):
+                        victim_table = self.tables[table.name]
+                        Logger.debug(
+                            f"Conflicts in loading table {table.name}, act as replacing"
+                        )
+                        try_lock_status = victim_table.lock_push_pull("push")
+                        if try_lock_status != Status.NORMAL:
+                            Logger.error(
+                                f"Try to replace an occupied table {victim_table.name}"
+                            )
+                        conflict_callback_required = True
+
+                    self._tables[table.name] = table
+                    table_descs.append(
+                        {
+                            "name": table.name,
+                            "size": table.size,
+                            "capacity": table.capacity,
+                        }
+                    )
+
+                    if conflict_callback_required:
+                        victim_table.unlock_push_pull("push")
+
+            return table_descs
+
+    # @Log.method_timer(enable=settings.PROFILING)
+    def dump(self, path, table_names=None, as_csv=False):
+        with self._threading_lock:
+            if table_names is None:
+                table_names = list(self._tables.keys())
+            elif isinstance(table_names, str):
+                table_names = [table_names]
+
+            # Locking required tables
+            status = dict.fromkeys(table_names, Status.FAILED)
+            for tn in table_names:
+                table = self._tables[tn]
+                status[tn] = table.lock_push_pull("push")
+
+            # Check locking status
+            f = open("ds.log", "w")
+            for tn, lock_status in status.items():
+                f.write(f"Table {tn} lock status {lock_status}")
+                if lock_status == Status.FAILED:
+                    Logger.info(f"Failed to lock the table {tn}, skip the dumping.")
+                    continue
+                if not as_csv:
+                    self._tables[tn].dump(os.path.join(path, tn))
+                else:
+                    self._tables[tn].to_csv(os.path.join(path, tn))
+                self._tables[tn].unlock_push_pull("push")
+            f.close()
+            return status
+
+    # @Log.method_timer(enable=settings.PROFILING)
+    def sample(self, buffer_desc: BufferDescription) -> Tuple[Batch, str]:
+        """Sample data from the top for training, default is random sample from sub batches.
+        :param BufferDesc buffer_desc: Description of sampling a buffer.
+            used to index the buffer slot
+        :return: a tuple of samples and information
+        """
+
+        # generate idxes from idxes manager
+        res = None
+        info = "OK"
+        # with Log.timer(log=settings.PROFILING, logger=Logger):
+        try:
+            table_name = Table.gen_table_name(
+                env_id=buffer_desc.env_id,
+                main_id=buffer_desc.agent_id,
+                pid=buffer_desc.policy_id,
+            )
+            table = self._tables[table_name]
+            res = table.sample(buffer_desc.indices)
+            table.free_consumer_index(buffer_desc.indices)
+        except KeyError:
+            info = "table {} has not been created yet".format(table_name)
+        except OverflowError:
+            info = "no enough size for table {} yet".format(table_name)
+        res = Batch(identity=buffer_desc.agent_id, data=res)
+        return res, info
+
+    def shutdown(self):
+        status = None
+        if self.dump_when_closed:
+            Logger.info("Begin OfflineDataset dumping.")
+            status = self.dump(self.dump_path)
+        Logger.info("Server terminated.")
+        return status
 
 
 class ExternalDataset:
@@ -635,294 +650,3 @@ class ExternalReadOnlyDataset(ExternalDataset):
 
     def save(self, agent_episodes: Dict[AgentID, Episode], wait_for_ready: bool = True):
         raise NotImplementedError
-
-
-@ray.remote
-class OfflineDataset:
-    def __init__(self, dataset_config: Dict[str, Any], exp_cfg: Dict[str, Any]):
-        self._episode_capacity = dataset_config.get(
-            "episode_capacity", settings.DEFAULT_EPISODE_CAPACITY
-        )
-        self._learning_start = dataset_config.get("learning_start", 64)
-        self._tables: Dict[str, Table] = dict()
-        self._threading_lock = threading.Lock()
-        self._threading_pool = ThreadPoolExecutor()
-        self.logger = get_logger(
-            log_level=settings.LOG_LEVEL,
-            log_dir=settings.LOG_DIR,
-            name="offline_dataset",
-            remote=settings.USE_REMOTE_LOGGER,
-            mongo=settings.USE_MONGO_LOGGER,
-            **exp_cfg,
-        )
-        self.cnt = 0
-
-        # parse init tasks
-        init_job_config = dataset_config.get("init_job", {})
-        if init_job_config.get("load_when_start"):
-            path = init_job_config.get("path")
-            if path:
-                self.load(path)
-
-        # Read-only proxies for external offline dataset
-        external_resource_config = dataset_config.get("extern")
-        self.external_proxy: List[ExternalDataset] = []
-        if external_resource_config:
-            for external_config, sample_rate in zip(
-                external_resource_config["links"],
-                external_resource_config["sample_rates"],
-            ):
-                if not external_config["write"]:
-                    dataset = ExternalReadOnlyDataset(
-                        name=external_config["name"],
-                        path=external_config["path"],
-                        sample_rate=sample_rate,
-                    )
-                    self.external_proxy.append(dataset)
-                else:
-                    raise NotImplementedError(
-                        "External writable dataset is not supported"
-                    )
-
-        # quitting job
-        quit_job_config = dataset_config.get("quit_job", {})
-        self.dump_when_closed = quit_job_config.get("dump_when_closed")
-        self.dump_path = quit_job_config.get("path")
-
-    def lock(self, lock_type: str, desc: Dict[AgentID, BufferDescription]) -> str:
-        """Lock table ready to push or pull and return the table status."""
-
-        env_id = list(desc.values())[0].env_id
-        main_ids = sorted(list(desc.keys()))
-        table_name = Table.gen_table_name(
-            env_id=env_id,
-            main_id=main_ids,
-            pid=[desc[aid].policy_id for aid in main_ids],
-        )
-        # check it is multi-agent or not
-        self.check_table(table_name, None, is_multi_agent=len(main_ids) > 1)
-        table = self._tables[table_name]
-        status = table.lock_push_pull(lock_type)
-        return status
-
-    def get_data_size(self):
-        return sum([table.size for table in self._tables.values()])
-
-    def unlock(self, lock_type: str, desc: Dict[AgentID, BufferDescription]):
-        env_id = list(desc.values())[0].env_id
-        main_ids = sorted(list(desc.keys()))
-        table_name = Table.gen_table_name(
-            env_id=env_id,
-            main_id=main_ids,
-            pid=[desc[aid].policy_id for aid in main_ids],
-        )
-        self.check_table(table_name, None, is_multi_agent=len(main_ids) > 1)
-        table = self._tables[table_name]
-        status = table.unlock_push_pull(lock_type)
-        return status
-
-    def check_table(
-        self,
-        table_name: str,
-        episode: Dict[AgentID, Episode],
-        is_multi_agent: bool = False,
-    ):
-        """Check table existing, if not, create a new table. If `episode` is not None and table has no episode yet, it
-        will be used to create an empty episode with default capacity for table.
-
-        :param str table_name: Registered table name, to index table.
-        :param Episode episode: Episode to insert. Default to None.
-        """
-        with self._threading_lock:
-            if self._tables.get(table_name, None) is None:
-                self._tables[table_name] = Table(table_name, multi_agent=is_multi_agent)
-            if episode is not None and self._tables[table_name].episode is None:
-                self._tables[table_name].set_episode(
-                    episode, capacity=self._episode_capacity
-                )
-
-    def save(self, agent_episodes: Dict[AgentID, Episode], wait_for_ready: bool = True):
-        """Accept a dictionary of agent episodes, save them to a named table. If there is only one agent episode
-        in the dict, we use `Episode`, otherwise `MultiAgentEpisode` will be used.
-        """
-
-        insert_results = []
-        env_id = list(agent_episodes.values())[0].env_id
-        main_ids = sorted(list(agent_episodes.keys()))
-        table_name = Table.gen_table_name(
-            env_id=env_id,
-            main_id=main_ids,
-            pid=[agent_episodes[aid].policy_id for aid in main_ids],
-        )
-        self.check_table(
-            table_name, agent_episodes, is_multi_agent=len(agent_episodes) > 1
-        )
-        insert_results.append(
-            self._threading_pool.submit(
-                self._tables[table_name].insert, **agent_episodes
-            )
-        )
-        self.logger.debug(f"Threads created for insertion on table={table_name}")
-
-        if wait_for_ready:
-            for fut in insert_results:
-                while not fut.done():
-                    pass
-
-    @Log.method_timer(enable=settings.PROFILING)
-    def load_from_dataset(
-        self,
-        file: str,
-        env_id: str,
-        policy_id: PolicyID,
-        agent_id: AgentID,
-    ):
-        """
-        Expect the dataset to be in the form of List[ Dict[str, Any] ]
-        """
-
-        # FIXME(ming): check its functionality
-        with open(file, "rb") as f:
-            dataset = pkl.load(file=f)
-            keys = set()
-            for batch in dataset:
-                keys = keys.union(batch.keys())
-
-            table_size = len(dataset)
-            table_name = DATASET_TABLE_NAME_GEN(
-                env_id=env_id,
-                main_id=agent_id,
-                pid=policy_id,
-            )
-            if self._tables.get(table_name, None) is None:
-                self._tables[table_name] = Episode(
-                    env_id, policy_id, other_columns=None
-                )
-
-            for batch in dataset:
-                assert isinstance(batch, Dict)
-                self._tables[table_name].insert(**batch)
-
-    # @Log.method_timer(enable=settings.PROFILING)
-    def load(self, path, mode="replace") -> List[Dict[str, str]]:
-        table_descs = []
-        with self._threading_lock:
-            for fn in os.listdir(path):
-                if fn.endswith(".tpkl"):
-                    conflict_callback_required = False
-                    table = Table.load(os.path.join(path, fn))
-                    victim_table = None
-
-                    if table.name in self._tables.keys() and mode.lower().equal(
-                        "replace"
-                    ):
-                        victim_table = self.tables[table.name]
-                        self.logger.debug(
-                            f"Conflicts in loading table {table.name}, act as replacing"
-                        )
-                        try_lock_status = victim_table.lock_push_pull("push")
-                        if try_lock_status != Status.NORMAL:
-                            self.logger.error(
-                                f"Try to replace an occupied table {victim_table.name}"
-                            )
-                        conflict_callback_required = True
-
-                    self._tables[table.name] = table
-                    table_descs.append(
-                        {
-                            "name": table.name,
-                            "size": table.size,
-                            "capacity": table.capacity,
-                        }
-                    )
-
-                    if conflict_callback_required:
-                        victim_table.unlock_push_pull("push")
-
-            return table_descs
-
-    # @Log.method_timer(enable=settings.PROFILING)
-    def dump(self, path, table_names=None, as_csv=False):
-        with self._threading_lock:
-            if table_names is None:
-                table_names = list(self._tables.keys())
-            elif isinstance(table_names, str):
-                table_names = [table_names]
-
-            # Locking required tables
-            status = dict.fromkeys(table_names, Status.FAILED)
-            for tn in table_names:
-                table = self._tables[tn]
-                status[tn] = table.lock_push_pull("push")
-
-            # Check locking status
-            f = open("ds.log", "w")
-            for tn, lock_status in status.items():
-                f.write(f"Table {tn} lock status {lock_status}")
-                if lock_status == Status.FAILED:
-                    self.logger.info(
-                        f"Failed to lock the table {tn}, skip the dumping."
-                    )
-                    continue
-                if not as_csv:
-                    self._tables[tn].dump(os.path.join(path, tn))
-                else:
-                    self._tables[tn].to_csv(os.path.join(path, tn))
-                self._tables[tn].unlock_push_pull("push")
-            f.close()
-            return status
-
-    # @Log.method_timer(enable=settings.PROFILING)
-    def sample(self, buffer_desc: BufferDescription) -> Tuple[Batch, str]:
-        """Sample data from the top for training, default is random sample from sub batches.
-
-        :param BufferDesc buffer_desc: Description of sampling a buffer.
-            used to index the buffer slot
-        :return: a tuple of samples and information
-        """
-
-        # generate idxes from idxes manager
-        info = "OK"
-        try:
-            res = {}
-            # with Log.timer(log=settings.PROFILING, logger=self.logger):
-            table_name = Table.gen_table_name(
-                env_id=buffer_desc.env_id,
-                main_id=buffer_desc.agent_id,
-                pid=buffer_desc.policy_id,
-            )
-            table = self._tables[table_name]
-            res = table.sample(size=buffer_desc.batch_size)
-            # convert to agent dict
-            if not table.is_multi_agent:
-                res = {buffer_desc.agent_id: res}
-        except KeyError as e:
-            info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
-            res = None
-        except OversampleError as e:
-            info = f"No enough data: table_size={table.size} batch_size={buffer_desc.batch_size} table_name={table_name}"
-            res = None
-        except Exception as e:
-            print(traceback.format_exc())
-            res = None
-            info = "others"
-
-        if len(self.external_proxy) > 0:
-            external_res = []
-            for dataset in self.external_proxy:
-                tmp_res, tmp_info = dataset.sample(buffer_desc)
-                external_res.append(tmp_res)
-                info += "\n" + tmp_info
-            # XXX(ming): inconsistency of data type, sampled from dataset is a dict, while external_res is a list.
-            #   it is better to use dict for external_res
-            res = [res] + external_res
-        res = Batch(identify=buffer_desc.identify, data=res)
-        return res, info
-
-    def shutdown(self):
-        status = None
-        if self.dump_when_closed:
-            self.logger.info("Begin OfflineDataset dumping.")
-            status = self.dump(self.dump_path)
-        self.logger.info("Server terminated.")
-        return status

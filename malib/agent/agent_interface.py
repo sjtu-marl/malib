@@ -314,33 +314,55 @@ class AgentInterface(metaclass=ABCMeta):
         if isinstance(buffer_desc, Dict):
             # multiple tasks
             tasks = [
-                self._offline_dataset.sample.remote(v) for v in buffer_desc.values()
+                self._offline_dataset.get_index.remote(v) for v in buffer_desc.values()
             ]
             while len(tasks) > 0:
                 dones, tasks = ray.wait(tasks)
                 for done in dones:
-                    batch, info = ray.get(done)
+                    batch = ray.get(done)
                     if batch.data is None:
                         # push task
-                        Logger.warning(info)
+                        # Logger.warning("index not ready")
                         tasks.append(
-                            self._offline_dataset.sample.remote(
+                            self._offline_dataset.get_index.remote(
                                 buffer_desc[batch.identify]
                             )
                         )
                     else:
+                        # request for data
+                        buffer_desc.indices = batch.data
+                        batch, info = ray.get(
+                            self._offline_dataset.sample.remote(
+                                buffer_desc[batch.identify]
+                            )
+                        )
+                        assert batch.data is not None
                         size += buffer_desc[batch.identify].batch_size
                         res.update(batch.data)
+                        # free
+                        buffer_desc.data = None
+                        buffer_desc.indices = None
         else:
             while True:
-                batch, info = ray.get(self._offline_dataset.sample.remote(buffer_desc))
+                batch = ray.get(
+                    self._offline_dataset.get_consumer_index.remote(buffer_desc)
+                )
                 if batch.data is None:
-                    Logger.warning(info)
+                    # Logger.warning("inex not ready")
                     continue
                 else:
+                    buffer_desc.indices = batch.data
+                    batch, info = ray.get(
+                        self._offline_dataset.sample.remote(buffer_desc)
+                    )
+                    assert batch.data is not None
                     size += buffer_desc.batch_size
                     res.update(batch.data)
+
+                    buffer_desc.data = None
+                    buffer_desc.indices = None
                     break
+        Logger.debug("Trainer got {} data".format(buffer_desc.batch_size))
         return res, size
 
     def gen_buffer_description(
@@ -427,15 +449,6 @@ class AgentInterface(metaclass=ABCMeta):
         start_time = time.time()
         total_size = 0
         while not stopper(statistics, global_step=epoch) and not stopper.all():
-            # add timer: key to identify object, tag to log
-            # FIXME(ming): key for logger has been discarded!
-            # with Log.timer(
-            #     log=True,
-            #     logger=self.logger,
-            #     tag=f"time/TrainingInterface_{self._id}/data_request",
-            #     global_step=epoch,
-            # ):
-            #     start = time.time()
 
             batch, size = self.request_data(buffer_desc)
             time_consump = time.time() - start_time
@@ -447,14 +460,6 @@ class AgentInterface(metaclass=ABCMeta):
                 global_step=epoch,
             )
 
-            # with Log.stat_feedback(
-            #     log=settings.STATISTIC_FEEDBACK,
-            #     logger=self.logger,
-            #     worker_idx=self._id,
-            #     global_step=epoch,
-            #     group="training",
-            # ) as (statistic_seq, processed_statistics):
-            # a dict of dict of metric entry {agent: {item: MetricEntry}}
             statistics = self.optimize(policy_id_mapping, batch, training_config)
             for k, v in statistics.items():
                 self.logger.send_scalar(
@@ -559,10 +564,11 @@ class AgentInterface(metaclass=ABCMeta):
         """
 
         # add policies for agents, the first one policy will be set to non-trainable
-        if len(self.policies) < 1:
-            trainable = False
-        else:
-            trainable = True
+        # if len(self.policies) < 1:
+        #     trainable = False
+        # else:
+        #     trainable = True
+        trainable = True
 
         self.check_population_size()
         policy_dict: Dict[AgentID, Tuple[PolicyID, Policy]] = {

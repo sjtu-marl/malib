@@ -13,6 +13,7 @@ import ray
 from malib import settings
 from malib.utils.typing import (
     AgentID,
+    BufferDescription,
     TaskDescription,
     TaskRequest,
     TaskType,
@@ -304,6 +305,18 @@ class BaseRolloutWorker:
         start_time = time.time()
         total_num_frames = 0
         print_every = 1  # stopper.max_iteration // 3
+
+        # create data table
+        trainable_pairs = task_desc.content.agent_involve_info.trainable_pairs
+        buffer_desc = BufferDescription(
+            env_id=self._env_description["config"]["env_id"],
+            agent_id=list(trainable_pairs.keys()),
+            policy_id=[pid for pid, _ in trainable_pairs.values()],
+            capacity=None,
+            data_shapes=self._env_description["config"]["data_shapes"],
+            sample_start_size=None,
+        )
+        ray.get(self._offline_dataset.create_table.remote(buffer_desc))
         while not stopper(merged_statics, global_step=epoch):
             status = self.update_state(task_desc, waiting=False)
             if status == Status.LOCKED:
@@ -325,6 +338,7 @@ class BaseRolloutWorker:
                 fragment_length=task_desc.content.fragment_length,
                 role="rollout",
                 policy_distribution=task_desc.content.policy_distribution,
+                buffer_desc=buffer_desc,
             )
 
             # merge statis
@@ -474,7 +488,7 @@ class BaseRolloutWorker:
         explore: bool = True,
         threaded: bool = True,
         policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
-        episodes: Dict[AgentID, Episode] = None,
+        buffer_desc: BufferDescription = None,
     ) -> Tuple[Sequence[Dict[str, List]], int]:
         """Implement your sample logic here, return the collected data and statistics"""
 

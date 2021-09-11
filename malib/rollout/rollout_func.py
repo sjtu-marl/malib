@@ -26,6 +26,7 @@ from malib import settings
 from malib.utils.logger import Log, Logger
 from malib.utils.typing import (
     AgentID,
+    BufferDescription,
     Dict,
     PolicyID,
     Union,
@@ -79,7 +80,7 @@ def sequential(
     fragment_length: int,
     max_step: int,
     behavior_policies: Dict[AgentID, PolicyID],
-    agent_episodes: Dict[AgentID, Episode],
+    buffer_desc: BufferDescription,
     send_interval: int = 50,
     dataset_server: ray.ObjectRef = None,
 ):
@@ -87,10 +88,12 @@ def sequential(
 
     cnt = 0
 
-    if agent_episodes is not None:
-        agent_filters = list(agent_episodes.keys())
+    if buffer_desc is not None:
+        agent_filters = buffer_desc.agent_id
+        agent_buffers = {agent: None for agent in agent_filters}
     else:
         agent_filters = list(agent_interfaces.keys())
+        agent_buffers = None
 
     total_cnt = {agent: 0 for agent in agent_filters}
     mean_episode_reward = collections.defaultdict(list)
@@ -125,7 +128,7 @@ def sequential(
                 action = None
             env.step(action)
 
-            if dataset_server and aid in agent_episodes:
+            if dataset_server and aid in agent_filters:
                 tmp_buffer[aid].append(
                     _TimeStep(
                         observation,
@@ -180,21 +183,24 @@ def sequential(
             actions = actions[:-1].copy()
             action_dists = action_dists[:-1].copy()
 
-            agent_episodes[player].insert(
-                **{
-                    Episode.CUR_OBS: observations,
-                    Episode.NEXT_OBS: next_observations,
-                    Episode.REWARD: rewards,
-                    Episode.ACTION: actions,
-                    Episode.DONE: dones,
-                    Episode.ACTION_DIST: action_dists,
-                    Episode.ACTION_MASK: action_masks,
-                    Episode.NEXT_ACTION_MASK: next_action_masks,
-                }
-            )
-        dataset_server.save.remote(agent_episodes, wait_for_ready=False)
-        for e in agent_episodes.values():
-            e.reset()
+            agent_buffers[player] = {
+                Episode.CUR_OBS: observations[:fragment_length],
+                Episode.NEXT_OBS: next_observations[:fragment_length],
+                Episode.REWARD: rewards[:fragment_length],
+                Episode.ACTION: actions[:fragment_length],
+                Episode.DONE: dones[:fragment_length],
+                Episode.ACTION_DIST: action_dists[:fragment_length],
+                Episode.ACTION_MASK: action_masks[:fragment_length],
+                Episode.NEXT_ACTION_MASK: next_action_masks[:fragment_length],
+            }
+        buffer_desc.batch_size = fragment_length
+        buffer_desc.data = None
+        while indices is None:
+            batch = ray.get(dataset_server.get_producer_index(buffer_desc))
+            indices = batch.data
+        buffer_desc.data = agent_buffers
+        buffer_desc.indices = indices
+        dataset_server.save.remote(buffer_desc)
 
     results = {
         f"total_reward/{k}": v
@@ -212,6 +218,11 @@ def sequential(
     return results, sum(total_cnt.values())
 
 
+_FullTimeStep = collections.namedtuple(
+    "_FullTimeStep", "observation, next_observation, reward, action, done, action_dist"
+)
+
+
 def simultaneous(
     env: VectorEnv,
     num_envs: int,
@@ -219,7 +230,7 @@ def simultaneous(
     fragment_length: int,
     max_step: int,
     behavior_policies: Dict[AgentID, PolicyID],
-    agent_episodes: Dict[AgentID, Episode],
+    buffer_desc: BufferDescription,
     send_interval: int = 50,
     dataset_server: ray.ObjectRef = None,
 ):
@@ -243,6 +254,11 @@ def simultaneous(
         fragment_length=fragment_length,
         env_reset_kwargs={"max_step": max_step},
     )
+
+    if buffer_desc is not None:
+        agent_buffers = {agent: [] for agent in buffer_desc.agent_id}
+    else:
+        agent_buffers = None
 
     observations = {
         aid: agent_interfaces[aid].transform_observation(obs)
@@ -271,20 +287,56 @@ def simultaneous(
 
         if dataset_server:
             for aid in env.trainable_agents:
-                agent_episodes[aid].insert(
-                    **{
-                        Episode.CUR_OBS: observations[aid],
-                        Episode.NEXT_OBS: next_observations[aid],
-                        Episode.REWARD: rets[Episode.REWARD][aid],
-                        Episode.ACTION: actions[aid],
-                        Episode.DONE: rets[Episode.DONE][aid],
-                        Episode.ACTION_DIST: action_dists[aid],
-                    }
+                agent_buffers[aid].append(
+                    _FullTimeStep(
+                        observations[aid],
+                        next_observations[aid],
+                        rets[Episode.REWARD][aid],
+                        actions[aid],
+                        rets[Episode.DONE][aid],
+                        action_dists[aid],
+                    )
                 )
         observations = next_observations
 
     if dataset_server:
-        dataset_server.save.remote(agent_episodes, wait_for_ready=True)
+        for agent, data_tups in agent_buffers.items():
+            (
+                obs,
+                next_obs,
+                rew,
+                actions,
+                dones,
+                action_dists,
+            ) = tuple(map(np.vstack, list(zip(*data_tups))))
+            Logger.debug(
+                "rollout stacked shapes: obs={} next_obs={} rew={} actions={} dones={} action_dists={}".format(
+                    obs.shape,
+                    next_obs.shape,
+                    rew.shape,
+                    actions.shape,
+                    dones.shape,
+                    action_dists.shape,
+                )
+            )
+            agent_buffers[agent] = {
+                Episode.CUR_OBS: obs[:fragment_length],
+                Episode.NEXT_OBS: next_obs[:fragment_length],
+                Episode.REWARD: rew[:fragment_length].squeeze(),
+                Episode.ACTION: actions[:fragment_length].squeeze(),
+                Episode.DONE: dones[:fragment_length].squeeze(),
+                Episode.ACTION_DIST: action_dists[:fragment_length],
+            }
+        buffer_desc.batch_size = fragment_length
+        buffer_desc.data = None
+        buffer_desc.indices = None
+        indices = None
+        while indices is None:
+            batch = ray.get(dataset_server.get_producer_index.remote(buffer_desc))
+            indices = batch.data
+        buffer_desc.indices = indices
+        buffer_desc.data = agent_buffers
+        dataset_server.save.remote(buffer_desc)
 
     results = _parse_episode_infos(env.epsiode_infos)
     return results, env.batched_step_cnt * len(env.possible_agents)
@@ -301,14 +353,6 @@ class Stepping:
     def __init__(
         self, exp_cfg: Dict[str, Any], env_desc: Dict[str, Any], dataset_server=None
     ):
-        # self.logger = get_logger(
-        #     log_level=settings.LOG_LEVEL,
-        #     log_dir=settings.LOG_DIR,
-        #     name=f"rolloutfunc_executor_{uuid.uuid1()}",
-        #     remote=settings.USE_REMOTE_LOGGER,
-        #     mongo=settings.USE_MONGO_LOGGER,
-        #     **exp_cfg,
-        # )
 
         # init environment here
         self.env_desc = env_desc
@@ -352,7 +396,7 @@ class Stepping:
         fragment_length: int,
         desc: Dict[str, Any],
         callback: type,
-        episode_buffers: Dict[AgentID, Episode] = None,
+        buffer_desc: BufferDescription = None,
     ) -> Tuple[str, Dict[str, List], int]:
         """Environment stepping, rollout/simulate with environment vectorization if it is feasible.
 
@@ -390,19 +434,6 @@ class Stepping:
 
         self.add_envs(num_episodes)
 
-        if task_type == "rollout":
-            episode_buffers = episode_buffers or {
-                agent: Episode(
-                    self.env_desc["config"]["env_id"],
-                    desc["behavior_policies"][agent],
-                    capacity=fragment_length,
-                    other_columns=self.env.extra_returns,
-                )
-                for agent in desc["behavior_policies"]
-            }
-        else:
-            episode_buffers = None
-
         callback = get_func(callback) if callback else self.callback
 
         evaluated_results, num_frames = callback(
@@ -412,7 +443,7 @@ class Stepping:
             fragment_length,
             max_step,
             behavior_policies,
-            episode_buffers,
+            buffer_desc if task_type == "rollout" else None,
             dataset_server=self._dataset_server if task_type == "rollout" else None,
         )
         return task_type, evaluated_results, num_frames

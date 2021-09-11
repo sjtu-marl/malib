@@ -12,7 +12,7 @@ from malib import settings
 from malib.agent import get_training_agent
 from malib.agent.agent_interface import AgentFeedback, AgentTaggedFeedback
 from malib.gt.algos.exploitability import measure_exploitability
-from malib.utils.logger import get_logger, Log
+from malib.utils.logger import Log, Logger
 from malib.utils.typing import (
     List,
     TaskType,
@@ -57,14 +57,7 @@ class TrainingManager:
         training_agent_mapping = training_agent_mapping or (lambda agent_id: agent_id)
 
         # FIXME(ming): resource configuration is not available now, will open in the next version
-        agent_cls = agent_cls.as_remote(
-            **interface_config["worker_config"]
-            # num_cpus=None,
-            # num_gpus=None,
-            # memory=None,
-            # object_store_memory=None,
-            # resources=None,
-        )
+        agent_cls = agent_cls.as_remote(**interface_config.get("worker_config", {}))
 
         self._agents = {}
         groups = (
@@ -104,20 +97,11 @@ class TrainingManager:
         self._groups = groups
         self.proc = psutil.Process(os.getpid())
 
-        self.logger = get_logger(
-            log_level=settings.LOG_LEVEL,
-            log_dir=settings.LOG_DIR,
-            name="training_manager",
-            remote=settings.USE_REMOTE_LOGGER,
-            mongo=settings.USE_MONGO_LOGGER,
-            **exp_cfg,
-        )
-        self.logger.debug(f"{len(self._agents)} agents have been created")
+        Logger.info(f"Created {len(self._agents)} learner(s)")
 
     def get_agent_interface_num(self) -> int:
         return len(self._agents)
 
-    @Log.method_timer(enable=settings.PROFILING)
     def init(self) -> None:
         """Initialize all training agents. Add fixed policies for them.
 
@@ -163,7 +147,7 @@ class TrainingManager:
         agent_interface = self._agents[interface_id]
         agent_interface.add_policy.remote(task)
 
-    @Log.method_timer(enable=settings.PROFILING)
+    # @Log.method_timer(enable=settings.PROFILING)
     def optimize(self, task: TaskDescription) -> None:
         """Dispatch optimization tasks to training agent interface.
 
@@ -202,7 +186,7 @@ class TrainingManager:
 
         return populations
 
-    @Log.method_timer(enable=settings.PROFILING)
+    # @Log.method_timer(enable=settings.PROFILING)
     def retrieve_information(self, task_request: TaskRequest) -> TaskRequest:
         """Fill task request with a training feedback if possible. If there already is a training feedback entity
         assigned to `task_request.content`, return the original task request directly.
@@ -228,7 +212,7 @@ class TrainingManager:
             task_request.content = TrainingFeedback(
                 agent_involve_info=AgentInvolveInfo(
                     training_handler=task_request.content.id,
-                    env_id=self._env_description["id"],
+                    env_id=self._env_description["config"]["env_id"],
                     populations=populations,
                     trainable_pairs=task_request.content.trainable_pairs,
                     meta_parameter_desc_dict=meta_parameter_desc_dict,

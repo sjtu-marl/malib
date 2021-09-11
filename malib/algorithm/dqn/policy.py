@@ -26,7 +26,7 @@ class DQN(Policy):
             custom_config=custom_config,
         )
 
-        assert isinstance(action_space, gym.spaces.Discrete)
+        assert isinstance(action_space, gym.spaces.Discrete), action_space
 
         self._gamma = self.custom_config["gamma"]
         self._eps_min = self.custom_config[

@@ -85,9 +85,6 @@ def run(**kwargs):
 
         _ = ray.get(coordinator_server.start.remote())
 
-        start_time = time.time()
-        tmp_start_time = start_time
-
         performance_logger = get_logger(
             name="performance",
             expr_group=exp_cfg["expr_group"],
@@ -101,21 +98,8 @@ def run(**kwargs):
             log=settings.PROFILING,
             logger=performance_logger,
         ):
-            # counter = 0
             while True:
                 terminate = ray.get(coordinator_server.is_terminate.remote())
-                end_time = time.time()
-                # 3min RFPS report
-                # if end_time - tmp_start_time >= 5:
-                #     data_size = ray.get(offline_dataset.get_data_size.remote())
-                #     if data_size > 0:
-                #         performance_logger.send_scalar(
-                #             tag="performance/RFPS",
-                #             content=data_size,
-                #             global_step=counter
-                #         )
-                #         counter += 1
-                #     tmp_start_time = end_time
                 if terminate:
                     print("ALL task done")
                     break

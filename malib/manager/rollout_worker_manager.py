@@ -14,7 +14,7 @@ import logging
 
 
 from malib import settings
-from malib.rollout import get_rollout_worker, RolloutWorker
+from malib.rollout.rollout_worker import RolloutWorker
 from malib.utils.typing import (
     TaskDescription,
     TaskRequest,
@@ -23,7 +23,7 @@ from malib.utils.typing import (
     Dict,
     Any,
 )
-from malib.utils.logger import get_logger
+from malib.utils.logger import get_logger, Logger
 
 
 def _get_worker_hash_idx(idx):
@@ -54,7 +54,7 @@ class RolloutWorkerManager:
         self._metric_type = rollout_config["metric_type"]
 
         worker_num = rollout_config["worker_num"]
-        rollout_worker_cls = get_rollout_worker(rollout_config["type"])
+        rollout_worker_cls = RolloutWorker
 
         worker_cls = rollout_worker_cls.as_remote(
             num_cpus=None,
@@ -77,32 +77,8 @@ class RolloutWorkerManager:
                 // rollout_config["episode_seg"],
                 exp_cfg=exp_cfg,
             )
-            if rollout_config.get("test_num_episodes", 0) > 0:
-                worker_idx = _get_worker_hash_idx(i + worker_num)
-                self._workers[worker_idx] = worker_cls.options(
-                    max_concurrency=100
-                ).remote(
-                    worker_index=worker_idx,
-                    env_desc=self._env_desc,
-                    metric_type=self._metric_type,
-                    test=True,
-                    remote=True,
-                    save=False,
-                    # parallel_num: the size of actor pool for rollout and simulation
-                    parallel_num=rollout_config["test_num_episodes"]
-                    // rollout_config["test_episode_seg"],
-                    exp_cfg=exp_cfg,
-                )
 
-        self.logger = get_logger(
-            log_level=settings.LOG_LEVEL,
-            log_dir=settings.LOG_DIR,
-            name="rollout_worker_manager",
-            remote=settings.USE_REMOTE_LOGGER,
-            mongo=settings.USE_MONGO_LOGGER,
-            **exp_cfg,
-        )
-        print(f"Created {len(self._workers)} rollout worker(s) ...")
+        Logger.info(f"Created {len(self._workers)} rollout worker(s) ...")
 
     def retrieve_information(self, task_request: TaskRequest) -> TaskRequest:
         """Retrieve information from other agent interface. Default do nothing and return the original task request.
@@ -135,7 +111,7 @@ class RolloutWorkerManager:
     def simulate(self, task_desc: TaskDescription, worker_idx=None):
         """ Parse simulation task and dispatch it to available workers """
 
-        self.logger.debug(
+        Logger.debug(
             f"got simulation task from handler: {task_desc.content.agent_involve_info.training_handler}"
         )
         worker_idx, worker = self.get_idle_worker()

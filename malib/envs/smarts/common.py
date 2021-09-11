@@ -840,6 +840,7 @@ def ObservationAdapter(observation_space, feature_configs):
 
     return func
 
+
 def RewardAdapter(observation_adapter):
     def func(env_obs, env_reward):
         penalty, bonus = 0.0, 0.0
@@ -876,7 +877,7 @@ def RewardAdapter(observation_adapter):
         if obs.get("heading_errors", None):
             heading_errors = obs["heading_errors"][-1]
             penalty_heading_errors = -0.03 * heading_errors[:2]
-        
+
             heading_errors2 = obs["heading_errors"][-2]
             penalty_heading_errors += -0.01 * (heading_errors[:2] - heading_errors2[:2])
             penalty += np.mean(penalty_heading_errors)
@@ -899,6 +900,7 @@ def RewardAdapter(observation_adapter):
         return bonus + penalty
 
     return func
+
 
 def InfoAdapter(env_obs, reward, raw_info):
     # events: collision: list, off_road: bool, on_shoulder: bool, wrong_way: bool, not_moving: bool, reached_goal: bool, reached_max_episode_steps: bool, agents_live_done: bool

@@ -99,6 +99,9 @@ class CoordinatorServer(BaseCoordinator):
         self._configs["rollout"][
             "worker_num"
         ] = self._training_manager.get_agent_interface_num()
+        Logger.info(
+            "set worker num as {}".format(self._configs["rollout"]["worker_num"])
+        )
         self._rollout_worker_manager = RolloutWorkerManager(
             rollout_config=self._configs["rollout"],
             env_desc=self._configs["env_description"],
@@ -107,25 +110,6 @@ class CoordinatorServer(BaseCoordinator):
         self._training_manager.init()
 
         self._logger.info("Coordinator server started")
-
-    def pre_launching(self, init_config):
-        pass
-
-    @staticmethod
-    def task_handler_register(cls):
-        from functools import wraps
-
-        print("Registering")
-
-        def decorator(func):
-            @wraps(func)
-            def wrapper(self, *args, **kwargs):
-                return func(*args, **kwargs)
-
-            setattr(cls, func.__name__, func)
-            return func
-
-        return decorator
 
     def request(self, task_request: TaskRequest):
         """ Handling task request """

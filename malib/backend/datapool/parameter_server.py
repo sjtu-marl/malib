@@ -9,7 +9,7 @@ import pickle5 as pickle
 import ray
 
 from malib import settings
-from malib.utils.logger import get_logger
+from malib.utils.logger import Logger
 from malib.utils import errors
 from malib.algorithm.common.misc import GradientOps
 from malib.utils.typing import (
@@ -245,18 +245,6 @@ class ParameterServer:
         self._table: Dict[str, Table] = dict()
         self._table_status: Dict[str, Status] = dict()
 
-        if not test_mode:
-            self.logger = get_logger(
-                log_level=settings.LOG_LEVEL,
-                log_dir=settings.LOG_DIR,
-                name="parameter_server",
-                remote=settings.USE_REMOTE_LOGGER,
-                mongo=settings.USE_MONGO_LOGGER,
-                **kwargs["exp_cfg"],
-            )
-        else:
-            self.logger = logging.getLogger("ParameterServer")
-
         self._threading_lock = threading.Lock()
 
         init_job_config = kwargs.get("init_job", {})
@@ -302,7 +290,7 @@ class ParameterServer:
         ), f"No such a table named={table_name}, {list(self._table.keys())}"
         if self._table[table_name].parallel_num != parameter_desc.parallel_num:
             # (hanjing): Fix the possible conflicts when recovering from dumped files
-            self.logger.info("Inconsistence found in parallel num, reassigned")
+            Logger.info("Inconsistence found in parallel num, reassigned")
             self._table[table_name].parallel_num = parameter_desc.parallel_num
 
         parameter = self._table[table_name].get(parameter_desc)
@@ -378,11 +366,11 @@ class ParameterServer:
                         table = Table.load(os.path.join(file_path, fn))
                         self._table[table.name] = table
                     except Exception as e:
-                        self.logger.error(f"Loading {fn} failed ({e})")
+                        Logger.error(f"Loading {fn} failed ({e})")
 
     def shutdown(self):
         result = None
         if self.dump_when_closed:
             result = self.dump(self.dump_path)
-        self.logger.info(f"Parameter server closed.")
+        Logger.info(f"Parameter server closed.")
         return result

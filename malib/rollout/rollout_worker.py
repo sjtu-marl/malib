@@ -11,6 +11,7 @@ from malib.rollout.base_worker import BaseRolloutWorker
 from malib.utils.typing import (
     AgentID,
     Any,
+    BufferDescription,
     Dict,
     PolicyID,
     Tuple,
@@ -123,7 +124,7 @@ class RolloutWorker(BaseRolloutWorker):
         explore: bool = True,
         threaded: bool = True,
         policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
-        episode_buffers: Dict[AgentID, Episode] = None,
+        buffer_desc: BufferDescription = None,
     ) -> Tuple[Sequence[Dict[str, List]], int]:
         """Sample function. Support rollout and simulation. Default in threaded mode."""
 
@@ -167,32 +168,17 @@ class RolloutWorker(BaseRolloutWorker):
         else:
             raise TypeError(f"Unkown role: {role}")
 
-        if threaded:
-            self.check_actor_pool_available()
-            rets = self.actor_pool.map(
-                lambda a, task: a.run.remote(
-                    agent_interfaces=self._agent_interfaces,
-                    fragment_length=fragment_length,
-                    desc=task,
-                    callback=callback,
-                    episode_buffers=episode_buffers,
-                ),
-                tasks,
-            )
-        else:
-            step_func = rollout_func.Stepping(
-                self._kwargs["exp_cfg"], env_desc=self._env_description
-            )
-            rets = [
-                step_func.run(
-                    self._agent_interfaces,
-                    fragment_length=fragment_length,
-                    desc=task,
-                    callback=callback,
-                    episode_buffers=episode_buffers,
-                )
-                for task in tasks
-            ]
+        self.check_actor_pool_available()
+        rets = self.actor_pool.map(
+            lambda a, task: a.run.remote(
+                agent_interfaces=self._agent_interfaces,
+                fragment_length=fragment_length,
+                desc=task,
+                callback=callback,
+                buffer_desc=buffer_desc,
+            ),
+            tasks,
+        )
 
         num_frames, stats_list = 0, []
         for ret in rets:
