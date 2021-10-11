@@ -28,7 +28,7 @@ stream_handler = logging.StreamHandler()
 stream_handler.setLevel(settings.LOG_LEVEL)
 
 stream_formatter = ColoredFormatter(
-    "%(log_color)s[%(asctime)s] %(message)s",
+    "%(log_color)s[%(asctime)s][%(levelname)s] %(message)s",
     datefmt=None,
     reset=True,
     log_colors={
