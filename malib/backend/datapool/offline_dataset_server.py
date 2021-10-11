@@ -127,7 +127,7 @@ class Table:
         self,
         keys,
         capacity: int,
-        data_shapes: Dict[str, Tuple],
+        data_shapes: Dict[AgentID, Dict[str, Tuple]],
         sample_start_size: int = 0,
         mode: str = "queue",
     ):

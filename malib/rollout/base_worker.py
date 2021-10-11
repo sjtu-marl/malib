@@ -308,6 +308,7 @@ class BaseRolloutWorker:
 
         # create data table
         trainable_pairs = task_desc.content.agent_involve_info.trainable_pairs
+        # XXX(ming): shall we authorize learner to determine the buffer description?
         buffer_desc = BufferDescription(
             env_id=self._env_description["config"]["env_id"],
             agent_id=list(trainable_pairs.keys()),

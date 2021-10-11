@@ -7,8 +7,9 @@ import argparse
 import yaml
 import os
 
-from malib.envs import GymEnv
+from malib.envs import gym as custom_gym
 from malib.runner import run
+from malib.utils.preprocessor import get_preprocessor
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -27,24 +28,24 @@ if __name__ == "__main__":
     with open(os.path.join(BASE_DIR, args.config), "r") as f:
         config = yaml.load(f)
 
-    env_desc = config["env_description"]
-    env_desc["config"] = env_desc.get("config", {})
-    # load creator
-    env_desc["creator"] = GymEnv
-    env = GymEnv(**env_desc["config"])
+    # read environment description
+    env_desc = custom_gym.env_desc_gen(config["env_description"]["config"]["env_id"])
+    obs_space_template = list(env_desc["observation_spaces"].values())[0]
+    preprocessor = get_preprocessor(space=obs_space_template)(obs_space_template)
+    sampler_config = custom_gym.basic_sampler_config(
+        env_desc["observation_spaces"], env_desc["action_spaces"], preprocessor
+    )
 
-    possible_agents = env.possible_agents
-    observation_spaces = env.observation_spaces
-    action_spaces = env.action_spaces
-
-    env_desc["possible_agents"] = env.possible_agents
-    env.close()
+    agent_wise_shapes = sampler_config["data_shapes"]
+    env_desc["config"]["data_shapes"] = dict.fromkeys(
+        env_desc["possible_agents"], agent_wise_shapes
+    )
 
     training_config = config["training"]
     rollout_config = config["rollout"]
 
-    training_config["interface"]["observation_spaces"] = observation_spaces
-    training_config["interface"]["action_spaces"] = action_spaces
+    training_config["interface"]["observation_spaces"] = env_desc["observation_spaces"]
+    training_config["interface"]["action_spaces"] = env_desc["action_spaces"]
 
     run(
         group=config["group"],
