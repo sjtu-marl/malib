@@ -331,7 +331,10 @@ class AgentInterface(metaclass=ABCMeta):
                 if batch.data is None:
                     continue
                 else:
-                    res = batch.data
+                    if isinstance(batch.identity, list):
+                        res = dict.fromkeys(batch.identity, batch.data)
+                    else:
+                        res = {batch.identity: batch.data}
                     break
         return res, info
 

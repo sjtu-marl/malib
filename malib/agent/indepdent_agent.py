@@ -81,6 +81,7 @@ class IndependentAgent(AgentInterface):
         """
 
         res = {}
+        print("batch type:", list(batch.keys()))
         for env_aid, pid in policy_ids.items():
             trainer = self.get_trainer(pid)
             if env_aid not in batch:

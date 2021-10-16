@@ -29,7 +29,6 @@ rollout:
   episode_seg: 25
   terminate: "any"
   # can be sequential or simultaneous
-  callback: "sequential"
 
 evaluation:
   fragment_length: 25
