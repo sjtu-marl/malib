@@ -84,6 +84,7 @@ class IndependentAgent(AgentInterface):
         for env_aid, pid in policy_ids.items():
             trainer = self.get_trainer(pid)
             if env_aid not in batch:
+                print("[WARNING] No registered agent id detected in batch keys, please check your buffer description")
                 continue
             trainer.reset(self.policies[pid], training_config)
             res[env_aid] = metrics.to_metric_entry(
