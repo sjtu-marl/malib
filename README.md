@@ -41,7 +41,7 @@ from malib.runner import run
 from malib.rollout import rollout_func
 
 
-env = leduc_holdem.env(fixed_player=True)
+env = leduc_holdem.env(scenario_configs={"fixed_player": True})
 
 run(
     agent_mapping_func=lambda agent_id: agent_id,
