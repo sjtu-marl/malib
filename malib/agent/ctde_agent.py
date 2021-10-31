@@ -123,7 +123,9 @@ class CTDEAgent(AgentInterface):
 
         for env_agent_id, trainer in self._trainers.items():
             trainer.reset(t_policies[env_agent_id], training_config)
-            agent_batch = trainer.preprocess(batch, other_policies=t_policies)
+            agent_batch = trainer.preprocess(
+                batch[env_agent_id], other_policies=t_policies
+            )
             res[env_agent_id] = metrics.to_metric_entry(
                 trainer.optimize(agent_batch.copy()),
                 prefix=policy_ids[env_agent_id],

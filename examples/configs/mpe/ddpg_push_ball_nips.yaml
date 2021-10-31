@@ -4,7 +4,7 @@ name: "share/ddpg"
 
 training:
   interface:
-    type: "ctde"
+    type: "independent"
     population_size: -1
   config:
     # control the frequency of remote parameter update

@@ -66,7 +66,11 @@ class CoordinatorServer(BaseCoordinator):
         ), "no possible agents detected, please specify it in the env_description"
         # payoff manager responses for the payoff management of all agents
         self._payoff_manager = PayoffManager(
-            self._configs["env_description"]["possible_agents"], kwargs["exp_cfg"]
+            self._configs["env_description"]["possible_agents"],
+            kwargs["exp_cfg"],
+            solve_method="fictitious_play"
+            if len(self._populations) < 3
+            else "alpharank",
         )
         # hyper_evaluator: determine global convergence achievement or not
         self._hyper_evaluator: Evaluator = get_evaluator(

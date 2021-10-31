@@ -36,7 +36,7 @@ evaluation:
 env_description:
   creator: "MPE"
   config:
-    env_id: "simple_spread_v2"
+    env_id: "simple_push_v2"
     scenario_configs:
       max_cycles: 25
 
