@@ -1,7 +1,6 @@
 from abc import ABCMeta, abstractmethod
-from typing import Sequence
 
-from malib.utils.typing import TaskDescription, TaskRequest
+from malib.utils.typing import TaskDescription, TaskRequest, Sequence, FunctionType
 from malib.manager.rollout_worker_manager import RolloutWorkerManager
 from malib.manager.training_manager import TrainingManager
 
@@ -28,6 +27,20 @@ class BaseCoordinator(metaclass=ABCMeta):
 
     def pre_launching(self, init_config):
         pass
+
+    @staticmethod
+    def helper_register(cls):
+        from functools import wraps
+
+        def decorator(func):
+            @wraps(func)
+            def wrapper(self, *args, **kwargs):
+                return func(*args, **kwargs)
+
+            setattr(cls, func.__name__, func)
+            return func
+
+        return decorator
 
     @staticmethod
     def task_handler_register(cls):
