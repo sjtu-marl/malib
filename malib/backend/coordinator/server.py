@@ -86,7 +86,9 @@ class CoordinatorServer(BaseCoordinator):
         return self._payoff_manager
 
     def start(self, use_init_policy_pool: bool = False):
-        self._configs["training"]["interface"]["use_init_policy_pool"] = use_init_policy_pool
+        self._configs["training"]["interface"][
+            "use_init_policy_pool"
+        ] = use_init_policy_pool
         self._training_manager = TrainingManager(
             algorithms=self._configs["algorithms"],
             env_desc=self._configs["env_description"],
@@ -118,7 +120,9 @@ class CoordinatorServer(BaseCoordinator):
         """ Handling task request """
 
         # call request by name
-        generic_task_handler = getattr(self, "_request_{}".format(task_request.task_type), None)
+        generic_task_handler = getattr(
+            self, "_request_{}".format(task_request.task_type), None
+        )
         if generic_task_handler:
             generic_task_handler(task_request)
         else:

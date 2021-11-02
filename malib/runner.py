@@ -85,7 +85,11 @@ def run(**kwargs):
             name=settings.COORDINATOR_SERVER_ACTOR, max_concurrency=100
         ).remote(exp_cfg=exp_cfg, **global_configs)
 
-        _ = ray.get(coordinator_server.start.remote(use_init_policy_pool=config.get("use_init_policy_pool", True)))
+        _ = ray.get(
+            coordinator_server.start.remote(
+                use_init_policy_pool=config.get("use_init_policy_pool", True)
+            )
+        )
 
         performance_logger = get_logger(
             name="performance",

@@ -325,9 +325,8 @@ class TaskRequest:
             content=kwargs.get("content", task_desc.content),
             state_id=kwargs.get("state_id", task_desc.state_id),
             timestamp=kwargs.get("timestamp", None),
-            identify=kwargs.get("identify", None)
+            identify=kwargs.get("identify", None),
         )
-
 
 
 class BColors:

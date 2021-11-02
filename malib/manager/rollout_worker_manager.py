@@ -78,7 +78,9 @@ class RolloutWorkerManager:
                 exp_cfg=exp_cfg,
             )
 
-        Logger.info(f"RolloutWorker manager launched, {len(self._workers)} rollout worker(s) alives.")
+        Logger.info(
+            f"RolloutWorker manager launched, {len(self._workers)} rollout worker(s) alives."
+        )
 
     def retrieve_information(self, task_request: TaskRequest) -> TaskRequest:
         """Retrieve information from other agent interface. Default do nothing and return the original task request.

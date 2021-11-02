@@ -27,7 +27,9 @@ def helper_register(cls):
         setattr(cls, func.__name__, func)
         Logger.info("registered helper handler={}".format(func.__name__))
         return func
+
     return decorator
+
 
 def task_handler_register(cls, link):
     def decorator(func):

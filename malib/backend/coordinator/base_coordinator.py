@@ -21,6 +21,7 @@ class TaskGraph:
     def subgraph(self):
         pass
 
+
 class BaseCoordinator(metaclass=ABCMeta):
     def __init__(self):
         self.task_graph = TaskGraph()

@@ -98,7 +98,9 @@ class TrainingManager:
         self._groups = groups
         self.proc = psutil.Process(os.getpid())
 
-        Logger.info(f"training manager launched, {len(self._agents)} learner(s) created")
+        Logger.info(
+            f"training manager launched, {len(self._agents)} learner(s) created"
+        )
 
     def get_agent_interface_num(self) -> int:
         return len(self._agents)
