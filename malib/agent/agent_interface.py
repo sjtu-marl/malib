@@ -86,6 +86,7 @@ class AgentInterface(metaclass=ABCMeta):
         action_spaces: Dict[AgentID, gym.spaces.Space],
         exp_cfg: Dict[str, Any],
         population_size: int,
+        use_init_policy_pool: bool,
         algorithm_mapping: Callable = None,
         local_buffer_size: int = 0,
     ):
@@ -119,6 +120,7 @@ class AgentInterface(metaclass=ABCMeta):
         self._training_agent_mapping = training_agent_mapping
         self._group = []
         self._global_step = 0
+        self._use_init_policy_pool = use_init_policy_pool
 
         self._param_desc_lock = threading.Lock()
         self.logger = get_logger(
@@ -567,12 +569,10 @@ class AgentInterface(metaclass=ABCMeta):
             have been started.
         """
 
-        # add policies for agents, the first one policy will be set to non-trainable
-        # if len(self.policies) < 1:
-        #     trainable = False
-        # else:
-        #     trainable = True
-        trainable = True
+        if self._use_init_policy_pool and len(self.policies) < 1:
+            trainable = False
+        else:
+            trainable = True
 
         self.check_population_size()
         policy_dict: Dict[AgentID, Tuple[PolicyID, Policy]] = {
@@ -606,7 +606,9 @@ class AgentInterface(metaclass=ABCMeta):
         _ = ray.get(pending_tasks)
 
         # XXX(ming): we only keep the latest parameter desc currently
-        task_request = TaskRequest(
+        task_request = TaskRequest.from_task_desc(
+            task_desc=task_desc,
+            # rewrite task type and content
             task_type=TaskType.ROLLOUT if trainable else TaskType.SIMULATION,
             content=AgentFeedback(
                 id=self._id,
@@ -615,19 +617,16 @@ class AgentInterface(metaclass=ABCMeta):
                     for aid, (pid, policy) in policy_dict.items()
                 },
                 statistics={},
-                state_id=task_desc.state_id,
+                # state_id=task_desc.state_id,
             ),
         )
-        self.logger.debug(
-            f"send task: {task_request.task_type} {self._id} {task_request.identify}"
-        )
+        Logger.debug(f"Learner={self._id} send a request={task_request.task_type}")
         self._coordinator.request.remote(task_request)
 
         if trainable:
+            # also request for optimization task
             task_request.task_type = TaskType.OPTIMIZE
-            self.logger.debug(
-                f"send task: {task_request.task_type} {self._id} {task_request.identify}"
-            )
+            Logger.debug(f"Learner={self._id} send a request={task_request.task_type}")
             self._coordinator.request.remote(task_request)
 
     def get_trainer(self, pid: PolicyID) -> Trainer:

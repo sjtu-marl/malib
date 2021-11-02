@@ -307,6 +307,8 @@ class TaskRequest:
     content: Any
     """content is the feedback of current handler which request for next task"""
 
+    state_id: str
+
     timestamp: float = None  # time.time()
 
     identify: str = None
@@ -315,6 +317,17 @@ class TaskRequest:
         timestamp = time.time()
         self.timestamp = timestamp
         self.identify = f"TaskRequest_{timestamp}"
+
+    @staticmethod
+    def from_task_desc(task_desc: TaskDescription, **kwargs) -> "TaskRequest":
+        return TaskRequest(
+            task_type=kwargs.get("task_type", task_desc.task_type),
+            content=kwargs.get("content", task_desc.content),
+            state_id=kwargs.get("state_id", task_desc.state_id),
+            timestamp=kwargs.get("timestamp", None),
+            identify=kwargs.get("identify", None)
+        )
+
 
 
 class BColors:

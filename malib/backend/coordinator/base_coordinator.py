@@ -1,6 +1,9 @@
+import uuid
+from functools import wraps
 from abc import ABCMeta, abstractmethod
+from malib.utils.logger import Logger
 
-from malib.utils.typing import TaskDescription, TaskRequest, Sequence, FunctionType
+from malib.utils.typing import TaskDescription, TaskRequest, Sequence, Dict
 from malib.manager.rollout_worker_manager import RolloutWorkerManager
 from malib.manager.training_manager import TrainingManager
 
@@ -18,7 +21,6 @@ class TaskGraph:
     def subgraph(self):
         pass
 
-
 class BaseCoordinator(metaclass=ABCMeta):
     def __init__(self):
         self.task_graph = TaskGraph()
@@ -28,38 +30,15 @@ class BaseCoordinator(metaclass=ABCMeta):
     def pre_launching(self, init_config):
         pass
 
-    @staticmethod
-    def helper_register(cls):
-        from functools import wraps
-
-        def decorator(func):
-            @wraps(func)
-            def wrapper(self, *args, **kwargs):
-                return func(*args, **kwargs)
-
-            setattr(cls, func.__name__, func)
-            return func
-
-        return decorator
-
-    @staticmethod
-    def task_handler_register(cls):
-        from functools import wraps
-
-        print("Registering")
-
-        def decorator(func):
-            @wraps(func)
-            def wrapper(self, *args, **kwargs):
-                return func(*args, **kwargs)
-
-            setattr(cls, func.__name__, func)
-            return func
-
-        return decorator
+    def generate_task_id(self):
+        return uuid.uuid4().he
 
     @property
-    def training_manger(self) -> TrainingManager:
+    def task_cache(self) -> Dict[str, Dict]:
+        return self._task_cache
+
+    @property
+    def training_manager(self) -> TrainingManager:
         return self._training_manager
 
     @property

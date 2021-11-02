@@ -39,6 +39,7 @@ class CentralizedAgent(CTDEAgent):
         observation_spaces: Dict[AgentID, gym.spaces.Space],
         action_spaces: Dict[AgentID, gym.spaces.Space],
         exp_cfg: Dict[str, Any],
+        use_init_policy_pool: bool,
         population_size: int = -1,
         algorithm_mapping: Callable = None,
     ):
@@ -55,6 +56,7 @@ class CentralizedAgent(CTDEAgent):
             observation_spaces=observation_spaces,
             action_spaces=action_spaces,
             exp_cfg=exp_cfg,
+            use_init_policy_pool=use_init_policy_pool,
             population_size=population_size,
             algorithm_mapping=algorithm_mapping,
         )

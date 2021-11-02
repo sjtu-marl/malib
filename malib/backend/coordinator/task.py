@@ -1,7 +1,7 @@
+from os import link
 import threading
 
 from malib.utils.logger import Logger
-from malib.utils.tasks_register import task_handler_register
 from malib.utils.typing import (
     TaskDescription,
     TaskRequest,
@@ -14,15 +14,13 @@ from malib.utils.typing import (
     List,
     EvaluateResult,
 )
-from malib.backend.coordinator.base_coordinator import BaseCoordinator
-
-task_handler_register = BaseCoordinator.task_handler_register
-helper_register = BaseCoordinator.helper_register
+from malib.utils.tasks_register import task_handler_register, helper_register
+from malib.backend.coordinator.server import CoordinatorServer
 
 
-@helper_register
+@helper_register(cls=CoordinatorServer)
 def gen_simulation_task(
-    self: BaseCoordinator, task_request: TaskRequest, matches: List
+    self: CoordinatorServer, task_request: TaskRequest, matches: List
 ):
     """ Generate simulation task for a group of agents """
 
@@ -46,7 +44,7 @@ def gen_simulation_task(
     self._rollout_worker_manager.simulate(task_desc)
 
 
-@helper_register
+@helper_register(cls=CoordinatorServer)
 def gen_add_policy_task(self, aid: str, state_id):
     """Generate policy adding task then dispatch to one agent interface.
 
@@ -61,9 +59,9 @@ def gen_add_policy_task(self, aid: str, state_id):
     self._training_manager.add_policy(aid, task_desc)
 
 
-@task_handler_register
-def _request_optimize(coordinator: BaseCoordinator, task_request: TaskRequest):
-    task_request = coordinator._training_manager.retrieve_information(task_request)
+@task_handler_register(cls=CoordinatorServer, link=TaskType.OPTIMIZE)
+def _request_optimize(coordinator: CoordinatorServer, task_request: TaskRequest):
+    task_request = coordinator.training_manager.retrieve_information(task_request)
     task_desc = TaskDescription(
         task_type=TaskType.OPTIMIZE,
         content=TrainingDescription(
@@ -79,11 +77,11 @@ def _request_optimize(coordinator: BaseCoordinator, task_request: TaskRequest):
         ),
         state_id=None,
     )
-    coordinator._training_manager.optimize(task_desc)
+    coordinator.training_manager.optimize(task_desc)
 
 
-@task_handler_register
-def _request_simulation(coordinator: BaseCoordinator, task_request: TaskRequest):
+@task_handler_register(cls=CoordinatorServer, link=TaskType.SIMULATION)
+def _request_simulation(coordinator: CoordinatorServer, task_request: TaskRequest):
 
     Logger.debug("request for simulation")
     # fill message for this request
@@ -109,8 +107,8 @@ def _request_simulation(coordinator: BaseCoordinator, task_request: TaskRequest)
         coordinator.gen_simulation_task(task_request, pending_matches)
 
 
-@task_handler_register
-def _request_evaluation(coordinator: BaseCoordinator, task_request: TaskRequest):
+@task_handler_register(cls=CoordinatorServer, link=TaskType.EVALUATE)
+def _request_evaluation(coordinator: CoordinatorServer, task_request: TaskRequest):
     # TODO(ming): add population mapping description
     Logger.debug("rollout done, request for evaluation")
     trainable_pairs = task_request.content.agent_involve_info.trainable_pairs
@@ -134,9 +132,9 @@ def _request_evaluation(coordinator: BaseCoordinator, task_request: TaskRequest)
         coordinator.gen_simulation_task(task_request, pending_matches)
 
 
-@task_handler_register
+@task_handler_register(cls=CoordinatorServer, link=TaskType.UPDATE_PAYOFFTABLE)
 def _request_update_payoff_table(
-    coordinator: BaseCoordinator, task_request: TaskRequest
+    coordinator: CoordinatorServer, task_request: TaskRequest
 ):
     """Request to update payoff table with local evaluation results. In sync mode, payoff table will be updated until
     all joint policy item have been finished.
@@ -198,9 +196,9 @@ def _request_update_payoff_table(
             )
 
 
-@task_handler_register
-def _request_rollout(coordinator: BaseCoordinator, task_request: TaskRequest):
-    task_request = coordinator._training_manager.retrieve_information(task_request)
+@task_handler_register(cls=CoordinatorServer, link=TaskType.ROLLOUT)
+def _request_rollout(coordinator: CoordinatorServer, task_request: TaskRequest):
+    task_request = coordinator.training_manager.retrieve_information(task_request)
     assert isinstance(task_request.content, TrainingFeedback)
 
     populations = task_request.content.agent_involve_info.populations
@@ -238,4 +236,4 @@ def _request_rollout(coordinator: BaseCoordinator, task_request: TaskRequest):
         state_id=None,
     )
 
-    coordinator._rollout_worker_manager.rollout(task_desc=task)
+    coordinator.rollout_manager.rollout(task_desc=task)

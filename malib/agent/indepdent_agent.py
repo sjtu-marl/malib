@@ -30,6 +30,7 @@ class IndependentAgent(AgentInterface):
         observation_spaces: Dict[AgentID, gym.spaces.Space],
         action_spaces: Dict[AgentID, gym.spaces.Space],
         exp_cfg: Dict[str, Any],
+        use_init_policy_pool: bool,
         population_size: int = -1,
         algorithm_mapping: Callable = None,
     ):
@@ -61,6 +62,7 @@ class IndependentAgent(AgentInterface):
             action_spaces,
             exp_cfg,
             population_size,
+            use_init_policy_pool,
             algorithm_mapping,
         )
 

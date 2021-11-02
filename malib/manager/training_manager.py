@@ -83,6 +83,7 @@ class TrainingManager:
                         interface_config["observation_spaces"],
                         interface_config["action_spaces"],
                         exp_cfg,
+                        interface_config["use_init_policy_pool"],
                         interface_config["population_size"],
                         interface_config["algorithm_mapping"],
                     )
@@ -97,12 +98,12 @@ class TrainingManager:
         self._groups = groups
         self.proc = psutil.Process(os.getpid())
 
-        Logger.info(f"Created {len(self._agents)} learner(s)")
+        Logger.info(f"training manager launched, {len(self._agents)} learner(s) created")
 
     def get_agent_interface_num(self) -> int:
         return len(self._agents)
 
-    def init(self) -> None:
+    def init(self, state_id: str) -> None:
         """Initialize all training agents. Add fixed policies for them.
 
         :return: None
@@ -121,7 +122,7 @@ class TrainingManager:
                                 populations={},
                             ),
                         ),
-                        state_id=None,
+                        state_id=state_id,
                     )
                 )
             )

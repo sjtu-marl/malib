@@ -75,14 +75,18 @@ class CoordinatorServer(BaseCoordinator):
 
         self._rollout_worker_manager = None
         self._training_manager = None
-        self._lock = threading.Lock()
         self._exp_cfg = kwargs["exp_cfg"]
 
     @property
-    def payoff_manager(self):
+    def hyper_evaluator(self) -> Evaluator:
+        return self._hyper_evaluator
+
+    @property
+    def payoff_manager(self) -> PayoffManager:
         return self._payoff_manager
 
-    def start(self):
+    def start(self, use_init_policy_pool: bool = False):
+        self._configs["training"]["interface"]["use_init_policy_pool"] = use_init_policy_pool
         self._training_manager = TrainingManager(
             algorithms=self._configs["algorithms"],
             env_desc=self._configs["env_description"],
@@ -91,6 +95,7 @@ class CoordinatorServer(BaseCoordinator):
             training_config=self._configs["training"]["config"],
             exp_cfg=self._exp_cfg,
         )
+
         # one training interface one rollout worker
         self._configs["rollout"][
             "worker_num"
@@ -103,7 +108,9 @@ class CoordinatorServer(BaseCoordinator):
             env_desc=self._configs["env_description"],
             exp_cfg=self._exp_cfg,
         )
-        self._training_manager.init()
+
+        Logger.info("use_init_policy_pool: {}".format(use_init_policy_pool))
+        self._training_manager.init(state_id=self.generate_task_id())
 
         Logger.info("Coordinator server started")
 
@@ -111,8 +118,13 @@ class CoordinatorServer(BaseCoordinator):
         """ Handling task request """
 
         # call request by name
-        _caller = getattr(self, "_request_{}".format(task_request.task_type))
-        _caller(task_request)
+        generic_task_handler = getattr(self, "_request_{}".format(task_request.task_type), None)
+        if generic_task_handler:
+            generic_task_handler(task_request)
+        else:
+            raise AttributeError(
+                f"Missing handler for task type {task_request.task_type}"
+            )
 
     def is_terminate(self):
         return self._terminate
