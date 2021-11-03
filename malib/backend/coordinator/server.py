@@ -44,6 +44,41 @@ class CoordinatorServer(BaseCoordinator):
     def pull(self, **kwargs):
         pass
 
+    def gen_simulation_task(self, task_request: TaskRequest, matches: List):
+        """ Generate simulation task for a group of agents """
+
+        agent_involve_info: AgentInvolveInfo = task_request.content.agent_involve_info
+
+        # load default episode length ?
+        max_episode_length = self._configs["evaluation"].get("max_episode_length", 1000)
+        num_episodes = self._configs["evaluation"].get("num_episode", 1)
+        callback = self._configs["rollout"]["callback"]
+        task_desc = TaskDescription(
+            task_type=TaskType.SIMULATION,
+            content=SimulationDescription(
+                callback=callback,
+                max_episode_length=max_episode_length,
+                agent_involve_info=agent_involve_info,
+                policy_combinations=matches,
+                num_episodes=num_episodes,  # self._evaluate_config["num_simulation"] * 5
+            ),
+            state_id=task_request.state_id,
+        )
+        self._rollout_worker_manager.simulate(task_desc)
+
+    def gen_add_policy_task(self, aid: str, state_id):
+        """Generate policy adding task then dispatch to one agent interface.
+
+        :param str aid: Agent interface id.
+        :param Object state_id: A ray object reference
+        """
+
+        # tag current task with state_id
+        task_desc = TaskDescription(
+            task_type=TaskType.ADD_POLICY, content=None, state_id=state_id
+        )
+        self._training_manager.add_policy(aid, task_desc)
+
     def __init__(
         self,
         **kwargs,
@@ -120,14 +155,17 @@ class CoordinatorServer(BaseCoordinator):
         """ Handling task request """
 
         # call request by name
+        Logger.info("request: {}".format(task_request.task_type))
         generic_task_handler = getattr(
-            self, "_request_{}".format(task_request.task_type), None
+            CoordinatorServer, "_request_{}".format(task_request.task_type.value), None
         )
+
+        # class_method = getattr(CoordinatorServer, "_request_{}".format(task_request.task_type.value), None)
         if generic_task_handler:
-            generic_task_handler(task_request)
+            generic_task_handler(self, task_request)
         else:
             raise AttributeError(
-                f"Missing handler for task type {task_request.task_type}"
+                f"Missing handler for task type {task_request.task_type.value}"
             )
 
     def is_terminate(self):

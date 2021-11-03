@@ -27,12 +27,13 @@ class BaseCoordinator(metaclass=ABCMeta):
         self.task_graph = TaskGraph()
         self._training_manager: TrainingManager = None
         self._rollout_manager: RolloutWorkerManager = None
+        self._task_cache: Dict[str, Dict] = {}
 
     def pre_launching(self, init_config):
         pass
 
     def generate_task_id(self):
-        return uuid.uuid4().he
+        return uuid.uuid4().hex
 
     @property
     def task_cache(self) -> Dict[str, Dict]:
@@ -44,7 +45,7 @@ class BaseCoordinator(metaclass=ABCMeta):
 
     @property
     def rollout_manager(self) -> RolloutWorkerManager:
-        return self._rollout_manager
+        return self._rollout_worker_manager
 
     @abstractmethod
     def push(self, task_request: TaskRequest):
