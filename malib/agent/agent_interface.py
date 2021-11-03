@@ -37,7 +37,7 @@ from malib.algorithm.common.trainer import Trainer
 from malib.backend.datapool.offline_dataset_server import BufferDict, Table
 
 
-AgentFeedback = namedtuple("AgentFeedback", "id, trainable_pairs, state_id, statistics")
+AgentFeedback = namedtuple("AgentFeedback", "id, trainable_pairs, statistics")
 AgentTaggedFeedback = namedtuple("AgentTaggedFeedback", "id, content")
 
 AgentFeedback.__doc__ = """\
@@ -46,10 +46,6 @@ Policy adding feedback.
 
 AgentFeedback.id.__doc__ = """\
 Dict[str, Any] - Training agent id.
-"""
-
-AgentFeedback.state_id.__doc__ = """\
-ObjectRef - State id, linked to mutable object.
 """
 
 AgentFeedback.trainable_pairs.__doc__ = """\
@@ -249,33 +245,23 @@ class AgentInterface(metaclass=ABCMeta):
                 time.sleep(1)
                 continue
 
-    def require_parameter_desc(self, state_id) -> Dict:
-        """Return a meta parameter description.
-
-        :param ObjectRef state_id: Ray object ref
-        """
+    def require_parameter_desc(self) -> Dict:
+        """Return a meta parameter description."""
 
         with self._param_desc_lock:
             return self._meta_parameter_desc
 
-    def get_stationary_state(self, state_id: ray.ObjectID) -> AgentTaggedFeedback:
+    def get_stationary_state(self) -> AgentTaggedFeedback:
         """Return stationary policy descriptions."""
 
-        if state_id:
-            res = {
-                env_aid: [
-                    (pid, self._policies[pid].description) for pid in state_id[env_aid]
-                ]
-                for env_aid in self._group
-            }
-        else:
-            res = {
-                env_aid: [
-                    (pid, self._policies[pid].description)
-                    for pid in self._agent_to_pids[env_aid]
-                ]
-                for env_aid in self._group
-            }
+        res = {
+            env_aid: [
+                (pid, self._policies[pid].description)
+                for pid in self._agent_to_pids[env_aid]
+            ]
+            for env_aid in self._group
+        }
+
         return AgentTaggedFeedback(self._id, content=res)
 
     def push(self, env_aid: AgentID, pid: PolicyID) -> Status:
@@ -500,7 +486,8 @@ class AgentInterface(metaclass=ABCMeta):
                 assert status.locked, status
 
                 # call evaluation request
-            task_request = TaskRequest(
+            task_request = TaskRequest.from_task_desc(
+                task_desc=task_desc,
                 task_type=TaskType.EVALUATE,
                 content=TrainingFeedback(
                     agent_involve_info=training_task.agent_involve_info,
@@ -617,7 +604,6 @@ class AgentInterface(metaclass=ABCMeta):
                     for aid, (pid, policy) in policy_dict.items()
                 },
                 statistics={},
-                # state_id=task_desc.state_id,
             ),
         )
         Logger.debug(f"Learner={self._id} send a request={task_request.task_type}")

@@ -374,11 +374,19 @@ class BaseRolloutWorker:
             agent_involve_info=task_desc.content.agent_involve_info,
             statistics=res,
         )
-        self.callback(status, rollout_feedback, role="rollout", relieve=True)
+        self.callback(status, task_desc, rollout_feedback, role="rollout", relieve=True)
 
-    def callback(self, status: Status, content: Any, role: str, relieve: bool):
+    def callback(
+        self,
+        status: Status,
+        task_desc: TaskDescription,
+        content: Any,
+        role: str,
+        relieve: bool,
+    ):
         if role == "simulation":
-            task_req = TaskRequest(
+            task_req = TaskRequest.from_task_desc(
+                task_desc=task_desc,
                 task_type=TaskType.UPDATE_PAYOFFTABLE,
                 content=content,
             )
@@ -402,7 +410,8 @@ class BaseRolloutWorker:
                     )
                     _ = ray.get(self._parameter_server.push.remote(parameter_desc))
                 self._coordinator.request.remote(
-                    TaskRequest(
+                    TaskRequest.from_task_desc(
+                        task_desc=task_desc,
                         task_type=TaskType.EVALUATE,
                         content=content,
                     )
@@ -412,7 +421,7 @@ class BaseRolloutWorker:
             self.set_status(Status.IDLE)
 
     @Log.method_timer(enable=settings.PROFILING)
-    def simulation(self, task_desc):
+    def simulation(self, task_desc: TaskDescription):
         """Handling simulation task."""
 
         # set state here
@@ -443,7 +452,8 @@ class BaseRolloutWorker:
                 statistics=statistics,
                 policy_combination=combination,
             )
-            task_req = TaskRequest(
+            task_req = TaskRequest.from_task_desc(
+                task_desc=task_desc,
                 task_type=TaskType.UPDATE_PAYOFFTABLE,
                 content=rollout_feedback,
             )

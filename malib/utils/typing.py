@@ -314,6 +314,7 @@ class TaskRequest:
     identify: str = None
 
     def __post_init__(self):
+        assert self.state_id, "State id cannot be None"
         timestamp = time.time()
         self.timestamp = timestamp
         self.identify = f"TaskRequest_{timestamp}"
