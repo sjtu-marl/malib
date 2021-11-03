@@ -10,7 +10,6 @@ from malib import settings
 from malib.utils import logger
 from malib.utils.logger import Logger, get_logger, Log, start
 from malib.utils.configs.formatter import DefaultConfigFormatter
-from malib.backend.coordinator import task
 
 
 def update_configs(update_dict, ori_dict=None):
@@ -66,11 +65,15 @@ def run(**kwargs):
     )
 
     try:
-        from malib.backend.coordinator.server import CoordinatorServer
+        from malib.backend.coordinator.task import CoordinatorServer
         from malib.backend.datapool.offline_dataset_server import OfflineDataset
         from malib.backend.datapool.parameter_server import ParameterServer
 
-        Logger.info("Pre launch checking for Coordinator server ...")
+        Logger.info(
+            "Pre launch checking for Coordinator server ... {}".format(
+                getattr(CoordinatorServer, "_request_simulation", None)
+            )
+        )
         pprint.pprint(f"Logged experiment information:{infos}", indent=2)
 
         ray.init(local_mode=False)
