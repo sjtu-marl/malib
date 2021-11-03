@@ -162,20 +162,14 @@ class TrainingManager:
         interface = self._agents[agent_involve_info.training_handler]
         interface.train.remote(task, self._training_config)
 
-    def _get_population_desc(
-        self, state_id: ray.ObjectID
-    ) -> Dict[PolicyID, Sequence[Any]]:
+    def _get_population_desc(self, state_id: str) -> Dict[PolicyID, Sequence[Any]]:
         """Return stationary population description with given state_id which is related to a muted object stored as a
         Ray object.
 
-        :param ray.ObjectID state_id: A muted object id.
         :return: A dictionary describes the population
         """
 
-        tasks = [
-            agent.get_stationary_state.remote(state_id)
-            for agent in self._agents.values()
-        ]
+        tasks = [agent.get_stationary_state.remote() for agent in self._agents.values()]
         populations = {}
 
         while len(tasks) > 0:
@@ -200,10 +194,9 @@ class TrainingManager:
         """
 
         if isinstance(task_request.content, AgentFeedback):
-            populations = self._get_population_desc(task_request.content.state_id)
+            populations = self._get_population_desc(task_request.state_id)
             tasks = [
-                agent.require_parameter_desc.remote(task_request.content.state_id)
-                for agent in self._agents.values()
+                agent.require_parameter_desc.remote() for agent in self._agents.values()
             ]
 
             # state_id = task_request.content.get("state_id", None) or ray.put(populations)
