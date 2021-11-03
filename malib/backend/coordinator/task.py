@@ -1,5 +1,6 @@
-from os import link
 import threading
+
+from dataclasses import dataclass, field
 
 from malib.utils.logger import Logger
 from malib.utils.typing import (
@@ -13,53 +14,67 @@ from malib.utils.typing import (
     SimulationDescription,
     List,
     EvaluateResult,
+    Dict,
 )
 from malib.utils.tasks_register import task_handler_register, helper_register
+from malib.backend.coordinator.base_coordinator import BaseCoordinator
 from malib.backend.coordinator.server import CoordinatorServer
 
 
-@helper_register(cls=CoordinatorServer)
-def gen_simulation_task(
-    self: CoordinatorServer, task_request: TaskRequest, matches: List
-):
-    """ Generate simulation task for a group of agents """
+@dataclass
+class TaskCache:
+    matches: List = field(default_factory=list)
+    trainable_pairs: Dict = field(default_factory=dict)
+    population_mapping: Dict = field(default_factory=dict)
 
-    agent_involve_info: AgentInvolveInfo = task_request.content.agent_involve_info
-
-    # load default episode length ?
-    max_episode_length = self._configs["evaluation"].get("max_episode_length", 1000)
-    num_episodes = self._configs["evaluation"].get("num_episode", 1)
-    callback = self._configs["rollout"]["callback"]
-    task_desc = TaskDescription(
-        task_type=TaskType.SIMULATION,
-        content=SimulationDescription(
-            callback=callback,
-            max_episode_length=max_episode_length,
-            agent_involve_info=agent_involve_info,
-            policy_combinations=matches,
-            num_episodes=num_episodes,  # self._evaluate_config["num_simulation"] * 5
-        ),
-        state_id=None,
-    )
-    self._rollout_worker_manager.simulate(task_desc)
+    def clean(self):
+        self.matches = []
+        self.trainable_pairs = {}
+        self.population_mapping = None
 
 
-@helper_register(cls=CoordinatorServer)
-def gen_add_policy_task(self, aid: str, state_id):
-    """Generate policy adding task then dispatch to one agent interface.
+# @helper_register(cls=CoordinatorServer)
+# def gen_simulation_task(
+#     self: CoordinatorServer, task_request: TaskRequest, matches: List
+# ):
+#     """ Generate simulation task for a group of agents """
 
-    :param str aid: Agent interface id.
-    :param Object state_id: A ray object reference
-    """
+#     agent_involve_info: AgentInvolveInfo = task_request.content.agent_involve_info
 
-    # tag current task with state_id
-    task_desc = TaskDescription(
-        task_type=TaskType.ADD_POLICY, content=None, state_id=state_id
-    )
-    self._training_manager.add_policy(aid, task_desc)
+#     # load default episode length ?
+#     max_episode_length = self._configs["evaluation"].get("max_episode_length", 1000)
+#     num_episodes = self._configs["evaluation"].get("num_episode", 1)
+#     callback = self._configs["rollout"]["callback"]
+#     task_desc = TaskDescription(
+#         task_type=TaskType.SIMULATION,
+#         content=SimulationDescription(
+#             callback=callback,
+#             max_episode_length=max_episode_length,
+#             agent_involve_info=agent_involve_info,
+#             policy_combinations=matches,
+#             num_episodes=num_episodes,  # self._evaluate_config["num_simulation"] * 5
+#         ),
+#         state_id=None,
+#     )
+#     self._rollout_worker_manager.simulate(task_desc)
 
 
-@task_handler_register(cls=CoordinatorServer, link=TaskType.OPTIMIZE)
+# @helper_register(cls=CoordinatorServer)
+# def gen_add_policy_task(self, aid: str, state_id):
+#     """Generate policy adding task then dispatch to one agent interface.
+
+#     :param str aid: Agent interface id.
+#     :param Object state_id: A ray object reference
+#     """
+
+#     # tag current task with state_id
+#     task_desc = TaskDescription(
+#         task_type=TaskType.ADD_POLICY, content=None, state_id=state_id
+#     )
+#     self._training_manager.add_policy(aid, task_desc)
+
+
+@task_handler_register(cls=CoordinatorServer, link=TaskType.OPTIMIZE.value)
 def _request_optimize(coordinator: CoordinatorServer, task_request: TaskRequest):
     task_request = coordinator.training_manager.retrieve_information(task_request)
     task_desc = TaskDescription(
@@ -80,21 +95,20 @@ def _request_optimize(coordinator: CoordinatorServer, task_request: TaskRequest)
     coordinator.training_manager.optimize(task_desc)
 
 
-@task_handler_register(cls=CoordinatorServer, link=TaskType.SIMULATION)
+@task_handler_register(cls=CoordinatorServer, link=TaskType.SIMULATION.value)
 def _request_simulation(coordinator: CoordinatorServer, task_request: TaskRequest):
 
     Logger.debug("request for simulation")
     # fill message for this request
-    task_request = coordinator.training_manger.retrieve_information(task_request)
+    # XXX(ming): may we can remove it
+    with threading.Lock():
+        task_request = coordinator.training_manager.retrieve_information(task_request)
 
     # generate pending matches
     pending_matches = []
     pending_trainable_pairs = {}
+
     # cache task related information
-    coordinator.task_cache[task_request.state_id]["matches"] = pending_matches
-    coordinator.task_cache[task_request.state_id][
-        "trainable_pairs"
-    ] = pending_trainable_pairs
     for (
         env_aid,
         p_tup,
@@ -106,8 +120,23 @@ def _request_simulation(coordinator: CoordinatorServer, task_request: TaskReques
     if len(pending_matches) > 0:
         coordinator.gen_simulation_task(task_request, pending_matches)
 
+    with threading.Lock():
+        if coordinator.task_cache.get(task_request.state_id) is None:
+            coordinator.task_cache[task_request.state_id] = TaskCache()
+            Logger.debug(
+                "generate task cache for state_id={}".format(task_request.state_id)
+            )
+        coordinator.task_cache[task_request.state_id].matches.extend(pending_matches)
+        coordinator.task_cache[task_request.state_id].trainable_pairs.update(
+            pending_trainable_pairs
+        )
+        coordinator.task_cache[task_request.state_id].population_mapping = {
+            aid: [e[0] for e in p_tup]
+            for aid, p_tup in task_request.content.agent_involve_info.populations.items()
+        }
 
-@task_handler_register(cls=CoordinatorServer, link=TaskType.EVALUATE)
+
+@task_handler_register(cls=CoordinatorServer, link=TaskType.EVALUATE.value)
 def _request_evaluation(coordinator: CoordinatorServer, task_request: TaskRequest):
     # TODO(ming): add population mapping description
     Logger.debug("rollout done, request for evaluation")
@@ -115,10 +144,6 @@ def _request_evaluation(coordinator: CoordinatorServer, task_request: TaskReques
     pending_matches = []
     pending_trainable_pairs = {}
 
-    coordinator.task_cache[task_request.state_id]["matches"] = pending_matches
-    coordinator.task_cache[task_request.state_id][
-        "trainable_pairs"
-    ] = pending_trainable_pairs
     for env_aid, ptup in trainable_pairs.items():
         pending_matches.extend(
             coordinator.payoff_manager.get_pending_matchups(env_aid, *ptup)
@@ -131,8 +156,20 @@ def _request_evaluation(coordinator: CoordinatorServer, task_request: TaskReques
     else:
         coordinator.gen_simulation_task(task_request, pending_matches)
 
+    with threading.Lock():
+        if coordinator.task_cache.get(task_request.state_id) is None:
+            coordinator.task_cache[task_request.state_id] = TaskCache()
+        coordinator.task_cache[task_request.state_id].matches.extend(pending_matches)
+        coordinator.task_cache[task_request.state_id].trainable_pairs.update(
+            pending_trainable_pairs
+        )
+        coordinator.task_cache[task_request.state_id].population_mapping = {
+            aid: [e[0] for e in p_tup]
+            for aid, p_tup in task_request.content.agent_involve_info.populations.items()
+        }
 
-@task_handler_register(cls=CoordinatorServer, link=TaskType.UPDATE_PAYOFFTABLE)
+
+@task_handler_register(cls=CoordinatorServer, link=TaskType.UPDATE_PAYOFFTABLE.value)
 def _request_update_payoff_table(
     coordinator: CoordinatorServer, task_request: TaskRequest
 ):
@@ -144,9 +181,7 @@ def _request_update_payoff_table(
     with threading.Lock():
         coordinator.payoff_manager.update_payoff(rollout_feedback)
         task_cache = coordinator.task_cache[task_request.state_id]
-        all_done = coordinator.payoff_manager.check_done(
-            task_cache["population_mapping"]
-        )
+        all_done = coordinator.payoff_manager.check_done(task_cache.population_mapping)
         if all_done:
             Logger.debug(
                 "all pending task related to state={} have been updated".format(
@@ -154,9 +189,9 @@ def _request_update_payoff_table(
                 )
             )
             # update population mapping with trainable policy pair
-            population_mapping = task_cache["population_mapping"]
-            trainable_pairs = task_cache["trainable_pairs"]
-            for aid, pid in trainable_pairs:
+            population_mapping = task_cache.population_mapping
+            trainable_pairs = task_cache.trainable_pairs
+            for aid, pid in trainable_pairs.items():
                 population_mapping[aid].append(pid)
 
             if len(population_mapping) < 2:
@@ -169,25 +204,31 @@ def _request_update_payoff_table(
                     population_mapping
                 )
 
-            coordinator.update_equilibrium(population_mapping, equilibrium)
+            coordinator.payoff_manager.update_equilibrium(
+                population_mapping, equilibrium
+            )
 
             evaluate_result = coordinator._hyper_evaluator.evaluate(
                 # content here should be
                 task_request.content,
                 # weighted_payoffs=weighted_payoffs,
                 # oracle_payoffs=oracle_payoffs,
-                trainable_mapping=task_cache["trainable_pairs"],
+                trainable_mapping=task_cache.trainable_pairs,
             )
             if evaluate_result[EvaluateResult.CONVERGED]:
                 coordinator._terminate = True
             else:
-                coordinator.task_cache[task_request.state_id]["trainable_pairs"] = {}
+                coordinator.task_cache[task_request.state_id].trainable_pairs = {}
                 for aid in coordinator.training_manager.groups:
                     coordinator.gen_add_policy_task(aid, task_request.state_id)
 
             # clean cache
-            coordinator.task_cache[task_request.state_id]["matches"] = None
-            coordinator.task_cache[task_request.state_id]["trainable_pairs"] = None
+            with threading.Lock():
+                coordinator.task_cache[task_request.state_id].clean()
+                # reset population mapping
+                coordinator.task_cache[
+                    task_request.state_id
+                ].population_mapping = population_mapping
         else:
             Logger.warning(
                 "state={} is waiting for other sub tasks ...".format(
@@ -196,7 +237,7 @@ def _request_update_payoff_table(
             )
 
 
-@task_handler_register(cls=CoordinatorServer, link=TaskType.ROLLOUT)
+@task_handler_register(cls=CoordinatorServer, link=TaskType.ROLLOUT.value)
 def _request_rollout(coordinator: CoordinatorServer, task_request: TaskRequest):
     task_request = coordinator.training_manager.retrieve_information(task_request)
     assert isinstance(task_request.content, TrainingFeedback)
@@ -233,7 +274,10 @@ def _request_rollout(coordinator: CoordinatorServer, task_request: TaskRequest):
             callback=rollout_config["callback"],
             episode_seg=rollout_config["episode_seg"],
         ),
-        state_id=None,
+        state_id=task_request.state_id,
     )
 
     coordinator.rollout_manager.rollout(task_desc=task)
+
+
+__all__ = ["CoordinatorServer"]
