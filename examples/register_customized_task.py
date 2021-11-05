@@ -4,7 +4,7 @@ from malib.envs import MPE
 from malib.runner import run
 from malib.utils.typing import PolicyID
 
-# from malib.utils.tasks_register import task_handler_register, register_task_type
+from malib.utils.tasks_register import task_handler_register, register_task_type
 from malib.backend.coordinator.server import CoordinatorServer
 
 

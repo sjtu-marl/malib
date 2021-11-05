@@ -288,15 +288,18 @@ def simultaneous(
 
         if dataset_server:
             for aid in env.trainable_agents:
-                agent_buffers[aid].append(
-                    _FullTimeStep(
-                        observations[aid],
-                        next_observations[aid],
-                        rets[Episode.REWARD][aid],
-                        actions[aid],
-                        rets[Episode.DONE][aid],
-                        action_dists[aid],
-                    )
+                agent_buffers[aid].extend(
+                    [
+                        _FullTimeStep(*e)
+                        for e in zip(
+                            observations[aid],
+                            next_observations[aid],
+                            rets[Episode.REWARD][aid],
+                            actions[aid],
+                            rets[Episode.DONE][aid],
+                            action_dists[aid],
+                        )
+                    ]
                 )
         observations = next_observations
 
