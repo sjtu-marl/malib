@@ -23,8 +23,8 @@ rollout:
   stopper_config:
     max_step: 1250
   metric_type: "simple"
-  fragment_length: 25
-  num_episodes: 64
+  fragment_length: 100
+  num_episodes: 16
   episode_seg: 2
   terminate: "any"
   callback: "simultaneous"

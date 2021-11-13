@@ -3,6 +3,7 @@ import os
 import sys
 import traceback
 import threading
+import asyncio
 import time
 import traceback
 import numpy as np
@@ -12,8 +13,6 @@ import ray
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from readerwriterlock import rwlock
-
-from ray.util import queue
 
 from malib import settings
 from malib.utils.errors import OversampleError
@@ -122,6 +121,80 @@ class BufferDict(dict):
             x[index] = t.copy()
 
 
+class Empty(Exception):
+    pass
+
+
+class Full(Exception):
+    pass
+
+
+def _start_loop(loop: asyncio.BaseEventLoop):
+    asyncio.set_event_loop(loop)
+    if not loop.is_running():
+        loop.run_forever()
+
+
+def get_or_create_eventloop():
+    try:
+        return asyncio.get_event_loop()
+    except RuntimeError as ex:
+        if "There is no current event loop in thread" in str(ex):
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return asyncio.get_event_loop()
+
+
+class _QueueActor:
+    def __init__(self, maxsize, event_loop):
+        self.maxsize = maxsize
+        self.queue = asyncio.Queue(self.maxsize, loop=event_loop)
+
+    def qsize(self):
+        return self.queue.qsize()
+
+    def empty(self):
+        return self.queue.empty()
+
+    def full(self):
+        return self.queue.full()
+
+    async def put(self, item, timeout=None):
+        try:
+            await asyncio.wait_for(self.queue.put(item), timeout)
+        except asyncio.TimeoutError:
+            raise Full
+
+    async def get(self, timeout=None):
+        try:
+            return await asyncio.wait_for(self.queue.get(), timeout)
+        except asyncio.TimeoutError:
+            raise Empty
+
+    def put_nowait(self, item):
+        self.queue.put_nowait(item)
+
+    def put_nowait_batch(self, items):
+        # If maxsize is 0, queue is unbounded, so no need to check size.
+        if self.maxsize > 0 and len(items) + self.qsize() > self.maxsize:
+            raise Full(
+                f"Cannot add {len(items)} items to queue of size "
+                f"{self.qsize()} and maxsize {self.maxsize}."
+            )
+        for item in items:
+            self.queue.put_nowait(item)
+
+    def get_nowait(self):
+        return self.queue.get_nowait()
+
+    def get_nowait_batch(self, num_items):
+        if num_items > self.qsize():
+            raise Empty(
+                f"Cannot get {num_items} items from queue of size " f"{self.qsize()}."
+            )
+        return [self.queue.get_nowait() for _ in range(num_items)]
+
+
 class Table:
     def __init__(
         self,
@@ -129,6 +202,7 @@ class Table:
         capacity: int,
         data_shapes: Dict[AgentID, Dict[str, Tuple]],
         sample_start_size: int = 0,
+        event_loop: asyncio.BaseEventLoop = None,
         mode: str = "queue",
     ):
         """One table for one episode."""
@@ -148,8 +222,8 @@ class Table:
         self._mode = mode
 
         if mode == "queue":
-            self._consumer_queue = queue.Queue(maxsize=capacity)
-            self._producer_queue = queue.Queue(maxsize=capacity)
+            self._consumer_queue = _QueueActor(maxsize=capacity, event_loop=event_loop)
+            self._producer_queue = _QueueActor(maxsize=capacity, event_loop=event_loop)
             # ready index
             self._producer_queue.put_nowait_batch([i for i in range(capacity)])
         else:
@@ -200,14 +274,14 @@ class Table:
             self._consumer_queue.shutdown()
 
     def get_producer_index(self, buffer_size: int) -> Union[List[int], None]:
-        buffer_size = min(self._producer_queue.size(), buffer_size)
+        buffer_size = min(self._producer_queue.qsize(), buffer_size)
         if buffer_size == 0:
             return None
         else:
             return self._producer_queue.get_nowait_batch(buffer_size)
 
     def get_consumer_index(self, buffer_size: int) -> Union[List[int], None]:
-        buffer_size = min(self._consumer_queue.size(), buffer_size)
+        buffer_size = min(self._consumer_queue.qsize(), buffer_size)
         if buffer_size == 0:
             return None
         else:
@@ -340,6 +414,12 @@ class OfflineDataset:
         self._threading_lock = threading.Lock()
         self._threading_pool = ThreadPoolExecutor()
 
+        loop = get_or_create_eventloop()
+        self.event_loop = loop
+        self.event_thread = threading.Thread(target=_start_loop, args=(loop,))
+        self.event_thread.setDaemon(True)
+        self.event_thread.start()
+
         # parse init tasks
         init_job_config = dataset_config.get("init_job", {})
         if init_job_config.get("load_when_start"):
@@ -422,6 +502,7 @@ class OfflineDataset:
                 self._episode_capacity,
                 buffer_desc.data_shapes,
                 self._learning_start,
+                event_loop=self.event_loop,
             )
             Logger.info("created data table: {}".format(name))
 

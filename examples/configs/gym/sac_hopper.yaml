@@ -23,7 +23,7 @@ rollout:
   type: "async"
   stopper: "none"
   fragment_length: 1000
-  num_episodes: 1
+  num_episodes: 8
   episode_seg: 1
   terminate: "any"
   callback: "simultaneous"

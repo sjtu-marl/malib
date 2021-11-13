@@ -2,6 +2,7 @@
 Basic class of agent interface. Users can implement their custom training workflow by inheriting this class.
 """
 
+import asyncio
 import copy
 import os
 import threading
