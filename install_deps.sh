@@ -7,6 +7,22 @@ function check_python_version_gte_3_6 {
 }
 
 function do_install_for_linux {
+    echo "Installing python dependencies"
+    pip install --upgrade pip==21.0.1
+    pip install -e .
+    AutoROM
+
+    echo "Installing Mujoco dependencies"
+    sudo add-apt-repository ppa:jamesh/snap-support
+    sudo apt-get update && sudo apt-get install libosmesa6-dev patchelf -y
+    mkdir $HOME/.mujoco
+    wget -P $HOME/.mujoco https://www.roboti.us/file/mjkey.txt
+    wget -P /tmp https://roboti.us/download/mujoco200_linux.zip
+    unzip /tmp/mujoco200_linux.zip -d $HOME/.mujoco/ && mv $HOME/.mujoco/mujoco200_linux $HOME/.mujoco/mujoco200
+    echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco200/bin" >> $HOME/.bashrc
+    source $HOME/.bashrc
+    rm /tmp/mujoco200_linux.zip
+
     echo "Installing ZDoom dependencies"
     sudo apt install build-essential zlib1g-dev libsdl2-dev libjpeg-dev \
     nasm tar libbz2-dev libgtk2.0-dev cmake git libfluidsynth-dev libgme-dev \

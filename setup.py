@@ -19,7 +19,7 @@ setup(
     install_requires=[
         "wrapt",
         "ray==1.8.0",
-        "pettingzoo==1.9.0",
+        "pettingzoo==1.13.1",
         "grpcio-tools",
         "protobuf3-to-dict",
         "pickle5",
@@ -31,22 +31,19 @@ setup(
         "pymongo",
         "psutil",
         "pyecharts",
+        "open_spiel==1.0.2",
+        "supersuit==3.3.1",
+        "multi-agent-ale-py==0.1.11",
+        "autorom==0.4.2",
+        "colorlog==6.6.0" "mujoco_py",
     ],
     extras_require={
         "dev": [
-            "pip==21.0.1",
             "black==20.8b1",
             "pytest",
             "sphinx",
             "sphinx-rtd-theme",
             "sphinxcontrib-apidoc",
-        ],
-        "envs": [
-            # "vizdoom==1.1.8",
-            # "git+https://github.com/oxwhirl/smac.git",
-            "supersuit==2.6.6",
-            "multi-agent-ale-py==0.1.11",
-            "autorom==0.1.20",
         ],
     },
 )
