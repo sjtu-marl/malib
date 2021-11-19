@@ -15,13 +15,12 @@ training:
     sac_alpha: 0.2
     tau: 0.005  # soft update
     grad_norm_clipping: 5.0
-    stopper: "simple_training"
-    stopper_config:
-      max_step: 1000000
 
 rollout:
   type: "async"
-  stopper: "none"
+  stopper: "simple_rollout"
+  stopper_config:
+    max_step: 1000
   fragment_length: 1000
   num_episodes: 8
   episode_seg: 1

@@ -334,7 +334,7 @@ class AgentInterface(metaclass=ABCMeta):
                         )
                         assert batch.data is not None
                         size += buffer_desc[batch.identify].batch_size
-                        res.update(batch.data)
+                        # res.update(batch.data)
                         # free
                         buffer_desc.data = None
                         buffer_desc.indices = None
@@ -344,7 +344,7 @@ class AgentInterface(metaclass=ABCMeta):
                     self._offline_dataset.get_consumer_index.remote(buffer_desc)
                 )
                 if batch.data is None:
-                    # Logger.warning("inex not ready")
+                    # Logger.warning("index not ready")
                     if self._local_buffer.size >= buffer_desc.batch_size:
                         break
                     else:
@@ -356,7 +356,7 @@ class AgentInterface(metaclass=ABCMeta):
                     )
                     assert batch.data is not None
                     size += buffer_desc.batch_size
-                    res.update(batch.data)
+                    # res.update(batch.data)
                     # print("likffe:", list(batch.data.keys()))
                     self._local_buffer.insert(
                         data=batch.data, size=len(buffer_desc.indices)

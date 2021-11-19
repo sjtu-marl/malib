@@ -117,7 +117,6 @@ class BufferDict(dict):
                 raise TypeError(
                     f"Unexpected type for new insert data: {type(new_data)}, expected is np.ndarray"
                 )
-            # Logger.debug("index: {}".format(index))
             x[index] = t.copy()
 
 

@@ -36,9 +36,7 @@ from malib.utils.typing import (
     BehaviorMode,
     Callable,
 )
-from malib.utils.preprocessor import get_preprocessor
 from malib.envs.env import EpisodeInfo
-from malib.envs import Environment
 from malib.envs.agent_interface import AgentInterface
 from malib.envs.vector_env import VectorEnv
 from malib.backend.datapool.offline_dataset_server import Episode
@@ -304,7 +302,12 @@ def simultaneous(
         observations = next_observations
 
     if dataset_server:
-        shuffle_idx = np.random.permutation(fragment_length)
+        indices = None
+        buffer_desc.batch_size = fragment_length
+        while indices is None:
+            batch = ray.get(dataset_server.get_producer_index.remote(buffer_desc))
+            indices = batch.data
+        shuffle_idx = np.random.permutation(len(indices))
         for agent, data_tups in agent_buffers.items():
             (
                 obs,
@@ -332,14 +335,9 @@ def simultaneous(
                 Episode.DONE: dones[shuffle_idx].squeeze(),
                 Episode.ACTION_DIST: action_dists[shuffle_idx],
             }
-        buffer_desc.batch_size = fragment_length
-        buffer_desc.data = None
-        buffer_desc.indices = None
-        indices = None
-        while indices is None:
-            batch = ray.get(dataset_server.get_producer_index.remote(buffer_desc))
-            indices = batch.data
+        buffer_desc.data = agent_buffers
         buffer_desc.indices = indices
+        # Logger.info("available indicies length: {}".format(len(indices)))
         buffer_desc.data = agent_buffers
         dataset_server.save.remote(buffer_desc)
 
