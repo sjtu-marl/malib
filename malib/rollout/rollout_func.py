@@ -338,7 +338,6 @@ def simultaneous(
         buffer_desc.data = agent_buffers
         buffer_desc.indices = indices
         # Logger.info("available indicies length: {}".format(len(indices)))
-        buffer_desc.data = agent_buffers
         dataset_server.save.remote(buffer_desc)
 
     results = _parse_episode_infos(env.epsiode_infos)
