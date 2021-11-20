@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from collections import defaultdict
 import time
+from typing import Dict, List
 import numpy as np
 import ray
 import torch
@@ -8,21 +9,22 @@ from malib.algorithm.mappo.data_generator import recurrent_generator
 from malib.algorithm.mappo.loss import MAPPOLoss
 
 from malib.backend.datapool.offline_dataset_server import Episode
-from malib.rollout.rollout_func import _parse_episode_infos
+from malib.envs.gr_football.env import GRFEpisodeInfo
 from malib.utils.metrics import get_metric
 
+def _parse_episode_infos(episode_infos: List[GRFEpisodeInfo]) -> Dict[str, List]:
+    # FIXME(ziyu): now reward is actually a num_agent * 1 array for each
+    res = defaultdict(list)
+    for episode_info in episode_infos:
+        for aid, epi in episode_info.items():
+            for k, v in epi._record.items():
+                tag = f"metric/{k}/{aid}"
+                res[tag].append(v)
+    return res
 
 def grf_simultaneous(
-    # trainable_pairs,
-    # agent_interfaces,
-    # env_desc,
-    # metric_type,
-    # max_iter,
-    # behavior_policy_mapping=None,
-    # role=None,
     env,
     num_envs,
-    agent_interfaces,
     fragment_length,
     max_step, # XXX(ziyu): deprecated param
     behavior_policies,
@@ -42,16 +44,16 @@ def grf_simultaneous(
     )
 
 
-    observations = {
-        aid: agent_interfaces[aid].transform_observation(obs)
-        for aid, obs in rets[Episode.CUR_OBS].items()
-    }
+    # observations = {
+    #     aid: agent_interfaces[aid].transform_observation(obs)
+    #     for aid, obs in rets[Episode.CUR_OBS].items()
+    # } # FIXME(ziyu): should add transform_obs
+    observations = rets[Episode.CUR_OBS]
+    states = rets[Episode.CUR_STATE]
 
     dones, critic_rnn_states, actor_rnn_states = {}, {}, {}
     for agent_id in observations:
-        policy = agent_interfaces[agent_id].get_policy(
-            behavior_policies[agent_id]
-        )
+        policy = behavior_policies[agent_id]
         n_rollout_threads, n_agent = observations[agent_id].shape[:2]
         critic_rnn_states[agent_id] = np.zeros(
             (
@@ -110,27 +112,15 @@ def grf_simultaneous(
     while not env.is_terminated():
         actions, action_dists, action_masks = {}, {}, {}
         values, extra_infos = {}, {}
-        # TODO(ziyu): should move this part into the environment, then
-        #  the procedure can be generalized as a rollout function with
+        # TODO(ziyu): the procedure can be generalized as a rollout function with
         #  GAE lambda computation process, and then make the GAE as another code block 
 
 
-        # # for MAPPO
-        # share_team_obs = {
-        #     aid: np.reshape(
-        #         observations[aid], [-1, 1, np.prod(observations[aid].shape[1:])])
-        #         for aid in env.possible_agents}
-        # for aid, share_obs in share_team_obs.items():
-        #     share_team_obs[aid] =  np.repeat(share_obs, observations[aid].shape[1], axis=1)
-        # for PPO
-        share_team_obs = observations
-
         for agent in observations:
-            action, action_dist, extra_info = agent_interfaces[agent].compute_action(
+            action, action_dist, extra_info = behavior_policies[agent].compute_action(
                 # (ziyu): use concatenate to make [num_env, num_agent, ...] -> [-1, ...]
                 np.concatenate(observations[agent]), 
-                policy_id=behavior_policies[agent],
-                share_obs=np.concatenate(share_team_obs[agent]),
+                share_obs=np.concatenate(states[agent]),
                 actor_rnn_states=np.concatenate(actor_rnn_states[agent]),
                 critic_rnn_states=np.concatenate(critic_rnn_states[agent]),
                 rnn_masks=np.concatenate(dones[agent]),
@@ -158,7 +148,7 @@ def grf_simultaneous(
                     
                     "value": values[agent],
                     "return": np.zeros(shape0),
-                    "share_obs": share_team_obs[agent],
+                    "share_obs": states[agent],
                     "steps_left": infos[agent]["steps_left"][:, None, :],
                     "actor_rnn_states": actor_rnn_states[agent],
                     "critic_rnn_states": critic_rnn_states[agent],
@@ -173,37 +163,33 @@ def grf_simultaneous(
                     extra_infos[agent]["critic_rnn_states"]
                 )
 
-        observations = {
-            aid: agent_interfaces[aid].transform_observation(obs)
-            for aid, obs in rets[Episode.CUR_OBS].items()
-        }
+        # observations = {
+        #     aid: agent_interfaces[aid].transform_observation(obs)
+        #     for aid, obs in rets[Episode.CUR_OBS].items()
+        # }
+        observations = rets[Episode.CUR_OBS]
+        states = rets[Episode.CUR_STATE]
 
         done = all([d.all() for d in dones.values()])
 
     next_step_values = {aid: 0.0 for aid in observations}
     if not done and buffer_desc is not None:
-        # share_last_step_obs = {
-        #     aid: np.reshape(
-        #         observations[aid], [-1, 1, np.prod(observations[aid].shape[1:])])
-        #         for aid in env.possible_agents}
-        share_last_step_obs = observations
-
-        for agent in agent_interfaces:
-            _, _, extra_info = agent_interfaces[agent].compute_action(
+        for agent in agent_buffers:
+            _, _, extra_info = behavior_policies[agent].compute_action(
                 np.concatenate(observations[agent]),
                 policy_id=behavior_policies[agent],
-                share_obs=np.concatenate(share_last_step_obs[agent]),
+                share_obs=np.concatenate(states[agent]),
                 actor_rnn_states=np.concatenate(actor_rnn_states[agent]),
                 critic_rnn_states=np.concatenate(critic_rnn_states[agent]),
                 rnn_masks=np.concatenate(dones[agent]),
             )
             next_step_values[agent] = split_cast(extra_info["value"])
     
-    for agent in agent_buffers:
-        for k, v_list in agent_buffers[agent].items():
-            agent_buffers[agent][k] = np.vstack(v_list)
 
     if dataset_server is not None:
+        for agent in agent_buffers:
+            for k, v_list in agent_buffers[agent].items():
+                agent_buffers[agent][k] = np.vstack(v_list)
         compute_gae(next_step_values)
     
         indices = None
@@ -219,6 +205,6 @@ def grf_simultaneous(
         dataset_server.save.remote(buffer_desc)
 
 
-    results = _parse_episode_infos(env.epsode_infos)
+    results = _parse_episode_infos(env.episode_infos)
     return results, env.batched_step_cnt * len(env.possible_agents)
 

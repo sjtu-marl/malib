@@ -364,11 +364,12 @@ class Stepping:
         self._is_sequential = env.is_sequential
 
         if not env.is_sequential:
-            self.env = VectorEnv.from_envs([env], config=env_desc["config"])
-            self.callback = simultaneous
+            self.env = VectorEnv(env.observation_spaces,env.action_spaces, 
+                                 env_desc["creator"], env_desc["config"])
+            self._default_callback = simultaneous
         else:
             self.env = env
-            self.callback = sequential
+            self._default_callback = sequential
 
         self._dataset_server = dataset_server
 
@@ -430,21 +431,30 @@ class Stepping:
         # behavior policies is a mapping from agents to policy ids
         # update with external behavior_policies
         behavior_policies.update(desc["behavior_policies"])
+        act_policies = {
+            aid: agent_interfaces[aid].get_policy(pid) 
+            for aid, pid in behavior_policies.items()
+        }
         # specify the number of running episodes
         num_episodes = desc["num_episodes"]
         max_step = desc.get("max_step", 1000)
 
         self.add_envs(num_episodes)
 
-        callback = get_func(callback) if callback else self.callback
+        callback = get_func(callback) if callback else self._default_callback
 
         evaluated_results, num_frames = callback(
             self.env,
             num_episodes,
-            agent_interfaces,
+            # XXX(ziyu): agent_interfaces & behavior pid brings too many arguments
+            #  I think we can extract behavior policies and feed it into callback, and then
+            #  callback can be tested without agent_interface
+            #  Since users may found it easier to just test their implementation with policy
+            #  and rollout function. 
+            #  @ming 
             fragment_length,
             max_step,
-            behavior_policies,
+            act_policies,
             buffer_desc if task_type == "rollout" else None,
             dataset_server=self._dataset_server if task_type == "rollout" else None,
         )

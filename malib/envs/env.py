@@ -9,7 +9,7 @@ class EpisodeInfo:
     total_rewards: Dict[AgentID, float]
     step_cnt: Dict[AgentID, float]
 
-    def __post_init__(self):
+    def __post_init__(self, extra_infos):
         self._extra = {}
 
     @property
@@ -23,6 +23,8 @@ class EpisodeInfo:
 
 
 class Environment:
+    # TODO(ziyu & ming): this class acts more like a information collecting
+    #  module or wrapper, I suggest it should be used like a wrapper
     def __init__(self, **configs):
         self.is_sequential = False
         self._extra_returns = []
