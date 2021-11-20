@@ -181,7 +181,7 @@ class VectorEnv:
                     for _agent, array in actions.items()
                 }
             )
-            # hard clipping for done
+            # TODO(ming): hard clipping or not?
             done = any(ret[Episode.DONE].values())
             if done or self.is_terminated():
                 # collect episode info

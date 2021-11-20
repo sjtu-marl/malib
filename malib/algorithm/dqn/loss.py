@@ -67,4 +67,5 @@ class DQNLoss(LossFunc):
 
         return {
             TrainingMetric.LOSS: loss.detach().item(),
+            "eps": self.policy._calc_eps(),
         }
