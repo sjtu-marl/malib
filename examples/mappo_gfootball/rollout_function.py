@@ -110,16 +110,18 @@ def grf_simultaneous(
             buffer.update({"return": ret})
 
     while not env.is_terminated():
-        actions, action_dists, action_masks = {}, {}, {}
+        actions, action_dists, action_masks, avail_actions = {}, {}, {}, {}
         values, extra_infos = {}, {}
-        # TODO(ziyu): the procedure can be generalized as a rollout function with
+        # XXX(ziyu): the procedure can be generalized as a rollout function with
         #  GAE lambda computation process, and then make the GAE as another code block 
 
 
         for agent in observations:
+            avail_actions[agent] = observations[agent][..., :19]
             action, action_dist, extra_info = behavior_policies[agent].compute_action(
                 # (ziyu): use concatenate to make [num_env, num_agent, ...] -> [-1, ...]
                 np.concatenate(observations[agent]), 
+                action_mask=np.concatenate(avail_actions[agent]),
                 share_obs=np.concatenate(states[agent]),
                 actor_rnn_states=np.concatenate(actor_rnn_states[agent]),
                 critic_rnn_states=np.concatenate(critic_rnn_states[agent]),
