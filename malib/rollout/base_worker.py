@@ -184,6 +184,7 @@ class BaseRolloutWorker:
             for pid, pconfig in config_seq:
                 if pid not in agent.policies:
                     agent.add_policy(
+                        aid,
                         pid,
                         pconfig,
                         parameter_descs[aid].parameter_desc_dict[pid],
@@ -196,6 +197,7 @@ class BaseRolloutWorker:
             try:
                 if pid not in agent.policies:
                     agent.add_policy(
+                        aid,
                         pid,
                         description,
                         parameter_descs[aid].parameter_desc_dict[pid],
@@ -228,7 +230,7 @@ class BaseRolloutWorker:
                             parameter_desc = parameter_descs[aid].parameter_desc_dict[
                                 pid
                             ]
-                        agent.add_policy(pid, description, parameter_desc)
+                        agent.add_policy(aid, pid, description, parameter_desc)
 
     def set_state(self, task_desc: TaskDescription) -> None:
         """Review task description to add new policies and update population distribution.
@@ -310,11 +312,11 @@ class BaseRolloutWorker:
         trainable_pairs = task_desc.content.agent_involve_info.trainable_pairs
         # XXX(ming): shall we authorize learner to determine the buffer description?
         buffer_desc = BufferDescription(
-            env_id=self._env_description["config"]["env_id"],
+            env_id=self._env_description["config"]["env_id"], # TODO(ziyu): this should be move outside "config"
             agent_id=list(trainable_pairs.keys()),
             policy_id=[pid for pid, _ in trainable_pairs.values()],
             capacity=None,
-            data_shapes=self._env_description["config"]["data_shapes"],
+            data_shapes=self._env_description["data_shapes"],
             sample_start_size=None,
         )
         ray.get(self._offline_dataset.create_table.remote(buffer_desc))

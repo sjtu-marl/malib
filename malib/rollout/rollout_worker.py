@@ -158,7 +158,7 @@ class RolloutWorker(BaseRolloutWorker):
                 [
                     {
                         "flag": "evaluation",
-                        "num_episodes": max(1 // self._evaluation_worker_num, 1),
+                        "num_episodes": 2, # FIXME(ziyu): fix it and debug
                         "behavior_policies": policy_combinations[0],
                         "policy_distribution": policy_distribution,
                     }

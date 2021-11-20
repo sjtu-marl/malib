@@ -129,9 +129,11 @@ class AgentInterface(metaclass=ABCMeta):
             **exp_cfg,
         )
         self._local_buffer = Table(
-            ["agent"],
-            capacity=100000,
-            data_shapes=self._env_desc["config"]["data_shapes"],
+            # FIXME(ziyu & ming): how to figure out these params, new config?
+            [self._id],
+            capacity=10,
+            fragment_length=3001, 
+            data_shapes=self._env_desc["data_shapes"],
             mode="local",
         )
 

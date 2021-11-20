@@ -23,6 +23,7 @@ import numpy as np
 from pettingzoo.utils.env import AECEnv
 
 from malib import settings
+from malib.envs.subproc_vec_env import SubprocVecEnv
 from malib.utils.logger import Log, Logger
 from malib.utils.typing import (
     AgentID,
@@ -350,7 +351,7 @@ def get_func(name: Union[str, Callable]):
     else:
         return {"sequential": sequential, "simultaneous": simultaneous}[name]
 
-
+# TODO(mimg): move stepping into another file
 class Stepping:
     def __init__(
         self, exp_cfg: Dict[str, Any], env_desc: Dict[str, Any], dataset_server=None
@@ -364,11 +365,12 @@ class Stepping:
         self._is_sequential = env.is_sequential
 
         if not env.is_sequential:
-            self.env = VectorEnv(
+            self.env = SubprocVecEnv(
                 env.observation_spaces,
                 env.action_spaces,
                 env_desc["creator"],
                 env_desc["config"],
+                num_envs=2,  # FIXME(ziyu): currently just fixed it.
             )
             self._default_callback = simultaneous
         else:

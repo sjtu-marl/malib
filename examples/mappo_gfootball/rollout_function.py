@@ -86,14 +86,14 @@ def grf_simultaneous(
                 f = lambda x: policy.value_normalizer.denormalize(np.array(x))
             else:
                 f = lambda x: x
-            rewards = buffer[Episode.REWARDS]
+            rewards = buffer[Episode.REWARD]
             values = buffer["value"]
-            dones = buffer[Episode.DONES]
+            dones = buffer[Episode.DONE]
             ret = np.zeros_like(rewards)
 
             gae = 0
             traj_size = rewards.shape[0]
-            assert traj_size == fragment_length
+            assert traj_size == fragment_length, (traj_size, fragment_length)
             for step in reversed(range(traj_size)):
                 if step == traj_size - 1:
                     delta = (
@@ -145,7 +145,7 @@ def grf_simultaneous(
                 shape0 = observations[agent].shape[:2]
                 data_to_insert = {
                     Episode.CUR_OBS: observations[agent],
-                    Episode.ACTION: actions[agent],
+                    Episode.ACTION: actions[agent][..., None],
                     Episode.ACTION_DIST: action_dists[agent],
                     Episode.REWARD: rewards[agent],
                     Episode.DONE: dones[agent],
@@ -153,9 +153,8 @@ def grf_simultaneous(
                     "available_action": observations[agent][..., :19],
                     # TODO(ziyu): use action mask by parse obs.
                     "value": values[agent],
-                    "return": np.zeros(shape0),
+                    "return": np.zeros((*shape0, 1)),
                     "share_obs": states[agent],
-                    "steps_left": infos[agent]["steps_left"][:, None, :],
                     "actor_rnn_states": actor_rnn_states[agent],
                     "critic_rnn_states": critic_rnn_states[agent],
                 }
@@ -194,8 +193,15 @@ def grf_simultaneous(
     if dataset_server is not None:
         for agent in agent_buffers:
             for k, v_list in agent_buffers[agent].items():
-                agent_buffers[agent][k] = np.vstack(v_list)
+                agent_buffers[agent][k] = np.stack(v_list)
         compute_gae(next_step_values)
+
+        for agent in agent_buffers:
+            for k, v in agent_buffers[agent].items():
+                dims = len(v.shape)
+                residual_dims = range(2, dims)
+                agent_buffers[agent][k] = np.transpose(v, (1, 0, *residual_dims))
+
 
         indices = None
         buffer_desc.batch_size = fragment_length

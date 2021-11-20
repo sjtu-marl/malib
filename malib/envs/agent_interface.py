@@ -159,6 +159,7 @@ class AgentInterface:
 
     def add_policy(
         self,
+        env_aid,
         policy_id: PolicyID,
         policy_description: Dict[str, Any],
         parameter_desc: ParameterDescription,
@@ -174,7 +175,8 @@ class AgentInterface:
         if policy_id in self.policies:
             return
         policy = get_algorithm_space(policy_description["registered_name"]).policy(
-            **policy_description
+            **policy_description,
+            env_agent_id=env_aid,
         )
         self.policies[policy_id] = policy
         self.parameter_desc_dict[policy_id] = ParameterDescription(

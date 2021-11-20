@@ -1,6 +1,6 @@
 from collections import namedtuple
 
-from . import maddpg, dqn, ppo, ddpg, qmix, sac, discrete_sac
+from . import maddpg, dqn, ppo, ddpg, qmix, sac, discrete_sac, mappo
 
 from .imitation import bc, advirl
 
@@ -8,7 +8,7 @@ from .imitation import bc, advirl
 Algorithm = namedtuple("Algorithm", "policy, trainer, loss")
 ALGORITHM_LIB = {
     item.NAME: Algorithm(item.POLICY, item.TRAINER, item.LOSS)
-    for item in [maddpg, dqn, ppo, ddpg, qmix, sac, discrete_sac, bc]
+    for item in [maddpg, dqn, ppo, ddpg, qmix, sac, discrete_sac, bc, mappo]
 }
 
 Reward = namedtuple("Reward", "reward, trainer, loss")

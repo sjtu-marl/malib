@@ -199,6 +199,7 @@ class Table:
         self,
         keys,
         capacity: int,
+        fragment_length: int,
         data_shapes: Dict[AgentID, Dict[str, Tuple]],
         sample_start_size: int = 0,
         event_loop: asyncio.BaseEventLoop = None,
@@ -217,6 +218,7 @@ class Table:
         self._size = 0
         self._flag = 0
         self._capacity = capacity
+        self._fragment_length = fragment_length
         self._data_shapes = data_shapes
         self._mode = mode
 
@@ -236,7 +238,7 @@ class Table:
                 continue
             t = BufferDict()
             for dk, dshape in _dshapes.items():
-                t[dk] = np.zeros((capacity,) + dshape)
+                t[dk] = np.zeros((capacity, self._fragment_length) + dshape)
             self._buffer[agent] = t
 
     @property
@@ -408,6 +410,7 @@ class OfflineDataset:
         self._episode_capacity = dataset_config.get(
             "episode_capacity", settings.DEFAULT_EPISODE_CAPACITY
         )
+        self._fragment_length = dataset_config["fragment_length"]
         self._learning_start = dataset_config.get("learning_start", 64)
         self._tables: Dict[str, Table] = dict()
         self._threading_lock = threading.Lock()
@@ -499,6 +502,7 @@ class OfflineDataset:
             self._tables[name] = Table(
                 buffer_desc.agent_id,
                 self._episode_capacity,
+                self._fragment_length,
                 buffer_desc.data_shapes,
                 self._learning_start,
                 event_loop=self.event_loop,
