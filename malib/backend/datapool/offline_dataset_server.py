@@ -51,7 +51,7 @@ Batch = namedtuple("Batch", "identity, data")
 
 
 class Episode:
-    """ Unlimited buffer """
+    """Unlimited buffer"""
 
     CUR_OBS = "obs"
     NEXT_OBS = "new_obs"

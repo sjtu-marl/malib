@@ -90,7 +90,7 @@ class AdvIRLReward(Reward):
 
     @property
     def discriminator(self) -> Any:
-        """ Return reward function, cannot be None """
+        """Return reward function, cannot be None"""
 
         return self._discriminator
 

@@ -82,7 +82,7 @@ def sequential(
     send_interval: int = 50,
     dataset_server: ray.ObjectRef = None,
 ):
-    """ Rollout in sequential manner """
+    """Rollout in sequential manner"""
 
     cnt = 0
 
@@ -364,8 +364,12 @@ class Stepping:
         self._is_sequential = env.is_sequential
 
         if not env.is_sequential:
-            self.env = VectorEnv(env.observation_spaces,env.action_spaces, 
-                                 env_desc["creator"], env_desc["config"])
+            self.env = VectorEnv(
+                env.observation_spaces,
+                env.action_spaces,
+                env_desc["creator"],
+                env_desc["config"],
+            )
             self._default_callback = simultaneous
         else:
             self.env = env
@@ -432,7 +436,7 @@ class Stepping:
         # update with external behavior_policies
         behavior_policies.update(desc["behavior_policies"])
         act_policies = {
-            aid: agent_interfaces[aid].get_policy(pid) 
+            aid: agent_interfaces[aid].get_policy(pid)
             for aid, pid in behavior_policies.items()
         }
         # specify the number of running episodes
@@ -450,8 +454,8 @@ class Stepping:
             #  I think we can extract behavior policies and feed it into callback, and then
             #  callback can be tested without agent_interface
             #  Since users may found it easier to just test their implementation with policy
-            #  and rollout function. 
-            #  @ming 
+            #  and rollout function.
+            #  @ming
             fragment_length,
             max_step,
             act_policies,

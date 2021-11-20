@@ -12,6 +12,7 @@ from malib.backend.datapool.offline_dataset_server import Episode
 from malib.envs.gr_football.env import GRFEpisodeInfo
 from malib.utils.metrics import get_metric
 
+
 def _parse_episode_infos(episode_infos: List[GRFEpisodeInfo]) -> Dict[str, List]:
     # FIXME(ziyu): now reward is actually a num_agent * 1 array for each
     res = defaultdict(list)
@@ -22,15 +23,16 @@ def _parse_episode_infos(episode_infos: List[GRFEpisodeInfo]) -> Dict[str, List]
                 res[tag].append(v)
     return res
 
+
 def grf_simultaneous(
     env,
     num_envs,
     fragment_length,
-    max_step, # XXX(ziyu): deprecated param
+    max_step,  # XXX(ziyu): deprecated param
     behavior_policies,
     buffer_desc,
-    send_interval = 50,
-    dataset_server = None
+    send_interval=50,
+    dataset_server=None,
 ):
     if buffer_desc is not None:
         agent_buffers = {agent: defaultdict(list) for agent in buffer_desc.agent_id}
@@ -42,7 +44,6 @@ def grf_simultaneous(
         fragment_length=fragment_length,
         env_reset_kwargs={"max_step": max_step},
     )
-
 
     # observations = {
     #     aid: agent_interfaces[aid].transform_observation(obs)
@@ -91,7 +92,8 @@ def grf_simultaneous(
             ret = np.zeros_like(rewards)
 
             gae = 0
-            traj_size = rewards.shape[0]; assert traj_size == fragment_length
+            traj_size = rewards.shape[0]
+            assert traj_size == fragment_length
             for step in reversed(range(traj_size)):
                 if step == traj_size - 1:
                     delta = (
@@ -113,14 +115,13 @@ def grf_simultaneous(
         actions, action_dists, action_masks, avail_actions = {}, {}, {}, {}
         values, extra_infos = {}, {}
         # XXX(ziyu): the procedure can be generalized as a rollout function with
-        #  GAE lambda computation process, and then make the GAE as another code block 
-
+        #  GAE lambda computation process, and then make the GAE as another code block
 
         for agent in observations:
             avail_actions[agent] = observations[agent][..., :19]
             action, action_dist, extra_info = behavior_policies[agent].compute_action(
                 # (ziyu): use concatenate to make [num_env, num_agent, ...] -> [-1, ...]
-                np.concatenate(observations[agent]), 
+                np.concatenate(observations[agent]),
                 action_mask=np.concatenate(avail_actions[agent]),
                 share_obs=np.concatenate(states[agent]),
                 actor_rnn_states=np.concatenate(actor_rnn_states[agent]),
@@ -133,8 +134,12 @@ def grf_simultaneous(
             values[agent] = split_cast(extra_info["value"])
             extra_infos[agent] = extra_info
         rets = env.step(actions)
-        dones, rewards, infos = rets[Episode.DONE], rets[Episode.REWARD], rets[Episode.INFO]
-        
+        dones, rewards, infos = (
+            rets[Episode.DONE],
+            rets[Episode.REWARD],
+            rets[Episode.INFO],
+        )
+
         if dataset_server:
             for agent in env.trainable_agents:
                 shape0 = observations[agent].shape[:2]
@@ -147,7 +152,6 @@ def grf_simultaneous(
                     "active_mask": np.ones((*shape0, 1)),
                     "available_action": observations[agent][..., :19],
                     # TODO(ziyu): use action mask by parse obs.
-                    
                     "value": values[agent],
                     "return": np.zeros(shape0),
                     "share_obs": states[agent],
@@ -186,27 +190,24 @@ def grf_simultaneous(
                 rnn_masks=np.concatenate(dones[agent]),
             )
             next_step_values[agent] = split_cast(extra_info["value"])
-    
 
     if dataset_server is not None:
         for agent in agent_buffers:
             for k, v_list in agent_buffers[agent].items():
                 agent_buffers[agent][k] = np.vstack(v_list)
         compute_gae(next_step_values)
-    
+
         indices = None
         buffer_desc.batch_size = fragment_length
         while indices is None:
             batch = ray.get(dataset_server.get_producer_index.remote(buffer_desc))
             indices = batch.data
-        
+
         # shuffle_idx = np.random.permutation(len(indices))
 
         buffer_desc.data = agent_buffers
         buffer_desc.indices = indices
         dataset_server.save.remote(buffer_desc)
 
-
     results = _parse_episode_infos(env.episode_infos)
     return results, env.batched_step_cnt * len(env.possible_agents)
-

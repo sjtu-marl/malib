@@ -47,7 +47,7 @@ class ImitationTrainer(Trainer):
         # TODO: BC pretraining
 
     def reset(self, policy, reward, training_config):
-        """ Reset policy, called before optimize, and read training configuration """
+        """Reset policy, called before optimize, and read training configuration"""
         self._policy_trainer.reset(policy, training_config)
 
         self._reward = reward

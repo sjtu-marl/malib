@@ -125,7 +125,7 @@ if __name__ == "__main__":
     def run_simulation_and_update_payoff(
         pid_mapping: Dict[AgentID, PolicyID]
     ) -> Dict[AgentID, Dict[PolicyID, float]]:
-        """ Run simulations and update payoff tables with returned RolloutFeedback """
+        """Run simulations and update payoff tables with returned RolloutFeedback"""
 
         population = None
         for agent, rollout_handler in rollout_handlers.items():
@@ -169,7 +169,7 @@ if __name__ == "__main__":
         return eq
 
     def extend_policy_pool(trainable=False) -> Dict[AgentID, PolicyID]:
-        """ Extend policy pool for learner, rollout handlers and payoff manager """
+        """Extend policy pool for learner, rollout handlers and payoff manager"""
         added_policy_mapping = {}
         for agent, learner in learners.items():
             pid, policy = learner.add_policy_for_agent(agent, trainable=trainable)
@@ -183,7 +183,7 @@ if __name__ == "__main__":
         return added_policy_mapping
 
     def training_workflow(trainable_policy_mapping: Dict[AgentID, PolicyID]):
-        """ Training workflow will run rollout first, then follow with training """
+        """Training workflow will run rollout first, then follow with training"""
         rollout_feedback: Dict[AgentID, RolloutFeedback] = {}
         training_feedback: Dict[AgentID, TrainingFeedback] = {}
         population = list(rollout_handlers.values())[0].population

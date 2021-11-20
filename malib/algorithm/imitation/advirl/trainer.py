@@ -29,7 +29,7 @@ class AdvIRLTrainer(Trainer):
         return batch
 
     def reset(self, policy, reward, training_config):
-        """ Reset policy, called before optimize, and read training configuration """
+        """Reset policy, called before optimize, and read training configuration"""
 
         self._reward = reward
         self._training_config.update(training_config)

@@ -192,7 +192,7 @@ class RolloutWorker(BaseRolloutWorker):
 
     # @Log.method_timer(enable=False)
     def update_population(self, agent, policy_id, policy):
-        """ Update population with an existing policy instance """
+        """Update population with an existing policy instance"""
 
         agent_interface: AgentInterface = self._agent_interfaces[agent]
         agent_interface.policies[policy_id] = policy

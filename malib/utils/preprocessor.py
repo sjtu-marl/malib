@@ -84,7 +84,7 @@ class DictFlattenPreprocessor(Preprocessor):
         return self._size
 
     def transform(self, data, nested=False) -> DataTransferType:
-        """ Transform support multi-instance input """
+        """Transform support multi-instance input"""
 
         if nested:
             data = _get_batched(data)

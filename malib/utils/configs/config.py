@@ -60,7 +60,7 @@ EXPERIMENT_MANAGER_CONFIG = {
 
 
 def update_config(ori_config, kwargs: Dict[str, Any]):
-    """ Rewrite original configuration with given keys """
+    """Rewrite original configuration with given keys"""
     # check keys
     legal_keys = set(ori_config.keys())
     update_keys = set(kwargs.keys())

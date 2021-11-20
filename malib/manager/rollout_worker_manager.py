@@ -111,7 +111,7 @@ class RolloutWorkerManager:
         return worker_idx, worker
 
     def simulate(self, task_desc: TaskDescription, worker_idx=None):
-        """ Parse simulation task and dispatch it to available workers """
+        """Parse simulation task and dispatch it to available workers"""
 
         Logger.debug(
             f"got simulation task from handler: {task_desc.content.agent_involve_info.training_handler}"
@@ -131,7 +131,7 @@ class RolloutWorkerManager:
         worker.rollout.remote(task_desc)
 
     def terminate(self):
-        """ Stop all remote workers """
+        """Stop all remote workers"""
 
         for worker in self._workers.values():
             worker.close.remote()

@@ -17,7 +17,7 @@ from malib.envs.gym.env import GymEnv
 
 
 def update_configs(update_dict, ori_dict=None):
-    """ Update global configs with a given dict """
+    """Update global configs with a given dict"""
 
     ori_configs = (
         copy.copy(ori_dict)

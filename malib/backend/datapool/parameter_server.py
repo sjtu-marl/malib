@@ -334,7 +334,7 @@ class ParameterServer:
         return status
 
     def dump(self, file_path=None):
-        """ Export parameters to local storage """
+        """Export parameters to local storage"""
         # (hanjing): The original implementation directly serialize the table,
         # however, which contains a threading lock that can not be serialized.
         # Now reorganize the table when dumping, each table is dumped as a separated
@@ -354,7 +354,7 @@ class ParameterServer:
         return dumped_list
 
     def load(self, file_path=None, protocol=None):
-        """ Load parameters from local storage """
+        """Load parameters from local storage"""
 
         with self._threading_lock:
             protocol = protocol or settings.PICKLE_PROTOCOL_VER

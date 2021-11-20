@@ -23,7 +23,7 @@ class DQNLoss(LossFunc):
             self.optimizers.add_param_group({"params": self.policy.critic.parameters()})
 
     def step(self) -> Any:
-        """ Step optimizers and update target """
+        """Step optimizers and update target"""
         _ = [item.backward() for item in self.loss]
 
         gradients = {

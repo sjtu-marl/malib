@@ -219,7 +219,7 @@ class AgentInterface:
     def update_weights(
         self, pids: Sequence = None, waiting: bool = False
     ) -> Dict[PolicyID, Status]:
-        """ Update weight in async mode """
+        """Update weight in async mode"""
 
         pids = pids or list(self.policies.keys())
         status = {}

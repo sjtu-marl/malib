@@ -49,7 +49,7 @@ class BaseCoordinator(metaclass=ABCMeta):
 
     @abstractmethod
     def push(self, task_request: TaskRequest):
-        """ Accept task results from workers/actors """
+        """Accept task results from workers/actors"""
 
         # check whether all dependencies
         pass

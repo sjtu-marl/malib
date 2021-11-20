@@ -30,7 +30,7 @@ class BCLoss(LossFunc):
             )
 
     def step(self) -> Any:
-        """ Step optimizers and update target """
+        """Step optimizers and update target"""
 
         # do loss backward and target update
         _ = [item.backward() for item in self.loss]

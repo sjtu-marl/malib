@@ -187,7 +187,7 @@ class Policy(metaclass=ABCMeta):
         pass
 
     def state_dict(self):
-        """ Return state dict in real time """
+        """Return state dict in real time"""
 
         res = {k: v.state_dict() for k, v in self._state_handler_dict.items()}
         return res
@@ -234,13 +234,13 @@ class Policy(metaclass=ABCMeta):
 
     @property
     def actor(self) -> Any:
-        """ Return policy, cannot be None """
+        """Return policy, cannot be None"""
 
         return self._actor
 
     @property
     def critic(self) -> Any:
-        """ Return critic, can be None """
+        """Return critic, can be None"""
 
         return self._critic
 

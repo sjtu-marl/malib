@@ -129,7 +129,7 @@ class BaseRolloutWorker:
         object_store_memory: int = None,
         resources: dict = None,
     ) -> type:
-        """ Return a remote class for Actor initialization """
+        """Return a remote class for Actor initialization"""
 
         return ray.remote(
             num_cpus=num_cpus,
@@ -477,7 +477,7 @@ class BaseRolloutWorker:
             interface.reset()
 
     def save_model(self):
-        """ Save policy model to log directory. """
+        """Save policy model to log directory."""
 
         save_dir = os.path.join(
             settings.LOG_DIR,
@@ -506,7 +506,7 @@ class BaseRolloutWorker:
         raise NotImplementedError
 
     def close(self):
-        """ Terminate worker """
+        """Terminate worker"""
 
         # TODO(ming): store worker's state
         self.logger.info(f"Worker: {self._worker_index} has been terminated.")

@@ -3,13 +3,13 @@ class Error(Exception):
 
 
 class RepeatLockingError(Error):
-    """ Raised when lock parameter description """
+    """Raised when lock parameter description"""
 
     pass
 
 
 class UnexpectedType(Error):
-    """ Raised when type is not expected """
+    """Raised when type is not expected"""
 
     pass
 
@@ -39,7 +39,7 @@ class RepeatedAssignError(Error):
 
 
 class OversampleError(Error):
-    """ Raised when over-sample from a offline data table"""
+    """Raised when over-sample from a offline data table"""
 
     pass
 

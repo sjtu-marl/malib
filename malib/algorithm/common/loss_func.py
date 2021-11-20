@@ -46,7 +46,7 @@ class LossFunc(metaclass=ABCMeta):
 
     @abstractmethod
     def setup_optimizers(self, *args, **kwargs):
-        """ Set optimizers and loss function """
+        """Set optimizers and loss function"""
 
         # self.optimizers.append(...)
         # self.loss.append(...)
@@ -54,7 +54,7 @@ class LossFunc(metaclass=ABCMeta):
 
     @abstractmethod
     def __call__(self, *args, **kwargs) -> Dict[str, Any]:
-        """ Compute loss function here, but not optimize """
+        """Compute loss function here, but not optimize"""
         pass
 
     @abstractmethod

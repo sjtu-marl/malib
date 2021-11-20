@@ -45,7 +45,7 @@ class CoordinatorServer(BaseCoordinator):
         pass
 
     def gen_simulation_task(self, task_request: TaskRequest, matches: List):
-        """ Generate simulation task for a group of agents """
+        """Generate simulation task for a group of agents"""
 
         agent_involve_info: AgentInvolveInfo = task_request.content.agent_involve_info
 
@@ -152,7 +152,7 @@ class CoordinatorServer(BaseCoordinator):
         Logger.info("Coordinator server started")
 
     def request(self, task_request: TaskRequest):
-        """ Handling task request """
+        """Handling task request"""
 
         # call request by name
         Logger.info("request: {}".format(task_request.task_type))
