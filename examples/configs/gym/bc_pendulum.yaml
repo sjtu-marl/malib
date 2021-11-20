@@ -23,8 +23,6 @@ rollout:
   fragment_length: 200
   num_episodes: 5
   episode_seg: 1
-  test_num_episodes: 0
-  test_episode_seg: 0
   terminate: "any"
   callback: "simultaneous"
   save_model: False
