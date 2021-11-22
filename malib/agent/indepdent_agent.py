@@ -123,7 +123,7 @@ class IndependentAgent(AgentInterface):
         )
 
         pid = self.default_policy_id_gen(algorithm_conf)
-        self._policies[pid] = policy
+        self._policies[pid] = policy.to_device(self._device) if trainable else policy
         self._trainers[pid] = algorithm.trainer(env_agent_id)
 
         return pid, policy

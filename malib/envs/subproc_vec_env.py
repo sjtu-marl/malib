@@ -165,9 +165,12 @@ class SubprocVecEnv:
         self.is_sequential = False 
         # ziyu: this should be False, vec env for sequential is not available now.
         self.num_envs = 0
-        self.add_env(num_envs)
+        self._reseted = True
+        self._add_env(num_envs)
+        self._limits = self.num_envs
+        self._reseted = False
     
-    def add_env(self, num_env):
+    def _add_env(self, num_env):
         new_remotes, new_work_remotes = zip(
             *[self.ctx.Pipe(duplex=True) for _ in range(num_env)]
         )
@@ -185,19 +188,28 @@ class SubprocVecEnv:
             self.remotes.append(remote)
             self.work_remotes.append(work_remote)
         self.num_envs += num_env
+    
+    def add_env(self, num_env):
+        assert self._reseted, "add env methods can only be used when call reset()"
+        if self.num_envs - self._limits < num_env:
+            real_env2add = self._limits + num_env - self.num_envs
+            self._add_env(real_env2add)
+        
+        self._limits += num_env
 
     def step(self, actions):
+        self._reseted = False
         self._step_cnt += 1
         self.step_async(actions)
         return self.step_wait()
 
     def step_async(self, actions):
-        for remote, action in zip(self.remotes, _split_dict(actions, self.num_envs)):
+        for remote, action in zip(self.remotes, _split_dict(actions, self._limits)):
             remote.send(("step", action))
         self.waiting = True
 
     def step_wait(self):
-        results = [remote.recv() for remote in self.remotes]
+        results = [self.remotes[i].recv() for i in range(self._limits)]
         self.waiting = False
         feed_back_needed = []
         for res in results:
@@ -207,10 +219,10 @@ class SubprocVecEnv:
 
     def seed(self, seed=None):
         self._step_cnt = 0
-        for idx, remote in enumerate(self.remotes):
-            remote.send(("seed", seed + idx if seed else None))
-        obs = [remote.recv() for remote in self.remotes]
-        return {Episode.CUR_OBS: _merge_list(obs)}
+        for idx in range(self._limits):
+            self.remotes[idx].send(("seed", seed + idx if seed else None))
+        rets_list = [self.remotes[i].recv() for i in range(self._limits)]
+        return _merge_list(rets_list)
 
     def reset(
         self,
@@ -218,14 +230,19 @@ class SubprocVecEnv:
         fragment_length: int = None,
         env_reset_kwargs: Dict = None,
     ):
+        self._reseted = True
+        if limits and limits > self._limits:
+            self.add_env(limits - self._limits)
+        else:
+            self._limits = limits or self._limits
         self.episode_infos = []
-        assert limits == self.num_envs, (limits, self.num_envs)
+        # assert limits == self.num_envs, (limits, self.num_envs)
         self._step_cnt = 0
         self._fragment_length = fragment_length or self._fragment_length
 
-        for remote in self.remotes:
-            remote.send(("reset", None))
-        rets_list = [remote.recv() for remote in self.remotes]
+        for i in range(self._limits):
+            self.remotes[i].send(("reset", None))
+        rets_list = [self.remotes[i].recv() for i in range(self._limits)]
         return _merge_list(rets_list)
 
     def close(self):
@@ -247,9 +264,8 @@ class SubprocVecEnv:
         return self._step_cnt >= self._fragment_length
 
     def add_envs(self, envs=None, num=0):
-        # TODO(ziyu): find ways to add/remove env
-        raise NotImplementedError
-
+        assert envs is None
+        self.add_env(num)
     @classmethod
     def from_envs(cls, envs: List, config: Dict[str, Any]):
         """Generate vectorization environment from exisiting environments."""

@@ -2,6 +2,8 @@
 Basic class of agent interface. Users can implement their custom training workflow by inheriting this class.
 """
 
+import torch
+
 import asyncio
 import copy
 import os
@@ -98,6 +100,10 @@ class AgentInterface(metaclass=ABCMeta):
         :param Optional[Callable] algorithm_mapping: Mapping registered agents to algorithm candidates, optional
             default is None.
         """
+        Logger.info("\tray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
+        Logger.info("\tCUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+
+        self._device = torch.device("cuda" if ray.get_gpu_ids() else "cpu")
 
         self._id = assign_id
         self._env_desc = env_desc
@@ -475,6 +481,7 @@ class AgentInterface(metaclass=ABCMeta):
                             buffer_desc.pop(env_aid)
                         # also training poilcy id mapping
                         policy_id_mapping.pop(env_aid)
+                        self._policies[pid] = self._policies[pid].to_device("cpu")
                     else:
                         self.pull(env_aid, pid)
             epoch += 1

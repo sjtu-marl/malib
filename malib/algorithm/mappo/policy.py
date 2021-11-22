@@ -155,6 +155,18 @@ class MAPPO(Policy):
         hard_update(res._actor, actor)
         hard_update(res._critic, critic)
         return res
+        
+    # XXX(ziyu): test for this policy
+    def state_dict(self):
+        """Return state dict in real time"""
+
+        res = {
+            k: copy.deepcopy(v).cpu().state_dict()
+            if isinstance(v, nn.Module)
+            else v.state_dict()
+            for k, v in self._state_handler_dict.items()
+        }
+        return res
 
 
 if __name__ == "__main__":

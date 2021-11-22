@@ -9,6 +9,8 @@ training:
   interface:
     type: "independent"
     population_size: -1
+    worker_config:
+      num_gpus: 1.0
   config:
     # control the frequency of remote parameter update
     update_interval: 1
@@ -28,8 +30,8 @@ rollout:
     max_step: 1000
   metric_type: "grf"
   fragment_length: 3001  # XXX(ziyu): fragment length meaning should be changed 
-  num_episodes: 2
-  episode_seg: 2 # 要去看看用的是DummyVecEnv还是其他
+  num_episodes: 8
+  episode_seg: 8 # 要去看看用的是DummyVecEnv还是其他
   terminate: "any"
 
 evaluation:
@@ -63,18 +65,18 @@ algorithms:
       actor:
         network: mlp
         layers:
-          - units: 64
+          - units: 128
             activation: ReLU
-          - units: 64
+          - units: 128
             activation: ReLU
         output:
           activation: False
       critic:
         network: mlp
         layers:
-          - units: 256
+          - units: 128
             activation: ReLU
-          - units: 256
+          - units: 128
             activation: ReLU
         output:
           activation: False
@@ -86,7 +88,7 @@ algorithms:
       use_cuda: False  # enable cuda or not
       use_q_head: False
       ppo_epoch: 4
-      num_mini_batch: 1  # the number of mini-batches
+      num_mini_batch: 2  # the number of mini-batches
       
       use_rnn: True
       # this is not used, instead it is fixed to last hidden in actor/critic
@@ -105,5 +107,5 @@ global_evaluator:
   name: "generic"
 
 dataset_config:
-  episode_capacity: 2
+  episode_capacity: 8
   fragment_length: 3001
