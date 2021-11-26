@@ -137,7 +137,7 @@ class AgentInterface(metaclass=ABCMeta):
         self._local_buffer = Table(
             # FIXME(ziyu & ming): how to figure out these params, new config?
             [self._id],
-            capacity=10,
+            capacity=500,
             fragment_length=3001, 
             data_shapes=self._env_desc["data_shapes"],
             mode="local",
