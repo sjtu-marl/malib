@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from collections import defaultdict
+from logging import Logger
 import time
 from typing import Dict, List
 import numpy as np
@@ -203,7 +204,7 @@ def grf_simultaneous(
                 agent_buffers[agent][k] = np.transpose(v, (1, 0, *residual_dims))
 
         indices = None
-        buffer_desc.batch_size = fragment_length
+        buffer_desc.batch_size = num_envs
         while indices is None:
             batch = ray.get(dataset_server.get_producer_index.remote(buffer_desc))
             indices = batch.data

@@ -15,7 +15,7 @@ training:
     # control the frequency of remote parameter update
     update_interval: 1
     saving_interval: 100 # the sequence of dump model's weight
-    batch_size: 2 # how many data sample from DatasetServer per time.
+    batch_size: 64 # how many data sample from DatasetServer per time.
     optimizer: "Adam"
     actor_lr: 5.e-4
     critic_lr: 5.e-4
@@ -30,13 +30,13 @@ rollout:
     max_step: 1000
   metric_type: "grf"
   fragment_length: 3001  # XXX(ziyu): fragment length meaning should be changed 
-  num_episodes: 8
-  episode_seg: 8 # 要去看看用的是DummyVecEnv还是其他
+  num_episodes: 100
+  episode_seg: 10 # 要去看看用的是DummyVecEnv还是其他
   terminate: "any"
 
 evaluation:
   # max_episode_length: -1
-  num_episodes: 2
+  num_episodes: 10
 
 
 
@@ -88,7 +88,7 @@ algorithms:
       use_cuda: False  # enable cuda or not
       use_q_head: False
       ppo_epoch: 4
-      num_mini_batch: 2  # the number of mini-batches
+      num_mini_batch: 1  # the number of mini-batches
       
       use_rnn: True
       # this is not used, instead it is fixed to last hidden in actor/critic
@@ -107,5 +107,5 @@ global_evaluator:
   name: "generic"
 
 dataset_config:
-  episode_capacity: 8
+  episode_capacity: 100
   fragment_length: 3001
