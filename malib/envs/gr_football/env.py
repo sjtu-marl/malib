@@ -26,7 +26,7 @@ class GRFEpisodeInfo:
 
     def step(self, rew, info):
         self._record["cnt"] += 1
-        self._record["total_reward"] += rew.mean() # average rewards of all players
+        self._record["total_reward"] += rew.mean()  # average rewards of all players
 
         for k in ["win", "score", "goal_diff"]:
             if k in info:

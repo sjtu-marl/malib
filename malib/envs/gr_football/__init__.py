@@ -6,6 +6,7 @@ from .env import BaseGFootBall as base_env, ParameterSharingWrapper
 from malib.envs.env import Environment, EpisodeInfo
 from malib.backend.datapool.offline_dataset_server import Episode
 
+
 def env(**kwargs):
     return ParameterSharingWrapper(base_env(**kwargs), lambda x: x[:6])
 
@@ -51,7 +52,7 @@ def build_sampler_config(
     actor_rnn_state_shape,
     critic_rnn_state_shape,
 ):
-    env_for_spec = env(**env_desc['config'])
+    env_for_spec = env(**env_desc["config"])
     num_agents_share = env_for_spec.num_agent_share
     env_for_spec.close()
     observation_spaces = env_desc["observation_spaces"]
@@ -82,7 +83,7 @@ def build_sampler_config(
                 Episode.ACTION: (1,),
                 Episode.ACTION_DIST: (acsp.n,),
                 "active_mask": (1,),
-                "available_action": (acsp.n, ),
+                "available_action": (acsp.n,),
                 "value": (1,),
                 "return": (1,),
                 "share_obs": stsp_prep.shape,
@@ -91,5 +92,7 @@ def build_sampler_config(
             },
         }
         for k in sampler_config["data_shapes"]:
-            sampler_config["data_shapes"][k] = (num_ps, ) + sampler_config["data_shapes"][k]
+            sampler_config["data_shapes"][k] = (num_ps,) + sampler_config[
+                "data_shapes"
+            ][k]
         env_desc["data_shapes"][aid] = sampler_config["data_shapes"]

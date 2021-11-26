@@ -155,7 +155,7 @@ class MAPPO(Policy):
         hard_update(res._actor, actor)
         hard_update(res._critic, critic)
         return res
-        
+
     # XXX(ziyu): test for this policy
     def state_dict(self):
         """Return state dict in real time"""

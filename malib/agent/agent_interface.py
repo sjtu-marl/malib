@@ -101,7 +101,9 @@ class AgentInterface(metaclass=ABCMeta):
             default is None.
         """
         Logger.info("\tray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
-        Logger.info("\tCUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+        Logger.info(
+            "\tCUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"])
+        )
 
         self._device = torch.device("cuda" if ray.get_gpu_ids() else "cpu")
 
@@ -138,7 +140,7 @@ class AgentInterface(metaclass=ABCMeta):
             # FIXME(ziyu & ming): how to figure out these params, new config?
             [self._id],
             capacity=10,
-            fragment_length=3001, 
+            fragment_length=3001,
             data_shapes=self._env_desc["data_shapes"],
             mode="local",
         )

@@ -251,3 +251,7 @@ class Policy(metaclass=ABCMeta):
     @deprecated
     def eval(self):
         pass
+
+    @abstractmethod
+    def reset(self):
+        """Reset policy intermediates"""

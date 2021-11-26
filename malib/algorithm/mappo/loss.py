@@ -4,7 +4,7 @@ import gym
 from malib.algorithm.common import misc
 from malib.algorithm.common.loss_func import LossFunc
 from malib.algorithm.mappo.utils import huber_loss, mse_loss, PopArt
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
 from malib.algorithm.common.model import get_model
 
 
@@ -84,16 +84,16 @@ class MAPPOLoss(LossFunc):
             dones_batch,
         ) = (
             cast(sample["share_obs"]),
-            cast(sample[Episode.CUR_OBS]),
-            cast(sample[Episode.ACTION]).long(),
+            cast(sample[EpisodeKey.CUR_OBS]),
+            cast(sample[EpisodeKey.ACTION]).long(),
             cast(sample["value"]),
             cast(sample["return"]),
             None,  # cast(sample["active_mask"]),
-            cast(sample[Episode.ACTION_DIST]),
+            cast(sample[EpisodeKey.ACTION_DIST]),
             cast(sample["available_action"]),
             cast(sample["actor_rnn_states"]),
             cast(sample["critic_rnn_states"]),
-            cast(sample[Episode.DONE]),
+            cast(sample[EpisodeKey.DONE]),
         )
         # for k, v in sample.items():
         #     print(f"{k}: {v.shape}")

@@ -23,8 +23,8 @@ AgentConfig = Dict[str, TrainingConfig]
 AgentID = str
 
 PolicyID = str
-EnvID = int
-EpisodeID = int
+EnvID = str
+EpisodeID = str
 DataBlockID = str
 
 DataTransferType = np.ndarray
@@ -154,7 +154,7 @@ class MetaParameterDescription:
 class BufferDescription:
     env_id: str
     agent_id: Union[AgentID, List[AgentID]]
-    policy_id: Union[PolicyID, List[AgentID]]
+    policy_id: Union[PolicyID, List[PolicyID]]
     batch_size: int = 0
     sample_mode: str = ""
     indices: List[int] = None

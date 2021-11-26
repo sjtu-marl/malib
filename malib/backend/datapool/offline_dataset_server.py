@@ -50,27 +50,6 @@ DATASET_TABLE_NAME_GEN = _gen_table_name
 Batch = namedtuple("Batch", "identity, data")
 
 
-class Episode:
-    """Unlimited buffer"""
-
-    CUR_OBS = "obs"
-    NEXT_OBS = "new_obs"
-    ACTION = "action"
-    ACTION_MASK = "action_mask"
-    REWARD = "reward"
-    DONE = "done"
-    ACTION_DIST = "action_prob"
-    # XXX(ming): seems useless
-    INFO = "infos"
-
-    # optional
-    STATE_VALUE = "state_value_estimation"
-    STATE_ACTION_VALUE = "state_action_value_estimation"
-    CUR_STATE = "cur_state"  # current global state
-    NEXT_STATE = "next_state"  # next global state
-    LAST_REWARD = "last_reward"
-
-
 def iterate_recursively(d: Dict):
     for k, v in d.items():
         if isinstance(v, (dict, BufferDict)):
@@ -553,9 +532,6 @@ class OfflineDataset:
             main_id=buffer_desc.agent_id,
             pid=buffer_desc.policy_id,
         )
-        # self.check_table(
-        #     table_name, buffer_desc.data, is_multi_agent=len(buffer_desc.data) > 1
-        # )
         table = self._tables[table_name]
         table.insert(buffer_desc.data, indices=buffer_desc.indices)
         table.free_producer_index(buffer_desc.indices)
@@ -573,26 +549,27 @@ class OfflineDataset:
         """
 
         # FIXME(ming): check its functionality
-        with open(file, "rb") as f:
-            dataset = pkl.load(file=f)
-            keys = set()
-            for batch in dataset:
-                keys = keys.union(batch.keys())
+        # with open(file, "rb") as f:
+        #     dataset = pkl.load(file=f)
+        #     keys = set()
+        #     for batch in dataset:
+        #         keys = keys.union(batch.keys())
 
-            table_size = len(dataset)
-            table_name = DATASET_TABLE_NAME_GEN(
-                env_id=env_id,
-                main_id=agent_id,
-                pid=policy_id,
-            )
-            if self._tables.get(table_name, None) is None:
-                self._tables[table_name] = Episode(
-                    env_id, policy_id, other_columns=None
-                )
+        #     table_size = len(dataset)
+        #     table_name = DATASET_TABLE_NAME_GEN(
+        #         env_id=env_id,
+        #         main_id=agent_id,
+        #         pid=policy_id,
+        #     )
+        #     if self._tables.get(table_name, None) is None:
+        #         self._tables[table_name] = Episode(
+        #             env_id, policy_id, other_columns=None
+        #         )
 
-            for batch in dataset:
-                assert isinstance(batch, Dict)
-                self._tables[table_name].insert(**batch)
+        #     for batch in dataset:
+        #         assert isinstance(batch, Dict)
+        #         self._tables[table_name].insert(**batch)
+        raise NotImplementedError
 
     # @Log.method_timer(enable=settings.PROFILING)
     def load(self, path, mode="replace") -> List[Dict[str, str]]:
@@ -750,5 +727,5 @@ class ExternalReadOnlyDataset(ExternalDataset):
             info = "others"
         return res, info
 
-    def save(self, agent_episodes: Dict[AgentID, Episode], wait_for_ready: bool = True):
-        raise NotImplementedError
+    # def save(self, agent_episodes: Dict[AgentID, Episode], wait_for_ready: bool = True):
+    #     raise NotImplementedError

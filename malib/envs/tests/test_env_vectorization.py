@@ -1,63 +1,124 @@
-import logging
+import importlib
+from _pytest.pytester import LineMatcher_fixture
 import pytest
 
-from malib.envs.vector_env import VectorEnv
-from malib.envs.maatari.env import MAAtari
-from malib.backend.datapool.offline_dataset_server import Episode
-from malib.algorithm.random.policy import RandomPolicy
+from malib.envs import Environment, vector_env
+from malib.utils.episode import EpisodeKey
 
 
-@pytest.fixture(scope="session")
-def maatari_env_config_set():
-    return {
-        "basketball_pong": {
-            "env_id": "basketball_pong_v2",
-            "wrappers": [
-                {"name": "resize_v0", "params": [84, 84]},
-                {"name": "dtype_v0", "params": ["float32"]},
-                {"name": "normalize_obs_v0", "params": {"env_min": 0, "env_max": 1}},
-            ],
-            "scenario_configs": {"obs_type": "grayscale_image", "num_players": 2},
-        }
-    }
+@pytest.mark.parametrize(
+    "module_path,cname,env_id,scenario_configs",
+    [
+        ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
+        ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
+        ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
+    ],
+)
+class TestVecEnv:
+    @pytest.fixture(autouse=True)
+    def _create_cur_instance(self, module_path, cname, env_id, scenario_configs):
+        creator = getattr(importlib.import_module(module_path), cname)
+        env: Environment = creator(env_id=env_id, scenario_configs=scenario_configs)
 
+        observation_spaces = env.observation_spaces
+        action_spaces = env.action_spaces
 
-class TestVecotorMAatari:
-    def test_basketball_pong(self, maatari_env_config_set):
-        configs = maatari_env_config_set["basketball_pong"]
-
-        env = MAAtari(**configs)
-        vector_env = VectorEnv(
-            env.observation_spaces, env.action_spaces, MAAtari, configs, num_envs=9
+        self.creator = creator
+        self.config = {"env_id": env_id, "scenario_configs": scenario_configs}
+        self.vec_env = vector_env.VectorEnv(
+            observation_spaces,
+            action_spaces,
+            creator,
+            configs={"scenario_configs": scenario_configs, "env_id": env_id},
         )
-        vector_env.add_envs([env])
 
-        random_policy = {
-            aid: RandomPolicy(
-                "random", env.observation_spaces[aid], env.action_spaces[aid], {}, {}
-            )
-            for aid in env.trainable_agents
-        }
+    def test_add_envs(self):
+        self.vec_env.add_envs(num=2)
+        assert self.vec_env.num_envs == 2
 
-        assert vector_env.num_envs == 10
+    def test_env_reset(self):
+        self.vec_env.add_envs(num=4)
 
-        # stepping 10 steps at most
-        done, step = False, 0
-        rets = vector_env.reset()
+        rets = self.vec_env.reset(limits=2, fragment_length=100, max_step=25)
 
-        assert Episode.CUR_OBS in rets
+        assert len(self.vec_env.active_envs) == 2
+        assert self.vec_env._fragment_length == 100
+        assert len(rets) == 2, rets
+        for env_id, ret in rets.items():
+            assert env_id in self.vec_env.active_envs
+            for k, agent_v in ret.items():
+                for agent in agent_v:
+                    assert agent in self.vec_env.possible_agents
 
-        while not done and step < 10:
-            actions = {
-                k: random_policy[k].compute_actions(obs)[0]
-                for k, obs in rets[Episode.CUR_OBS].items()
-            }
-            assert len(list(actions.values())[0]) == 10
-            rets = vector_env.step(actions)
+    def test_env_step(self):
+        self.vec_env.add_envs(num=4)
 
-            assert Episode.NEXT_OBS in rets
+        rets = self.vec_env.reset(limits=2, fragment_length=100, max_step=25)
 
-            rets[Episode.CUR_OBS] = rets[Episode.NEXT_OBS]
-            step += 1
-            done = all([sum(v) for v in rets[Episode.DONE].values()])
-            logging.debug(f"stepping basketball pong at step={step}")
+        act_spaces = self.vec_env.action_spaces
+
+        for _ in range(10):
+            actions = {}
+            for env_id, ret in rets.items():
+                if EpisodeKey.CUR_OBS not in ret:
+                    obs_k = EpisodeKey.NEXT_OBS
+                else:
+                    obs_k = EpisodeKey.CUR_OBS
+                live_agents = list(ret[obs_k].keys())
+                actions[env_id] = {aid: act_spaces[aid].sample() for aid in live_agents}
+            rets = self.vec_env.step(actions)
+
+
+@pytest.mark.parametrize(
+    "module_path,cname,env_id,scenario_configs",
+    [
+        ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
+        ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
+        ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
+    ],
+)
+class TestSubprocVecEnv:
+    @pytest.fixture(autouse=True)
+    def _create_cur_instance(self, module_path, cname, env_id, scenario_configs):
+        creator = getattr(importlib.import_module(module_path), cname)
+        env: Environment = creator(env_id=env_id, scenario_configs=scenario_configs)
+
+        observation_spaces = env.observation_spaces
+        action_spaces = env.action_spaces
+
+        self.creator = creator
+        self.config = {"env_id": env_id, "scenario_configs": scenario_configs}
+        self.vec_env = vector_env.SubprocVecEnv(
+            observation_spaces,
+            action_spaces,
+            creator,
+            configs={"scenario_configs": scenario_configs, "env_id": env_id},
+            max_num_envs=4,
+        )
+
+    def test_add_envs(self):
+        self.vec_env.add_envs(num=2)
+        assert self.vec_env.num_envs == 2
+
+        # save destroy
+        self.vec_env.close()
+
+    def test_env_step(self):
+        self.vec_env.add_envs(num=3)
+
+        rets = self.vec_env.reset(limits=2, fragment_length=100, max_step=25)
+
+        act_spaces = self.vec_env.action_spaces
+
+        for _ in range(10):
+            actions = {}
+            for env_id, ret in rets.items():
+                if EpisodeKey.CUR_OBS not in ret:
+                    obs_k = EpisodeKey.NEXT_OBS
+                else:
+                    obs_k = EpisodeKey.CUR_OBS
+                live_agents = list(ret[obs_k].keys())
+                actions[env_id] = {aid: act_spaces[aid].sample() for aid in live_agents}
+            rets = self.vec_env.step(actions)
+
+        self.vec_env.close()

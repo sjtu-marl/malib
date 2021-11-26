@@ -149,13 +149,24 @@ class AgentInterface:
 
         self.behavior_mode = behavior_mode
 
-    def reset(self, sample_dist=None) -> None:
-        """Reset agent interface."""
-        # clear sample distribution
-        self.sample_dist = sample_dist or dict.fromkeys(
-            self.policies, 1.0 / len(self.policies)
-        )
-        self._behavior_policy = self._random_select_policy()
+    def reset(self, policy_id=None, sample_dist=None) -> None:
+        """Reset agent interface. Sample dist will reseted with a no-none given `sample_dist`. If `self.sample_dist` is None or `self.policies` has changed length. Then `self.sample_dist` will be reset as uniform."""
+
+        if sample_dist is not None:
+            self.sample_dist = sample_dist
+        if self.sample_dist is None or len(self.sample_dist) != len(self.policies):
+            self.sample_dist = dict.fromkeys(self.policies, 1.0 / len(self.policies))
+
+        if policy_id is not None:
+            assert policy_id in self.policies
+            self._behavior_policy = policy_id
+        else:
+            self._behavior_policy = self._random_select_policy()
+
+        # then reset sampled behavior_policy
+        policy = self.policies[self._behavior_policy]
+        # reset intermediate states, e.g. rnn states
+        policy.reset()
 
     def add_policy(
         self,
@@ -209,7 +220,7 @@ class AgentInterface:
         :param kwargs: dict of args
         :return: A tuple of action, action_dist, extra_info
         """
-        policy_id = kwargs.get("policy_id", None)
+        policy_id = kwargs.get("policy_id", self.behavior_policy)
         if policy_id is None:
             policy_id = self._random_select_policy()
         kwargs.update({"behavior_mode": self.behavior_mode})
@@ -242,7 +253,9 @@ class AgentInterface:
             )
         return status
 
-    def transform_observation(self, observation: Any, policy_id: PolicyID = None):
+    def transform_observation(
+        self, observation: Any, state: Any, policy_id: PolicyID = None
+    ) -> Dict[str, Any]:
         """Transform environment observation with behavior policy's preprocessor. The preprocessed observation will be
         transferred to policy's `compute_action` as an input.
 
@@ -254,9 +267,9 @@ class AgentInterface:
         policy_id = policy_id or self._random_select_policy()
         policy = self.policies[policy_id]
         if policy.preprocessor is not None:
-            return policy.preprocessor.transform(observation)
+            return {"obs": policy.preprocessor.transform(observation), "state": state}
         else:
-            return observation
+            return {"obs": observation, "state": state}
 
     def save(self, model_dir: str) -> None:
         """Save policies.

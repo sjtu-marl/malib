@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-from malib.backend.datapool.offline_dataset_server import Episode
 import random
+import numpy as np
+
 from typing import List
 
-import numpy as np
 from gym import spaces
 from pettingzoo.utils import wrappers
 from pettingzoo.utils.env import AECEnv
 
 from open_spiel.python.rl_environment import Environment as OPEN_SPIEL_ENV, TimeStep
-from malib.envs import Environment
+from malib.utils.episode import Episode
 
 
 class PokerEnv(AECEnv):

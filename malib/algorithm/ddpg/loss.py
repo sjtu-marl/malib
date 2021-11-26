@@ -4,7 +4,7 @@ import torch
 
 from malib.algorithm.common.loss_func import LossFunc
 from malib.algorithm.common import misc
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
 
 
 class DDPGLoss(LossFunc):
@@ -55,11 +55,11 @@ class DDPGLoss(LossFunc):
         )
         cast_to_tensor = lambda x: FloatTensor(x.copy())
 
-        rewards = cast_to_tensor(batch[Episode.REWARD]).view(-1, 1)
-        actions = cast_to_tensor(batch[Episode.ACTION_DIST])
-        cur_obs = cast_to_tensor(batch[Episode.CUR_OBS])
-        next_obs = cast_to_tensor(batch[Episode.NEXT_OBS])
-        dones = cast_to_tensor(batch[Episode.DONE]).view(-1, 1)
+        rewards = cast_to_tensor(batch[EpisodeKey.REWARD]).view(-1, 1)
+        actions = cast_to_tensor(batch[EpisodeKey.ACTION_DIST])
+        cur_obs = cast_to_tensor(batch[EpisodeKey.CUR_OBS])
+        next_obs = cast_to_tensor(batch[EpisodeKey.NEXT_OBS])
+        dones = cast_to_tensor(batch[EpisodeKey.DONE]).view(-1, 1)
         cliprange = self._params["grad_norm_clipping"]
         gamma = self.policy.custom_config["gamma"]
 

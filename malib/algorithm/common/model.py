@@ -68,8 +68,8 @@ class MLP(Model):
             layers_config.append(
                 {"units": act_dim, "activation": model_config["output"]["activation"]}
             )
-        self.use_feature_normalization = kwargs["use_feature_normalization"]
-        if kwargs["use_feature_normalization"]:
+        self.use_feature_normalization = kwargs.get("use_feature_normalization", False)
+        if self.use_feature_normalization:
             self._feature_norm = nn.LayerNorm(obs_dim)
         self.net = mlp(layers_config)
 

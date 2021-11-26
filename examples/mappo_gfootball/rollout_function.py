@@ -202,7 +202,6 @@ def grf_simultaneous(
                 residual_dims = range(2, dims)
                 agent_buffers[agent][k] = np.transpose(v, (1, 0, *residual_dims))
 
-
         indices = None
         buffer_desc.batch_size = fragment_length
         while indices is None:

@@ -1,6 +1,6 @@
 """A VecEnv that uses subprocesses for each underlying environment"""
 
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
 from malib.utils.typing import Dict, AgentID, Any, List, Tuple
 
 from typing import Dict, Sequence, Optional, List, Union
@@ -69,7 +69,7 @@ def _worker(remote, parent_remote, env_fn_wrapper):
             cmd, data = remote.recv()
             if cmd == "step":
                 rets = env.step(data)
-                done, info = rets[Episode.DONE], rets[Episode.INFO]
+                done, info = rets[EpisodeKey.DONE], rets[EpisodeKey.INFO]
                 if all([d.all() for d in done.values()]):
                     # save final observation where user can get it, then reset
                     info["episode_info"] = env.episode_info
@@ -146,7 +146,6 @@ class SubprocVecEnv:
         self.ctx = multiprocessing.get_context(start_method)
         self.remotes, self.work_remotes = [], []
         self.processes = []
-        
 
         # self.remotes[0].send(("get_spaces", None))
         # observation_spaces, action_spaces, state_space, possible_agents = self.remotes[
@@ -158,25 +157,22 @@ class SubprocVecEnv:
         self.action_spaces = env_for_spec.action_spaces
         self.state_space = env_for_spec.state_space
         self.possible_agents = env_for_spec.possible_agents
-        self.trainable_agents = env_for_spec.possible_agents # FIXME(ziyu)
+        self.trainable_agents = env_for_spec.possible_agents  # FIXME(ziyu)
         self._fragment_length = fragment_length
 
-
-        self.is_sequential = False 
+        self.is_sequential = False
         # ziyu: this should be False, vec env for sequential is not available now.
         self.num_envs = 0
         self._reseted = True
         self._add_env(num_envs)
         self._limits = self.num_envs
         self._reseted = False
-    
+
     def _add_env(self, num_env):
         new_remotes, new_work_remotes = zip(
             *[self.ctx.Pipe(duplex=True) for _ in range(num_env)]
         )
-        for work_remote, remote in zip(
-            new_remotes, new_work_remotes
-        ):
+        for work_remote, remote in zip(new_remotes, new_work_remotes):
             args = (work_remote, remote, CloudpickleWrapper(self.env_fn))
             # daemon=True: if the main process crashes, we should not cause things to hang
             process = self.ctx.Process(
@@ -188,13 +184,13 @@ class SubprocVecEnv:
             self.remotes.append(remote)
             self.work_remotes.append(work_remote)
         self.num_envs += num_env
-    
+
     def add_env(self, num_env):
         assert self._reseted, "add env methods can only be used when call reset()"
         if self.num_envs - self._limits < num_env:
             real_env2add = self._limits + num_env - self.num_envs
             self._add_env(real_env2add)
-        
+
         self._limits += num_env
 
     def step(self, actions):
@@ -213,8 +209,8 @@ class SubprocVecEnv:
         self.waiting = False
         feed_back_needed = []
         for res in results:
-            if any(d.any() for d in res[Episode.DONE].values()):
-                self.episode_infos.append(res[Episode.INFO]["episode_info"])
+            if any(d.any() for d in res[EpisodeKey.DONE].values()):
+                self.episode_infos.append(res[EpisodeKey.INFO]["episode_info"])
         return _merge_list(results)
 
     def seed(self, seed=None):
@@ -266,6 +262,7 @@ class SubprocVecEnv:
     def add_envs(self, envs=None, num=0):
         assert envs is None
         self.add_env(num)
+
     @classmethod
     def from_envs(cls, envs: List, config: Dict[str, Any]):
         """Generate vectorization environment from exisiting environments."""

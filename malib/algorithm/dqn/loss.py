@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from typing import Dict, Any
 
 from malib.algorithm.common.loss_func import LossFunc
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
 from malib.utils.typing import TrainingMetric
 from .policy import DQN
 
@@ -39,11 +39,11 @@ class DQNLoss(LossFunc):
 
     def __call__(self, batch) -> Dict[str, Any]:
         self.loss = []
-        reward = torch.FloatTensor(batch[Episode.REWARD].copy()).view(-1, 1)
-        act = torch.LongTensor(batch[Episode.ACTION].copy()).view(-1, 1)
-        obs = batch[Episode.CUR_OBS].copy()
-        next_obs = batch[Episode.NEXT_OBS].copy()
-        done = torch.FloatTensor(batch[Episode.DONE].copy()).view(-1, 1)
+        reward = torch.FloatTensor(batch[EpisodeKey.REWARD].copy()).view(-1, 1)
+        act = torch.LongTensor(batch[EpisodeKey.ACTION].copy()).view(-1, 1)
+        obs = batch[EpisodeKey.CUR_OBS].copy()
+        next_obs = batch[EpisodeKey.NEXT_OBS].copy()
+        done = torch.FloatTensor(batch[EpisodeKey.DONE].copy()).view(-1, 1)
 
         state_action_values = self.policy.critic(obs).gather(1, act)
         next_state_q = self.policy.target_critic(next_obs)

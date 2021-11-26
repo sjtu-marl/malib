@@ -11,7 +11,7 @@ from malib.utils.typing import DataTransferType, Dict, Tuple, BehaviorMode
 from malib.algorithm.common.model import get_model
 from malib.utils.preprocessor import get_preprocessor
 from malib.algorithm.common import misc
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
 
 
 class DDPG(Policy):
@@ -103,7 +103,7 @@ class DDPG(Policy):
                         requires_grad=False,
                     )
                 act = pi
-        return act.numpy(), pi.numpy(), {Episode.ACTION_DIST: pi.numpy()}
+        return act.numpy(), pi.numpy(), {EpisodeKey.ACTION_DIST: pi.numpy()}
 
     def compute_actions_by_target_actor(
         self, observation: DataTransferType, **kwargs

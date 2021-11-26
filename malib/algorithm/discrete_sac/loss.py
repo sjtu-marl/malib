@@ -5,7 +5,7 @@ from typing import Dict, Any
 from torch.distributions import Categorical
 
 from malib.algorithm.common.loss_func import LossFunc
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
 
 
 class DiscreteSACLoss(LossFunc):
@@ -78,11 +78,11 @@ class DiscreteSACLoss(LossFunc):
         cast_to_long_tensor = lambda x: LongTensor(x.copy())
 
         # total loss = policy_gradient_loss - entropy * entropy_coefficient + value_coefficient * value_loss
-        rewards = cast_to_tensor(batch[Episode.REWARD])
-        actions = cast_to_long_tensor(batch[Episode.ACTION])
-        cur_obs = cast_to_tensor(batch[Episode.CUR_OBS])
-        next_obs = cast_to_tensor(batch[Episode.NEXT_OBS])
-        dones = cast_to_tensor(batch[Episode.DONE])
+        rewards = cast_to_tensor(batch[EpisodeKey.REWARD])
+        actions = cast_to_long_tensor(batch[EpisodeKey.ACTION])
+        cur_obs = cast_to_tensor(batch[EpisodeKey.CUR_OBS])
+        next_obs = cast_to_tensor(batch[EpisodeKey.NEXT_OBS])
+        dones = cast_to_tensor(batch[EpisodeKey.DONE])
         cliprange = self._params["grad_norm_clipping"]
         alpha = self.policy._alpha
         gamma = self.policy.custom_config["gamma"]

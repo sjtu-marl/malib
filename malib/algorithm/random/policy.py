@@ -50,7 +50,7 @@ class RandomPolicy(Policy):
             mask = torch.ones_like(logits)
         logits = mask * logits
         action = logits.argmax(dim=-1).view((-1, 1)).squeeze(-1).numpy()
-        return action, action_prob.numpy(), {"action_probs": action_prob}
+        return action, action_prob.numpy()
 
     def train(self):
         pass
@@ -62,4 +62,7 @@ class RandomPolicy(Policy):
         return {}
 
     def set_weights(self, parameters):
+        pass
+
+    def reset(self):
         pass

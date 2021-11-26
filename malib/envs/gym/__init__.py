@@ -2,7 +2,7 @@ import gym
 import numpy as np
 
 from malib.utils.typing import Dict, AgentID
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import Episode
 
 from .env import GymEnv
 
