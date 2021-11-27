@@ -1,6 +1,6 @@
 import gym
 
-from malib.envs.env import Environment, record_episode_info
+from malib.envs.env import Environment
 from malib.utils.typing import Dict, Any, AgentID, List
 from malib.utils.episode import EpisodeKey
 
@@ -20,7 +20,6 @@ class GymEnv(Environment):
         self._observation_spaces = {self._default_agent: self._env.observation_space}
         self._action_spaces = {self._default_agent: self._env.action_space}
         self._trainable_agents = [self._default_agent]
-        self._max_step = 1000
 
     @property
     def possible_agents(self) -> List[AgentID]:
@@ -34,20 +33,17 @@ class GymEnv(Environment):
     def action_spaces(self) -> Dict[AgentID, gym.Space]:
         return self._action_spaces
 
-    @record_episode_info
-    def step(self, actions: Dict[AgentID, Any]) -> Dict[str, Any]:
+    def time_step(self, actions: Dict[AgentID, Any]) -> Dict[str, Any]:
         observations, rewards, dones, infos = self._env.step(
             actions[self._default_agent]
         )
 
         # agent done or achieving_max_step_done
-        dones = dones
         agent = self._default_agent
-
         return {
             EpisodeKey.NEXT_OBS: {agent: observations},
             EpisodeKey.REWARD: {agent: rewards},
-            EpisodeKey.DONE: {agent: dones, "__all__": dones},
+            EpisodeKey.DONE: {agent: dones},
             EpisodeKey.INFO: {agent: infos},
         }
 

@@ -44,6 +44,8 @@ setup(
             "sphinx",
             "sphinx-rtd-theme",
             "sphinxcontrib-apidoc",
+            "pytest-profiling",
+            "coverage",
         ],
     },
 )

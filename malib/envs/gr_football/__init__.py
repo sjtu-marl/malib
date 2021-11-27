@@ -1,14 +1,12 @@
-import gym
 import numpy as np
 
 from malib.utils.preprocessor import get_preprocessor
-from .env import BaseGFootBall as base_env, ParameterSharingWrapper
-from malib.envs.env import Environment, EpisodeInfo
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
+from .env import BaseGFootBall, ParameterSharingWrapper
 
 
 def env(**kwargs):
-    return ParameterSharingWrapper(base_env(**kwargs), lambda x: x[:6])
+    return ParameterSharingWrapper(BaseGFootBall(**kwargs), lambda x: x[:6])
 
 
 def default_config_gen():
@@ -63,11 +61,11 @@ def build_sampler_config(
         stsp_prep = get_preprocessor(stsp)(stsp)
         sampler_config = {
             "dtypes": {
-                Episode.REWARD: np.float,
-                Episode.DONE: np.bool,
-                Episode.CUR_OBS: np.float,
-                Episode.ACTION: np.int,
-                Episode.ACTION_DIST: np.float,
+                EpisodeKey.REWARD: np.float,
+                EpisodeKey.DONE: np.bool,
+                EpisodeKey.CUR_OBS: np.float,
+                EpisodeKey.ACTION: np.int,
+                EpisodeKey.ACTION_DIST: np.float,
                 "active_mask": np.float,
                 "available_action": np.float,
                 "value": np.float,
@@ -77,11 +75,11 @@ def build_sampler_config(
                 "critic_rnn_states": np.float,
             },
             "data_shapes": {
-                Episode.REWARD: (1,),
-                Episode.DONE: (1,),
-                Episode.CUR_OBS: obsp.shape,
-                Episode.ACTION: (1,),
-                Episode.ACTION_DIST: (acsp.n,),
+                EpisodeKey.REWARD: (1,),
+                EpisodeKey.DONE: (1,),
+                EpisodeKey.CUR_OBS: obsp.shape,
+                EpisodeKey.ACTION: (1,),
+                EpisodeKey.ACTION_DIST: (acsp.n,),
                 "active_mask": (1,),
                 "available_action": (acsp.n,),
                 "value": (1,),

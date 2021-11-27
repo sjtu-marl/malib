@@ -185,6 +185,8 @@ class VectorEnv:
         self._step_cnt += len(active_envs)
 
         env_rets = {}
+        # FIXME(ming): sometimes the env_id in actions is not an
+        #   active environment.
         for env_id, _actions in actions.items():
             ret = active_envs[env_id].step(_actions)
             env_done = ret[EpisodeKey.DONE]["__all__"]
@@ -350,7 +352,6 @@ class SubprocVecEnv(VectorEnv):
             ready_tasks, self.pending_tasks = ray.wait(
                 self.pending_tasks, num_returns=len(self.pending_tasks), timeout=0.5
             )
-            time.sleep(0.5)
         rets = dict(ChainMap(*ray.get(ready_tasks)))
         self._step_cnt += len(rets)
 

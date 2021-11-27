@@ -25,6 +25,8 @@ class Environment:
         self.runtime_id = uuid.uuid4().hex
         # -1 means no horizon limitation
         self.max_step = -1
+        self.cnt = 0
+        self.custom_reset_config = {}
         self.episode_meta_info = {"max_step": self.max_step}
 
         if configs.get("custom_metrics") is not None:
@@ -34,7 +36,6 @@ class Environment:
 
         self._trainable_agents = None
         self._configs = configs
-        self._cnt = 0
 
     def record_episode_info_step(self, rets):
         reward_ph = self.episode_metrics["agent_reward"]
@@ -76,19 +77,34 @@ class Environment:
     ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
         """Reset environment and the episode info handler here."""
 
-        custom_reset_config = custom_reset_config or {}
-        self.episode_metrics = {"env_step": 0, "agent_reward": {}, "agent_step": {}}
         self.max_step = max_step or self.max_step
+        self.cnt = 0
+
+        self.custom_reset_config = custom_reset_config or self.custom_reset_config
+        self.episode_metrics = {"env_step": 0, "agent_reward": {}, "agent_step": {}}
         self.episode_meta_info.update(
             {
                 "max_step": self.max_step,
-                "custom_config": custom_reset_config,
+                "custom_config": self.custom_reset_config,
                 "env_done": False,
             }
         )
 
+    def env_done_check(self, agent_dones: Dict[AgentID, bool]) -> bool:
+        # default by any
+        done1 = any(agent_dones.values())
+        # self.max_step == -1 means no limits
+        done2 = self.cnt >= self.max_step > 0
+        return done1 or done2
+
     @record_episode_info
     def step(self, actions: Dict[AgentID, Any]):
+        self.cnt += 1
+        rets = self.time_step(actions)
+        rets[EpisodeKey.DONE]["__all__"] = self.env_done_check(rets[EpisodeKey.DONE])
+        return rets
+
+    def time_step(self, actions: Dict[AgentID, Any]):
         """Step inner environment with given agent actions"""
 
         raise NotImplementedError
@@ -103,6 +119,9 @@ class Environment:
 
     def close(self):
         raise NotImplementedError
+
+    def seed(self, seed: int = None):
+        pass
 
     def collect_info(self) -> Dict[str, Any]:
         return {

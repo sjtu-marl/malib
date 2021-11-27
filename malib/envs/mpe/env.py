@@ -1,7 +1,7 @@
 import importlib
 import gym
 
-from malib.envs.env import Environment, record_episode_info
+from malib.envs.env import Environment
 from malib.utils.typing import Dict, Any, AgentID, List, Union
 from malib.utils.episode import Episode, EpisodeKey
 
@@ -19,13 +19,13 @@ class MPE(Environment):
         self.is_sequential = False
         self._env = ori_caller(**scenario_configs)
         self._trainable_agents = self._env.possible_agents
-        self._max_step = 25  # default is 25
         self._action_spaces = {
             aid: self._env.action_space(aid) for aid in self._env.possible_agents
         }
         self._observation_spaces = {
             aid: self._env.observation_space(aid) for aid in self._env.possible_agents
         }
+        self.max_step = 25  # default is 25
 
     @property
     def possible_agents(self) -> List[AgentID]:
@@ -39,12 +39,10 @@ class MPE(Environment):
     def observation_spaces(self) -> Dict[AgentID, gym.Space]:
         return self._observation_spaces
 
-    @record_episode_info
-    def step(self, actions: Dict[AgentID, Any]) -> Dict[str, Any]:
+    def time_step(self, actions: Dict[AgentID, Any]) -> Dict[str, Any]:
         # for agent, action in actions.items():
         #     assert self.action_spaces[agent].contains(action), f"Action is not in space: {action} with type={type(action)}"
         observations, rewards, dones, infos = self._env.step(actions)
-        dones["__all__"] = any(dones.values())
         return {
             EpisodeKey.NEXT_OBS: observations,
             EpisodeKey.REWARD: rewards,

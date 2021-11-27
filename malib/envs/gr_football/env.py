@@ -1,50 +1,50 @@
-# -*- coding: utf-8 -*-
 import copy
-from typing import Callable
-
 import gym
-from gym import spaces
 import numpy as np
-from pettingzoo import ParallelEnv
-from gfootball import env as raw_grf_env
-from malib.backend.datapool.offline_dataset_server import Episode
+
+from gym import spaces
+from numpy.core.fromnumeric import mean
+
+
+from malib.utils.typing import AgentID, Callable, Dict, Any, Union, List
+from malib.utils.logger import Logger
+from malib.utils.episode import Episode, EpisodeKey
 from malib.envs.env import Environment
 from malib.envs.gr_football.encoders import encoder_basic, rewarder_basic
 
-
-class GRFEpisodeInfo:
-    def __init__(self):
-        self._record = {
-            "total_reward": 0,
-            "cnt": 0,
-            "win": np.nan,
-            "score": np.nan,
-            "goal_diff": np.nan,
-            "num_pass": 0,
-            "num_shot": 0,
-        }
-
-    def step(self, rew, info):
-        self._record["cnt"] += 1
-        self._record["total_reward"] += rew.mean()  # average rewards of all players
-
-        for k in ["win", "score", "goal_diff"]:
-            if k in info:
-                self._record[k] = info[k]
-
-        for k in ["num_pass", "num_shot"]:
-            self._record[k] += info[k]
+try:
+    from gfootball import env as raw_grf_env
+except Exception:
+    Logger.error(
+        "Please install Google football evironment before use: https://github.com/google-research/football"
+    )
 
 
-class BaseGFootBall(ParallelEnv):
+class BaseGFootBall(Environment):
     metadata = {"render.modes": ["human"]}
 
-    def __init__(self, env_id: str, use_built_in_GK=True, scenario_config={}):
-        super().__init__()
+    def record_episode_info_step(self, rets):
+        super(BaseGFootBall, self).record_episode_info_step(rets)
+
+        reward = rets[EpisodeKey.REWARD]
+        info = list(rets[EpisodeKey.INFO].values())[0]
+        self.custom_metrics["total_reward"] += mean(list(reward.values()))
+        self.custom_metrics["win"] += info.get("win", 0.0)
+        self.custom_metrics["score"] += info.get("score", 0.0)
+        self.custom_metrics["goal_diff"] += info.get("goal_diff", 0.0)
+        self.custom_metrics["num_pass"] += info.get("num_pass", 0.0)
+        self.custom_metrics["num_shot"] += info.get("num_shot", 0.0)
+
+    def __init__(self, env_id: str, use_built_in_GK: bool = True, scenario_configs={}):
+        super(BaseGFootBall, self).__init__(
+            env_id=env_id,
+            use_built_in_GK=use_built_in_GK,
+            scenario_configs=scenario_configs,
+        )
         self._env_id = env_id
-        self.kwarg = scenario_config
-        self._raw_env = raw_grf_env.create_environment(**scenario_config)
         self._use_built_in_GK = use_built_in_GK
+        self._raw_env = raw_grf_env.create_environment(**scenario_configs)
+        self.kwarg = scenario_configs
 
         self._num_left = self.kwarg["number_of_left_players_agent_controls"]
         self._num_right = self.kwarg["number_of_right_players_agent_controls"]
@@ -53,7 +53,7 @@ class BaseGFootBall(ParallelEnv):
 
         if self._include_GK and self._use_built_in_GK:
             assert (
-                scenario_config["env_name"] == "5_vs_5"
+                scenario_configs["env_name"] == "5_vs_5"
             ), "currently only support a very specific scenario"
             assert self._num_left == 5 or self._num_left == 0
             assert self._num_right == 5 or self._num_right == 0
@@ -72,29 +72,33 @@ class BaseGFootBall(ParallelEnv):
         }
         self.possible_teams = ["team_0", "team_1"]
 
-        self._repr_mode = scenario_config["representation"]
+        self._repr_mode = scenario_configs["representation"]
         self._rewarder = rewarder_basic.Rewarder()
 
-        self.possible_agents = []
-        for team_players in self.possible_players.values():
-            self.possible_agents.extend(team_players)
         self.n_agents = len(self.possible_agents)
 
         self._build_interacting_spaces()
-
-    def reset(self):
-        self._prev_obs = self._raw_env.reset()
-        self.agents = self.possible_agents
-        self.dones = dict(zip(self.agents, [False] * self.n_agents))
-        self.scores = dict(zip(self.agents, [{"scores": [0.0]}] * self.n_agents))
-
-        return self._get_obs()
 
     def seed(self, seed=None):
         self._raw_env.seed(seed)
         return self.reset()
 
-    def step(self, action_dict):
+    @property
+    def possible_agents(self) -> List[AgentID]:
+        res = []
+        for team_players in self.possible_players.values():
+            res.extend(team_players)
+        return res
+
+    @property
+    def observation_spaces(self) -> Dict[AgentID, gym.Space]:
+        return self._observation_spaces
+
+    @property
+    def action_spaces(self) -> Dict[AgentID, gym.Space]:
+        return self._action_spaces
+
+    def time_step(self, action_dict: Dict[AgentID, Any]):
         action_list = []
         if self._include_GK and self._use_built_in_GK and self._num_left > 0:
             action_list.append(19)
@@ -122,7 +126,9 @@ class BaseGFootBall(ParallelEnv):
         done = self._wrap_list_to_dict([done] * len(obs))
 
         info = [info.copy() for _ in range(len(obs))]
-        if done:
+        env_done = self.env_done_check(done)
+
+        if env_done:
             for i, _obs in enumerate(obs):
                 my_score, opponent_score = _obs["score"]
                 if my_score > opponent_score:
@@ -138,24 +144,59 @@ class BaseGFootBall(ParallelEnv):
 
         info = self._wrap_list_to_dict(info)
 
-        return self._get_obs(), reward, done, info
+        return {
+            EpisodeKey.NEXT_OBS: self._get_obs(),
+            EpisodeKey.REWARD: reward,
+            EpisodeKey.DONE: done,
+            EpisodeKey.INFO: info,
+        }
+
+    def close(self):
+        self._raw_env.close()
+
+    def reset(
+        self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
+    ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
+        super(BaseGFootBall, self).reset(
+            max_step=max_step, custom_reset_config=custom_reset_config
+        )
+
+        self.custom_metrics.update(
+            {
+                "total_reward": 0.0,
+                "win": 0.0,
+                "score": 0.0,
+                "goal_diff": 0.0,
+                "num_pass": 0.0,
+                "num_shot": 0.0,
+            }
+        )
+
+        self._prev_obs = self._raw_env.reset()
+        self.agents = self.possible_agents
+        self.dones = dict(zip(self.agents, [False] * self.n_agents))
+        self.scores = dict(zip(self.agents, [{"scores": [0.0]}] * self.n_agents))
+
+        return {EpisodeKey.CUR_OBS: self._get_obs()}
 
     def _build_interacting_spaces(self):
+        possible_agents = self.possible_agents
         self._num_actions = 19
-        self.action_spaces = {
+
+        self._action_spaces = {
             player_id: spaces.Discrete(self._num_actions)
-            for player_id in self.possible_agents
+            for player_id in possible_agents
         }
 
         if self._repr_mode == "raw":
             self._feature_encoder = encoder_basic.FeatureEncoder()
         self._raw_env.reset()
         obs = self._get_obs()
-        self.observation_spaces = {
+        self._observation_spaces = {
             player_id: spaces.Box(
                 low=-10.0, high=10.0, shape=obs[player_id].shape, dtype=np.float32
             )
-            for player_id in self.possible_agents
+            for player_id in possible_agents
         }
 
     def _get_obs(self):
@@ -197,9 +238,6 @@ class BaseGFootBall(ParallelEnv):
             data_list.pop(0)
         if self._num_right > 0:
             data_list.pop(-self._num_right)
-
-    def close(self):
-        self._raw_env.close()
 
 
 def ParameterSharingWrapper(

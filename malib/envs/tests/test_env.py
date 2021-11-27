@@ -12,11 +12,27 @@ from malib.utils.episode import EpisodeKey
         ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
         ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
         ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
+        (
+            "malib.envs.gr_football",
+            "BaseGFootBall",
+            "Gfootball",
+            {
+                "env_name": "academy_run_pass_and_shoot_with_keeper",
+                "number_of_left_players_agent_controls": 2,
+                "number_of_right_players_agent_controls": 1,
+                "representation": "raw",
+                "logdir": "",
+                "write_goal_dumps": False,
+                "write_full_episode_dumps": False,
+                "render": False,
+                "stacked": False,
+            },
+        ),
     ],
 )
 def test_env(module_path, cname, env_id, scenario_configs):
     creator = getattr(importlib.import_module(module_path), cname)
-    env = creator(env_id=env_id, scenario_conigs=scenario_configs)
+    env = creator(env_id=env_id, scenario_configs=scenario_configs)
 
     possible_agents = env.possible_agents
     obs_spaces = env.observation_spaces
@@ -80,11 +96,27 @@ def test_env(module_path, cname, env_id, scenario_configs):
         ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
         ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
         ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
+        (
+            "malib.envs.gr_football",
+            "BaseGFootBall",
+            "Gfootball",
+            {
+                "env_name": "academy_run_pass_and_shoot_with_keeper",
+                "number_of_left_players_agent_controls": 2,
+                "number_of_right_players_agent_controls": 1,
+                "representation": "raw",
+                "logdir": "",
+                "write_goal_dumps": False,
+                "write_full_episode_dumps": False,
+                "render": False,
+                "stacked": False,
+            },
+        ),
     ],
 )
 def test_rollout(module_path, cname, env_id, scenario_configs):
     creator = getattr(importlib.import_module(module_path), cname)
-    env = creator(env_id=env_id, scenario_conigs=scenario_configs)
+    env = creator(env_id=env_id, scenario_configs=scenario_configs)
 
     rets = env.reset()[EpisodeKey.CUR_OBS]
 
