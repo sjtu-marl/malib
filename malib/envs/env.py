@@ -1,8 +1,6 @@
-from typing import Optional
-import gym
+from collections import defaultdict
 import uuid
-
-from dataclasses import dataclass
+import gym
 
 from malib.utils.typing import Dict, AgentID, List, Any, Union, Tuple
 from malib.utils.episode import EpisodeKey
@@ -129,3 +127,102 @@ class Environment:
             "episode_metrics": self.episode_metrics,
             "custom_metrics": self.custom_metrics,
         }
+
+
+class Wrapper(Environment):
+    """Wraps the environment to allow a modular transformation"""
+
+    def __init__(self, env: Environment):
+        self.env = env
+
+    @property
+    def possible_agents(self) -> List[AgentID]:
+        return self.env.possible_agents
+
+    @property
+    def trainable_agents(self) -> Union[Tuple, None]:
+        """Return trainble agents, if registered return a tuple, otherwise None"""
+        return self.env.trainable_agents
+
+    @property
+    def action_spaces(self) -> Dict[AgentID, gym.Space]:
+        return self.env.action_spaces
+
+    @property
+    def observation_spaces(self) -> Dict[AgentID, gym.Space]:
+        return self.env.observation_spaces
+
+    def step(self, actions: Dict[AgentID, Any]):
+        return self.env.step(actions)
+
+    def close(self):
+        return self.env.close()
+
+    def seed(self, seed: int = None):
+        return self.env.seed(seed)
+
+    def render(self, *args, **kwargs):
+        return self.env.render()
+
+    def reset(
+        self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
+    ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
+        return self.env.reset(max_step, custom_reset_config)
+
+    def collect_info(self) -> Dict[str, Any]:
+        return self.env.collect_info()
+
+
+class ParameterSharingWrapper(Wrapper):
+    def __init__(self, env: Environment):
+        super(ParameterSharingWrapper, self).__init__(env)
+
+        self.group_to_agents = defaultdict(lambda: [])
+        # self.agent_to_group = {}
+        for agent_id in self.possible_agents:
+            gid = self.group_rule(agent_id)
+            # self.agent_to_group[agent_id] = gid
+            self.group_to_agents[gid].append(agent_id)
+        # soft frozen group_to_agents
+        self.group_to_agents = dict(self.group_to_agents)
+        self.groups = tuple(self.group_to_agents.keys())
+
+        self._state_spaces = self.build_state_spaces()
+
+    @property
+    def state_spaces(self) -> Dict[AgentID, gym.Space]:
+        return self._state_spaces
+
+    def group_rule(self, agent_id: AgentID) -> str:
+        """Define the rule of grouping, mapping agent id to group id"""
+
+        raise NotImplementedError
+
+    def build_state_spaces(self) -> Dict[AgentID, gym.Space]:
+        """Call `self.group_to_agents` to build state space here"""
+
+        raise NotImplementedError
+
+    def build_state_from_observation(
+        self, agent_observation: Dict[AgentID, Any]
+    ) -> Dict[AgentID, Any]:
+        raise NotImplementedError
+
+    def reset(
+        self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
+    ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
+        rets = super(ParameterSharingWrapper, self).reset(
+            max_step=max_step, custom_reset_config=custom_reset_config
+        )
+        # add CUR_STATE
+        rets[EpisodeKey.CUR_STATE] = self.build_state_from_observation(
+            rets[EpisodeKey.CUR_OBS]
+        )
+        return rets
+
+    def time_step(self, actions: Dict[AgentID, Any]):
+        rets = super(ParameterSharingWrapper, self).time_step(actions)
+        rets[EpisodeKey.NEXT_STATE] = self.build_state_from_observation(
+            rets[EpisodeKey.NEXT_OBS]
+        )
+        return rets

@@ -2,47 +2,27 @@ import numpy as np
 
 from malib.utils.preprocessor import get_preprocessor
 from malib.utils.episode import EpisodeKey
-from .env import BaseGFootBall, ParameterSharingWrapper
+from .env import BaseGFootBall
+from .wrappers import ParameterizedSharing
 
 
-def env(**kwargs):
-    return ParameterSharingWrapper(BaseGFootBall(**kwargs), lambda x: x[:6])
-
-
-def default_config_gen():
-    default_config = {
-        # env building config
-        "env_id": "Gfootball",
-        "use_built_in_GK": True,
-        "scenario_config": {
-            "env_name": "5_vs_5",
-            "number_of_left_players_agent_controls": 4,
-            "number_of_right_players_agent_controls": 4,
-            "representation": "raw",
-            "logdir": "",
-            "write_goal_dumps": False,
-            "write_full_episode_dumps": False,
-            "render": False,
-            "stacked": False,
-        },
-    }
-    return default_config
-
-
-def env_desc_gen(config):
-    default_config = default_config_gen()
-    default_config.update(config)
-    env_for_spec = env(**config)
-    env_desc = {
-        "creator": env,
-        "possible_agents": env_for_spec.possible_agents,
-        "action_spaces": env_for_spec.action_spaces,
-        "observation_spaces": env_for_spec.observation_spaces,
-        "state_spaces": env_for_spec.state_space,
-        "config": default_config,
-    }
-    env_for_spec.close()
-    return env_desc
+default_sharing_mapping = lambda x: x[:6]
+DEFAULT_ENV_CONNFIG = {
+    # env building config
+    "env_id": "Gfootball",
+    "use_built_in_GK": True,
+    "scenario_config": {
+        "env_name": "5_vs_5",
+        "number_of_left_players_agent_controls": 4,
+        "number_of_right_players_agent_controls": 4,
+        "representation": "raw",
+        "logdir": "",
+        "write_goal_dumps": False,
+        "write_full_episode_dumps": False,
+        "render": False,
+        "stacked": False,
+    },
+}
 
 
 def build_sampler_config(

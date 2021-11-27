@@ -185,8 +185,7 @@ class VectorEnv:
         self._step_cnt += len(active_envs)
 
         env_rets = {}
-        # FIXME(ming): sometimes the env_id in actions is not an
-        #   active environment.
+        # FIXME(ming): (keyerror, sometimes) the env_id in actions is not an active environment.
         for env_id, _actions in actions.items():
             ret = active_envs[env_id].step(_actions)
             env_done = ret[EpisodeKey.DONE]["__all__"]
@@ -355,6 +354,7 @@ class SubprocVecEnv(VectorEnv):
         rets = dict(ChainMap(*ray.get(ready_tasks)))
         self._step_cnt += len(rets)
 
+        # FIXME(ming): (runtime error, sometimes) dictionary changed size during iteration
         for env_id, _ret in rets.items():
             dones = _ret[EpisodeKey.DONE]
             env_done = any(dones.values())

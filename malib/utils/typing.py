@@ -2,7 +2,7 @@ import enum
 import time
 from collections import namedtuple
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Union, Tuple, Sequence, Callable
+from typing import List, Dict, Any, Union, Tuple, Sequence, Callable, Optional
 
 import gym
 import numpy as np

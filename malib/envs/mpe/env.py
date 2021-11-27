@@ -56,10 +56,6 @@ class MPE(Environment):
     def close(self):
         pass
 
-    # def reset(self, max_step: int = None, custom_config):
-    #     super(MPE, self).reset()
-    #     observations = self._env.reset(*args, **kwargs)
-    #     return {EpisodeKey.CUR_OBS: observations}
     def reset(
         self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
     ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:

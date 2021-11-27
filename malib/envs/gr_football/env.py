@@ -7,17 +7,16 @@ from numpy.core.fromnumeric import mean
 
 
 from malib.utils.typing import AgentID, Callable, Dict, Any, Union, List
-from malib.utils.logger import Logger
-from malib.utils.episode import Episode, EpisodeKey
-from malib.envs.env import Environment
+from malib.utils.episode import EpisodeKey
+from malib.envs.env import Environment, ParameterSharingWrapper
 from malib.envs.gr_football.encoders import encoder_basic, rewarder_basic
 
 try:
     from gfootball import env as raw_grf_env
-except Exception:
-    Logger.error(
+except ImportError as e:
+    raise e(
         "Please install Google football evironment before use: https://github.com/google-research/football"
-    )
+    ) from None
 
 
 class BaseGFootBall(Environment):
@@ -240,9 +239,7 @@ class BaseGFootBall(Environment):
             data_list.pop(-self._num_right)
 
 
-def ParameterSharingWrapper(
-    base_env: BaseGFootBall, parameter_sharing_mapping: Callable
-):
+def ParameterSharing(base_env: BaseGFootBall, parameter_sharing_mapping: Callable):
     class Env:
         def __init__(self):
             """
@@ -314,8 +311,8 @@ def ParameterSharingWrapper(
             obs = self._build_from_base_dict(base_obs)
             obs = {aid: np.vstack(_obs) for aid, _obs in obs.items()}
             return {
-                Episode.CUR_OBS: obs,
-                Episode.CUR_STATE: self._build_state_from_obs(obs),
+                EpisodeKey.CUR_OBS: obs,
+                EpisodeKey.CUR_STATE: self._build_state_from_obs(obs),
             }
 
         def seed(self, seed=None):
@@ -323,8 +320,8 @@ def ParameterSharingWrapper(
             obs = self._build_from_base_dict(base_obs)
             obs = {aid: self.np.vstack(_obs) for aid, _obs in obs.items()}
             return {
-                Episode.CUR_OBS: obs,
-                Episode.CUR_STATE: self._build_state_from_obs(obs),
+                EpisodeKey.CUR_OBS: obs,
+                EpisodeKey.CUR_STATE: self._build_state_from_obs(obs),
             }
 
         def _build_from_base_dict(self, base_dict):
@@ -352,12 +349,13 @@ def ParameterSharingWrapper(
             self.record_episode_info(reward, info, action_dict)
 
             res = {
-                Episode.CUR_OBS: obs,
-                Episode.CUR_STATE: self._build_state_from_obs(obs),
-                Episode.REWARD: reward,
-                Episode.DONE: done,
-                Episode.INFO: info,
+                EpisodeKey.NEXT_OBS: obs,
+                EpisodeKey.NEXT_STATE: self._build_state_from_obs(obs),
+                EpisodeKey.REWARD: reward,
+                EpisodeKey.DONE: done,
+                EpisodeKey.INFO: info,
             }
+
             return res
 
         def _extract_to_base(self, from_dict):

@@ -1,6 +1,6 @@
 import pytest
 
-from malib.envs.gr_football import BaseGFootBall
+from malib.envs.gr_football import BaseGFootBall, ParameterizedSharing
 from malib.utils.episode import EpisodeKey
 
 
@@ -48,7 +48,28 @@ class TestGoogleFootballEnv:
             action = {aid: space.sample() for aid, space in act_spaces.items()}
             rets = self.env.step(action)
 
+        assert self.env.cnt <= 20
         assert rets[EpisodeKey.DONE]["__all__"], (self.env.cnt, rets[EpisodeKey.DONE])
 
+        print(self.env.collect_info())
+
     def test_wrapper(self):
-        pass
+        mapping_func = lambda x: x[:6]
+        env = ParameterizedSharing(self.env, mapping_func)
+
+        state_spaces = env.state_spaces
+        observation_spaces = env.observation_spaces
+        act_spaces = env.action_spaces
+
+        rets = env.reset(max_step=20)
+        assert EpisodeKey.CUR_STATE in rets
+
+        for aid, state in rets[EpisodeKey.CUR_STATE].items():
+            assert state_spaces[aid].contains(state), (aid, state_spaces, state)
+
+        for _ in range(20):
+            actions = {aid: space.sample() for aid, space in act_spaces.items()}
+            rets = env.step(actions)
+
+        assert self.env.cnt <= 20
+        assert rets[EpisodeKey.DONE]["__all__"], (self.env.cnt, rets[EpisodeKey.DONE])
