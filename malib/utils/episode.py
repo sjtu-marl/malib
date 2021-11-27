@@ -30,6 +30,9 @@ class EpisodeKey:
     ADVANTAGE = "advantage"
     STATE_VALUE_TARGET = "state_value_target"
 
+    # model states
+    RNN_STATE = "rnn_state"
+
 
 class Episode:
     def __init__(self, behavior_policies: Dict[AgentID, PolicyID], env_id: str):

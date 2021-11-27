@@ -1,5 +1,6 @@
 import importlib
 import pytest
+from malib.utils.episode import NewEpisodeDict, Episode
 
 from malib.utils.typing import BufferDescription
 from malib.envs import Environment
@@ -20,6 +21,22 @@ from malib.backend.datapool.test import FakeDataServer
         ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
         ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
         ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
+        (
+            "malib.envs.gr_football",
+            "BaseGFootBall",
+            "Gfootball",
+            {
+                "env_name": "academy_run_pass_and_shoot_with_keeper",
+                "number_of_left_players_agent_controls": 2,
+                "number_of_right_players_agent_controls": 1,
+                "representation": "raw",
+                "logdir": "",
+                "write_goal_dumps": False,
+                "write_full_episode_dumps": False,
+                "render": False,
+                "stacked": False,
+            },
+        ),
     ],
 )
 class TestEnvRunner:
@@ -62,6 +79,15 @@ class TestEnvRunner:
             custom_reset_config=runtime_config["custom_reset_config"],
         )
 
+        behavior_policies = {
+            aid: interface.behavior_policy
+            for aid, interface in self.agent_interfaces.items()
+        }
+
+        episodes = NewEpisodeDict(
+            lambda env_id: Episode(behavior_policies, env_id=env_id)
+        )
+
         while not self.vec_env.is_terminated():
             policy_inputs, filtered_ouptuts = _process_environment_returns(
                 env_rets=rets,
@@ -80,7 +106,7 @@ class TestEnvRunner:
             )
 
             policy_outputs, active_env_ids = _do_policy_eval(
-                policy_inputs, self.agent_interfaces
+                policy_inputs, self.agent_interfaces, episodes
             )
             sorted_active_env_ids = sorted(active_env_ids)
             assert sorted_active_env_ids == pinput_env_ids

@@ -16,7 +16,6 @@ you wanna save by specifying extra columns when Episode initialization.
 """
 
 import collections
-import enum
 import ray
 import numpy as np
 
@@ -87,8 +86,9 @@ def _process_environment_returns(
 def _do_policy_eval(
     policy_inputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]],
     agent_interfaces: Dict[AgentID, AgentInterface],
+    episodes: NewEpisodeDict,
 ) -> Dict[str, Dict[EnvID, Dict[AgentID, Any]]]:
-    actions, action_dists = {}, {}
+    actions, action_dists, next_rnn_state = {}, {}, {}
 
     env_ids = list(policy_inputs.keys())
 
@@ -97,19 +97,32 @@ def _do_policy_eval(
         lambda: collections.defaultdict(lambda: [])
     )
     for env_id in env_ids:
+        env_episode = episodes[env_id]
+        for agent_id, interface in agent_interfaces.items():
+            # if interface.use_rnn:
+            # then feed last rnn state here
+            if len(env_episode[EpisodeKey.RNN_STATE][agent_id]) < 1:
+                env_episode[EpisodeKey.RNN_STATE][agent_id].append(
+                    interface.get_initial_state()
+                )
+            last_rnn_state = env_episode[EpisodeKey.RNN_STATE][agent_id][-1]
+            agent_wise_inputs[agent_id][EpisodeKey.RNN_STATE].append(last_rnn_state)
         for k, agent_v in policy_inputs[env_id].items():
             for agent_id, v in agent_v.items():
                 agent_wise_inputs[agent_id][k].append(v)
 
     for agent_id, interface in agent_interfaces.items():
-        assert EpisodeKey.CUR_OBS in agent_wise_inputs[agent_id], agent_wise_inputs[
-            agent_id
-        ]
-        actions[agent_id], action_dists[agent_id] = interface.compute_action(
-            **agent_wise_inputs[agent_id]
-        )
+        (
+            actions[agent_id],
+            action_dists[agent_id],
+            next_rnn_state[agent_id],
+        ) = interface.compute_action(**agent_wise_inputs[agent_id])
 
-    return {"action": actions, "action_dist": action_dists}, env_ids
+    return {
+        EpisodeKey.ACTION: actions,
+        EpisodeKey.ACTION_DIST: action_dists,
+        EpisodeKey.RNN_STATE: next_rnn_state,
+    }, env_ids
 
 
 def _process_policy_outputs(
@@ -120,8 +133,8 @@ def _process_policy_outputs(
     """Proceses the policy returns. Here we convert the policy return to legal environment step inputs."""
 
     assert (
-        "action" in policy_outputs and "action_dist" in policy_outputs
-    ), "`action` and `action_list` are required in the policy outputs, please check the return of `_do_policy_eval`: {}".format(
+        EpisodeKey.ACTION in policy_outputs and EpisodeKey.ACTION_DIST in policy_outputs
+    ), "`action` and `action_prob` are required in the policy outputs, please check the return of `_do_policy_eval`: {}".format(
         list(policy_outputs.keys())
     )
 
@@ -198,10 +211,8 @@ def env_runner(
         custom_reset_config=runtime_config["custom_reset_config"],
     )
 
-    if dataset_server:
-        episodes = NewEpisodeDict(
-            lambda env_id: Episode(behavior_policies, env_id=env_id)
-        )
+    # if dataset_server:
+    episodes = NewEpisodeDict(lambda env_id: Episode(behavior_policies, env_id=env_id))
 
     process_environment_returns = (
         custom_environment_return_processor or _process_environment_returns
@@ -215,7 +226,9 @@ def env_runner(
             rets, agent_interfaces
         )
 
-        policy_outputs, active_env_ids = do_policy_eval(policy_inputs, agent_interfaces)
+        policy_outputs, active_env_ids = do_policy_eval(
+            policy_inputs, agent_interfaces, episodes
+        )
 
         # process policy outputs
         env_inputs, detached_policy_outputs = process_policy_outputs(

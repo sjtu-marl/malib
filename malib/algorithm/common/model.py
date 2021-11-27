@@ -9,8 +9,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from malib.utils.preprocessor import get_preprocessor
-from malib.utils.typing import Dict, Any
+from malib.utils.preprocessor import Mode, get_preprocessor
+from malib.utils.typing import DataTransferType, Dict, Any, List
 
 
 def mlp(layers_config):
@@ -44,6 +44,11 @@ class Model(nn.Module):
         else:
             self.output_dim = output_space
 
+    def get_initial_state(self) -> List[torch.TensorType]:
+        """Return a list of initial rnn state, if current model is rnn"""
+
+        return []
+
 
 class MLP(Model):
     def __init__(
@@ -55,13 +60,12 @@ class MLP(Model):
     ):
         super(MLP, self).__init__(observation_space, action_space)
 
-        obs_dim = get_preprocessor(observation_space)(observation_space).size
         layers_config: list = (
             self._default_layers()
             if model_config.get("layers") is None
             else model_config["layers"]
         )
-        layers_config.insert(0, {"units": obs_dim})
+        layers_config.insert(0, {"units": self.input_dim})
 
         if action_space:
             act_dim = get_preprocessor(action_space)(action_space).size
@@ -70,7 +74,7 @@ class MLP(Model):
             )
         self.use_feature_normalization = kwargs.get("use_feature_normalization", False)
         if self.use_feature_normalization:
-            self._feature_norm = nn.LayerNorm(obs_dim)
+            self._feature_norm = nn.LayerNorm(self.input_dim)
         self.net = mlp(layers_config)
 
     def _default_layers(self):
@@ -87,29 +91,29 @@ class MLP(Model):
         return pi
 
 
-class RNN(nn.Module):
+class RNN(Model):
     def __init__(
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         model_config: Dict[str, Any],
     ):
-        super(RNN, self).__init__()
+        super(RNN, self).__init__(observation_space, action_space)
         self.hidden_dims = (
             64 if model_config is None else model_config.get("rnn_hidden_dim", 64)
         )
 
         # default by flatten
-        obs_dim = get_preprocessor(observation_space)(observation_space).size()
-        act_dim = get_preprocessor(action_space)(action_space).size()
-
-        self.fc1 = nn.Linear(obs_dim, self.hidden_dims)
+        self.fc1 = nn.Linear(self.input_dim, self.hidden_dims)
         self.rnn = nn.GRUCell(self.hidden_dims, self.hidden_dims)
-        self.fc2 = nn.Linear(self.hidden_dims, act_dim)
+        self.fc2 = nn.Linear(self.hidden_dims, self.output_dim)
 
-    def init_hidden(self):
+    def _init_hidden(self):
         # make hidden states on same device as model
         return self.fc1.weight.new(1, self.hidden_dims).zero_()
+
+    def get_initial_state(self) -> List[torch.TensorType]:
+        return [self._init_hidden()]
 
     def forward(self, obs, hidden_state):
         obs = torch.as_tensor(obs, dtype=torch.float32)
@@ -120,9 +124,9 @@ class RNN(nn.Module):
         return q, h
 
 
-class QMixer(nn.Module):
+class QMixer(Model):
     def __init__(self, obs_dim, num_agents, model_config=None):
-        super(QMixer, self).__init__()
+        super(QMixer, self).__init__(obs_dim, 1)
         self.n_agents = num_agents
 
         self.embed_dim = (
@@ -148,7 +152,9 @@ class QMixer(nn.Module):
 
         # V(s) instead of a bias for the last layers
         self.V = nn.Sequential(
-            nn.Linear(obs_dim, self.embed_dim), nn.ReLU(), nn.Linear(self.embed_dim, 1)
+            nn.Linear(obs_dim, self.embed_dim),
+            nn.ReLU(),
+            nn.Linear(self.embed_dim, self.output_dim),
         )
 
     def forward(self, agent_qs, obs):

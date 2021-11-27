@@ -9,7 +9,15 @@ from abc import ABCMeta, abstractmethod
 import torch.nn as nn
 
 from malib.utils import errors
-from malib.utils.typing import DataTransferType, ModelConfig, Dict, Any, Tuple, Callable
+from malib.utils.typing import (
+    DataTransferType,
+    ModelConfig,
+    Dict,
+    Any,
+    Tuple,
+    Callable,
+    List,
+)
 from malib.utils.preprocessor import get_preprocessor, Mode
 from malib.utils.notations import deprecated
 
@@ -179,12 +187,17 @@ class Policy(metaclass=ABCMeta):
     @abstractmethod
     def compute_action(
         self, observation: DataTransferType, **kwargs
-    ) -> Tuple[Any, Any, Any]:
+    ) -> Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
         """Compute single action when rollout at each step, return 3 elements:
-        action, None, extra_info['actions_prob']
+        action, action_dist, a list of rnn_state
         """
 
         pass
+
+    def get_initial_state(self) -> List[DataTransferType]:
+        """Return a list of rnn states if models are rnns"""
+
+        return []
 
     def state_dict(self):
         """Return state dict in real time"""

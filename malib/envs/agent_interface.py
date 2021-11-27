@@ -3,6 +3,7 @@ Environment agent interface is designed for rollout and simulation.
 """
 
 import os
+from typing import Tuple
 import gym
 import ray
 import numpy as np
@@ -15,6 +16,7 @@ from malib import settings
 from malib.algorithm.common.policy import Policy
 from malib.algorithm import get_algorithm_space
 from malib.utils.typing import (
+    DataTransferType,
     Status,
     Dict,
     Any,
@@ -23,6 +25,7 @@ from malib.utils.typing import (
     PolicyID,
     ParameterDescription,
     BehaviorMode,
+    List,
 )
 
 import pickle as pkl
@@ -213,21 +216,29 @@ class AgentInterface:
         )
         return res
 
-    def compute_action(self, *args, **kwargs):
+    def compute_action(
+        self, *args, **kwargs
+    ) -> Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
         """Return an action by calling `compute_action` of a policy instance.
 
         :param args: list of args
         :param kwargs: dict of args
-        :return: A tuple of action, action_dist, extra_info
+        :return: A tuple of action, action_dist, a list of rnn_state
         """
         policy_id = kwargs.get("policy_id", self.behavior_policy)
         if policy_id is None:
             policy_id = self._random_select_policy()
+            self._behavior_policy = policy_id
         kwargs.update({"behavior_mode": self.behavior_mode})
         return self.policies[policy_id].compute_action(*args, **kwargs)
 
     def get_policy(self, pid: PolicyID) -> Policy:
         return self.policies[pid]
+
+    def get_initial_state(self, pid=None) -> List[DataTransferType]:
+        pid = pid or self.behavior_policy
+        assert pid is not None, "Behavior policy or input pid cannot both be None"
+        return self.policies[pid].get_initial_state()
 
     def update_weights(
         self, pids: Sequence = None, waiting: bool = False
