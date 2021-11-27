@@ -46,20 +46,12 @@ class DDPGLoss(LossFunc):
                 {"params": self.policy.critic.parameters()}
             )
 
-    def __call__(self, batch) -> Dict[str, Any]:
-
-        FloatTensor = (
-            torch.cuda.FloatTensor
-            if self.policy.custom_config["use_cuda"]
-            else torch.FloatTensor
-        )
-        cast_to_tensor = lambda x: FloatTensor(x.copy())
-
-        rewards = cast_to_tensor(batch[EpisodeKey.REWARD]).view(-1, 1)
-        actions = cast_to_tensor(batch[EpisodeKey.ACTION_DIST])
-        cur_obs = cast_to_tensor(batch[EpisodeKey.CUR_OBS])
-        next_obs = cast_to_tensor(batch[EpisodeKey.NEXT_OBS])
-        dones = cast_to_tensor(batch[EpisodeKey.DONE]).view(-1, 1)
+    def loss_compute(self, batch) -> Dict[str, Any]:
+        rewards = batch[EpisodeKey.REWARD].view(-1, 1)
+        actions = batch[EpisodeKey.ACTION_DIST]
+        cur_obs = batch[EpisodeKey.CUR_OBS]
+        next_obs = batch[EpisodeKey.NEXT_OBS]
+        dones = batch[EpisodeKey.DONE].view(-1, 1)
         cliprange = self._params["grad_norm_clipping"]
         gamma = self.policy.custom_config["gamma"]
 

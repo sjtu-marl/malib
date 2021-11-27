@@ -67,7 +67,7 @@ class AdvIRLLoss(LossFunc):
 
         _ = [p.step() for p in self.optimizers.values()]
 
-    def __call__(self, agent_batch, expert_batch) -> Dict[str, Any]:
+    def loss_compute(self, agent_batch, expert_batch) -> Dict[str, Any]:
 
         # allocate static memory for bce_targets
         if self.bce_targets is None:
@@ -86,12 +86,12 @@ class AdvIRLLoss(LossFunc):
         )
         cast_to_tensor = lambda x: FloatTensor(x.copy())
 
-        expert_cur_obs = cast_to_tensor(expert_batch[EpisodeKey.CUR_OBS])
-        expert_actions = cast_to_tensor(expert_batch[EpisodeKey.ACTION])
+        expert_cur_obs = expert_batch[EpisodeKey.CUR_OBS]
+        expert_actions = expert_batch[EpisodeKey.ACTION]
         expert_disc_input = torch.cat([expert_cur_obs, expert_actions], dim=-1)
 
-        agent_cur_obs = cast_to_tensor(agent_batch[EpisodeKey.CUR_OBS])
-        agent_actions = cast_to_tensor(agent_batch[EpisodeKey.ACTION])
+        agent_cur_obs = agent_batch[EpisodeKey.CUR_OBS]
+        agent_actions = agent_batch[EpisodeKey.ACTION]
         agent_disc_input = torch.cat([agent_cur_obs, agent_actions], dim=-1)
 
         disc_input = torch.cat([expert_disc_input, agent_disc_input], dim=0)

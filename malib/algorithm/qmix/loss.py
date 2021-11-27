@@ -67,27 +67,21 @@ class QMIXLoss(LossFunc):
         for p in self.policy.values():
             p._step += 1
 
-    def __call__(self, batch) -> Dict[str, Any]:
+    def loss_compute(self, batch) -> Dict[str, Any]:
         self.loss = []
-        state = self._cast_to_tensor(list(batch.values())[0][EpisodeKey.CUR_STATE])
-        next_state = self._cast_to_tensor(
-            list(batch.values())[0][EpisodeKey.NEXT_STATE]
-        )
-        rewards = self._cast_to_tensor(list(batch.values())[0][EpisodeKey.REWARD]).view(
-            -1, 1
-        )
-        dones = self._cast_to_tensor(list(batch.values())[0][EpisodeKey.DONE]).view(
-            -1, 1
-        )
+        state = list(batch.values())[0][EpisodeKey.CUR_STATE]
+        next_state = list(batch.values())[0][EpisodeKey.NEXT_STATE]
+        rewards = list(batch.values())[0][EpisodeKey.REWARD].view(-1, 1)
+        dones = list(batch.values())[0][EpisodeKey.DONE].view(-1, 1)
 
         # ================= handle for each agent ====================================
         q_vals, next_max_q_vals = [], []
         for env_agent_id in self.agents:
             _batch = batch[env_agent_id]
-            obs = self._cast_to_tensor(_batch[EpisodeKey.CUR_OBS])
-            next_obs = self._cast_to_tensor(_batch[EpisodeKey.NEXT_OBS])
-            act = torch.LongTensor(_batch[EpisodeKey.ACTION])
-            next_action_mask = self._cast_to_tensor(_batch[EpisodeKey.NEXT_ACTION_MASK])
+            obs = _batch[EpisodeKey.CUR_OBS]
+            next_obs = _batch[EpisodeKey.NEXT_OBS]
+            act = _batch[EpisodeKey.ACTION]
+            next_action_mask = _batch[EpisodeKey.NEXT_ACTION_MASK]
             policy: DQN = self.policy[env_agent_id]
             q = policy.critic(obs).gather(-1, act.unsqueeze(1)).squeeze()
             q_vals.append(q)

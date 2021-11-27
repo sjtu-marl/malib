@@ -61,7 +61,7 @@ class DiscreteSACLoss(LossFunc):
                     {"params": [self.policy._log_alpha]}
                 )
 
-    def __call__(self, batch) -> Dict[str, Any]:
+    def loss_compute(self, batch) -> Dict[str, Any]:
         self.loss = []
 
         FloatTensor = (
@@ -74,15 +74,13 @@ class DiscreteSACLoss(LossFunc):
             if self.policy.custom_config["use_cuda"]
             else torch.LongTensor
         )
-        cast_to_tensor = lambda x: FloatTensor(x.copy())
-        cast_to_long_tensor = lambda x: LongTensor(x.copy())
 
         # total loss = policy_gradient_loss - entropy * entropy_coefficient + value_coefficient * value_loss
-        rewards = cast_to_tensor(batch[EpisodeKey.REWARD])
-        actions = cast_to_long_tensor(batch[EpisodeKey.ACTION])
-        cur_obs = cast_to_tensor(batch[EpisodeKey.CUR_OBS])
-        next_obs = cast_to_tensor(batch[EpisodeKey.NEXT_OBS])
-        dones = cast_to_tensor(batch[EpisodeKey.DONE])
+        rewards = batch[EpisodeKey.REWARD]
+        actions = batch[EpisodeKey.ACTION]
+        cur_obs = batch[EpisodeKey.CUR_OBS]
+        next_obs = batch[EpisodeKey.NEXT_OBS]
+        dones = batch[EpisodeKey.DONE]
         cliprange = self._params["grad_norm_clipping"]
         alpha = self.policy._alpha
         gamma = self.policy.custom_config["gamma"]

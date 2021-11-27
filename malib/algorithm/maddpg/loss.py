@@ -38,21 +38,13 @@ class MADDPGLoss(DDPGLoss):
         self.policy.soft_update(tau=self._params["tau"])
         return None
 
-    def __call__(self, agent_batch):
-        FloatTensor = (
-            torch.cuda.FloatTensor
-            if self.policy.custom_config["use_cuda"]
-            else torch.FloatTensor
-        )
-        cast_to_tensor = lambda x: FloatTensor(x.copy())
+    def loss_compute(self, agent_batch):
         cliprange = self._params["grad_norm_clipping"]
 
         # print(all_agent_batch[agent_id])
-        rewards = cast_to_tensor(agent_batch[self.main_id][EpisodeKey.REWARD]).view(
-            -1, 1
-        )
-        dones = cast_to_tensor(agent_batch[self.main_id][EpisodeKey.DONE]).view(-1, 1)
-        cur_obs = cast_to_tensor(agent_batch[self.main_id][EpisodeKey.CUR_OBS])
+        rewards = agent_batch[self.main_id][EpisodeKey.REWARD].view(-1, 1)
+        dones = agent_batch[self.main_id][EpisodeKey.DONE].view(-1, 1)
+        cur_obs = agent_batch[self.main_id][EpisodeKey.CUR_OBS]
 
         gamma = self.policy.custom_config["gamma"]
 
@@ -64,11 +56,11 @@ class MADDPGLoss(DDPGLoss):
         # set target state
         for aid in self.agents:
             batch = agent_batch[aid]
-            target_vf_in_list_obs.append(cast_to_tensor(batch[EpisodeKey.NEXT_OBS]))
+            target_vf_in_list_obs.append(batch[EpisodeKey.NEXT_OBS])
             target_vf_in_list_act.append(batch["next_act_by_target"])
 
-            vf_in_list_obs.append(cast_to_tensor(batch[EpisodeKey.CUR_OBS]))
-            vf_in_list_act.append(cast_to_tensor(batch[EpisodeKey.ACTION_DIST]))
+            vf_in_list_obs.append(batch[EpisodeKey.CUR_OBS])
+            vf_in_list_act.append(batch[EpisodeKey.ACTION_DIST])
 
         target_vf_state = torch.cat(
             [*target_vf_in_list_obs, *target_vf_in_list_act], dim=1

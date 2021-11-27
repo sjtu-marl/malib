@@ -37,13 +37,13 @@ class DQNLoss(LossFunc):
 
         return gradients
 
-    def __call__(self, batch) -> Dict[str, Any]:
+    def loss_compute(self, batch) -> Dict[str, Any]:
         self.loss = []
-        reward = torch.FloatTensor(batch[EpisodeKey.REWARD].copy()).view(-1, 1)
-        act = torch.LongTensor(batch[EpisodeKey.ACTION].copy()).view(-1, 1)
+        reward = batch[EpisodeKey.REWARD].view(-1, 1)
+        act = batch[EpisodeKey.ACTION].view(-1, 1)
         obs = batch[EpisodeKey.CUR_OBS].copy()
         next_obs = batch[EpisodeKey.NEXT_OBS].copy()
-        done = torch.FloatTensor(batch[EpisodeKey.DONE].copy()).view(-1, 1)
+        done = batch[EpisodeKey.DONE].view(-1, 1)
 
         state_action_values = self.policy.critic(obs).gather(1, act)
         next_state_q = self.policy.target_critic(next_obs)
@@ -52,7 +52,7 @@ class DQNLoss(LossFunc):
             next_action_mask = batch["next_action_mask"].copy()
             illegal_action_mask = 1 - next_action_mask
             # give very low value to illegal action logits
-            illegal_action_logits = -torch.FloatTensor(illegal_action_mask) * 1e9
+            illegal_action_logits = -illegal_action_mask * 1e9
             next_state_q += illegal_action_logits
 
         next_state_action_values = next_state_q.max(1)[0].unsqueeze(1).detach()

@@ -65,11 +65,9 @@ class MAPPOLoss(LossFunc):
                 {"params": self.policy.critic.parameters()}
             )
 
-    def __call__(self, sample, update_actor=True):
+    def loss_compute(self, sample):
         self._policy.opt_cnt += 1
         # cast = lambda x: torch.FloatTensor(x.copy()).to(self._policy.device)
-        cast = lambda x: x
-
         (
             share_obs_batch,
             obs_batch,
@@ -83,17 +81,17 @@ class MAPPOLoss(LossFunc):
             critic_rnn_states_batch,
             dones_batch,
         ) = (
-            cast(sample["share_obs"]),
-            cast(sample[EpisodeKey.CUR_OBS]),
-            cast(sample[EpisodeKey.ACTION]).long(),
-            cast(sample["value"]),
-            cast(sample["return"]),
+            sample["share_obs"],
+            sample[EpisodeKey.CUR_OBS],
+            sample[EpisodeKey.ACTION].long(),
+            sample["value"],
+            sample["return"],
             None,  # cast(sample["active_mask"]),
-            cast(sample[EpisodeKey.ACTION_DIST]),
-            cast(sample["available_action"]),
-            cast(sample["actor_rnn_states"]),
-            cast(sample["critic_rnn_states"]),
-            cast(sample[EpisodeKey.DONE]),
+            sample[EpisodeKey.ACTION_DIST],
+            sample["available_action"],
+            sample["actor_rnn_states"],
+            sample["critic_rnn_states"],
+            sample[EpisodeKey.DONE],
         )
         # for k, v in sample.items():
         #     print(f"{k}: {v.shape}")

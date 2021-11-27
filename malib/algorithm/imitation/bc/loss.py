@@ -46,12 +46,12 @@ class BCLoss(LossFunc):
 
         _ = [p.step() for p in self.optimizers]
 
-    def __call__(self, batch) -> Dict[str, Any]:
+    def loss_compute(self, batch) -> Dict[str, Any]:
         # empty loss
         self.loss = []
-        actions = torch.from_numpy(batch[EpisodeKey.ACTION].copy())
+        actions = batch[EpisodeKey.ACTION]
 
-        probs = self.policy.actor(batch[EpisodeKey.CUR_OBS].copy())
+        probs = self.policy.actor(batch[EpisodeKey.CUR_OBS])
         if isinstance(probs, tuple):
             distri = Normal(*probs)
             mu = probs[0]

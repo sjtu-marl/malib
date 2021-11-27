@@ -243,6 +243,8 @@ class AgentInterface:
         return self.policies[pid]
 
     def get_initial_state(self, pid=None) -> List[DataTransferType]:
+        """Return a list of initial rnn states"""
+
         pid = pid or self.behavior_policy
         assert pid is not None, "Behavior policy or input pid cannot both be None"
         return self.policies[pid].get_initial_state()
