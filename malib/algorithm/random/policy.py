@@ -3,6 +3,7 @@ import torch
 import gym
 
 from malib.algorithm.common.policy import Policy
+from malib.utils.episode import EpisodeKey
 from malib.utils.typing import DataTransferType, Any, List, Tuple
 from malib.algorithm.common.model import get_model
 
@@ -41,6 +42,8 @@ class RandomPolicy(Policy):
     def compute_action(
         self, observation: DataTransferType, **kwargs
     ) -> Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
+        rnn_state = kwargs[EpisodeKey.RNN_STATE]
+        assert len(rnn_state) == len(observation)
         logits = torch.softmax(self.actor(observation), dim=-1)
         action_prob = torch.zeros((len(observation), self.action_space.n))
         if "legal_moves" in kwargs:
@@ -52,7 +55,14 @@ class RandomPolicy(Policy):
             mask = torch.ones_like(logits)
         logits = mask * logits
         action = logits.argmax(dim=-1).view((-1, 1)).squeeze(-1).numpy()
-        return action, action_prob.numpy(), [[] for _ in range(len(observation))]
+        return action, action_prob.numpy(), rnn_state
+
+    def get_initial_state(self, batch_size: int = None) -> List[DataTransferType]:
+        return [
+            # represent general actor and critic rnn states
+            np.zeros(2)
+            for _ in range(2)
+        ]
 
     def train(self):
         pass

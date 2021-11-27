@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from malib import settings
 from malib.algorithm.common.policy import Policy
 from malib.algorithm import get_algorithm_space
+from malib.utils.episode import EpisodeKey
 from malib.utils.typing import (
     DataTransferType,
     Status,
@@ -230,6 +231,12 @@ class AgentInterface:
             policy_id = self._random_select_policy()
             self._behavior_policy = policy_id
         kwargs.update({"behavior_mode": self.behavior_mode})
+        kwargs[EpisodeKey.CUR_OBS] = np.vstack(kwargs[EpisodeKey.CUR_OBS])
+        if kwargs.get(EpisodeKey.CUR_STATE) is not None:
+            kwargs[EpisodeKey.CUR_STATE] = np.vstack(kwargs[EpisodeKey.CUR_STATE])
+        rnn_state = kwargs[EpisodeKey.RNN_STATE]
+        for i, e in enumerate(rnn_state):
+            rnn_state[i] = np.vstack(e)
         return self.policies[policy_id].compute_action(*args, **kwargs)
 
     def get_policy(self, pid: PolicyID) -> Policy:
