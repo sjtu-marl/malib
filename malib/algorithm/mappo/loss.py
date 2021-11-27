@@ -99,9 +99,7 @@ class MAPPOLoss(LossFunc):
         #     print(f"{k}: {v.shape}")
         #
         if self._policy.custom_config["use_popart"]:
-            adv_targ = return_batch - torch.FloatTensor(
-                self._policy.value_normalizer.denormalize(value_preds_batch)
-            ).to(return_batch.device)
+            adv_targ = (return_batch - value_preds_batch).to(return_batch.device)
         else:
             adv_targ = return_batch - value_preds_batch
         adv_targ = (adv_targ - adv_targ.mean()) / (1e-9 + adv_targ.std())

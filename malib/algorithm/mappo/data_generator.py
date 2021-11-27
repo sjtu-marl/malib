@@ -1,7 +1,9 @@
 from collections import defaultdict
+from typing import Dict
 import torch
 import numpy as np
 from malib.backend.datapool.offline_dataset_server import Episode
+from malib.algorithm.mappo.vtrace import compute_vtrace
 
 
 def get_part_data_from_batch(batch_data, idx):
@@ -10,6 +12,44 @@ def get_part_data_from_batch(batch_data, idx):
     for k, v in batch_data.items():
         res[k] = v[idx]
     return res
+
+
+def compute_return(policy, batch, mode="gae"):
+    cm_cfg = policy.custom_config
+    gamma, gae_lambda = cm_cfg["gamma"], cm_cfg["gae"]["gae_lambda"]
+    values, rewards, dones = batch["value"], batch[Episode.REWARD], batch[Episode.DONE]
+    if cm_cfg["use_popart"]:
+        values = policy.value_normalizer.denormalize(values)
+
+    if mode == "gae":
+        return compute_gae(values, rewards, dones, gamma, gae_lambda)
+    elif mode == "vtrace":
+        return compute_vtrace(
+            policy, batch[Episode.CUR_OBS], rewards, values, dones,
+            batch["actor_rnn_states"], batch[Episode.ACTION], 
+            batch[Episode.ACTION_DIST],
+            gamma, cm_cfg["vtrace"]["clip_rho_threshold"],
+            cm_cfg["vtrace"]["clip_pg_rho_threshold"]
+        )
+    else:
+        raise ValueError("Unexpected return mode: {}".format(mode))
+
+
+def compute_gae(value, reward, done, gamma, gae_lambda):
+    B, Tp1, N, _ = reward.shape
+    assert list(value.shape) == [B, Tp1, N, 1] and list(done.shape) == [B, Tp1, N, 1]
+    value = np.transpose(value, (1, 0, 2, 3))
+    done = np.transpose(done, (1, 0, 2, 3))
+    reward = np.transpose(reward, (1, 0, 2, 3))
+
+    gae, ret = 0, np.zeros_like(reward)
+    for t in reversed(range(Tp1 - 1)):
+        delta = reward[t] + gamma * (1-done[t]) * value[t+1] - value[t]
+        gae = delta + gamma * gae_lambda * (1-done[t]) * gae
+        ret[t] = gae + value[t]
+    
+    return ret.transpose((1, 0, 2, 3))
+
 
 
 def simple_data_generator(batch, num_mini_batch, device):

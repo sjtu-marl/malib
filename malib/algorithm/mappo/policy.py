@@ -86,6 +86,10 @@ class MAPPO(Policy):
     def compute_actions(self, observation, **kwargs):
         raise RuntimeError("Shouldn't use it currently")
 
+    def forward_actor(self, obs, actor_rnn_states, rnn_masks):
+        logits, actor_rnn_states = self.actor(obs, actor_rnn_states, rnn_masks)
+        return logits, actor_rnn_states
+
     def compute_action(self, observation, **kwargs):
         actor_rnn_states = kwargs.get("actor_rnn_states", None)
         rnn_masks = kwargs.get("rnn_masks", None)
@@ -101,19 +105,21 @@ class MAPPO(Policy):
             logits = logits - 1e10 * illegal_action_mask
         dist = torch.distributions.Categorical(logits=logits)
         extra_info = {}
-        action_prob = dist.probs.detach().numpy()  # num_action
+        action_prob = dist.probs.detach().cpu().numpy()  # num_action
 
-        extra_info["action_probs"] = action_prob
-        action = dist.sample().numpy()
+        # extra_info["action_probs"] = action_prob
+        action = dist.sample().cpu().numpy()
         if "share_obs" in kwargs and kwargs["share_obs"] is not None:
             critic_rnn_states = kwargs.get("critic_rnn_states", None)
             value, critic_rnn_states = self.critic(
                 kwargs["share_obs"], critic_rnn_states, rnn_masks
             )
-            extra_info["value"] = value.detach().numpy()
-            extra_info["critic_rnn_states"] = critic_rnn_states.detach().numpy()
+            extra_info["value"] = value.detach().cpu().numpy()
+            extra_info["critic_rnn_states"] = critic_rnn_states.detach().cpu().numpy()
 
-        extra_info["actor_rnn_states"] = actor_rnn_states.detach().numpy()
+        extra_info["actor_rnn_states"] = actor_rnn_states.detach().cpu().numpy()
+        # XXX(ziyu): it seems that probs have some tiny numerical error, just use logits
+        # return action, logits.detach().cpu().numpy(), extra_info
         return action, action_prob, extra_info
 
     def train(self):

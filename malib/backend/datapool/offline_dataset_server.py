@@ -238,7 +238,8 @@ class Table:
                 continue
             t = BufferDict()
             for dk, dshape in _dshapes.items():
-                t[dk] = np.zeros((capacity, self._fragment_length) + dshape)
+                # ziyu: record last step value if truncated
+                t[dk] = np.zeros((capacity, self._fragment_length+1) + dshape)
             self._buffer[agent] = t
 
     @property

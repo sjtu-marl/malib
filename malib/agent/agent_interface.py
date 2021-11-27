@@ -138,7 +138,7 @@ class AgentInterface(metaclass=ABCMeta):
             # FIXME(ziyu & ming): how to figure out these params, new config?
             [self._id],
             capacity=500,
-            fragment_length=3001, 
+            fragment_length=3001, # ziyu: record last step value if truncated 
             data_shapes=self._env_desc["data_shapes"],
             mode="local",
         )

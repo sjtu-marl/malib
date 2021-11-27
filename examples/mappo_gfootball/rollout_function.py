@@ -77,41 +77,6 @@ def grf_simultaneous(
 
     split_cast = lambda x: np.array(np.split(x, n_rollout_threads))
 
-    def compute_gae(last_step_values):
-        for aid, buffer in agent_buffers.items():
-            # FIXME(ziyu): this policy should be get if in general cases.
-            custom_config = policy.custom_config
-            use_popart = custom_config["use_popart"]
-            gamma, gae_lambda = custom_config["gamma"], custom_config["gae_lambda"]
-            if use_popart:
-                f = lambda x: policy.value_normalizer.denormalize(np.array(x))
-            else:
-                f = lambda x: x
-            rewards = buffer[Episode.REWARD]
-            values = buffer["value"]
-            dones = buffer[Episode.DONE]
-            ret = np.zeros_like(rewards)
-
-            gae = 0
-            traj_size = rewards.shape[0]
-            assert traj_size == fragment_length, (traj_size, fragment_length)
-            for step in reversed(range(traj_size)):
-                if step == traj_size - 1:
-                    delta = (
-                        rewards[step]
-                        + gamma * f(last_step_values[aid]) * (1 - dones[step])
-                        - f(values[step])
-                    )
-                else:
-                    delta = (
-                        rewards[step]
-                        + gamma * f(values[step + 1]) * (1 - dones[step])
-                        - f(values[step])
-                    )
-                gae = delta + gamma * gae_lambda * gae * (1 - dones[step])
-                ret[step] = gae + f(values[step])
-            buffer.update({"return": ret})
-
     while not env.is_terminated():
         actions, action_dists, action_masks, avail_actions = {}, {}, {}, {}
         values, extra_infos = {}, {}
@@ -132,6 +97,8 @@ def grf_simultaneous(
 
             actions[agent] = split_cast(action)
             action_dists[agent] = split_cast(action_dist)
+            # import pdb; pdb.set_trace()
+            # assert np.equal(action_dists[agent].sum(-1), 1).all()
             values[agent] = split_cast(extra_info["value"])
             extra_infos[agent] = extra_info
         rets = env.step(actions)
@@ -154,7 +121,7 @@ def grf_simultaneous(
                     "available_action": observations[agent][..., :19],
                     # TODO(ziyu): use action mask by parse obs.
                     "value": values[agent],
-                    "return": np.zeros((*shape0, 1)),
+                    # "return": np.zeros((*shape0, 1)),
                     "share_obs": states[agent],
                     "actor_rnn_states": actor_rnn_states[agent],
                     "critic_rnn_states": critic_rnn_states[agent],
@@ -178,7 +145,7 @@ def grf_simultaneous(
 
         done = all([d.all() for d in dones.values()])
 
-    next_step_values = {aid: 0.0 for aid in observations}
+    bootstrap_values = {aid: np.zeros_like(values[aid]) for aid in observations}
     if not done and buffer_desc is not None:
         for agent in agent_buffers:
             _, _, extra_info = behavior_policies[agent].compute_action(
@@ -189,13 +156,37 @@ def grf_simultaneous(
                 critic_rnn_states=np.concatenate(critic_rnn_states[agent]),
                 rnn_masks=np.concatenate(dones[agent]),
             )
-            next_step_values[agent] = split_cast(extra_info["value"])
+            actor_rnn_states[agent] = split_cast(
+                extra_infos[agent]["actor_rnn_states"]
+            )
+            critic_rnn_states[agent] = split_cast(
+                extra_infos[agent]["critic_rnn_states"]
+            )
+            bootstrap_values[agent] = split_cast(extra_info["value"])
 
     if dataset_server is not None:
         for agent in agent_buffers:
+            boostrap_data = {
+                    Episode.CUR_OBS: observations[agent] * 0,
+                    Episode.ACTION: actions[agent][..., None] * 0,
+                    Episode.ACTION_DIST: action_dists[agent] * 0,
+                    Episode.REWARD: rewards[agent] * 0,
+                    Episode.DONE: dones[agent] * 0,
+                    "active_mask": np.empty((*shape0, 1)),
+                    "available_action": observations[agent][..., :19] * 0,
+                    # TODO(ziyu): use action mask by parse obs.
+                    "value": bootstrap_values[agent],
+                    # "return": np.zeros((*shape0, 1)),
+                    "share_obs": states[agent],
+                    "actor_rnn_states": actor_rnn_states[agent] * 0,
+                    "critic_rnn_states": critic_rnn_states[agent] * 0,
+                }
+            for k, v in boostrap_data.items():
+                agent_buffers[agent][k].append(v)
             for k, v_list in agent_buffers[agent].items():
                 agent_buffers[agent][k] = np.stack(v_list)
-        compute_gae(next_step_values)
+
+        # compute_gae(bootstrap_values)
 
         for agent in agent_buffers:
             for k, v in agent_buffers[agent].items():
@@ -214,6 +205,7 @@ def grf_simultaneous(
 
         buffer_desc.data = agent_buffers
         buffer_desc.indices = indices
+        assert len(indices) == num_envs, (len(indices), num_envs)
         dataset_server.save.remote(buffer_desc)
 
     results = _parse_episode_infos(env.episode_infos)
