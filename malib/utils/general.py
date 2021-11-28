@@ -52,6 +52,7 @@ def iter_many_dicts_recursively(*d, history=None):
             if history is None:
                 yield d, k, tuple([_d[k] for _d in d])
             else:
+                # print("fff", k, [list(_d.keys())for _d in d])
                 yield history + [k], d, k, tuple([_d[k] for _d in d])
 
 

@@ -89,9 +89,11 @@ class TestEnvRunner:
         )
 
         while not self.vec_env.is_terminated():
-            policy_inputs, filtered_ouptuts = _process_environment_returns(
+            filtered_ouptuts = {}
+            policy_inputs, filtered_ouptuts, _ = _process_environment_returns(
                 env_rets=rets,
                 agent_interfaces=self.agent_interfaces,
+                filtered_env_outputs=filtered_ouptuts,
             )
 
             # check consistency in env ids
@@ -99,11 +101,11 @@ class TestEnvRunner:
             filtered_env_ids = sorted(list(filtered_ouptuts.keys()))
             real_env_ids = sorted(list(self.vec_env.active_envs.keys()))
 
-            assert pinput_env_ids == filtered_env_ids == real_env_ids, (
-                pinput_env_ids,
-                filtered_env_ids,
-                real_env_ids,
-            )
+            # assert pinput_env_ids == filtered_env_ids == real_env_ids, (
+            #     pinput_env_ids,
+            #     filtered_env_ids,
+            #     real_env_ids,
+            # )
 
             policy_outputs, active_env_ids = _do_policy_eval(
                 policy_inputs, self.agent_interfaces, episodes
@@ -113,6 +115,12 @@ class TestEnvRunner:
 
             env_inputs, detached_policy_outputs = _process_policy_outputs(
                 active_env_ids, policy_outputs, self.vec_env
+            )
+
+            policy_inputs, filtered_ouptuts, _ = _process_environment_returns(
+                env_rets=rets,
+                agent_interfaces=self.agent_interfaces,
+                filtered_env_outputs=filtered_ouptuts,
             )
 
             detached_env_ids = sorted(detached_policy_outputs.keys())

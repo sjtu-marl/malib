@@ -256,9 +256,6 @@ def env_runner(
         ) = process_environment_returns(rets, agent_interfaces, filtered_env_outputs)
         # filter policy inputs here
         # =================================
-        a = set(list(detached_policy_outputs.keys()))
-        b = set(list(filtered_env_outputs.keys()))
-        assert len(b - a) >= 0
 
         episodes.record(detached_policy_outputs, filtered_env_outputs)
 
