@@ -75,6 +75,7 @@ class RolloutWorkerManager:
                 # parallel_num: the size of actor pool for rollout and simulation
                 parallel_num=rollout_config["num_episodes"]
                 // rollout_config["num_env_per_worker"],
+                use_subproc_env=rollout_config.get("use_subproc_env", False),
                 exp_cfg=exp_cfg,
             )
 

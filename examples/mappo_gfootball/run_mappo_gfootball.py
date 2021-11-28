@@ -1,17 +1,18 @@
-# -*- coding: utf-8 -*-
 import argparse
 import numpy as np
 import torch
-
 import yaml
-import os
 
-from rollout_function import grf_simultaneous
-from malib.runner import run
-import copy
+
 from malib.utils.logger import Logger
+from malib.runner import run
+from malib.envs.gr_football import (
+    ParameterizedSharing,
+    BaseGFootBall,
+    DEFAULT_ENV_CONNFIG,
+    env_desc_gen,
+)
 import pathlib
-from malib.envs.gr_football import build_sampler_config, env_desc_gen
 
 BASE_DIR = pathlib.Path(__file__).parent.parent.parent.absolute()
 
@@ -33,22 +34,20 @@ if __name__ == "__main__":
     Logger.info(f"the seed is set to be {args.seed}.")
 
     with open(args.config, "r") as f:
-        config = yaml.load(f)
+        config = yaml.safe_load(f)
 
     training_config = config["training"]
     rollout_config = config["rollout"]
 
     assert (
-        rollout_config["num_episodes"] % rollout_config["episode_seg"] == 0
+        rollout_config["num_episodes"] % rollout_config["num_env_per_worker"] == 0
     ), "in rollout config (num_episodes mod epsidoe_seg) must be 0"
     training_config["config"]["total_epoch"] = rollout_config["stopper_config"][
         "max_step"
     ]
 
-    rollout_config["callback"] = grf_simultaneous
     evaluation_config = config["evaluation"]
-    evaluation_config["callback"] = grf_simultaneous
-    env_desc = env_desc_gen(config=config["env_description"]["config"])
+    env_desc = env_desc_gen(DEFAULT_ENV_CONNFIG)
 
     training_config["interface"]["observation_spaces"] = env_desc["observation_spaces"]
     training_config["interface"]["action_spaces"] = env_desc["action_spaces"]
@@ -60,11 +59,6 @@ if __name__ == "__main__":
     custom_config.update({"global_state_space": env_desc["state_spaces"]})
 
     model_config = config["algorithms"]["MAPPO"]["model_config"]
-    build_sampler_config(
-        env_desc,
-        model_config["actor"]["layers"][-1]["units"],
-        model_config["critic"]["layers"][-1]["units"],
-    )
 
     run(
         group=config["group"],

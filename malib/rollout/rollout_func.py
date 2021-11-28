@@ -360,7 +360,7 @@ class Stepping:
         agent_interfaces: Dict[AgentID, AgentInterface],
         fragment_length: int,
         desc: Dict[str, Any],
-        callback: type,
+        callback: type,  # TODO(ming): deprecated
         buffer_desc: BufferDescription = None,
     ) -> Tuple[str, Dict[str, List]]:
         """Environment stepping, rollout/simulate with environment vectorization if it is feasible.

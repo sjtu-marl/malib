@@ -1,17 +1,20 @@
-# -*- coding: utf-8 -*-
 import copy
-from malib.algorithm.mappo.actor_critic import RNNNet
-from malib.algorithm.mappo.utils import PopArt, init_fc_weights
 import os
 import pickle
-from typing import Tuple, Any, Dict
 import gym
 import torch
+
 from torch import nn
+
+from malib.utils.typing import DataTransferType, Tuple, Any, Dict, EpisodeID, List
+from malib.utils.episode import EpisodeKey
+
 from malib.algorithm.common.model import get_model
 from malib.algorithm.common.policy import Policy
-from malib.utils.typing import DataTransferType
 from malib.algorithm.common.misc import hard_update
+
+from malib.algorithm.mappo.actor_critic import RNNNet
+from malib.algorithm.mappo.utils import PopArt, init_fc_weights
 
 
 class MAPPO(Policy):
@@ -40,6 +43,7 @@ class MAPPO(Policy):
             "cuda" if custom_config.get("use_cuda", False) else "cpu"
         )
 
+        # TODO(ming): collect to custom config
         global_observation_space = custom_config["global_state_space"][
             kwargs["env_agent_id"]
         ]
@@ -87,13 +91,16 @@ class MAPPO(Policy):
         raise RuntimeError("Shouldn't use it currently")
 
     def compute_action(self, observation, **kwargs):
-        actor_rnn_states = kwargs.get("actor_rnn_states", None)
-        rnn_masks = kwargs.get("rnn_masks", None)
+        actor_rnn_states, critic_rnn_states, rnn_masks = None, None
+        cur_state = kwargs.get(EpisodeKey.CUR_STATE, None)
+        rnn_state = kwargs[EpisodeKey.RNN_STATE]
+        if len(rnn_state) == 2:
+            actor_rnn_states, critic_rnn_states = rnn_state
+        if len(rnn_state) == 3:
+            actor_rnn_states, critic_rnn_states, rnn_masks = rnn_state
         logits, actor_rnn_states = self.actor(observation, actor_rnn_states, rnn_masks)
         if "action_mask" in kwargs:
-            illegal_action_mask = torch.FloatTensor(
-                1 - observation[..., : logits.shape[-1]]
-            ).to(logits.device)
+            illegal_action_mask = 1 - observation[..., : logits.shape[-1]]
             assert illegal_action_mask.max() == 1 and illegal_action_mask.min() == 0, (
                 illegal_action_mask.max(),
                 illegal_action_mask.min(),
@@ -105,16 +112,26 @@ class MAPPO(Policy):
 
         extra_info["action_probs"] = action_prob
         action = dist.sample().numpy()
-        if "share_obs" in kwargs and kwargs["share_obs"] is not None:
-            critic_rnn_states = kwargs.get("critic_rnn_states", None)
+        if cur_state is not None:
             value, critic_rnn_states = self.critic(
-                kwargs["share_obs"], critic_rnn_states, rnn_masks
+                cur_state, critic_rnn_states, rnn_masks
             )
             extra_info["value"] = value.detach().numpy()
             extra_info["critic_rnn_states"] = critic_rnn_states.detach().numpy()
 
         extra_info["actor_rnn_states"] = actor_rnn_states.detach().numpy()
-        return action, action_prob, extra_info
+        return (
+            action,
+            action_prob,
+            [
+                actor_rnn_states.detach().numpy(),
+                critic_rnn_states.detach().numpy(),
+                rnn_masks,
+            ],
+        )
+
+    def get_initial_state(self) -> List[DataTransferType]:
+        return self.actor.get_initial_state() + self.critic.get_initial_state() + []
 
     def train(self):
         pass

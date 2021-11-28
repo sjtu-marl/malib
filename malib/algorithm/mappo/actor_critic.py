@@ -2,9 +2,12 @@ from operator import ge
 from torch import nn
 import torch
 from torch.nn.modules import rnn
+
+from malib.utils.typing import List
+from malib.utils.preprocessor import get_preprocessor
+
 from malib.algorithm.common.model import get_model
 from malib.algorithm.mappo.utils import RNNLayer, init_fc_weights
-from malib.utils.preprocessor import get_preprocessor
 
 
 class RNNNet(nn.Module):
@@ -56,3 +59,7 @@ class RNNNet(nn.Module):
 
         act_out = self.out(feat)
         return act_out, rnn_states
+
+    def get_initial_state(self) -> List[torch.TensorType]:
+        # FIXME(ming): ...
+        return [self._init_hidden()]

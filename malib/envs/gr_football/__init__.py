@@ -1,5 +1,6 @@
 import numpy as np
 
+from malib.utils.typing import Dict
 from malib.utils.preprocessor import get_preprocessor
 from malib.utils.episode import EpisodeKey
 from .env import BaseGFootBall
@@ -11,7 +12,7 @@ DEFAULT_ENV_CONNFIG = {
     # env building config
     "env_id": "Gfootball",
     "use_built_in_GK": True,
-    "scenario_config": {
+    "scenario_configs": {
         "env_name": "5_vs_5",
         "number_of_left_players_agent_controls": 4,
         "number_of_right_players_agent_controls": 4,
@@ -25,52 +26,20 @@ DEFAULT_ENV_CONNFIG = {
 }
 
 
-def build_sampler_config(
-    env_desc,
-    actor_rnn_state_shape,
-    critic_rnn_state_shape,
-):
-    env_for_spec = env(**env_desc["config"])
-    num_agents_share = env_for_spec.num_agent_share
-    env_for_spec.close()
-    observation_spaces = env_desc["observation_spaces"]
-    env_desc["data_shapes"] = {}
-    for aid, obsp in observation_spaces.items():
-        num_ps = num_agents_share[aid]
-        acsp, stsp = env_desc["action_spaces"][aid], env_desc["state_spaces"][aid]
-        stsp_prep = get_preprocessor(stsp)(stsp)
-        sampler_config = {
-            "dtypes": {
-                EpisodeKey.REWARD: np.float,
-                EpisodeKey.DONE: np.bool,
-                EpisodeKey.CUR_OBS: np.float,
-                EpisodeKey.ACTION: np.int,
-                EpisodeKey.ACTION_DIST: np.float,
-                "active_mask": np.float,
-                "available_action": np.float,
-                "value": np.float,
-                "return": np.float,
-                "share_obs": np.float,
-                "actor_rnn_states": np.float,
-                "critic_rnn_states": np.float,
-            },
-            "data_shapes": {
-                EpisodeKey.REWARD: (1,),
-                EpisodeKey.DONE: (1,),
-                EpisodeKey.CUR_OBS: obsp.shape,
-                EpisodeKey.ACTION: (1,),
-                EpisodeKey.ACTION_DIST: (acsp.n,),
-                "active_mask": (1,),
-                "available_action": (acsp.n,),
-                "value": (1,),
-                "return": (1,),
-                "share_obs": stsp_prep.shape,
-                "actor_rnn_states": (1, actor_rnn_state_shape),
-                "critic_rnn_states": (1, critic_rnn_state_shape),
-            },
-        }
-        for k in sampler_config["data_shapes"]:
-            sampler_config["data_shapes"][k] = (num_ps,) + sampler_config[
-                "data_shapes"
-            ][k]
-        env_desc["data_shapes"][aid] = sampler_config["data_shapes"]
+def creator(**kwargs):
+    base = BaseGFootBall(**kwargs)
+    return ParameterizedSharing(base, default_sharing_mapping)
+
+
+def env_desc_gen(config):
+    env = creator(**config)
+    env_desc = {
+        "creator": creator,
+        "possible_agents": env.possible_agents,
+        "action_spaces": env.action_spaces,
+        "observation_spaces": env.observation_spaces,
+        "state_spaces": env.state_spaces,
+        "config": config,
+    }
+    env.close()
+    return env_desc

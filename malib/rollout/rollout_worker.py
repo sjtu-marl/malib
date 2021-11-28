@@ -65,12 +65,22 @@ class RolloutWorker(BaseRolloutWorker):
 
             Stepping = rollout_func.Stepping.as_remote(**self._resources)
             self.actors = [
-                Stepping.remote(kwargs["exp_cfg"], env_desc, self._offline_dataset)
+                Stepping.remote(
+                    kwargs["exp_cfg"],
+                    env_desc,
+                    self._offline_dataset,
+                    use_subproc_env=kwargs["use_subproc_env"],
+                )
                 for _ in range(self._parallel_num)
             ]
             self.actors.extend(
                 [
-                    Stepping.remote(kwargs["exp_cfg"], env_desc, None)
+                    Stepping.remote(
+                        kwargs["exp_cfg"],
+                        env_desc,
+                        None,
+                        use_subproc_env=kwargs["use_subproc_env"],
+                    )
                     for _ in range(self._evaluation_worker_num)
                 ]
             )
@@ -92,13 +102,17 @@ class RolloutWorker(BaseRolloutWorker):
                     self._kwargs["exp_cfg"],
                     self._env_description,
                     self._offline_dataset,
+                    use_subproc_env=self._kwargs["use_subproc_env"],
                 )
                 for _ in range(self._parallel_num)
             ]
             self.actors.extend(
                 [
                     Stepping.remote(
-                        self._kwargs["exp_cfg"], self._env_description, None
+                        self._kwargs["exp_cfg"],
+                        self._env_description,
+                        None,
+                        use_subproc_env=self._kwargs["use_subproc_env"],
                     )
                     for _ in self._evaluation_worker_num
                 ]

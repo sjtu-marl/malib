@@ -30,8 +30,9 @@ rollout:
     max_step: 1000
   metric_type: "grf"
   fragment_length: 3001  # XXX(ziyu): fragment length meaning should be changed 
-  num_episodes: 100
-  episode_seg: 10 # 要去看看用的是DummyVecEnv还是其他
+  num_episodes: 1
+  num_env_per_worker: 1
+  use_remote_env: False
   terminate: "any"
 
 evaluation:
