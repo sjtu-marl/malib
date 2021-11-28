@@ -38,8 +38,8 @@ class SyncAgent(IndependentAgent):
         observation_spaces: Dict[AgentID, gym.spaces.Space],
         action_spaces: Dict[AgentID, gym.spaces.Space],
         exp_cfg: Dict[str, Any],
+        population_size,
         use_init_policy_pool: bool,
-        population_size: int = -1,
         algorithm_mapping: Callable = None,
     ):
         """Create an independent agent instance work in synchronous mode.
@@ -88,7 +88,6 @@ class SyncAgent(IndependentAgent):
         :param str sample_mode: sample mode
         :return: A buffer description entity.
         """
-
         return {
             aid: BufferDescription(
                 env_id=self._env_desc["config"]["env_id"],
@@ -97,7 +96,7 @@ class SyncAgent(IndependentAgent):
                 batch_size=batch_size,
                 sample_mode=sample_mode,
             )
-            for aid, (pid, _) in agent_policy_mapping.items()
+            for aid, pid in agent_policy_mapping.items()
         }
 
     def request_data(

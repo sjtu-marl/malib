@@ -35,7 +35,9 @@ setup(
         "supersuit==3.3.1",
         "multi-agent-ale-py==0.1.11",
         "autorom==0.4.2",
-        "colorlog==6.6.0" "mujoco_py",
+        "colorlog==6.6.0",
+        "mujoco_py",
+        "hiredis==2.0.0",
     ],
     extras_require={
         "dev": [
@@ -44,6 +46,8 @@ setup(
             "sphinx",
             "sphinx-rtd-theme",
             "sphinxcontrib-apidoc",
+            "pytest-profiling",
+            "coverage",
         ],
     },
 )

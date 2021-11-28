@@ -45,7 +45,7 @@ class Stopper:
 
 
 class SimpleRolloutStopper(Stopper):
-    """ SimpleRolloutStopper will check the equivalence between evaluate results and """
+    """SimpleRolloutStopper will check the equivalence between evaluate results and"""
 
     def __init__(self, config, tasks: List = None):
         super(SimpleRolloutStopper, self).__init__(config, tasks)
@@ -57,7 +57,7 @@ class SimpleRolloutStopper(Stopper):
         return self._config["max_step"]
 
     def __call__(self, results: Dict[str, MetricEntry], global_step):
-        """ Default rollout stopper will return true when global_step reaches to an oracle """
+        """Default rollout stopper will return true when global_step reaches to an oracle"""
         if global_step == self._config["max_step"]:
             self._info[MetricType.REACH_MAX_STEP] = True
             return True
@@ -69,7 +69,7 @@ class SimpleRolloutStopper(Stopper):
 
 
 class NonStopper(Stopper):
-    """ NonStopper always return false """
+    """NonStopper always return false"""
 
     def __init__(self, config, tasks=None):
         super(NonStopper, self).__init__(config, tasks)
@@ -83,7 +83,7 @@ class NonStopper(Stopper):
 
 
 class SimpleTrainingStopper(Stopper):
-    """ SimpleRolloutStopper will check the equivalence between evaluate results and """
+    """SimpleRolloutStopper will check the equivalence between evaluate results and"""
 
     def __init__(self, config: Dict, tasks: List = None):
         super(SimpleTrainingStopper, self).__init__(config, tasks)

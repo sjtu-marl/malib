@@ -1,64 +1,57 @@
-from dataclasses import dataclass
+from collections import defaultdict
+import uuid
 import gym
 
 from malib.utils.typing import Dict, AgentID, List, Any, Union, Tuple
+from malib.utils.episode import EpisodeKey
 
 
-@dataclass
-class EpisodeInfo:
-    total_rewards: Dict[AgentID, float]
-    step_cnt: Dict[AgentID, float]
+def record_episode_info(func):
+    def wrap(self, actions):
+        rets = func(self, actions)
+        self.record_episode_info_step(rets)
+        return rets
 
-    def __post_init__(self):
-        self._extra = {}
-
-    @property
-    def extra_info(self) -> Dict[str, Any]:
-        return self._extra
-
-    def register_extra(self, **placeholder_dict):
-        agents = list(self.step_cnt.keys())
-        for k, placeholder in placeholder_dict.items():
-            self._extra.update({k: {agent: placeholder() for agent in agents}})
+    return wrap
 
 
 class Environment:
     def __init__(self, **configs):
         self.is_sequential = False
-        self._extra_returns = []
+
+        self.episode_metrics = {"env_step": 0, "agent_reward": {}, "agent_step": {}}
+        self.runtime_id = uuid.uuid4().hex
+        # -1 means no horizon limitation
+        self.max_step = -1
+        self.cnt = 0
+        self.custom_reset_config = {}
+        self.episode_meta_info = {"max_step": self.max_step}
+
+        if configs.get("custom_metrics") is not None:
+            self.custom_metrics = configs.pop("custom_metrics")
+        else:
+            self.custom_metrics = {}
+
         self._trainable_agents = None
         self._configs = configs
-        self._env = None
-        self._total_rewards = {}
-        self._cnt = 0
-        self.episode_info: EpisodeInfo = None
 
-    def record_episode_info(self, **kwargs):
-        rewards = kwargs.get("rewards")
-
-        for agent, reward in rewards.items():
-            self.episode_info.total_rewards[agent] += reward
-            self.episode_info.step_cnt[agent] = self.cnt
-
-    @property
-    def env(self) -> Any:
-        return self._env
+    def record_episode_info_step(self, rets):
+        reward_ph = self.episode_metrics["agent_reward"]
+        step_ph = self.episode_metrics["agent_step"]
+        for aid, r in rets[EpisodeKey.REWARD].items():
+            if aid not in reward_ph:
+                reward_ph[aid] = []
+                step_ph[aid] = 0
+            reward_ph[aid].append(r)
+            step_ph[aid] += 1
+        self.episode_meta_info["env_done"] = rets[EpisodeKey.DONE]["__all__"]
+        self.episode_metrics["env_step"] += 1
 
     @property
-    def cnt(self) -> int:
-        return self._cnt
+    def possible_agents(self) -> List[AgentID]:
+        """Return a list of environment agent ids"""
 
-    @staticmethod
-    def from_sequential_game(env, **kwargs):
-        _env = Environment(**kwargs)
-        _env._env = env
-        _env._trainable_agents = env.possible_agents
-        _env.is_sequential = True
-        return _env
-
-    @property
-    def possible_agents(self):
-        return self._env.possible_agents
+        raise NotImplementedError
 
     @property
     def trainable_agents(self) -> Union[Tuple, None]:
@@ -67,33 +60,169 @@ class Environment:
 
     @property
     def observation_spaces(self) -> Dict[AgentID, gym.Space]:
-        return self._env.observation_spaces
+        """A dict of agent observation spaces"""
+
+        raise NotImplementedError
 
     @property
     def action_spaces(self) -> Dict[AgentID, gym.Space]:
-        return self._env.action_spaces
+        """A dict of agent action spaces"""
 
-    @property
-    def extra_returns(self):
-        return self._extra_returns
+        raise NotImplementedError
 
-    def reset(self, *args, **kwargs):
-        self._total_rewards = dict.fromkeys(self._trainable_agents, 0.0)
-        self._cnt = 0
-        self.episode_info = EpisodeInfo(
-            total_rewards=dict.fromkeys(self.possible_agents, 0.0),
-            step_cnt=dict.fromkeys(self.possible_agents, 0),
+    def reset(
+        self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
+    ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
+        """Reset environment and the episode info handler here."""
+
+        self.max_step = max_step or self.max_step
+        self.cnt = 0
+
+        self.custom_reset_config = custom_reset_config or self.custom_reset_config
+        self.episode_metrics = {"env_step": 0, "agent_reward": {}, "agent_step": {}}
+        self.episode_meta_info.update(
+            {
+                "max_step": self.max_step,
+                "custom_config": self.custom_reset_config,
+                "env_done": False,
+            }
         )
-        if kwargs.get("extra_episode_info_keys") is not None:
-            self.episode_info.register_extra(**kwargs["extra_episode_info_keys"])
-        return self._env.reset()
 
-    def step(self, actions: Dict[AgentID, Any], **kwargs):
-        self._cnt += 1
-        self.record_episode_info(**kwargs)
+    def env_done_check(self, agent_dones: Dict[AgentID, bool]) -> bool:
+        # default by any
+        done1 = any(agent_dones.values())
+        # self.max_step == -1 means no limits
+        done2 = self.cnt >= self.max_step > 0
+        return done1 or done2
+
+    @record_episode_info
+    def step(self, actions: Dict[AgentID, Any]):
+        self.cnt += 1
+        rets = self.time_step(actions)
+        rets[EpisodeKey.DONE]["__all__"] = self.env_done_check(rets[EpisodeKey.DONE])
+        return rets
+
+    def time_step(self, actions: Dict[AgentID, Any]):
+        """Step inner environment with given agent actions"""
+
+        raise NotImplementedError
+
+    def action_adapter(self, policy_outputs: Dict[str, Dict[AgentID, Any]], **kwargs):
+        """Convert policy action to environment actions. Default by policy action"""
+
+        return policy_outputs["action"]
 
     def render(self, *args, **kwargs):
         raise NotImplementedError
 
     def close(self):
-        self._env.close()
+        raise NotImplementedError
+
+    def seed(self, seed: int = None):
+        pass
+
+    def collect_info(self) -> Dict[str, Any]:
+        return {
+            "episode_runtime_info": self.episode_meta_info,
+            "episode_metrics": self.episode_metrics,
+            "custom_metrics": self.custom_metrics,
+        }
+
+
+class Wrapper(Environment):
+    """Wraps the environment to allow a modular transformation"""
+
+    def __init__(self, env: Environment):
+        self.env = env
+
+    @property
+    def possible_agents(self) -> List[AgentID]:
+        return self.env.possible_agents
+
+    @property
+    def trainable_agents(self) -> Union[Tuple, None]:
+        """Return trainble agents, if registered return a tuple, otherwise None"""
+        return self.env.trainable_agents
+
+    @property
+    def action_spaces(self) -> Dict[AgentID, gym.Space]:
+        return self.env.action_spaces
+
+    @property
+    def observation_spaces(self) -> Dict[AgentID, gym.Space]:
+        return self.env.observation_spaces
+
+    def step(self, actions: Dict[AgentID, Any]):
+        return self.env.step(actions)
+
+    def close(self):
+        return self.env.close()
+
+    def seed(self, seed: int = None):
+        return self.env.seed(seed)
+
+    def render(self, *args, **kwargs):
+        return self.env.render()
+
+    def reset(
+        self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
+    ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
+        return self.env.reset(max_step, custom_reset_config)
+
+    def collect_info(self) -> Dict[str, Any]:
+        return self.env.collect_info()
+
+
+class ParameterSharingWrapper(Wrapper):
+    def __init__(self, env: Environment):
+        super(ParameterSharingWrapper, self).__init__(env)
+
+        self.group_to_agents = defaultdict(lambda: [])
+        # self.agent_to_group = {}
+        for agent_id in self.possible_agents:
+            gid = self.group_rule(agent_id)
+            # self.agent_to_group[agent_id] = gid
+            self.group_to_agents[gid].append(agent_id)
+        # soft frozen group_to_agents
+        self.group_to_agents = dict(self.group_to_agents)
+        self.groups = tuple(self.group_to_agents.keys())
+
+        self._state_spaces = self.build_state_spaces()
+
+    @property
+    def state_spaces(self) -> Dict[AgentID, gym.Space]:
+        return self._state_spaces
+
+    def group_rule(self, agent_id: AgentID) -> str:
+        """Define the rule of grouping, mapping agent id to group id"""
+
+        raise NotImplementedError
+
+    def build_state_spaces(self) -> Dict[AgentID, gym.Space]:
+        """Call `self.group_to_agents` to build state space here"""
+
+        raise NotImplementedError
+
+    def build_state_from_observation(
+        self, agent_observation: Dict[AgentID, Any]
+    ) -> Dict[AgentID, Any]:
+        raise NotImplementedError
+
+    def reset(
+        self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
+    ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
+        rets = super(ParameterSharingWrapper, self).reset(
+            max_step=max_step, custom_reset_config=custom_reset_config
+        )
+        # add CUR_STATE
+        rets[EpisodeKey.CUR_STATE] = self.build_state_from_observation(
+            rets[EpisodeKey.CUR_OBS]
+        )
+        return rets
+
+    def time_step(self, actions: Dict[AgentID, Any]):
+        rets = super(ParameterSharingWrapper, self).time_step(actions)
+        rets[EpisodeKey.NEXT_STATE] = self.build_state_from_observation(
+            rets[EpisodeKey.NEXT_OBS]
+        )
+        return rets

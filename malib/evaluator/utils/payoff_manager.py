@@ -199,7 +199,7 @@ class PayoffManager:
         equilibrium: Dict[AgentID, Dict[PolicyID, float]],
         brs: Dict[AgentID, PolicyID] = None,
     ) -> Dict[AgentID, float]:
-        """ Return weighted or nash payoff value """
+        """Return weighted or nash payoff value"""
 
         res = {agent_id: 0.0 for agent_id in equilibrium}
         population_combination = {
@@ -415,7 +415,7 @@ class PayoffManager:
         self,
         population_mapping: Dict[PolicyID, Sequence[PolicyID]],
     ) -> Dict:
-        """ Return a payoff sub-matrix with given population mapping """
+        """Return a payoff sub-matrix with given population mapping"""
         # TODO(ziyu): check all agents have at least one policy
         all_done = True
         self.logger.debug(
@@ -480,7 +480,7 @@ class PayoffManager:
     def _get_pending_matchups(
         self, agent_name: AgentID, policy_id: PolicyID, policy_config: Dict[str, Any]
     ) -> List[Dict]:
-        """ Generate match description with policy combinations """
+        """Generate match description with policy combinations"""
 
         agent_policy_list = []
         for an in self.agents:

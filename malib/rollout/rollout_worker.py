@@ -4,7 +4,6 @@ Implementation of async rollout worker.
 
 from ray.util import ActorPool
 
-from malib.backend.datapool.offline_dataset_server import Episode
 from malib.envs.agent_interface import AgentInterface
 from malib.rollout import rollout_func
 from malib.rollout.base_worker import BaseRolloutWorker
@@ -158,7 +157,7 @@ class RolloutWorker(BaseRolloutWorker):
                 [
                     {
                         "flag": "evaluation",
-                        "num_episodes": max(1 // self._evaluation_worker_num, 1),
+                        "num_episodes": 2,  # FIXME(ziyu): fix it and debug
                         "behavior_policies": policy_combinations[0],
                         "policy_distribution": policy_distribution,
                     }
@@ -186,13 +185,13 @@ class RolloutWorker(BaseRolloutWorker):
             if ret[0] in ["evaluation", "simulation"]:
                 stats_list.append(ret[1])
             if ret[0] == "rollout":
-                num_frames += ret[2]
+                num_frames += ret[1]["fragment_length"]
 
         return stats_list, num_frames
 
     # @Log.method_timer(enable=False)
     def update_population(self, agent, policy_id, policy):
-        """ Update population with an existing policy instance """
+        """Update population with an existing policy instance"""
 
         agent_interface: AgentInterface = self._agent_interfaces[agent]
         agent_interface.policies[policy_id] = policy

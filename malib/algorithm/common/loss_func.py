@@ -3,6 +3,8 @@ from typing import Dict, Any, Sequence
 
 import torch
 
+from malib.utils.general import tensor_cast
+
 
 class LossFunc(metaclass=ABCMeta):
     """Define loss function and optimizers
@@ -18,10 +20,10 @@ class LossFunc(metaclass=ABCMeta):
 
     def __init__(self):
         self._policy = None
+        self._params = {"device": "cpu", "custom_caster": None}
+        self._gradients = []
         self.optimizers = None
         self.loss = []
-        self._params = {}
-        self._gradients = []
 
     @property
     def stacked_gradients(self):
@@ -46,16 +48,24 @@ class LossFunc(metaclass=ABCMeta):
 
     @abstractmethod
     def setup_optimizers(self, *args, **kwargs):
-        """ Set optimizers and loss function """
+        """Set optimizers and loss function"""
 
         # self.optimizers.append(...)
         # self.loss.append(...)
         pass
 
-    @abstractmethod
     def __call__(self, *args, **kwargs) -> Dict[str, Any]:
-        """ Compute loss function here, but not optimize """
-        pass
+        """Compute loss function here, but not optimize"""
+        return tensor_cast(
+            custom_caster=self._params["custom_caster"],
+            callback=None,
+            dtype_mapping=None,
+            device=self._params["device"],
+        )(self.loss_compute)(*args, **kwargs)
+
+    @abstractmethod
+    def loss_compute(self, *args, **kwargs):
+        """Implement loss computation here"""
 
     @abstractmethod
     def step(self) -> Any:

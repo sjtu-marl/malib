@@ -1,7 +1,7 @@
 from typing import Dict, Any
 
+from malib.utils.episode import EpisodeKey
 from malib.algorithm.common.trainer import Trainer
-from malib.backend.datapool.offline_dataset_server import Episode
 from malib.algorithm.imitation.advirl.reward import AdvIRLReward
 from malib.algorithm.imitation.advirl.loss import AdvIRLLoss
 
@@ -29,7 +29,7 @@ class AdvIRLTrainer(Trainer):
         return batch
 
     def reset(self, policy, reward, training_config):
-        """ Reset policy, called before optimize, and read training configuration """
+        """Reset policy, called before optimize, and read training configuration"""
 
         self._reward = reward
         self._training_config.update(training_config)
@@ -38,10 +38,10 @@ class AdvIRLTrainer(Trainer):
         self._policy_trainer.reset(policy, training_config)
 
     def replace_reward(self, batch):
-        batch[Episode.REWARD] = (
+        batch[EpisodeKey.REWARD] = (
             self._reward.compute_rewards(
-                batch[Episode.CUR_OBS],
-                batch[Episode.ACTION],
+                batch[EpisodeKey.CUR_OBS],
+                batch[EpisodeKey.ACTION],
             )
             .detach()
             .cpu()

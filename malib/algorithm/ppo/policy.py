@@ -8,7 +8,7 @@ from torch.nn import functional as F
 from torch.distributions import Categorical, Normal
 
 from malib.utils.typing import BehaviorMode, Tuple, DataTransferType, Dict, Any
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
 from malib.algorithm.common.model import get_model
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common import misc
@@ -81,7 +81,7 @@ class PPO(Policy):
                 pi = torch.cat(logits, dim=-1)
                 actions = m.sample().detach()
         # print(f"------ action: {pi.argmax(-1).numpy()} {pi.numpy()}")
-        return actions.numpy(), pi.numpy(), {Episode.ACTION_DIST: pi.numpy()}
+        return actions.numpy(), pi.numpy(), {EpisodeKey.ACTION_DIST: pi.numpy()}
 
     def compute_actions(self, observation, **kwargs):
         logits = self.actor(observation)
@@ -94,14 +94,14 @@ class PPO(Policy):
 
     def compute_advantage(self, batch):
         # td_value - value
-        next_value = self.critic(batch[Episode.NEXT_OBS].copy())
+        next_value = self.critic(batch[EpisodeKey.NEXT_OBS].copy())
         td_value = (
-            torch.from_numpy(batch[Episode.REWARD].copy())
+            torch.from_numpy(batch[EpisodeKey.REWARD].copy())
             + self.gamma
-            * (1.0 - torch.from_numpy(batch[Episode.DONE].copy()).float())
+            * (1.0 - torch.from_numpy(batch[EpisodeKey.DONE].copy()).float())
             * next_value
         )
-        value = self.critic(batch[Episode.CUR_OBS].copy())
+        value = self.critic(batch[EpisodeKey.CUR_OBS].copy())
         adv = td_value - value
         return adv
 

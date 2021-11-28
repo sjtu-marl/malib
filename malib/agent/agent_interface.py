@@ -2,6 +2,8 @@
 Basic class of agent interface. Users can implement their custom training workflow by inheriting this class.
 """
 
+import torch
+
 import asyncio
 import copy
 import os
@@ -85,7 +87,7 @@ class AgentInterface(metaclass=ABCMeta):
         population_size: int,
         use_init_policy_pool: bool,
         algorithm_mapping: Callable = None,
-        local_buffer_size: int = 0,
+        local_buffer_config: Dict = None,
     ):
         """
         :param str assign_id: Specify the agent interface id.
@@ -98,6 +100,12 @@ class AgentInterface(metaclass=ABCMeta):
         :param Optional[Callable] algorithm_mapping: Mapping registered agents to algorithm candidates, optional
             default is None.
         """
+        Logger.info("\tray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
+        Logger.info(
+            "\tCUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"])
+        )
+
+        self._device = torch.device("cuda" if ray.get_gpu_ids() else "cpu")
 
         self._id = assign_id
         self._env_desc = env_desc
@@ -128,10 +136,13 @@ class AgentInterface(metaclass=ABCMeta):
             mongo=settings.USE_MONGO_LOGGER,
             **exp_cfg,
         )
-        self._local_buffer = Table(
-            ["agent"],
-            capacity=100000,
-            data_shapes=self._env_desc["config"]["data_shapes"],
+
+        local_buffer_config = local_buffer_config or {}
+        self.local_buffer = Table(
+            capacity=local_buffer_config.get("size", 10000),
+            fragment_length=None,
+            data_shapes=None,
+            sample_start_size=0,
             mode="local",
         )
 
@@ -344,8 +355,8 @@ class AgentInterface(metaclass=ABCMeta):
                     self._offline_dataset.get_consumer_index.remote(buffer_desc)
                 )
                 if batch.data is None:
-                    # Logger.warning("index not ready")
-                    if self._local_buffer.size >= buffer_desc.batch_size:
+                    # means interface can use local buffer for training
+                    if self.local_buffer.size >= buffer_desc.batch_size:
                         break
                     else:
                         continue
@@ -355,17 +366,15 @@ class AgentInterface(metaclass=ABCMeta):
                         self._offline_dataset.sample.remote(buffer_desc)
                     )
                     assert batch.data is not None
-                    size += buffer_desc.batch_size
-                    # res.update(batch.data)
-                    # print("likffe:", list(batch.data.keys()))
-                    self._local_buffer.insert(
+                    size += len(buffer_desc.indices)
+                    self.local_buffer.insert(
                         data=batch.data, size=len(buffer_desc.indices)
                     )
 
                     buffer_desc.data = None
                     buffer_desc.indices = None
                     break
-        res = self._local_buffer.sample(size=buffer_desc.batch_size)
+        res = self.local_buffer.sample(size=buffer_desc.batch_size)
         Logger.debug("Trainer got {} data".format(buffer_desc.batch_size))
         return res, size
 
@@ -473,6 +482,7 @@ class AgentInterface(metaclass=ABCMeta):
                             buffer_desc.pop(env_aid)
                         # also training poilcy id mapping
                         policy_id_mapping.pop(env_aid)
+                        self._policies[pid] = self._policies[pid].to_device("cpu")
                     else:
                         self.pull(env_aid, pid)
             epoch += 1

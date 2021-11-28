@@ -1,8 +1,9 @@
 import importlib
+import gym
 
-from malib.envs import Environment
-from malib.utils.typing import Dict, Any, AgentID
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.envs.env import Environment
+from malib.utils.typing import Dict, Any, AgentID, List, Union
+from malib.utils.episode import Episode, EpisodeKey
 
 
 class MPE(Environment):
@@ -18,26 +19,48 @@ class MPE(Environment):
         self.is_sequential = False
         self._env = ori_caller(**scenario_configs)
         self._trainable_agents = self._env.possible_agents
-        self._max_step = 25  # default is 25
+        self._action_spaces = {
+            aid: self._env.action_space(aid) for aid in self._env.possible_agents
+        }
+        self._observation_spaces = {
+            aid: self._env.observation_space(aid) for aid in self._env.possible_agents
+        }
+        self.max_step = 25  # default is 25
 
-    def step(self, actions: Dict[AgentID, Any]) -> Dict[str, Any]:
+    @property
+    def possible_agents(self) -> List[AgentID]:
+        return self._env.possible_agents
+
+    @property
+    def action_spaces(self) -> Dict[AgentID, gym.Space]:
+        return self._action_spaces
+
+    @property
+    def observation_spaces(self) -> Dict[AgentID, gym.Space]:
+        return self._observation_spaces
+
+    def time_step(self, actions: Dict[AgentID, Any]) -> Dict[str, Any]:
         # for agent, action in actions.items():
         #     assert self.action_spaces[agent].contains(action), f"Action is not in space: {action} with type={type(action)}"
         observations, rewards, dones, infos = self._env.step(actions)
-        if self.cnt >= self._max_step:
-            dones = dict.fromkeys(self.possible_agents, True)
-        super(MPE, self).step(actions, rewards=rewards, dones=dones, infos=infos)
         return {
-            Episode.CUR_OBS: observations,
-            Episode.REWARD: rewards,
-            Episode.DONE: dones,
-            Episode.INFO: infos,
+            EpisodeKey.NEXT_OBS: observations,
+            EpisodeKey.REWARD: rewards,
+            EpisodeKey.DONE: dones,
+            EpisodeKey.INFO: infos,
         }
 
     def render(self, *args, **kwargs):
         self._env.render()
 
-    def reset(self, *args, **kwargs):
-        observations = self._env.reset(*args, **kwargs)
-        self._max_step = self._max_step or kwargs.get("max_step", None)
-        return {Episode.CUR_OBS: observations}
+    def close(self):
+        pass
+
+    def reset(
+        self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
+    ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
+        super(MPE, self).reset(
+            max_step=max_step, custom_reset_config=custom_reset_config
+        )
+        observations = self._env.reset()
+        return {EpisodeKey.CUR_OBS: observations}

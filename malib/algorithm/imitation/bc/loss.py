@@ -5,7 +5,7 @@ from typing import Dict, Tuple, Any
 from torch.distributions import Categorical, Normal
 
 from malib.algorithm.common.loss_func import LossFunc
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
 from malib.utils.typing import TrainingMetric
 
 
@@ -30,7 +30,7 @@ class BCLoss(LossFunc):
             )
 
     def step(self) -> Any:
-        """ Step optimizers and update target """
+        """Step optimizers and update target"""
 
         # do loss backward and target update
         _ = [item.backward() for item in self.loss]
@@ -46,12 +46,12 @@ class BCLoss(LossFunc):
 
         _ = [p.step() for p in self.optimizers]
 
-    def __call__(self, batch) -> Dict[str, Any]:
+    def loss_compute(self, batch) -> Dict[str, Any]:
         # empty loss
         self.loss = []
-        actions = torch.from_numpy(batch[Episode.ACTION].copy())
+        actions = batch[EpisodeKey.ACTION]
 
-        probs = self.policy.actor(batch[Episode.CUR_OBS].copy())
+        probs = self.policy.actor(batch[EpisodeKey.CUR_OBS])
         if isinstance(probs, tuple):
             distri = Normal(*probs)
             mu = probs[0]

@@ -8,8 +8,10 @@ function check_python_version_gte_3_6 {
 
 function do_install_for_linux {
     echo "Installing python dependencies"
+    sudo apt-get install graphviz
     pip install --upgrade pip==21.0.1
     pip install -e .
+    pip install pydot
     AutoROM
 
     echo "Installing Mujoco dependencies"

@@ -3,6 +3,7 @@ Environment agent interface is designed for rollout and simulation.
 """
 
 import os
+from typing import Tuple
 import gym
 import ray
 import numpy as np
@@ -14,7 +15,9 @@ from concurrent.futures import ThreadPoolExecutor
 from malib import settings
 from malib.algorithm.common.policy import Policy
 from malib.algorithm import get_algorithm_space
+from malib.utils.episode import EpisodeKey
 from malib.utils.typing import (
+    DataTransferType,
     Status,
     Dict,
     Any,
@@ -23,6 +26,7 @@ from malib.utils.typing import (
     PolicyID,
     ParameterDescription,
     BehaviorMode,
+    List,
 )
 
 import pickle as pkl
@@ -149,16 +153,28 @@ class AgentInterface:
 
         self.behavior_mode = behavior_mode
 
-    def reset(self, sample_dist=None) -> None:
-        """Reset agent interface."""
-        # clear sample distribution
-        self.sample_dist = sample_dist or dict.fromkeys(
-            self.policies, 1.0 / len(self.policies)
-        )
-        self._behavior_policy = self._random_select_policy()
+    def reset(self, policy_id=None, sample_dist=None) -> None:
+        """Reset agent interface. Sample dist will reseted with a no-none given `sample_dist`. If `self.sample_dist` is None or `self.policies` has changed length. Then `self.sample_dist` will be reset as uniform."""
+
+        if sample_dist is not None:
+            self.sample_dist = sample_dist
+        if self.sample_dist is None or len(self.sample_dist) != len(self.policies):
+            self.sample_dist = dict.fromkeys(self.policies, 1.0 / len(self.policies))
+
+        if policy_id is not None:
+            assert policy_id in self.policies
+            self._behavior_policy = policy_id
+        else:
+            self._behavior_policy = self._random_select_policy()
+
+        # then reset sampled behavior_policy
+        policy = self.policies[self._behavior_policy]
+        # reset intermediate states, e.g. rnn states
+        policy.reset()
 
     def add_policy(
         self,
+        env_aid,
         policy_id: PolicyID,
         policy_description: Dict[str, Any],
         parameter_desc: ParameterDescription,
@@ -174,7 +190,8 @@ class AgentInterface:
         if policy_id in self.policies:
             return
         policy = get_algorithm_space(policy_description["registered_name"]).policy(
-            **policy_description
+            **policy_description,
+            env_agent_id=env_aid,
         )
         self.policies[policy_id] = policy
         self.parameter_desc_dict[policy_id] = ParameterDescription(
@@ -200,26 +217,42 @@ class AgentInterface:
         )
         return res
 
-    def compute_action(self, *args, **kwargs):
+    def compute_action(
+        self, *args, **kwargs
+    ) -> Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
         """Return an action by calling `compute_action` of a policy instance.
 
         :param args: list of args
         :param kwargs: dict of args
-        :return: A tuple of action, action_dist, extra_info
+        :return: A tuple of action, action_dist, a list of rnn_state
         """
-        policy_id = kwargs.get("policy_id", None)
+        policy_id = kwargs.get("policy_id", self.behavior_policy)
         if policy_id is None:
             policy_id = self._random_select_policy()
+            self._behavior_policy = policy_id
         kwargs.update({"behavior_mode": self.behavior_mode})
+        kwargs[EpisodeKey.CUR_OBS] = np.vstack(kwargs[EpisodeKey.CUR_OBS])
+        if kwargs.get(EpisodeKey.CUR_STATE) is not None:
+            kwargs[EpisodeKey.CUR_STATE] = np.vstack(kwargs[EpisodeKey.CUR_STATE])
+        rnn_state = kwargs[EpisodeKey.RNN_STATE]
+        for i, e in enumerate(rnn_state):
+            rnn_state[i] = np.vstack(e)
         return self.policies[policy_id].compute_action(*args, **kwargs)
 
     def get_policy(self, pid: PolicyID) -> Policy:
         return self.policies[pid]
 
+    def get_initial_state(self, pid=None) -> List[DataTransferType]:
+        """Return a list of initial rnn states"""
+
+        pid = pid or self.behavior_policy
+        assert pid is not None, "Behavior policy or input pid cannot both be None"
+        return self.policies[pid].get_initial_state()
+
     def update_weights(
         self, pids: Sequence = None, waiting: bool = False
     ) -> Dict[PolicyID, Status]:
-        """ Update weight in async mode """
+        """Update weight in async mode"""
 
         pids = pids or list(self.policies.keys())
         status = {}
@@ -240,7 +273,9 @@ class AgentInterface:
             )
         return status
 
-    def transform_observation(self, observation: Any, policy_id: PolicyID = None):
+    def transform_observation(
+        self, observation: Any, state: Any, policy_id: PolicyID = None
+    ) -> Dict[str, Any]:
         """Transform environment observation with behavior policy's preprocessor. The preprocessed observation will be
         transferred to policy's `compute_action` as an input.
 
@@ -252,9 +287,9 @@ class AgentInterface:
         policy_id = policy_id or self._random_select_policy()
         policy = self.policies[policy_id]
         if policy.preprocessor is not None:
-            return policy.preprocessor.transform(observation)
+            return {"obs": policy.preprocessor.transform(observation), "state": state}
         else:
-            return observation
+            return {"obs": observation, "state": state}
 
     def save(self, model_dir: str) -> None:
         """Save policies.

@@ -5,7 +5,7 @@ from typing import Dict, Any
 from torch.distributions import Independent, Normal
 
 from malib.algorithm.common.loss_func import LossFunc
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
 
 
 class SACLoss(LossFunc):
@@ -52,22 +52,15 @@ class SACLoss(LossFunc):
         #         {"params": self.policy.critic_2.parameters()}
         #     )
 
-    def __call__(self, batch) -> Dict[str, Any]:
+    def loss_compute(self, batch) -> Dict[str, Any]:
         self.loss = []
 
-        FloatTensor = (
-            torch.cuda.FloatTensor
-            if self.policy.custom_config["use_cuda"]
-            else torch.FloatTensor
-        )
-        cast_to_tensor = lambda x: FloatTensor(x.copy())
-
         # total loss = policy_gradient_loss - entropy * entropy_coefficient + value_coefficient * value_loss
-        rewards = cast_to_tensor(batch[Episode.REWARD]).view(-1, 1)
-        actions = cast_to_tensor(batch[Episode.ACTION])
-        cur_obs = cast_to_tensor(batch[Episode.CUR_OBS])
-        next_obs = cast_to_tensor(batch[Episode.NEXT_OBS])
-        dones = cast_to_tensor(batch[Episode.DONE]).view(-1, 1)
+        rewards = batch[EpisodeKey.REWARD].view(-1, 1)
+        actions = batch[EpisodeKey.ACTION]
+        cur_obs = batch[EpisodeKey.CUR_OBS]
+        next_obs = batch[EpisodeKey.NEXT_OBS]
+        dones = batch[EpisodeKey.DONE].view(-1, 1)
         alpha = self._params["sac_alpha"]
         gamma = self.policy.custom_config["gamma"]
         action_squash = self.policy.action_squash

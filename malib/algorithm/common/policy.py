@@ -5,11 +5,20 @@ Implementation of basic PyTorch-based policy class
 import gym
 
 from abc import ABCMeta, abstractmethod
+from torch._C import device
 
 import torch.nn as nn
 
 from malib.utils import errors
-from malib.utils.typing import DataTransferType, ModelConfig, Dict, Any, Tuple, Callable
+from malib.utils.typing import (
+    DataTransferType,
+    ModelConfig,
+    Dict,
+    Any,
+    Tuple,
+    Callable,
+    List,
+)
 from malib.utils.preprocessor import get_preprocessor, Mode
 from malib.utils.notations import deprecated
 
@@ -70,6 +79,7 @@ class Policy(metaclass=ABCMeta):
         self.registered_name = registered_name
         self.observation_space = observation_space
         self.action_space = action_space
+        self.device = device
 
         self.custom_config = {
             "gamma": 0.99,
@@ -179,15 +189,20 @@ class Policy(metaclass=ABCMeta):
     @abstractmethod
     def compute_action(
         self, observation: DataTransferType, **kwargs
-    ) -> Tuple[Any, Any, Any]:
+    ) -> Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
         """Compute single action when rollout at each step, return 3 elements:
-        action, None, extra_info['actions_prob']
+        action, action_dist, a list of rnn_state
         """
 
         pass
 
+    def get_initial_state(self) -> List[DataTransferType]:
+        """Return a list of rnn states if models are rnns"""
+
+        return []
+
     def state_dict(self):
-        """ Return state dict in real time """
+        """Return state dict in real time"""
 
         res = {k: v.state_dict() for k, v in self._state_handler_dict.items()}
         return res
@@ -234,13 +249,13 @@ class Policy(metaclass=ABCMeta):
 
     @property
     def actor(self) -> Any:
-        """ Return policy, cannot be None """
+        """Return policy, cannot be None"""
 
         return self._actor
 
     @property
     def critic(self) -> Any:
-        """ Return critic, can be None """
+        """Return critic, can be None"""
 
         return self._critic
 
@@ -251,3 +266,11 @@ class Policy(metaclass=ABCMeta):
     @deprecated
     def eval(self):
         pass
+
+    # @abstractmethod
+    def reset(self):
+        """Reset policy intermediates"""
+        pass
+
+    def to_device(self, device):
+        self.device = device

@@ -13,7 +13,7 @@ from malib.utils.configs.formatter import DefaultConfigFormatter
 
 
 def update_configs(update_dict, ori_dict=None):
-    """ Update global configs with a given dict """
+    """Update global configs with a given dict"""
 
     ori_configs = (
         copy.copy(ori_dict)

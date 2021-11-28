@@ -9,8 +9,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from malib.utils.preprocessor import get_preprocessor
-from malib.utils.typing import Dict, Any
+from malib.utils.preprocessor import Mode, get_preprocessor
+from malib.utils.typing import DataTransferType, Dict, Any, List
 
 
 def mlp(layers_config):
@@ -44,6 +44,11 @@ class Model(nn.Module):
         else:
             self.output_dim = output_space
 
+    def get_initial_state(self) -> List[torch.TensorType]:
+        """Return a list of initial rnn state, if current model is rnn"""
+
+        return []
+
 
 class MLP(Model):
     def __init__(
@@ -51,6 +56,7 @@ class MLP(Model):
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         model_config: Dict[str, Any],
+        **kwargs
     ):
         super(MLP, self).__init__(observation_space, action_space)
 
@@ -60,18 +66,16 @@ class MLP(Model):
             else model_config["layers"]
         )
         layers_config.insert(0, {"units": self.input_dim})
-        layers_config.append(
-            {
-                "units": self.output_dim,
-                "activation": model_config["output"]["activation"],
-            }
-        )
-        self.net = mlp(layers_config)
 
-        self.output_type = model_config["output"].get("type", None)
-        if self.output_type == "gaussian":
-            assert isinstance(action_space, gym.spaces.Box), action_space
-            self.log_std = nn.Parameter(torch.zeros(self.output_dim, 1))
+        if action_space:
+            act_dim = get_preprocessor(action_space)(action_space).size
+            layers_config.append(
+                {"units": act_dim, "activation": model_config["output"]["activation"]}
+            )
+        self.use_feature_normalization = kwargs.get("use_feature_normalization", False)
+        if self.use_feature_normalization:
+            self._feature_norm = nn.LayerNorm(self.input_dim)
+        self.net = mlp(layers_config)
 
     def _default_layers(self):
         return [
@@ -81,14 +85,10 @@ class MLP(Model):
 
     def forward(self, obs):
         obs = torch.as_tensor(obs, dtype=torch.float32)
+        if self.use_feature_normalization:
+            obs = self._feature_norm(obs)
         pi = self.net(obs)
-        if self.output_type == "gaussian":
-            shape = [1] * len(pi.shape)
-            shape[1] = -1
-            sigma = (self.log_std.view(shape) + torch.zeros_like(pi)).exp()
-            return (pi, sigma)
-        else:
-            return pi
+        return pi
 
 
 class RNN(Model):
@@ -103,13 +103,17 @@ class RNN(Model):
             64 if model_config is None else model_config.get("rnn_hidden_dim", 64)
         )
 
+        # default by flatten
         self.fc1 = nn.Linear(self.input_dim, self.hidden_dims)
         self.rnn = nn.GRUCell(self.hidden_dims, self.hidden_dims)
         self.fc2 = nn.Linear(self.hidden_dims, self.output_dim)
 
-    def init_hidden(self):
+    def _init_hidden(self):
         # make hidden states on same device as model
         return self.fc1.weight.new(1, self.hidden_dims).zero_()
+
+    def get_initial_state(self) -> List[torch.TensorType]:
+        return [self._init_hidden()]
 
     def forward(self, obs, hidden_state):
         obs = torch.as_tensor(obs, dtype=torch.float32)
@@ -118,6 +122,59 @@ class RNN(Model):
         h = self.rnn(x, h_in)
         q = self.fc2(h)
         return q, h
+
+
+class QMixer(Model):
+    def __init__(self, obs_dim, num_agents, model_config=None):
+        super(QMixer, self).__init__(obs_dim, 1)
+        self.n_agents = num_agents
+
+        self.embed_dim = (
+            32 if model_config is None else model_config.get("mixer_embed_dim", 32)
+        )
+        self.hyper_hidden_dim = (
+            64 if model_config is None else model_config.get("hyper_hidden_dim", 64)
+        )
+
+        self.hyper_w_1 = nn.Sequential(
+            nn.Linear(obs_dim, self.hyper_hidden_dim),
+            nn.ReLU(),
+            nn.Linear(self.hyper_hidden_dim, self.embed_dim * num_agents),
+        )
+        self.hyper_w_final = nn.Sequential(
+            nn.Linear(obs_dim, self.hyper_hidden_dim),
+            nn.ReLU(),
+            nn.Linear(self.hyper_hidden_dim, self.embed_dim),
+        )
+
+        # State dependent bias for hidden layer
+        self.hyper_b_1 = nn.Linear(obs_dim, self.embed_dim)
+
+        # V(s) instead of a bias for the last layers
+        self.V = nn.Sequential(
+            nn.Linear(obs_dim, self.embed_dim),
+            nn.ReLU(),
+            nn.Linear(self.embed_dim, self.output_dim),
+        )
+
+    def forward(self, agent_qs, obs):
+        bs = agent_qs.size(0)
+        obs = torch.as_tensor(obs, dtype=torch.float32)
+        agent_qs = torch.as_tensor(agent_qs, dtype=torch.float32)
+        agent_qs = agent_qs.view(-1, 1, self.n_agents)
+        # First layer
+        w1 = torch.abs(self.hyper_w_1(obs))
+        b1 = self.hyper_b_1(obs)
+        w1 = w1.view(-1, self.n_agents, self.embed_dim)
+        b1 = b1.view(-1, 1, self.embed_dim)
+        hidden = F.elu(torch.bmm(agent_qs, w1) + b1)
+        # Second layer
+        w_final = torch.abs(self.hyper_w_final(obs))
+        w_final = w_final.view(-1, self.embed_dim, 1)
+        v = self.V(obs).view(-1, 1, 1)
+        y = torch.bmm(hidden, w_final) + v
+        q_tot = y.view(bs, -1)
+        return q_tot
 
 
 def get_model(model_config: Dict[str, Any]):
