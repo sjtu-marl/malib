@@ -123,7 +123,7 @@ class Environment:
 
     def collect_info(self) -> Dict[str, Any]:
         return {
-            "episode_runtime_info": self.episode_meta_info,
+            # "episode_runtime_info": self.episode_meta_info,
             "episode_metrics": self.episode_metrics,
             "custom_metrics": self.custom_metrics,
         }

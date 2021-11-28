@@ -48,12 +48,14 @@ class Episode:
         self.agent_entry[__k] = v
 
     def to_numpy(self) -> Dict[str, Dict[AgentID, np.ndarray]]:
-        return {
-            k: dict(
-                map(lambda kv: (kv[0], np.asarray(kv[1], dtype=np.float16)), v.items())
-            )
-            for k, v in self.agent_entry.items()
-        }
+        # switch agent key and episode key
+        res = defaultdict(lambda: {})
+        for ek, agent_v in self.agent_entry.items():
+            if ek == EpisodeKey.RNN_STATE:
+                continue
+            for agent_id, v in agent_v.items():
+                res[agent_id][ek] = np.asarray(v, dtype=np.float16)
+        return res
 
 
 class NewEpisodeDict(defaultdict):
@@ -67,15 +69,14 @@ class NewEpisodeDict(defaultdict):
     def record(
         self, policy_outputs, env_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]
     ):
-        for env_id, env_output in env_outputs.items():
-            for k, v in policy_outputs[env_id].items():
-                agent_slot = self[env_id][k]
-                for aid, _v in v.items():
-                    assert not isinstance(_v, Dict), (k, v)
-                    agent_slot[aid].append(_v)
-            for k, v in env_output.items():
+        for env_id, policy_output in policy_outputs.items():
+            for k, v in env_outputs[env_id].items():
                 if k == "infos":
                     continue
+                agent_slot = self[env_id][k]
+                for aid, _v in v.items():
+                    agent_slot[aid].append(_v)
+            for k, v in policy_output.items():
                 agent_slot = self[env_id][k]
                 assert aid in agent_slot, agent_slot
                 for aid, _v in v.items():

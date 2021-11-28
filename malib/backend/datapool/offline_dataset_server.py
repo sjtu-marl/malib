@@ -230,7 +230,8 @@ class Table:
 
     @property
     def is_multi_agent(self) -> bool:
-        return len(self.buffer)
+        # always true
+        return True  # len(self.buffer)
 
     @property
     def buffer(self) -> BufferDict:
@@ -292,25 +293,27 @@ class Table:
     def insert(
         self, data: List[Dict[str, Any]], indices: List[int] = None, size: int = None
     ):
+        assert isinstance(data, List), type(data)
         if self.buffer is None:
             self.build_buffer_from_samples(data[0])
-        shuffle_idx = np.random.shuffle(np.arange(len(indices)))
+
+        if indices is None:
+            # generate indices
+            indices = np.arange(self._flag, self._flag + size) % self._capacity
+
+        shuffle_idx = np.arange(len(indices))
+        np.random.shuffle(shuffle_idx)
         for d_list, k, value_list in iter_many_dicts_recursively(*data):
             head_d = d_list[0]
             batch_sizes = [v.shape[0] for v in value_list]
             merged_shape = (sum(batch_sizes),) + value_list[0].shape[1:]
             _placeholder = np.zeros(merged_shape, dtype=head_d[k].dtype)
-
             index = 0
             for batch_size, value in zip(batch_sizes, value_list):
-                _placeholder[index : index + batch_size] = value[::]
+                _placeholder[index : index + batch_size] = value[:]
                 index += batch_size
             assert len(_placeholder) >= len(indices), (len(_placeholder), len(indices))
             head_d[k] = _placeholder[shuffle_idx]
-
-        if indices is None:
-            # generate indices
-            indices = np.arange(self._flag, self._flag + size) % self._capacity
 
         # assert indices is not None, "indices: {}".format(indices)
         self._buffer.set_data(indices, data[0])
@@ -511,8 +514,8 @@ class OfflineDataset:
             self._tables[name] = Table(
                 self._episode_capacity,
                 self._fragment_length,
-                buffer_desc.data_shapes,
-                self._learning_start,
+                # buffer_desc.data_shapes,
+                sample_start_size=self._learning_start,
                 event_loop=self.event_loop,
             )
             Logger.info("created data table: {}".format(name))

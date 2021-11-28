@@ -7,10 +7,12 @@ import os
 import copy
 import time
 import traceback
+import numpy as np
 
 import ray
 
 from malib import settings
+from malib.utils.general import iter_dicts_recursively, iter_many_dicts_recursively
 from malib.utils.typing import (
     AgentID,
     BufferDescription,
@@ -305,7 +307,7 @@ class BaseRolloutWorker:
         self.set_state(task_desc)
         start_time = time.time()
         total_num_frames = 0
-        print_every = 1  # stopper.max_iteration // 3
+        print_every = 100  # stopper.max_iteration // 3
 
         # create data table
         trainable_pairs = task_desc.content.agent_involve_info.trainable_pairs
@@ -317,7 +319,7 @@ class BaseRolloutWorker:
             agent_id=list(trainable_pairs.keys()),
             policy_id=[pid for pid, _ in trainable_pairs.values()],
             capacity=None,
-            data_shapes=self._env_description["data_shapes"],
+            # data_shapes=self._env_description["data_shapes"],
             sample_start_size=None,
         )
         ray.get(self._offline_dataset.create_table.remote(buffer_desc))
@@ -345,25 +347,28 @@ class BaseRolloutWorker:
                 buffer_desc=buffer_desc,
             )
 
-            # merge statis
-            res = defaultdict(list)
-            for statistics in raw_statistics:
-                for k, v in statistics.items():
-                    res[k].extend(v)
-            res = dict(map(lambda kv: (kv[0], sum(kv[1]) / len(kv[1])), res.items()))
             self.after_rollout(task_desc.content.agent_involve_info.trainable_pairs)
             total_num_frames += num_frames
             time_consump = time.time() - start_time
 
+            holder = {}
+            for history, ds, k, vs in iter_many_dicts_recursively(
+                *raw_statistics, history=[]
+            ):
+                prefix = "/".join(history)
+                holder[f"{prefix}_mean"] = np.mean(vs)
+                holder[f"{prefix}_max"] = np.max(vs)
+                holder[f"{prefix}_min"] = np.min(vs)
+
             # log to tensorboard
             if (epoch + 1) % print_every == 0:
-                Logger.info("\tepoch: %s (evaluation) %s", epoch, res)
-            for k, v in res.items():
+                Logger.info("\tepoch: %s (evaluation) %s", epoch, holder)
+            for k, v in holder.items():
                 self.logger.send_scalar(
-                    tag=f"evaluation/{k}", content=v, global_step=epoch
+                    tag=f"Evaluation/{k}", content=v, global_step=epoch
                 )
             self.logger.send_scalar(
-                tag="performance/RFPS/{}".format(os.getpid()),
+                tag="Performance/RFPS/{}".format(os.getpid()),
                 content=total_num_frames / time_consump,
                 global_step=epoch,
             )
@@ -375,7 +380,7 @@ class BaseRolloutWorker:
         rollout_feedback = RolloutFeedback(
             worker_idx=self._worker_index,
             agent_involve_info=task_desc.content.agent_involve_info,
-            statistics=res,
+            statistics=holder,
         )
         self.callback(status, task_desc, rollout_feedback, role="rollout", relieve=True)
 

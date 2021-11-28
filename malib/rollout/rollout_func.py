@@ -16,14 +16,17 @@ you wanna save by specifying extra columns when Episode initialization.
 """
 
 import collections
+from dataclasses import dataclass
 from numpy.core.numeric import roll
 import ray
 import numpy as np
 
 from malib import settings
 from malib.envs.env import Environment
+from malib.utils.general import iter_many_dicts_recursively
 from malib.utils.typing import (
     AgentID,
+    AgentInvolveInfo,
     BufferDescription,
     Dict,
     Any,
@@ -44,44 +47,54 @@ from malib.envs.agent_interface import AgentInterface
 def _process_environment_returns(
     env_rets: Dict[EnvID, Dict[str, Dict[AgentID, Any]]],
     agent_interfaces: Dict[AgentID, AgentInterface],
+    filtered_env_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]],
 ) -> Tuple[
     Dict[EnvID, Dict[str, Dict[AgentID, Any]]],
     Dict[EnvID, Dict[str, Dict[AgentID, Any]]],
+    List[EnvID],
 ]:
     """Processes environment returns, including observation, rewards. Also the agent
     communication.
     """
 
-    outputs = {}
     policy_inputs = {}
+    drop_env_ids = []
     for env_id, rets in env_rets.items():
-        output = {}
         policy_input = {}
         drop = False
+        if env_id not in filtered_env_outputs:
+            filtered_env_outputs[env_id] = {}
+        filtered_env_output = filtered_env_outputs[env_id]
         for k, ret in rets.items():
             if k in [EpisodeKey.CUR_OBS, EpisodeKey.NEXT_OBS]:
-                output[k] = {
+                output = {
                     aid: interface.transform_observation(
                         observation=ret[aid], state=rets.get("state", None)
                     )["obs"]
                     for aid, interface in agent_interfaces.items()
                 }
-                policy_input[k] = output[k]
                 if k == EpisodeKey.NEXT_OBS:
-                    output[EpisodeKey.CUR_OBS] = output[k]
-                    policy_input[EpisodeKey.CUR_OBS] = output[k]
+                    if EpisodeKey.CUR_OBS not in filtered_env_output:
+                        filtered_env_output[EpisodeKey.CUR_OBS] = output
+                    policy_input[EpisodeKey.CUR_OBS] = output
             else:
                 # pop all done
                 if k == EpisodeKey.DONE:
-                    done = ret.pop("__all__")
-                    drop = done
-                output[k] = ret
+                    done = rets[EpisodeKey.DONE]["__all__"]
+                    if done:
+                        drop = True
+                        drop_env_ids.append(env_id)
+                    output = {k: v for k, v in ret.items() if k != "__all__"}
+                else:
+                    output = ret
+            policy_input[k] = output
+            filtered_env_output[k] = output
 
+        # filtered_env_outputs[env_id] = output
         if not drop:
-            outputs[env_id] = output
             policy_inputs[env_id] = policy_input
 
-    return policy_inputs, outputs
+    return policy_inputs, filtered_env_outputs, drop_env_ids
 
 
 def _do_policy_eval(
@@ -113,7 +126,6 @@ def _do_policy_eval(
                 agent_wise_inputs[agent_id][k].append(v)
 
     for agent_id, interface in agent_interfaces.items():
-
         (
             actions[agent_id],
             action_dists[agent_id],
@@ -204,6 +216,8 @@ def env_runner(
         max_step=runtime_config["max_step"],
         custom_reset_config=runtime_config["custom_reset_config"],
     )
+    if isinstance(env, VectorEnv):
+        assert len(env.active_envs) > 0, (env._active_envs, rets, env)
 
     # if dataset_server:
     episodes = NewEpisodeDict(lambda env_id: Episode(behavior_policies, env_id=env_id))
@@ -215,25 +229,38 @@ def env_runner(
     do_policy_eval = custom_do_policy_eval or _do_policy_eval
 
     while not env.is_terminated():
-        # process environment observation
-        policy_inputs, filtered_env_outputs = process_environment_returns(
-            rets, agent_interfaces
+        filtered_env_outputs = {}
+        # ============ a frame =============
+        (
+            active_policy_inputs,
+            filtered_env_outputs,
+            drop_env_ids,
+        ) = process_environment_returns(rets, agent_interfaces, filtered_env_outputs)
+
+        active_policy_outputs, active_env_ids = do_policy_eval(
+            active_policy_inputs, agent_interfaces, episodes
         )
 
-        policy_outputs, active_env_ids = do_policy_eval(
-            policy_inputs, agent_interfaces, episodes
-        )
-
-        # process policy outputs
         env_inputs, detached_policy_outputs = process_policy_outputs(
-            active_env_ids, policy_outputs, env
+            active_env_ids, active_policy_outputs, env
         )
 
         # XXX(ming): maybe more general inputs.
         rets = env.step(env_inputs)
 
-        if dataset_server:
-            episodes.record(detached_policy_outputs, filtered_env_outputs)
+        # again, filter next_obs here
+        (
+            active_policy_inputs,
+            filtered_env_outputs,
+            drop_env_ids,
+        ) = process_environment_returns(rets, agent_interfaces, filtered_env_outputs)
+        # filter policy inputs here
+        # =================================
+        a = set(list(detached_policy_outputs.keys()))
+        b = set(list(filtered_env_outputs.keys()))
+        assert len(b - a) >= 0
+
+        episodes.record(detached_policy_outputs, filtered_env_outputs)
 
     rollout_info = env.collect_info()
     if dataset_server:
@@ -255,7 +282,21 @@ def env_runner(
         buffer_desc.indices = indices
         dataset_server.save.remote(buffer_desc)
 
-    return _reduce_rollout_info(rollout_info)
+    ph = []
+    for e in rollout_info.values():
+        _e = _reduce_rollout_info(e)
+        ph.append(e)
+
+    holder = {}
+    for history, ds, k, vs in iter_many_dicts_recursively(*ph, history=[]):
+        _arr = np.array(vs)
+        if len(_arr.shape) > 1:
+            _arr = np.sum(_arr, axis=-1)
+        prefix = "/".join(history)
+        # print(history, prefix, _arr, vs)
+        holder[prefix] = _arr
+
+    return {"total_fragment_length": env.batched_step_cnt, "eval_info": holder}
 
 
 class Stepping:
@@ -263,8 +304,8 @@ class Stepping:
         self,
         exp_cfg: Dict[str, Any],
         env_desc: Dict[str, Any],
-        use_subproc_env: bool = False,
         dataset_server=None,
+        use_subproc_env: bool = False,
     ):
 
         # init environment here
@@ -354,7 +395,7 @@ class Stepping:
 
         # behavior policies is a mapping from agents to policy ids
         # update with external behavior_policies
-        behavior_policies.update(desc["behavior_policies"])
+        behavior_policies.update(desc["behavior_policies"] or {})
         # specify the number of running episodes
         num_episodes = desc["num_episodes"]
         max_step = desc.get("max_step", -1)
@@ -369,6 +410,9 @@ class Stepping:
                 "max_step": max_step,
                 "fragment_length": fragment_length,
                 "num_envs": num_episodes,
+                "behavior_policies": behavior_policies,
+                # FIXME(ming): custom reset config is closed here
+                "custom_reset_config": None,
             },
             dataset_server=self._dataset_server if task_type == "rollout" else None,
         )

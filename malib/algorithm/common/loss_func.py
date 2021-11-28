@@ -2,6 +2,7 @@ from abc import ABCMeta, abstractmethod
 from typing import Dict, Any, Sequence
 
 import torch
+from malib.utils.episode import EpisodeKey
 
 from malib.utils.general import tensor_cast
 

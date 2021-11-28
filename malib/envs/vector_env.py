@@ -176,13 +176,20 @@ class VectorEnv:
 
         for env_id, env in self.active_envs.items():
             _ret = env.reset(max_step=max_step, custom_reset_config=custom_reset_config)
+
+            # keys = list(_ret[EpisodeKey.CUR_OBS].keys())
+            # _ret[EpisodeKey.REWARD] = dict.fromkeys(keys, 0.0)
+            # _ret[EpisodeKey.DONE] = dict.fromkeys(keys, False)
+            # _ret[EpisodeKey.DONE]["__all__"] = False
+            # _ret[EpisodeKey.NEXT_OBS] = _ret[EpisodeKey.CUR_OBS]
+            # if EpisodeKey.CUR_STATE in _ret:
+            #     _ret[EpisodeKey.NEXT_STATE] = _ret[EpisodeKey.CUR_STATE]
             ret[env_id] = _ret
 
         return ret
 
     def step(self, actions: Dict[AgentID, List]) -> Dict:
         active_envs = self.active_envs
-        self._step_cnt += len(active_envs)
 
         env_rets = {}
         # FIXME(ming): (keyerror, sometimes) the env_id in actions is not an active environment.
@@ -206,6 +213,7 @@ class VectorEnv:
                     env_rets[runtime_id] = _tmp
             env_rets[env_id] = ret
 
+        self._step_cnt += len(actions)
         return env_rets
 
     def is_terminated(self):

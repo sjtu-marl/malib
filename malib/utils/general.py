@@ -2,8 +2,29 @@ from typing import OrderedDict
 
 import torch
 import numpy as np
+import copy
 
+from malib import settings
 from malib.utils.typing import Dict, Callable
+
+
+def update_configs(update_dict, ori_dict=None):
+    """Update global configs with a given dict"""
+
+    ori_configs = (
+        copy.copy(ori_dict)
+        if ori_dict is not None
+        else copy.copy(settings.DEFAULT_CONFIG)
+    )
+
+    for k, v in update_dict.items():
+        # assert k in ori_configs, f"Illegal key: {k}, {list(ori_configs.keys())}"
+        if isinstance(v, dict):
+            ph = ori_configs[k] if isinstance(ori_configs.get(k), dict) else {}
+            ori_configs[k] = update_configs(v, ph)
+        else:
+            ori_configs[k] = copy.copy(v)
+    return ori_configs
 
 
 # TODO(ming): will be replaced with many dicts
@@ -18,21 +39,27 @@ def iter_dicts_recursively(d1, d2):
             yield d1, d2, k, d1[k], d2[k]
 
 
-def iter_many_dicts_recursively(*d):
+def iter_many_dicts_recursively(*d, history=None):
     """Assuming dicts have the exact same structure, or raise KeyError."""
 
     for k, v in d[0].items():
         if isinstance(v, (dict, OrderedDict)):
-            yield from iter_many_dicts_recursively(*[_d[k] for _d in d])
+            yield from iter_many_dicts_recursively(
+                *[_d[k] for _d in d],
+                history=history + [k] if history is not None else history,
+            )
         else:
-            yield d, k, tuple([_d[k] for _d in d])
+            if history is None:
+                yield d, k, tuple([_d[k] for _d in d])
+            else:
+                yield history + [k], d, k, tuple([_d[k] for _d in d])
 
 
 def _default_dtype_mapping(dtype):
     # FIXME(ming): cast 64 to 32?
     if dtype in [np.int32, np.int64, int]:
         return torch.int32
-    elif dtype in [float, np.float32]:
+    elif dtype in [float, np.float32, np.float16]:
         return torch.float32
     elif dtype == np.float64:
         return torch.float64
@@ -81,13 +108,13 @@ def tensor_cast(
     )
 
     def decorator(func):
-        def wrap(self, *args, **kwargs):
+        def wrap(*args, **kwargs):
             new_args = []
             for i, arg in enumerate(args):
                 new_args.append(_walk(cast_to_tensor, arg))
             for k, v in kwargs.items():
                 kwargs[k] = _walk(cast_to_tensor, v)
-            rets = func(self, *new_args, **kwargs)
+            rets = func(*new_args, **kwargs)
             if callback is not None:
                 callback(rets)
             return rets

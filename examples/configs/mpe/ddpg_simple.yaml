@@ -25,8 +25,9 @@ rollout:
     max_step: 1000
   metric_type: "simple"
   fragment_length: 25
-  num_episodes: 25
-  episode_seg: 25
+  # TODO(ming): use num batch?
+  num_episodes: 1
+  num_env_per_worker: 1
   terminate: "any"
 
 evaluation:

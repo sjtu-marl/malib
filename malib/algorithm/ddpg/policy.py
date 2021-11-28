@@ -7,7 +7,7 @@ import numpy as np
 from torch.nn import functional as F
 
 from malib.algorithm.common.policy import Policy
-from malib.utils.typing import DataTransferType, Dict, Tuple, BehaviorMode
+from malib.utils.typing import DataTransferType, Dict, Tuple, BehaviorMode, List
 from malib.algorithm.common.model import get_model
 from malib.utils.preprocessor import get_preprocessor
 from malib.algorithm.common import misc
@@ -82,7 +82,7 @@ class DDPG(Policy):
 
     def compute_action(
         self, observation: DataTransferType, **kwargs
-    ) -> Tuple[Any, Any, Any]:
+    ) -> Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
         behavior = kwargs.get("behavior_mode", BehaviorMode.EXPLORATION)
         with torch.no_grad():
             # gumbel softmax convert to differentiable one-hot
@@ -103,7 +103,8 @@ class DDPG(Policy):
                         requires_grad=False,
                     )
                 act = pi
-        return act.numpy(), pi.numpy(), {EpisodeKey.ACTION_DIST: pi.numpy()}
+        rnn_state = kwargs[EpisodeKey.RNN_STATE]
+        return act.numpy(), pi.numpy(), rnn_state
 
     def compute_actions_by_target_actor(
         self, observation: DataTransferType, **kwargs

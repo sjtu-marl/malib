@@ -368,7 +368,7 @@ class AgentInterface(metaclass=ABCMeta):
                     assert batch.data is not None
                     size += len(buffer_desc.indices)
                     self.local_buffer.insert(
-                        data=batch.data, size=len(buffer_desc.indices)
+                        data=[batch.data], size=len(buffer_desc.indices)
                     )
 
                     buffer_desc.data = None
@@ -457,7 +457,7 @@ class AgentInterface(metaclass=ABCMeta):
             total_size += size
 
             self.logger.send_scalar(
-                tag="performance/TFPS/{}".format(os.getpid()),
+                tag="Performance/TFPS/{}".format(os.getpid()),
                 content=total_size / time_consump,
                 global_step=epoch,
             )

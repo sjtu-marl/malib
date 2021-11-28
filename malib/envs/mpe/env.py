@@ -43,6 +43,7 @@ class MPE(Environment):
         # for agent, action in actions.items():
         #     assert self.action_spaces[agent].contains(action), f"Action is not in space: {action} with type={type(action)}"
         observations, rewards, dones, infos = self._env.step(actions)
+        print("steop", self.cnt)
         return {
             EpisodeKey.NEXT_OBS: observations,
             EpisodeKey.REWARD: rewards,

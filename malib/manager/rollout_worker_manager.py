@@ -74,7 +74,7 @@ class RolloutWorkerManager:
                 save=rollout_config.get("save_model", False),
                 # parallel_num: the size of actor pool for rollout and simulation
                 parallel_num=rollout_config["num_episodes"]
-                // rollout_config["episode_seg"],
+                // rollout_config["num_env_per_worker"],
                 exp_cfg=exp_cfg,
             )
 
