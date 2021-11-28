@@ -16,6 +16,7 @@ you wanna save by specifying extra columns when Episode initialization.
 """
 
 import collections
+from numpy.core.numeric import roll
 import ray
 import numpy as np
 
@@ -152,27 +153,19 @@ def _process_policy_outputs(
     return env_actions, detached_policy_outputs
 
 
-def _parse_episode_infos(episode_infos) -> Dict[str, List]:
+def _reduce_rollout_info(rollout_info) -> Dict[str, float]:
     res = {}
-    for episode_info in episode_infos:
-        for k, v in episode_info.step_cnt.items():
-            k = f"step_cnt/{k}"
-            if res.get(k) is None:
-                res[k] = []
-            res[k].append(v)
-        for k, v in episode_info.total_rewards.items():
-            k = f"total_reward/{k}"
-            if res.get(k) is None:
-                res[k] = []
-            res[k].append(v)
-        extra_info = episode_info.extra_info
-        if len(extra_info) > 0:
-            for k, agent_items in extra_info.items():
-                for agent, v in agent_items.items():
-                    key = f"custom_metric/{k}/{agent}"
-                    if res.get(key) is None:
-                        res[key] = []
-                    res[key].append(v)
+    if isinstance(rollout_info, list) or isinstance(rollout_info, tuple):
+        _item = np.array(rollout_info)
+        res["mean"] = np.mean(_item)
+        res["min"] = np.min(_item)
+        res["max"] = np.max(_item)
+    elif isinstance(rollout_info, dict):
+        for k, item in rollout_info.items():
+            res[k] = _reduce_rollout_info(item)
+    else:
+        res = rollout_info
+
     return res
 
 
@@ -262,7 +255,7 @@ def env_runner(
         buffer_desc.indices = indices
         dataset_server.save.remote(buffer_desc)
 
-    return rollout_info
+    return _reduce_rollout_info(rollout_info)
 
 
 class Stepping:

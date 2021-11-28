@@ -7,6 +7,7 @@ import asyncio
 import time
 import traceback
 import numpy as np
+from numpy.ma.core import cumsum
 import torch
 import ray
 
@@ -16,6 +17,7 @@ from readerwriterlock import rwlock
 
 from malib import settings
 from malib.utils.errors import OversampleError
+from malib.utils.general import iter_dicts_recursively, iter_many_dicts_recursively
 from malib.utils.logger import Log, Logger
 from malib.utils.typing import (
     BufferDescription,
@@ -217,7 +219,8 @@ class Table:
                 continue
             t = BufferDict()
             for dk, dshape in _dshapes.items():
-                t[dk] = np.zeros((capacity, self._fragment_length) + dshape)
+                # XXX(ming): use fragment length for RNN?
+                t[dk] = np.zeros((capacity,) + dshape, dtype=np.float16)
             self._buffer[agent] = t
 
     @property
@@ -277,12 +280,29 @@ class Table:
     def gen_table_name(*args, **kwargs):
         return DATASET_TABLE_NAME_GEN(*args, **kwargs)
 
-    def insert(self, data: Dict[str, Any], indices: List[int] = None, size: int = None):
+    def insert(
+        self, data: List[Dict[str, Any]], indices: List[int] = None, size: int = None
+    ):
+        shuffle_idx = np.random.shuffle(np.arange(len(indices)))
+        for d_list, k, value_list in iter_many_dicts_recursively(*data):
+            head_d = d_list[0]
+            batch_sizes = [v.shape[0] for v in value_list]
+            merged_shape = (sum(batch_sizes),) + value_list[0].shape[1:]
+            _placeholder = np.zeros(merged_shape, dtype=head_d[k].dtype)
+
+            index = 0
+            for batch_size, value in zip(batch_sizes, value_list):
+                _placeholder[index : index + batch_size] = value[::]
+                index += batch_size
+            assert len(_placeholder) >= len(indices), (len(_placeholder), len(indices))
+            head_d[k] = _placeholder[shuffle_idx]
+
         if indices is None:
             # generate indices
             indices = np.arange(self._flag, self._flag + size) % self._capacity
+
         # assert indices is not None, "indices: {}".format(indices)
-        self._buffer.set_data(indices, data)
+        self._buffer.set_data(indices, data[0])
         self._size += len(indices)
         self._size = min(self._size, self._capacity)
         self._flag = (self._flag + len(indices)) % self._capacity

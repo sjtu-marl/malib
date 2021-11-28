@@ -6,6 +6,7 @@ import numpy as np
 from malib.utils.typing import Dict, Callable
 
 
+# TODO(ming): will be replaced with many dicts
 def iter_dicts_recursively(d1, d2):
     """Assuming dicts have the exact same structure."""
     for k, v in d1.items():
@@ -15,6 +16,16 @@ def iter_dicts_recursively(d1, d2):
             yield from iter_dicts_recursively(d1[k], d2[k])
         else:
             yield d1, d2, k, d1[k], d2[k]
+
+
+def iter_many_dicts_recursively(*d):
+    """Assuming dicts have the exact same structure, or raise KeyError."""
+
+    for k, v in d[0].items():
+        if isinstance(v, (dict, OrderedDict)):
+            yield from iter_many_dicts_recursively(*[_d[k] for _d in d])
+        else:
+            yield d, k, tuple([_d[k] for _d in d])
 
 
 def _default_dtype_mapping(dtype):
