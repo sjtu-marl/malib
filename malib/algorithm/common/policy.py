@@ -5,6 +5,7 @@ Implementation of basic PyTorch-based policy class
 import gym
 
 from abc import ABCMeta, abstractmethod
+from torch._C import device
 
 import torch.nn as nn
 
@@ -78,6 +79,7 @@ class Policy(metaclass=ABCMeta):
         self.registered_name = registered_name
         self.observation_space = observation_space
         self.action_space = action_space
+        self.device = device
 
         self.custom_config = {
             "gamma": 0.99,
@@ -265,6 +267,10 @@ class Policy(metaclass=ABCMeta):
     def eval(self):
         pass
 
-    @abstractmethod
+    # @abstractmethod
     def reset(self):
         """Reset policy intermediates"""
+        pass
+
+    def to_device(self, device):
+        self.device = device

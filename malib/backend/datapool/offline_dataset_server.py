@@ -178,20 +178,18 @@ class _QueueActor:
 class Table:
     def __init__(
         self,
-        keys,
         capacity: int,
         fragment_length: int,
-        data_shapes: Dict[AgentID, Dict[str, Tuple]],
+        data_shapes: Dict[AgentID, Dict[str, Tuple]] = None,
+        data_dtypes: Dict[AgentID, Dict[str, Tuple]] = None,
         sample_start_size: int = 0,
         event_loop: asyncio.BaseEventLoop = None,
         mode: str = "queue",
     ):
         """One table for one episode."""
 
-        self._keys = keys
         self._threading_lock = threading.Lock()
         self._rwlock = rwlock.RWLockFairD()
-        self._is_multi_agent = len(keys) > 1
         self._consumer_queue = None
         self._producer_queue = None
         self._is_fixed = False
@@ -213,15 +211,18 @@ class Table:
             self._producer_queue = None
 
         # build episode
-        self._buffer = BufferDict()
-        for agent, _dshapes in data_shapes.items():
-            if agent not in keys:
-                continue
-            t = BufferDict()
-            for dk, dshape in _dshapes.items():
-                # XXX(ming): use fragment length for RNN?
-                t[dk] = np.zeros((capacity,) + dshape, dtype=np.float16)
-            self._buffer[agent] = t
+        if data_shapes is not None:
+            self._buffer = BufferDict()
+            for agent, _dshapes in data_shapes.items():
+                # if agent not in keys:
+                #     continue
+                t = BufferDict()
+                for dk, dshape in _dshapes.items():
+                    # XXX(ming): use fragment length for RNN?
+                    t[dk] = np.zeros((capacity,) + dshape, dtype=data_dtypes[agent][dk])
+                self._buffer[agent] = t
+        else:
+            self._buffer = None
 
     @property
     def is_fixed(self):
@@ -229,7 +230,7 @@ class Table:
 
     @property
     def is_multi_agent(self) -> bool:
-        return self._is_multi_agent
+        return len(self.buffer)
 
     @property
     def buffer(self) -> BufferDict:
@@ -246,6 +247,14 @@ class Table:
     @property
     def capacity(self):
         return self._capacity
+
+    def build_buffer_from_samples(self, sample: Dict):
+        self._buffer = BufferDict()
+        for agent, _buff in sample.items():
+            t = BufferDict()
+            for dk, v in _buff.items():
+                t[dk] = np.zeros((self.capacity,) + v.shape[1:], dtype=v.dtype)
+            self._buffer[agent] = t
 
     def sample_activated(self) -> bool:
         return self._consumer_queue.size() >= self._sample_start_size
@@ -283,6 +292,8 @@ class Table:
     def insert(
         self, data: List[Dict[str, Any]], indices: List[int] = None, size: int = None
     ):
+        if self.buffer is None:
+            self.build_buffer_from_samples(data[0])
         shuffle_idx = np.random.shuffle(np.arange(len(indices)))
         for d_list, k, value_list in iter_many_dicts_recursively(*data):
             head_d = d_list[0]
@@ -349,7 +360,6 @@ class Table:
             serial_dict = pkl.load(f)
 
         table = Table(
-            keys=serial_dict["keys"],
             capacity=serial_dict["capacity"],
             data_shapes=serial_dict["data_shapes"],
             sample_start_size=serial_dict["sample_start_size"],
@@ -409,7 +419,7 @@ class OfflineDataset:
         self._episode_capacity = dataset_config.get(
             "episode_capacity", settings.DEFAULT_EPISODE_CAPACITY
         )
-        self._fragment_length = dataset_config["fragment_length"]
+        self._fragment_length = dataset_config.get("fragment_length")
         self._learning_start = dataset_config.get("learning_start", 64)
         self._tables: Dict[str, Table] = dict()
         self._threading_lock = threading.Lock()
@@ -499,7 +509,6 @@ class OfflineDataset:
             # return None
         else:
             self._tables[name] = Table(
-                buffer_desc.agent_id,
                 self._episode_capacity,
                 self._fragment_length,
                 buffer_desc.data_shapes,

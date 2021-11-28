@@ -281,7 +281,7 @@ class Stepping:
                     env.action_spaces,
                     env_desc["creator"],
                     env_desc["config"],
-                    max_envs_num=2,  # FIXME(ziyu): currently just fixed it.
+                    max_num_envs=2,  # FIXME(ziyu): currently just fixed it.
                 )
             else:
                 self.env = VectorEnv(

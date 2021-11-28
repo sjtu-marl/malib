@@ -90,9 +90,9 @@ class CTDEAgent(AgentInterface):
         sample_mode: str,
     ):
         """Generate a buffer description which description in a batch of agents"""
-        agent_policy_mapping = {
-            aid: pid for aid, (pid, _) in agent_policy_mapping.items()
-        }
+        # agent_policy_mapping = {
+        #     aid: pid for aid, pid in agent_policy_mapping.items()
+        # }
         return BufferDescription(
             env_id=self._env_desc["config"]["env_id"],
             agent_id=list(agent_policy_mapping.keys()),

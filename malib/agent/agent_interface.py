@@ -87,7 +87,7 @@ class AgentInterface(metaclass=ABCMeta):
         population_size: int,
         use_init_policy_pool: bool,
         algorithm_mapping: Callable = None,
-        local_buffer_size: int = 0,
+        local_buffer_config: Dict = None,
     ):
         """
         :param str assign_id: Specify the agent interface id.
@@ -136,12 +136,13 @@ class AgentInterface(metaclass=ABCMeta):
             mongo=settings.USE_MONGO_LOGGER,
             **exp_cfg,
         )
-        self._local_buffer = Table(
-            # FIXME(ziyu & ming): how to figure out these params, new config?
-            [self._id],
-            capacity=10,
-            fragment_length=3001,
-            data_shapes=self._env_desc["data_shapes"],
+
+        local_buffer_config = local_buffer_config or {}
+        self.local_buffer = Table(
+            capacity=local_buffer_config.get("size", 10000),
+            fragment_length=None,
+            data_shapes=None,
+            sample_start_size=0,
             mode="local",
         )
 
@@ -354,8 +355,8 @@ class AgentInterface(metaclass=ABCMeta):
                     self._offline_dataset.get_consumer_index.remote(buffer_desc)
                 )
                 if batch.data is None:
-                    # Logger.warning("index not ready")
-                    if self._local_buffer.size >= buffer_desc.batch_size:
+                    # means interface can use local buffer for training
+                    if self.local_buffer.size >= buffer_desc.batch_size:
                         break
                     else:
                         continue
@@ -365,17 +366,15 @@ class AgentInterface(metaclass=ABCMeta):
                         self._offline_dataset.sample.remote(buffer_desc)
                     )
                     assert batch.data is not None
-                    size += buffer_desc.batch_size
-                    # res.update(batch.data)
-                    # print("likffe:", list(batch.data.keys()))
-                    self._local_buffer.insert(
+                    size += len(buffer_desc.indices)
+                    self.local_buffer.insert(
                         data=batch.data, size=len(buffer_desc.indices)
                     )
 
                     buffer_desc.data = None
                     buffer_desc.indices = None
                     break
-        res = self._local_buffer.sample(size=buffer_desc.batch_size)
+        res = self.local_buffer.sample(size=buffer_desc.batch_size)
         Logger.debug("Trainer got {} data".format(buffer_desc.batch_size))
         return res, size
 

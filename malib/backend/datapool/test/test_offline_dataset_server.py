@@ -83,7 +83,6 @@ class TestTable:
     ):
         data_shapes = {k: shared_data_shapes for k in keys}
         self.table = Table(
-            keys,
             capacity,
             fragment_length,
             data_shapes,
