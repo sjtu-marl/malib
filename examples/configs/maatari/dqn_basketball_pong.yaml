@@ -52,8 +52,6 @@ rollout:
   stopper_config:
     stop_num: 1000
   callback: "simultaneous"
-  # share one rollout worker
-  worker_num: 1
 
 global_evaluator:
   name: "generic"
