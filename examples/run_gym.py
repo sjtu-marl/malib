@@ -31,16 +31,6 @@ if __name__ == "__main__":
     # read environment description
     env_desc = custom_gym.env_desc_gen(config["env_description"]["config"]["env_id"])
     obs_space_template = list(env_desc["observation_spaces"].values())[0]
-    preprocessor = get_preprocessor(space=obs_space_template)(obs_space_template)
-    sampler_config = custom_gym.basic_sampler_config(
-        env_desc["observation_spaces"], env_desc["action_spaces"], preprocessor
-    )
-
-    agent_wise_shapes = sampler_config["data_shapes"]
-    env_desc["config"]["data_shapes"] = dict.fromkeys(
-        env_desc["possible_agents"], agent_wise_shapes
-    )
-
     training_config = config["training"]
     rollout_config = config["rollout"]
 
@@ -61,4 +51,5 @@ if __name__ == "__main__":
         dataset_config=config.get("dataset_config", {}),
         parameter_server=config.get("parameter_server", {}),
         use_init_policy_pool=False,
+        task_mode="marl",
     )

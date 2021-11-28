@@ -112,6 +112,8 @@ class CoordinatorServer(BaseCoordinator):
         self._training_manager = None
         self._exp_cfg = kwargs["exp_cfg"]
 
+        self.task_mode = kwargs["task_mode"]
+
     @property
     def hyper_evaluator(self) -> Evaluator:
         return self._hyper_evaluator

@@ -46,7 +46,7 @@ def iter_many_dicts_recursively(*d, history=None):
         if isinstance(v, (dict, OrderedDict)):
             yield from iter_many_dicts_recursively(
                 *[_d[k] for _d in d],
-                history=history + [k] if history is not None else history,
+                history=history + [k] if history is not None else None,
             )
         else:
             if history is None:

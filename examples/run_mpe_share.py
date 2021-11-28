@@ -58,4 +58,5 @@ if __name__ == "__main__":
         dataset_config=config.get("dataset_config", {}),
         parameter_server=config.get("parameter_server", {}),
         use_init_policy_pool=False,
+        task_mode="marl",
     )

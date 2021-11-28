@@ -41,15 +41,16 @@ class DQNLoss(LossFunc):
         self.loss = []
         reward = batch[EpisodeKey.REWARD].view(-1, 1)
         act = batch[EpisodeKey.ACTION].view(-1, 1)
-        obs = batch[EpisodeKey.CUR_OBS].copy()
-        next_obs = batch[EpisodeKey.NEXT_OBS].copy()
+        act = act.type(torch.LongTensor)
+        obs = batch[EpisodeKey.CUR_OBS]
+        next_obs = batch[EpisodeKey.NEXT_OBS]
         done = batch[EpisodeKey.DONE].view(-1, 1)
 
         state_action_values = self.policy.critic(obs).gather(1, act)
         next_state_q = self.policy.target_critic(next_obs)
 
         if batch.get("next_action_mask", None) is not None:
-            next_action_mask = batch["next_action_mask"].copy()
+            next_action_mask = batch["next_action_mask"]
             illegal_action_mask = 1 - next_action_mask
             # give very low value to illegal action logits
             illegal_action_logits = -illegal_action_mask * 1e9

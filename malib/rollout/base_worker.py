@@ -2,15 +2,17 @@
 Users can implement and register their own rollout worker by inheriting from this class.
 """
 
-from collections import defaultdict
 import os
 import copy
 import time
 import traceback
+import operator
 import numpy as np
 
 import ray
 
+from collections import defaultdict
+from functools import reduce
 from malib import settings
 from malib.utils.general import iter_dicts_recursively, iter_many_dicts_recursively
 from malib.utils.typing import (
@@ -356,6 +358,7 @@ class BaseRolloutWorker:
                 *raw_statistics, history=[]
             ):
                 prefix = "/".join(history)
+                vs = reduce(operator.add, vs)
                 holder[f"{prefix}_mean"] = np.mean(vs)
                 holder[f"{prefix}_max"] = np.max(vs)
                 holder[f"{prefix}_min"] = np.min(vs)

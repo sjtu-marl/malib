@@ -16,9 +16,9 @@ class GenericEvaluator(BaseEvaluator):
 
     def evaluate(self, *args, **kwargs) -> Dict[str, Any]:
         res = EvaluateResult.default_result()
+        self._iteration += 1
         res[EvaluateResult.CONVERGED] = (
             self._metrics.get(GenericEvaluator.StopMetrics.MAX_ITERATION, 1)
             == self._iteration
         )
-        self._iteration += 1
         return res

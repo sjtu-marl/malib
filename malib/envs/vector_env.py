@@ -176,14 +176,6 @@ class VectorEnv:
 
         for env_id, env in self.active_envs.items():
             _ret = env.reset(max_step=max_step, custom_reset_config=custom_reset_config)
-
-            # keys = list(_ret[EpisodeKey.CUR_OBS].keys())
-            # _ret[EpisodeKey.REWARD] = dict.fromkeys(keys, 0.0)
-            # _ret[EpisodeKey.DONE] = dict.fromkeys(keys, False)
-            # _ret[EpisodeKey.DONE]["__all__"] = False
-            # _ret[EpisodeKey.NEXT_OBS] = _ret[EpisodeKey.CUR_OBS]
-            # if EpisodeKey.CUR_STATE in _ret:
-            #     _ret[EpisodeKey.NEXT_STATE] = _ret[EpisodeKey.CUR_STATE]
             ret[env_id] = _ret
 
         return ret
@@ -198,10 +190,10 @@ class VectorEnv:
             env_done = ret[EpisodeKey.DONE]["__all__"]
             if env_done:
                 env = active_envs.pop(env_id)
-                if self.is_terminated():
+                self._cached_episode_infos[env_id] = env.collect_info()
+                if not self.is_terminated():
                     # write episode cache
-                    self._cached_episode_infos[env_id] = env.collect_info()
-                else:
+                # else:
                     _tmp = env.reset(
                         max_step=self._max_step,
                         custom_reset_config=self._custom_reset_config,

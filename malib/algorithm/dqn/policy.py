@@ -102,15 +102,14 @@ class DQN(Policy):
                 return (
                     actions.to("cpu").numpy(),
                     action_probs.detach().to("cpu").numpy(),
-                    {EpisodeKey.ACTION_DIST: action_probs.detach().to("cpu").numpy()},
+                    kwargs[EpisodeKey.RNN_STATE],
                 )
 
         actions = torch.argmax(action_probs, dim=-1)
-        extra_info = {EpisodeKey.ACTION_DIST: action_probs.detach().to("cpu").numpy()}
         return (
             actions.detach().numpy(),
             action_probs.detach().to("cpu").numpy(),
-            extra_info,
+            kwargs[EpisodeKey.RNN_STATE],
         )
 
     def compute_actions(

@@ -279,19 +279,14 @@ def env_runner(
         buffer_desc.indices = indices
         dataset_server.save.remote(buffer_desc)
 
-    ph = []
-    for e in rollout_info.values():
-        _e = _reduce_rollout_info(e)
-        ph.append(e)
+    ph = list(rollout_info.values())
 
     holder = {}
     for history, ds, k, vs in iter_many_dicts_recursively(*ph, history=[]):
-        _arr = np.array(vs)
-        if len(_arr.shape) > 1:
-            _arr = np.sum(_arr, axis=-1)
+        arr = [np.sum(_vs) for _vs in vs]
         prefix = "/".join(history)
         # print(history, prefix, _arr, vs)
-        holder[prefix] = _arr
+        holder[prefix] = arr
 
     return {"total_fragment_length": env.batched_step_cnt, "eval_info": holder}
 

@@ -54,7 +54,7 @@ class Episode:
             if ek == EpisodeKey.RNN_STATE:
                 continue
             for agent_id, v in agent_v.items():
-                res[agent_id][ek] = np.asarray(v, dtype=np.float16)
+                res[agent_id][ek] = np.asarray(v, dtype=np.float32)
         return res
 
 
