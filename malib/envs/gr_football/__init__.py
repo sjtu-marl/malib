@@ -2,7 +2,7 @@ import numpy as np
 
 from malib.utils.preprocessor import get_preprocessor
 from malib.utils.episode import EpisodeKey
-from .env import BaseGFootBall
+from .env import BaseGFootBall, ParameterSharing
 from .wrappers import ParameterizedSharing
 
 
@@ -23,6 +23,11 @@ DEFAULT_ENV_CONNFIG = {
         "stacked": False,
     },
 }
+
+
+def build_env(env_id, scenario_configs):
+    base_env = BaseGFootBall(env_id=env_id, scenario_configs=scenario_configs)
+    return ParameterSharing(base_env, default_sharing_mapping)
 
 
 def build_sampler_config(

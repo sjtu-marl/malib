@@ -231,23 +231,27 @@ class AgentInterface:
             policy_id = self._random_select_policy()
             self._behavior_policy = policy_id
         kwargs.update({"behavior_mode": self.behavior_mode})
-        kwargs[EpisodeKey.CUR_OBS] = np.vstack(kwargs[EpisodeKey.CUR_OBS])
+        kwargs[EpisodeKey.CUR_OBS] = np.stack(kwargs[EpisodeKey.CUR_OBS])
         if kwargs.get(EpisodeKey.CUR_STATE) is not None:
-            kwargs[EpisodeKey.CUR_STATE] = np.vstack(kwargs[EpisodeKey.CUR_STATE])
+            kwargs[EpisodeKey.CUR_STATE] = np.stack(kwargs[EpisodeKey.CUR_STATE])
         rnn_state = kwargs[EpisodeKey.RNN_STATE]
-        for i, e in enumerate(rnn_state):
-            rnn_state[i] = np.vstack(e)
+        print('ok')
+        if len(rnn_state[0]) < 2:
+            import pdb; pdb.set_trace()
+        rnn_state0 = [rs[0] for rs in rnn_state]
+        rnn_state1 = [rs[1] for rs in rnn_state]
+        kwargs[EpisodeKey.RNN_STATE] = [np.stack(rnn_state0), np.stack(rnn_state1)]
         return self.policies[policy_id].compute_action(*args, **kwargs)
 
     def get_policy(self, pid: PolicyID) -> Policy:
         return self.policies[pid]
 
-    def get_initial_state(self, pid=None) -> List[DataTransferType]:
+    def get_initial_state(self, pid=None, batch_size: int = None) -> List[DataTransferType]:
         """Return a list of initial rnn states"""
 
         pid = pid or self.behavior_policy
         assert pid is not None, "Behavior policy or input pid cannot both be None"
-        return self.policies[pid].get_initial_state()
+        return self.policies[pid].get_initial_state(batch_size)
 
     def update_weights(
         self, pids: Sequence = None, waiting: bool = False

@@ -14,7 +14,8 @@ class EpisodeKey:
     ACTION_MASK = "action_mask"
     REWARD = "reward"
     DONE = "done"
-    ACTION_DIST = "action_prob"
+    # XXX(ziyu): Change to 'logits' for numerical issues.
+    ACTION_DIST = "action_logits"
     # XXX(ming): seems useless
     INFO = "infos"
 
@@ -63,7 +64,7 @@ class NewEpisodeDict(defaultdict):
         else:
             ret = self[env_id] = self.default_factory(env_id)
             return ret
-
+    # XXX(ziyu): We can remove NEXT_OBS to improve efficiency.
     def record(
         self, policy_outputs, env_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]
     ):

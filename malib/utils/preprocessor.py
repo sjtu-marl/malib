@@ -168,10 +168,9 @@ class BoxFlattenPreprocessor(Preprocessor):
 
         if isinstance(data, list):
             array = np.stack(data)
-            array = array.reshape((len(array), -1))
             return array
         else:
-            array = np.asarray(data).reshape((-1,))
+            array = np.asarray(data).reshape((-1,self._size))
             return array
 
     def write(self, array, offset, data):

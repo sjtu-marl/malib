@@ -59,22 +59,29 @@ def _process_environment_returns(
         policy_input = {}
         drop = False
         for k, ret in rets.items():
-            if k in [EpisodeKey.CUR_OBS, EpisodeKey.NEXT_OBS]:
-                output[k] = {
-                    aid: interface.transform_observation(
-                        observation=ret[aid], state=rets.get("state", None)
-                    )["obs"]
-                    for aid, interface in agent_interfaces.items()
-                }
-                policy_input[k] = output[k]
-                if k == EpisodeKey.NEXT_OBS:
-                    output[EpisodeKey.CUR_OBS] = output[k]
-                    policy_input[EpisodeKey.CUR_OBS] = output[k]
-            else:
+            if k in [
+                EpisodeKey.CUR_OBS, EpisodeKey.NEXT_OBS, 
+                EpisodeKey.CUR_STATE, EpisodeKey.DONE
+            ]:
                 # pop all done
                 if k == EpisodeKey.DONE:
                     done = ret.pop("__all__")
                     drop = done
+                # XXX(ziyu): I think this is wrong when we need 
+                # state, done also as inputs
+                # 
+                #  
+                # output[k] = {
+                #     aid: interface.transform_observation(
+                #         observation=ret[aid], state=rets.get("state", None)
+                #     )["obs"]
+                #     for aid, interface in agent_interfaces.items()
+                # }
+                policy_input[k] = ret
+                if k == EpisodeKey.NEXT_OBS:
+                    output[EpisodeKey.CUR_OBS] = output[k]
+                    policy_input[EpisodeKey.CUR_OBS] = output[k]
+            else:
                 output[k] = ret
 
         if not drop:
@@ -103,17 +110,30 @@ def _do_policy_eval(
             # if interface.use_rnn:
             # then feed last rnn state here
             if len(env_episode[EpisodeKey.RNN_STATE][agent_id]) < 1:
+                # FIXME(ziyu): I'm trying to make it compatable with parameter sharing wrapper,
+                # in which case batch_size may not be None but the number of agent
+                obs_shape = policy_inputs[env_id][EpisodeKey.CUR_OBS][agent_id].shape
                 env_episode[EpisodeKey.RNN_STATE][agent_id].append(
-                    interface.get_initial_state()
+                    interface.get_initial_state(batch_size=None if len(obs_shape) == 1 else obs_shape[0])
                 )
+                # XXX(ziyu): RNN also need rnn mask which is EpisodeKey.DONE,
+                # here I add them here and assume that if we have RNN state,
+                # we have DONE.
+                assert len(env_episode[EpisodeKey.DONE][agent_id]) < 1
+                env_episode[EpisodeKey.DONE][agent_id].append(
+                    np.zeros(obs_shape[:-1]))
             last_rnn_state = env_episode[EpisodeKey.RNN_STATE][agent_id][-1]
             agent_wise_inputs[agent_id][EpisodeKey.RNN_STATE].append(last_rnn_state)
+
+            # Add RNN mask for rnn
+            last_done = env_episode[EpisodeKey.DONE][agent_id][-1]
+            agent_wise_inputs[agent_id][EpisodeKey.DONE].append(last_done)
+        
         for k, agent_v in policy_inputs[env_id].items():
             for agent_id, v in agent_v.items():
                 agent_wise_inputs[agent_id][k].append(v)
 
     for agent_id, interface in agent_interfaces.items():
-
         (
             actions[agent_id],
             action_dists[agent_id],

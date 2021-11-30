@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
 import copy
+
+import numpy as np
 from malib.algorithm.mappo.actor_critic import RNNNet
 from malib.algorithm.mappo.utils import PopArt, init_fc_weights
 import os
 import pickle
-from typing import Tuple, Any, Dict
+from typing import List, Tuple, Any, Dict
 import gym
 import torch
 from torch import nn
 from malib.algorithm.common.model import get_model
 from malib.algorithm.common.policy import Policy
+from malib.utils.episode import EpisodeKey
 from malib.utils.typing import DataTransferType
 from malib.algorithm.common.misc import hard_update
 
@@ -72,6 +75,12 @@ class MAPPO(Policy):
 
         self.register_state(self._actor, "actor")
         self.register_state(self._critic, "critic")
+    
+    def get_initial_state(self, batch_size) -> List[DataTransferType]:
+        return [
+            np.zeros((batch_size, rnn_net.rnn_layer_num, rnn_net.rnn_state_size))
+            for rnn_net in [self._actor, self._critic]
+        ]
 
     def to_device(self, device):
         self_copy = copy.deepcopy(self)
@@ -91,9 +100,10 @@ class MAPPO(Policy):
         return logits, actor_rnn_states
 
     def compute_action(self, observation, **kwargs):
-        actor_rnn_states = kwargs.get("actor_rnn_states", None)
-        rnn_masks = kwargs.get("rnn_masks", None)
+        actor_rnn_states, critic_rnn_states = kwargs[EpisodeKey.RNN_STATE]
+        rnn_masks = kwargs[EpisodeKey.DONE]
         logits, actor_rnn_states = self.actor(observation, actor_rnn_states, rnn_masks)
+        actor_rnn_states = actor_rnn_states.detach().cpu().numpy()
         if "action_mask" in kwargs:
             illegal_action_mask = torch.FloatTensor(
                 1 - observation[..., : logits.shape[-1]]
@@ -109,18 +119,15 @@ class MAPPO(Policy):
 
         # extra_info["action_probs"] = action_prob
         action = dist.sample().cpu().numpy()
-        if "share_obs" in kwargs and kwargs["share_obs"] is not None:
-            critic_rnn_states = kwargs.get("critic_rnn_states", None)
+        if EpisodeKey.CUR_STATE in kwargs and kwargs[EpisodeKey.CUR_STATE] is not None:
             value, critic_rnn_states = self.critic(
-                kwargs["share_obs"], critic_rnn_states, rnn_masks
+                kwargs[EpisodeKey.CUR_STATE], critic_rnn_states, rnn_masks
             )
             extra_info["value"] = value.detach().cpu().numpy()
-            extra_info["critic_rnn_states"] = critic_rnn_states.detach().cpu().numpy()
-
-        extra_info["actor_rnn_states"] = actor_rnn_states.detach().cpu().numpy()
-        # XXX(ziyu): it seems that probs have some tiny numerical error, just use logits
-        # return action, logits.detach().cpu().numpy(), extra_info
-        return action, action_prob, extra_info
+            critic_rnn_states = critic_rnn_states.detach().cpu().numpy()
+        
+        return action, action_prob, \
+            (actor_rnn_states, critic_rnn_states)
 
     def train(self):
         pass

@@ -4,6 +4,7 @@ import numpy as np
 
 from gym import spaces
 from numpy.core.fromnumeric import mean
+from malib.utils.preprocessor import get_preprocessor
 
 
 from malib.utils.typing import AgentID, Callable, Dict, Any, Union, List
@@ -24,15 +25,14 @@ class BaseGFootBall(Environment):
 
     def record_episode_info_step(self, rets):
         super(BaseGFootBall, self).record_episode_info_step(rets)
-
         reward = rets[EpisodeKey.REWARD]
+        # HACK(ziyu): what if there are two teams of agent?
+        # How can we use only one 'win'/'score'/'goal_diff'?
         info = list(rets[EpisodeKey.INFO].values())[0]
         self.custom_metrics["total_reward"] += mean(list(reward.values()))
         self.custom_metrics["win"] += info.get("win", 0.0)
         self.custom_metrics["score"] += info.get("score", 0.0)
         self.custom_metrics["goal_diff"] += info.get("goal_diff", 0.0)
-        self.custom_metrics["num_pass"] += info.get("num_pass", 0.0)
-        self.custom_metrics["num_shot"] += info.get("num_shot", 0.0)
 
     def __init__(self, env_id: str, use_built_in_GK: bool = True, scenario_configs={}):
         super(BaseGFootBall, self).__init__(
@@ -80,7 +80,6 @@ class BaseGFootBall(Environment):
 
     def seed(self, seed=None):
         self._raw_env.seed(seed)
-        return self.reset()
 
     @property
     def possible_agents(self) -> List[AgentID]:
@@ -143,12 +142,18 @@ class BaseGFootBall(Environment):
 
         info = self._wrap_list_to_dict(info)
 
-        return {
-            EpisodeKey.NEXT_OBS: self._get_obs(),
+        rets = {
+            EpisodeKey.CUR_OBS: self._get_obs(),
             EpisodeKey.REWARD: reward,
             EpisodeKey.DONE: done,
             EpisodeKey.INFO: info,
         }
+        # If use the default feature encoder, the first num_action dimension is actually available action.
+        if self._repr_mode == 'raw' \
+            and isinstance(self._feature_encoder, encoder_basic.FeatureEncoder):
+            rets[EpisodeKey.ACTION_MASK] = {k: v[:19] for k, v in rets[EpisodeKey.CUR_OBS].items()}
+
+        return rets
 
     def close(self):
         self._raw_env.close()
@@ -166,8 +171,6 @@ class BaseGFootBall(Environment):
                 "win": 0.0,
                 "score": 0.0,
                 "goal_diff": 0.0,
-                "num_pass": 0.0,
-                "num_shot": 0.0,
             }
         )
 
@@ -175,8 +178,13 @@ class BaseGFootBall(Environment):
         self.agents = self.possible_agents
         self.dones = dict(zip(self.agents, [False] * self.n_agents))
         self.scores = dict(zip(self.agents, [{"scores": [0.0]}] * self.n_agents))
-
-        return {EpisodeKey.CUR_OBS: self._get_obs()}
+        rets = {EpisodeKey.CUR_OBS: self._get_obs()}
+        if self._repr_mode == 'raw' \
+            and isinstance(self._feature_encoder, encoder_basic.FeatureEncoder):
+            rets[EpisodeKey.ACTION_MASK] = {
+                                            k: v[:self._num_actions] 
+                                            for k, v in rets[EpisodeKey.CUR_OBS].items()}
+        return rets
 
     def _build_interacting_spaces(self):
         possible_agents = self.possible_agents
@@ -240,21 +248,15 @@ class BaseGFootBall(Environment):
 
 
 def ParameterSharing(base_env: BaseGFootBall, parameter_sharing_mapping: Callable):
-    class Env:
+    class Env(Environment):
         def __init__(self):
             """
             :param base_env: the environment where agents share their parameters
             :param parameter_sharing_mapping: how to share the parameters
             """
+            super().__init__(**{})
             self._env = base_env
-            self.possible_agents = sorted(
-                list(
-                    set(
-                        parameter_sharing_mapping(aid)
-                        for aid in base_env.possible_agents
-                    )
-                )
-            )
+            
             self._ps_mapping_func = parameter_sharing_mapping
             self._ps_buckets = {aid: [] for aid in self.possible_agents}
             for aid in base_env.possible_agents:
@@ -262,21 +264,39 @@ def ParameterSharing(base_env: BaseGFootBall, parameter_sharing_mapping: Callabl
             self._ps_buckets = {
                 aid: sorted(self._ps_buckets[aid]) for aid in self.possible_agents
             }
-            self.action_spaces = {
-                aid: base_env.action_spaces[self._ps_buckets[aid][0]]
-                for aid in self.possible_agents
-            }
-            self.observation_spaces = {
-                aid: base_env.observation_spaces[self._ps_buckets[aid][0]]
-                for aid in self.possible_agents
-            }
+            
             self.num_agent_share = {aid: len(v) for aid, v in self._ps_buckets.items()}
 
             self.is_sequential = False
 
         @property
-        def state_space(self):
+        def observation_spaces(self) -> Dict[AgentID, gym.Space]:
             return {
+                aid: base_env.observation_spaces[self._ps_buckets[aid][0]]
+                for aid in self.possible_agents
+            }
+        
+        @property
+        def action_spaces(self) -> Dict[AgentID, gym.Space]:
+            return {
+                aid: base_env.action_spaces[self._ps_buckets[aid][0]]
+                for aid in self.possible_agents
+            }
+
+        @property
+        def possible_agents(self) -> List[AgentID]:
+            return sorted(
+                list(
+                    set(
+                        parameter_sharing_mapping(aid)
+                        for aid in base_env.possible_agents
+                    )
+                )
+            )
+
+        @property
+        def state_spaces(self):
+            concate_stsp = {
                 aid: gym.spaces.Dict(
                     {
                         player_id: obssp
@@ -286,6 +306,7 @@ def ParameterSharing(base_env: BaseGFootBall, parameter_sharing_mapping: Callabl
                 )
                 for aid in self.possible_agents
             }
+            return {k: get_preprocessor(v)(v).observation_space for k, v in concate_stsp.items()}
 
         def _build_state_from_obs(self, obs):
             state = {
@@ -295,68 +316,90 @@ def ParameterSharing(base_env: BaseGFootBall, parameter_sharing_mapping: Callabl
             for aid, share_obs in state.items():
                 state[aid] = np.repeat(share_obs, obs[aid].shape[0], axis=0)
             return state
+        
+        def action_adapter(self, policy_outputs: Dict[str, Dict[AgentID, Any]], **kwargs):
+            """Convert policy action to environment actions. Default by policy action"""
 
-        def record_episode_info(self, rew, info, act_dict):
-            data_dict = copy.deepcopy(info)
-            for aid, d in data_dict.items():
-                act = act_dict[aid]
-                d["num_shot"] = (act == 12).sum(-1)
-                d["num_pass"] = np.logical_and(act <= 11, act >= 9).sum(axis=-1)
-                self.episode_info[aid].step(rew[aid], d)
+            return policy_outputs["action"]
 
-        def reset(self):
-            self.episode_info = {aid: GRFEpisodeInfo() for aid in self.possible_agents}
+        def reset(self, max_step: int = None, custom_reset_config: Dict[str, Any] = None):
+            super().reset(max_step, custom_reset_config)
 
-            base_obs = self._env.reset()
-            obs = self._build_from_base_dict(base_obs)
-            obs = {aid: np.vstack(_obs) for aid, _obs in obs.items()}
-            return {
-                EpisodeKey.CUR_OBS: obs,
-                EpisodeKey.CUR_STATE: self._build_state_from_obs(obs),
+            self.custom_metrics.update(
+                {
+                    aid: {
+                        "total_reward": 0.0,
+                        "win": 0.0,
+                        "score": 0.0,
+                        "goal_diff": 0.0,
+                        "num_pass": 0.0,
+                        "num_shot": 0.0,
+                    }for aid in self.possible_agents
+                }
+            )
+
+            rets = self._env.reset(max_step, custom_reset_config)
+            def f(x_dict, reduce_func):
+                x_dict = self._build_from_base_dict(x_dict)
+                return {k: reduce_func(v) for k, v in x_dict.items()}
+            
+            rets = {
+                k: f(v, np.vstack) for k, v in rets.items()
             }
+            rets[EpisodeKey.CUR_STATE] = self._build_state_from_obs(
+                rets[EpisodeKey.CUR_OBS])
+            
+            return rets
 
         def seed(self, seed=None):
-            base_obs = self._env.seed(seed)
-            obs = self._build_from_base_dict(base_obs)
-            obs = {aid: self.np.vstack(_obs) for aid, _obs in obs.items()}
-            return {
-                EpisodeKey.CUR_OBS: obs,
-                EpisodeKey.CUR_STATE: self._build_state_from_obs(obs),
-            }
+            self._env.seed(seed)
 
-        def _build_from_base_dict(self, base_dict):
+        def _build_from_base_dict(self, base_dict: Dict[AgentID, Any]):
+            """Map the entry of a dict to a list with defined mapping function."""
             ans = {aid: [] for aid in self.possible_agents}
             for base_aid, data in base_dict.items():
+                if base_aid == '__all__': # (ziyu): This is for done['__all__'] 
+                    continue
                 ans[self._ps_mapping_func(base_aid)].append(data)
 
             return ans
 
-        def step(self, action_dict):
+        def time_step(self, action_dict):
             base_action = self._extract_to_base(action_dict)
-            obs, reward, done, info = self._env.step(base_action)
+            rets = self._env.step(base_action)
 
             def f(x_dict, reduce_func):
                 x_dict = self._build_from_base_dict(x_dict)
                 return {k: reduce_func(v) for k, v in x_dict.items()}
-
             (obs, reward, done, info) = (
-                f(obs, np.vstack),
-                f(reward, np.vstack),
-                f(done, np.vstack),
-                f(info, lambda x: x[0]),
+                f(rets[EpisodeKey.CUR_OBS], np.vstack),
+                f(rets[EpisodeKey.REWARD], np.vstack),
+                f(rets[EpisodeKey.DONE], np.vstack),
+                f(rets[EpisodeKey.INFO], lambda x: x[0]),
             )
+            done['__all__'] = rets[EpisodeKey.DONE]['__all__']
 
-            self.record_episode_info(reward, info, action_dict)
+            for aid, action in action_dict.items():
+                info[aid]['num_pass'] = np.logical_and(
+                    action <= 11, action >= 9).sum()
+                info[aid]['num_shot'] = (action == 12).sum()
 
             res = {
-                EpisodeKey.NEXT_OBS: obs,
-                EpisodeKey.NEXT_STATE: self._build_state_from_obs(obs),
+                EpisodeKey.CUR_OBS: obs,
+                EpisodeKey.CUR_STATE: self._build_state_from_obs(obs),
                 EpisodeKey.REWARD: reward,
                 EpisodeKey.DONE: done,
                 EpisodeKey.INFO: info,
             }
 
+            if EpisodeKey.ACTION_MASK in rets:
+                res[EpisodeKey.ACTION_MASK] = f(rets[EpisodeKey.ACTION_MASK], 
+                                                np.vstack)
+
             return res
+        
+        def env_done_check(self, agent_dones: Dict[AgentID, np.ndarray]) -> bool:
+            return agent_dones['__all__']
 
         def _extract_to_base(self, from_dict):
             to_dict = {}
@@ -367,6 +410,22 @@ def ParameterSharing(base_env: BaseGFootBall, parameter_sharing_mapping: Callabl
 
         def close(self):
             self._env.close()
+        
+        def record_episode_info_step(self, rets):
+            super().record_episode_info_step(rets)
+            reward = rets[EpisodeKey.REWARD]
+            info = rets[EpisodeKey.INFO]
+
+            for aid in reward:
+                self.custom_metrics[aid]['total_reward'] += reward[aid].sum()
+                self.custom_metrics[aid]['win'] += info[aid].get('win', 0.)
+                self.custom_metrics[aid]["score"] += info[aid].get("score", 0.)
+                self.custom_metrics[aid]["goal_diff"] += info[aid].get("goal_diff", 0.)
+                self.custom_metrics[aid]["num_pass"] += info[aid]['num_pass']
+                self.custom_metrics[aid]["num_shot"] += info[aid]['num_shot']
+
+
+        
 
     return Env()
 

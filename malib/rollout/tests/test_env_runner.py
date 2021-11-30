@@ -1,5 +1,6 @@
 import importlib
 import pytest
+import ray
 from malib.utils.episode import NewEpisodeDict, Episode
 
 from malib.utils.typing import BufferDescription
@@ -18,17 +19,17 @@ from malib.backend.datapool.test import FakeDataServer
 @pytest.mark.parametrize(
     "module_path,cname,env_id,scenario_configs",
     [
-        ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
-        ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
-        ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
+        # ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
+        # ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
+        # ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
         (
             "malib.envs.gr_football",
-            "BaseGFootBall",
+            "build_env",
             "Gfootball",
             {
-                "env_name": "academy_run_pass_and_shoot_with_keeper",
-                "number_of_left_players_agent_controls": 2,
-                "number_of_right_players_agent_controls": 1,
+                "env_name": "5_vs_5",
+                "number_of_left_players_agent_controls": 4,
+                "number_of_right_players_agent_controls": 4,
                 "representation": "raw",
                 "logdir": "",
                 "write_goal_dumps": False,
@@ -42,6 +43,8 @@ from malib.backend.datapool.test import FakeDataServer
 class TestEnvRunner:
     @pytest.fixture(autouse=True)
     def _init(self, module_path, cname, env_id, scenario_configs):
+        if not ray.is_initialized():
+            ray.init(local_mode=True)
         creator = getattr(importlib.import_module(module_path), cname)
         env: Environment = creator(env_id=env_id, scenario_configs=scenario_configs)
 
