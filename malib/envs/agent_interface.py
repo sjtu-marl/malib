@@ -235,7 +235,6 @@ class AgentInterface:
         if kwargs.get(EpisodeKey.CUR_STATE) is not None:
             kwargs[EpisodeKey.CUR_STATE] = np.stack(kwargs[EpisodeKey.CUR_STATE])
         rnn_state = kwargs[EpisodeKey.RNN_STATE]
-        print('ok')
         if len(rnn_state[0]) < 2:
             import pdb; pdb.set_trace()
         rnn_state0 = [rs[0] for rs in rnn_state]

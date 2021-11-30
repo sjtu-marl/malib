@@ -109,6 +109,8 @@ def _do_policy_eval(
         for agent_id, interface in agent_interfaces.items():
             # if interface.use_rnn:
             # then feed last rnn state here
+            # 
+            # FIXME(ming): Check if it is wrong.
             if len(env_episode[EpisodeKey.RNN_STATE][agent_id]) < 1:
                 # FIXME(ziyu): I'm trying to make it compatable with parameter sharing wrapper,
                 # in which case batch_size may not be None but the number of agent
@@ -119,20 +121,25 @@ def _do_policy_eval(
                 # XXX(ziyu): RNN also need rnn mask which is EpisodeKey.DONE,
                 # here I add them here and assume that if we have RNN state,
                 # we have DONE.
+                # print(f'++++++++++++ {env_episode.agent_entry.keys()}')
                 assert len(env_episode[EpisodeKey.DONE][agent_id]) < 1
                 env_episode[EpisodeKey.DONE][agent_id].append(
                     np.zeros(obs_shape[:-1]))
+                
+                # Add RNN mask for rnn
+                last_done = env_episode[EpisodeKey.DONE][agent_id][-1]
+                agent_wise_inputs[agent_id][EpisodeKey.DONE].append(last_done)
             last_rnn_state = env_episode[EpisodeKey.RNN_STATE][agent_id][-1]
             agent_wise_inputs[agent_id][EpisodeKey.RNN_STATE].append(last_rnn_state)
-
-            # Add RNN mask for rnn
-            last_done = env_episode[EpisodeKey.DONE][agent_id][-1]
-            agent_wise_inputs[agent_id][EpisodeKey.DONE].append(last_done)
+            # print(f'###### {env_id} {agent_id}, {env_episode[EpisodeKey.DONE]}')
+            rs = env_episode[EpisodeKey.RNN_STATE][agent_id]
+            # print(f'###### {env_id} {agent_id}, {len(rs)}, {len(rs[-1])}')
         
         for k, agent_v in policy_inputs[env_id].items():
             for agent_id, v in agent_v.items():
                 agent_wise_inputs[agent_id][k].append(v)
-
+    # print(f'----- agent_wise_inputs: {agent_wise_inputs["team_0"][EpisodeKey.DONE]}')
+    # print(f'----- {agent_wise_inputs["team_0"][EpisodeKey.RNN_STATE]}')
     for agent_id, interface in agent_interfaces.items():
         (
             actions[agent_id],
@@ -165,7 +172,10 @@ def _process_policy_outputs(
         detached = collections.defaultdict(lambda: collections.defaultdict())
         for k, agent_v in policy_outputs.items():
             for aid, _v in agent_v.items():
-                detached[k][aid] = _v[i]
+                if k == EpisodeKey.RNN_STATE:
+                    detached[k][aid] = [__v[i] for __v in _v]
+                else:
+                    detached[k][aid] = _v[i]
         detached_policy_outputs[env_id] = detached
     env_actions: Dict[EnvID, Dict[AgentID, Any]] = env.action_adapter(
         detached_policy_outputs
