@@ -81,7 +81,7 @@ class MAPPOLoss(LossFunc):
             critic_rnn_states_batch,
             dones_batch,
         ) = (
-            sample["share_obs"],
+            sample[EpisodeKey.CUR_STATE],
             sample[EpisodeKey.CUR_OBS],
             sample[EpisodeKey.ACTION].long(),
             sample["value"],

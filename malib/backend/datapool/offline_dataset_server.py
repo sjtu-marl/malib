@@ -301,21 +301,6 @@ class Table:
     def insert(
         self, data: List[Dict[str, Any]], indices: List[int] = None, size: int = None
     ):
-        # if self.buffer is None:
-        #     self.build_buffer_from_samples(data[0])
-        # shuffle_idx = np.random.shuffle(np.arange(len(indices)))
-        # for d_list, k, value_list in iter_many_dicts_recursively(*data):
-        #     head_d = d_list[0]
-        #     batch_sizes = [v.shape[0] for v in value_list]
-        #     merged_shape = (sum(batch_sizes),) + value_list[0].shape[1:]
-        #     _placeholder = np.zeros(merged_shape, dtype=head_d[k].dtype)
-
-        #     index = 0
-        #     for batch_size, value in zip(batch_sizes, value_list):
-        #         _placeholder[index : index + batch_size] = value[::]
-        #         index += batch_size
-        #     assert len(_placeholder) >= len(indices), (len(_placeholder), len(indices))
-        #     head_d[k] = _placeholder[shuffle_idx]
         assert isinstance(data, List), type(data)
         if self.buffer is None:
             self.build_buffer_from_samples(data[0])
@@ -335,7 +320,14 @@ class Table:
             for batch_size, value in zip(batch_sizes, value_list):
                 _placeholder[index : index + batch_size] = value[:]
                 index += batch_size
-            assert len(_placeholder) >= len(indices), (len(_placeholder), len(indices))
+            assert len(_placeholder) >= len(indices), (
+                len(_placeholder),
+                len(indices),
+                _placeholder.shape,
+                k,
+                value_list[0].shape,
+                len(value_list),
+            )
             head_d[k] = _placeholder[shuffle_idx]
 
         # assert indices is not None, "indices: {}".format(indices)

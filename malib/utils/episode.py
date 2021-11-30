@@ -48,14 +48,20 @@ class Episode:
     def __setitem__(self, __k: str, v: Dict[AgentID, List]) -> None:
         self.agent_entry[__k] = v
 
-    def to_numpy(self) -> Dict[str, Dict[AgentID, np.ndarray]]:
+    def to_numpy(
+        self, batch_mode: str = "time_step"
+    ) -> Dict[str, Dict[AgentID, np.ndarray]]:
         # switch agent key and episode key
         res = defaultdict(lambda: {})
         for ek, agent_v in self.agent_entry.items():
             if ek == EpisodeKey.RNN_STATE:
                 continue
             for agent_id, v in agent_v.items():
-                res[agent_id][ek] = np.asarray(v, dtype=np.float32)
+                tmp = np.asarray(v, dtype=np.float32)
+                if batch_mode == "episode":
+                    res[agent_id][ek] = np.expand_dims(tmp, axis=0)
+                else:
+                    res[agent_id][ek] = tmp
         return res
 
 
@@ -83,5 +89,8 @@ class NewEpisodeDict(defaultdict):
                 for aid, _v in v.items():
                     agent_slot[aid].append(_v)
 
-    def to_numpy(self) -> Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]:
-        return {k: v.to_numpy() for k, v in self.items()}
+    def to_numpy(
+        self, batch_mode: str = "time_step"
+    ) -> Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]:
+        res = {k: v.to_numpy(batch_mode) for k, v in self.items()}
+        return res

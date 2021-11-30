@@ -81,6 +81,10 @@ def _process_environment_returns(
                     if EpisodeKey.CUR_OBS not in filtered_env_output:
                         filtered_env_output[EpisodeKey.CUR_OBS] = output
                     policy_input[EpisodeKey.CUR_OBS] = output
+            elif k == EpisodeKey.NEXT_STATE:
+                if EpisodeKey.CUR_STATE not in filtered_env_output:
+                    filtered_env_output[EpisodeKey.CUR_STATE] = ret
+                policy_input[EpisodeKey.CUR_STATE] = ret
             else:
                 if k == EpisodeKey.DONE:
                     done = ret["__all__"]
@@ -125,13 +129,8 @@ def _do_policy_eval(
                         batch_size=None if len(obs_shape) == 1 else obs_shape[0]
                     )
                 )
-                # XXX(ziyu): RNN also need rnn mask which is EpisodeKey.DONE,
-                # here I add them here and assume that if we have RNN state,
-                # we have DONE.
-                # env_episode[EpisodeKey.DONE][agent_id].append(np.zeros(obs_shape[:-1]))
 
-                # Add RNN mask for rnn
-                # FIXME(ming): maybe wrong
+                # FIXME(ming): maybe wrong in some cases, I didn't load it yet.
                 last_done = np.zeros(obs_shape[:-1])
             else:
                 last_done = env_episode[EpisodeKey.DONE][agent_id][-1]
@@ -288,11 +287,14 @@ def env_runner(
             aid: interface.get_policy(behavior_policies[aid])
             for aid, interface in agent_interfaces.items()
         }
+        batch_mode = runtime_config["batch_mode"]
         episodes: List[Dict[str, Dict[AgentID, np.ndarray]]] = get_postprocessor(
             runtime_config.get("post_processor_type", "default")
-        )(list(episodes.to_numpy().values()), policies)
+        )(list(episodes.to_numpy(batch_mode).values()), policies)
 
-        buffer_desc.batch_size = env.batched_step_cnt
+        buffer_desc.batch_size = (
+            env.batched_step_cnt if batch_mode == "time_step" else len(episodes)
+        )
         indices = None
         while indices is None:
             batch = ray.get(dataset_server.get_producer_index.remote(buffer_desc))
@@ -321,10 +323,12 @@ class Stepping:
         env_desc: Dict[str, Any],
         dataset_server=None,
         use_subproc_env: bool = False,
+        batch_mode: str = "time_step",
     ):
 
         # init environment here
         self.env_desc = env_desc
+        self.batch_mode = batch_mode
 
         # check whether env is simultaneous
         env = env_desc["creator"](**env_desc["config"])
@@ -428,6 +432,7 @@ class Stepping:
                 "behavior_policies": behavior_policies,
                 # FIXME(ming): custom reset config is closed here
                 "custom_reset_config": None,
+                "batch_mode": self.batch_mode,
             },
             dataset_server=self._dataset_server if task_type == "rollout" else None,
         )

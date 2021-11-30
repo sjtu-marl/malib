@@ -70,6 +70,7 @@ class RolloutWorker(BaseRolloutWorker):
                     env_desc,
                     self._offline_dataset,
                     use_subproc_env=kwargs["use_subproc_env"],
+                    batch_mode=kwargs["batch_mode"],
                 )
                 for _ in range(self._parallel_num)
             ]
@@ -80,6 +81,7 @@ class RolloutWorker(BaseRolloutWorker):
                         env_desc,
                         None,
                         use_subproc_env=kwargs["use_subproc_env"],
+                        batch_mode=kwargs["batch_mode"],
                     )
                     for _ in range(self._evaluation_worker_num)
                 ]
@@ -103,6 +105,7 @@ class RolloutWorker(BaseRolloutWorker):
                     self._env_description,
                     self._offline_dataset,
                     use_subproc_env=self._kwargs["use_subproc_env"],
+                    batch_mode=self._kwargs["batch_mode"],
                 )
                 for _ in range(self._parallel_num)
             ]
@@ -113,6 +116,7 @@ class RolloutWorker(BaseRolloutWorker):
                         self._env_description,
                         None,
                         use_subproc_env=self._kwargs["use_subproc_env"],
+                        batch_mode=sekf._kwargs["batch_mode"],
                     )
                     for _ in self._evaluation_worker_num
                 ]

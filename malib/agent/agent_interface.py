@@ -265,14 +265,15 @@ class AgentInterface(metaclass=ABCMeta):
 
     def get_stationary_state(self) -> AgentTaggedFeedback:
         """Return stationary policy descriptions."""
-
-        res = {
-            env_aid: [
-                (pid, self._policies[pid].description)
-                for pid in self._agent_to_pids[env_aid]
-            ]
-            for env_aid in self._group
-        }
+        res = {}
+        for env_aid in self._group:
+            # wait
+            while len(self._agent_to_pids[env_aid]) == 0:
+                pass
+            tmp = []
+            for pid in self._agent_to_pids[env_aid]:
+                tmp.append((pid, self._policies[pid].description))
+            res[env_aid] = tmp
 
         return AgentTaggedFeedback(self._id, content=res)
 

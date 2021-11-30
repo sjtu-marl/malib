@@ -18,7 +18,9 @@ def compute_return(policy, batch, mode="gae"):
     cm_cfg = policy.custom_config
     gamma, gae_lambda = cm_cfg["gamma"], cm_cfg["gae"]["gae_lambda"]
     values, rewards, dones = (
-        batch["value"],
+        # FIXME(ziyu): for debugging
+        np.zeros_like(batch[EpisodeKey.REWARD]),
+        # batch[EpisodeKey.STATE_VALUE],
         batch[EpisodeKey.REWARD],
         batch[EpisodeKey.DONE],
     )
@@ -34,6 +36,7 @@ def compute_return(policy, batch, mode="gae"):
             rewards,
             values,
             dones,
+            # XXX(ming): why load rnn states from batch? we do not save it.
             batch["actor_rnn_states"],
             batch[EpisodeKey.ACTION],
             batch[EpisodeKey.ACTION_DIST],
@@ -46,6 +49,7 @@ def compute_return(policy, batch, mode="gae"):
 
 
 def compute_gae(value, reward, done, gamma, gae_lambda):
+    assert len(reward.shape) == 4, (reward.shape, done.shape, value.shape)
     B, Tp1, N, _ = reward.shape
     assert list(value.shape) == [B, Tp1, N, 1] and list(done.shape) == [B, Tp1, N, 1]
     value = np.transpose(value, (1, 0, 2, 3))
@@ -58,7 +62,7 @@ def compute_gae(value, reward, done, gamma, gae_lambda):
         gae = delta + gamma * gae_lambda * (1 - done[t]) * gae
         ret[t] = gae + value[t]
 
-    return ret.transpose((1, 0, 2, 3))
+    return {"return": ret.transpose((1, 0, 2, 3))}
 
 
 def simple_data_generator(batch, num_mini_batch, device):

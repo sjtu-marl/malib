@@ -34,6 +34,7 @@ rollout:
   num_env_per_worker: 1
   use_remote_env: False
   terminate: "any"
+  batch_mode: episode # episode or time_step
 
 evaluation:
   # max_episode_length: -1
@@ -94,7 +95,7 @@ algorithms:
       ppo_epoch: 4
       num_mini_batch: 1  # the number of mini-batches
       
-      return_mode: vtrace
+      return_mode: gae
       gae:
         gae_lambda: 0.95
       vtrace:

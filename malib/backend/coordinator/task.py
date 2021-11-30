@@ -208,7 +208,8 @@ def _request_rollout(coordinator: CoordinatorServer, task_request: TaskRequest):
     populations = task_request.content.agent_involve_info.populations
     population_mapping = {}
     for k, v in populations.items():
-        assert len(v) > 0, populations
+        # FIXME(ming): sometimes may no population
+        assert len(v) > 0, k
         population_mapping[k] = [p[0] for p in v]
     agent_involve_info = task_request.content.agent_involve_info
 
