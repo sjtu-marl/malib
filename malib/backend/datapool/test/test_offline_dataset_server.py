@@ -58,13 +58,18 @@ class TestBufferDict:
 
 
 @pytest.mark.parametrize(
-    "keys,capacity,fragment_length,shared_data_shapes,sample_start_size",
+    "keys,capacity,fragment_length,shared_data_shapes,dtypes,sample_start_size",
     [
         (
             [1, 2],
             1000,
             10,
             {EpisodeKey.CUR_OBS: (3, 4), EpisodeKey.REWARD: (), EpisodeKey.DONE: ()},
+            {
+                EpisodeKey.CUR_OBS: np.float16,
+                EpisodeKey.REWARD: np.float16,
+                EpisodeKey.DONE: np.float16,
+            },
             0,
         )
     ],
@@ -77,20 +82,21 @@ class TestTable:
         capacity: int,
         fragment_length: int,
         shared_data_shapes: Dict[str, Tuple],
+        dtypes: Dict[str, Any],
         sample_start_size: int,
         event_loop=None,
         mode: str = "queue",
     ):
         data_shapes = {k: shared_data_shapes for k in keys}
-        data_dtypes = {k: {_k: np.float16 for _k in shared_data_shapes} for k in keys}
+        dtypes = {k: dtypes for k in keys}
         self.table = Table(
             capacity,
             fragment_length,
             data_shapes,
-            data_dtypes,
-            sample_start_size,
-            event_loop,
-            mode,
+            data_dtypes=dtypes,
+            sample_start_size=sample_start_size,
+            event_loop=event_loop,
+            mode=mode,
         )
 
         assert 1 in self.table.buffer
@@ -184,7 +190,7 @@ class TestOfflineDataset:
 
         self.dataset_config = dataset_config
         self.data_shapes = data_shapes
-        self.dtypes = dtypes
+        self.dtypes = {k: dtypes for k in self.data_shapes}
         self.server = OfflineDataset.remote(dataset_config, exp_cfg, test_mode=False)
         self.preset_buffer_desc = BufferDescription(
             env_id="fake",
@@ -203,7 +209,7 @@ class TestOfflineDataset:
                 _data[k] = (
                     np.arange(reduce(operator.mul, full_shape))
                     .reshape(full_shape)
-                    .astype(self.dtypes[k])
+                    .astype(self.dtypes[main_key][k])
                 )
             data[main_key] = _data
         return data

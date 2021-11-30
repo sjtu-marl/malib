@@ -33,47 +33,6 @@ class TaskCache:
         self.population_mapping = None
 
 
-# @helper_register(cls=CoordinatorServer)
-# def gen_simulation_task(
-#     self: CoordinatorServer, task_request: TaskRequest, matches: List
-# ):
-#     """ Generate simulation task for a group of agents """
-
-#     agent_involve_info: AgentInvolveInfo = task_request.content.agent_involve_info
-
-#     # load default episode length ?
-#     max_episode_length = self._configs["evaluation"].get("max_episode_length", 1000)
-#     num_episodes = self._configs["evaluation"].get("num_episode", 1)
-#     callback = self._configs["rollout"]["callback"]
-#     task_desc = TaskDescription(
-#         task_type=TaskType.SIMULATION,
-#         content=SimulationDescription(
-#             callback=callback,
-#             max_episode_length=max_episode_length,
-#             agent_involve_info=agent_involve_info,
-#             policy_combinations=matches,
-#             num_episodes=num_episodes,  # self._evaluate_config["num_simulation"] * 5
-#         ),
-#         state_id=None,
-#     )
-#     self._rollout_worker_manager.simulate(task_desc)
-
-
-# @helper_register(cls=CoordinatorServer)
-# def gen_add_policy_task(self, aid: str, state_id):
-#     """Generate policy adding task then dispatch to one agent interface.
-
-#     :param str aid: Agent interface id.
-#     :param Object state_id: A ray object reference
-#     """
-
-#     # tag current task with state_id
-#     task_desc = TaskDescription(
-#         task_type=TaskType.ADD_POLICY, content=None, state_id=state_id
-#     )
-#     self._training_manager.add_policy(aid, task_desc)
-
-
 @task_handler_register(cls=CoordinatorServer, link=TaskType.OPTIMIZE.value)
 def _request_optimize(coordinator: CoordinatorServer, task_request: TaskRequest):
     task_request = coordinator.training_manager.retrieve_information(task_request)
@@ -181,7 +140,11 @@ def _request_update_payoff_table(
     with threading.Lock():
         coordinator.payoff_manager.update_payoff(rollout_feedback)
         task_cache = coordinator.task_cache[task_request.state_id]
-        all_done = coordinator.payoff_manager.check_done(task_cache.population_mapping)
+        all_done = (
+            coordinator.payoff_manager.check_done(task_cache.population_mapping)
+            if coordinator.task_mode == "gt"
+            else True
+        )
         if all_done:
             Logger.debug(
                 "all pending task related to state={} have been updated".format(
@@ -231,8 +194,8 @@ def _request_update_payoff_table(
                 ].population_mapping = population_mapping
         else:
             Logger.warning(
-                "state={} is waiting for other sub tasks ...".format(
-                    task_request.state_id
+                "state={} is waiting for other sub tasks ... with population mapping: {}".format(
+                    task_request.state_id, task_cache.population_mapping
                 )
             )
 
@@ -252,7 +215,9 @@ def _request_rollout(coordinator: CoordinatorServer, task_request: TaskRequest):
     if all([len(p_list) for p_list in population_mapping.values()]):
         policy_distribution = coordinator.payoff_manager.get_equilibrium(
             population_mapping
-        )
+        ) if coordinator.task_mode == "gta" else {
+            k: [1 / len(v)] * len(v) for k, v in population_mapping.items()
+        }
         for env_aid, (pid, _) in agent_involve_info.trainable_pairs.items():
             policy_distribution[env_aid] = {pid: 1.0}
         # since in meta_policy this is a default_dict with value 0.0

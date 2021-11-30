@@ -10,25 +10,7 @@ from malib import settings
 from malib.utils import logger
 from malib.utils.logger import Logger, get_logger, Log, start
 from malib.utils.configs.formatter import DefaultConfigFormatter
-
-
-def update_configs(update_dict, ori_dict=None):
-    """Update global configs with a given dict"""
-
-    ori_configs = (
-        copy.copy(ori_dict)
-        if ori_dict is not None
-        else copy.copy(settings.DEFAULT_CONFIG)
-    )
-
-    for k, v in update_dict.items():
-        # assert k in ori_configs, f"Illegal key: {k}, {list(ori_configs.keys())}"
-        if isinstance(v, dict):
-            ph = ori_configs[k] if isinstance(ori_configs.get(k), dict) else {}
-            ori_configs[k] = update_configs(v, ph)
-        else:
-            ori_configs[k] = copy.copy(v)
-    return ori_configs
+from malib.utils.general import update_configs
 
 
 def _terminate(recycle_funcs: List[Dict[str, Any]], waiting: bool = True):

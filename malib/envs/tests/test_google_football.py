@@ -9,6 +9,7 @@ from malib.utils.episode import EpisodeKey
 @pytest.mark.parametrize(
     "env_name,n_player_left,n_player_right",
     [("5_vs_5", 4, 0)],
+    [("academy_run_pass_and_shoot_with_keeper", 2, 1)],
 )
 class TestGoogleFootballEnv:
     @pytest.fixture(autouse=True)

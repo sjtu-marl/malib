@@ -182,7 +182,6 @@ class VectorEnv:
 
     def step(self, actions: Dict[AgentID, List]) -> Dict:
         active_envs = self.active_envs
-        self._step_cnt += len(active_envs)
 
         env_rets = {}
         # FIXME(ming): (keyerror, sometimes) the env_id in actions is not an active environment.
@@ -191,10 +190,10 @@ class VectorEnv:
             env_done = ret[EpisodeKey.DONE]["__all__"]
             if env_done:
                 env = active_envs.pop(env_id)
-                if self.is_terminated():
+                self._cached_episode_infos[env_id] = env.collect_info()
+                if not self.is_terminated():
                     # write episode cache
-                    self._cached_episode_infos[env_id] = env.collect_info()
-                else:
+                # else:
                     _tmp = env.reset(
                         max_step=self._max_step,
                         custom_reset_config=self._custom_reset_config,
@@ -206,6 +205,7 @@ class VectorEnv:
                     env_rets[runtime_id] = _tmp
             env_rets[env_id] = ret
 
+        self._step_cnt += len(actions)
         return env_rets
 
     def is_terminated(self):

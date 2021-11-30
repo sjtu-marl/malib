@@ -274,3 +274,4 @@ class Policy(metaclass=ABCMeta):
 
     def to_device(self, device):
         self.device = device
+        return self

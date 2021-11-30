@@ -16,14 +16,17 @@ you wanna save by specifying extra columns when Episode initialization.
 """
 
 import collections
+from dataclasses import dataclass
 from numpy.core.numeric import roll
 import ray
 import numpy as np
 
 from malib import settings
 from malib.envs.env import Environment
+from malib.utils.general import iter_many_dicts_recursively
 from malib.utils.typing import (
     AgentID,
+    AgentInvolveInfo,
     BufferDescription,
     Dict,
     Any,
@@ -237,6 +240,8 @@ def env_runner(
         max_step=runtime_config["max_step"],
         custom_reset_config=runtime_config["custom_reset_config"],
     )
+    if isinstance(env, VectorEnv):
+        assert len(env.active_envs) > 0, (env._active_envs, rets, env)
 
     episodes = NewEpisodeDict(lambda env_id: Episode(behavior_policies, env_id=env_id))
 
@@ -297,7 +302,16 @@ def env_runner(
         buffer_desc.indices = indices
         dataset_server.save.remote(buffer_desc)
 
-    return _reduce_rollout_info(rollout_info)
+    ph = list(rollout_info.values())
+
+    holder = {}
+    for history, ds, k, vs in iter_many_dicts_recursively(*ph, history=[]):
+        arr = [np.sum(_vs) for _vs in vs]
+        prefix = "/".join(history)
+        # print(history, prefix, _arr, vs)
+        holder[prefix] = arr
+
+    return {"total_fragment_length": env.batched_step_cnt, "eval_info": holder}
 
 
 class Stepping:
@@ -305,8 +319,8 @@ class Stepping:
         self,
         exp_cfg: Dict[str, Any],
         env_desc: Dict[str, Any],
-        use_subproc_env: bool = False,
         dataset_server=None,
+        use_subproc_env: bool = False,
     ):
 
         # init environment here
@@ -364,7 +378,7 @@ class Stepping:
         agent_interfaces: Dict[AgentID, AgentInterface],
         fragment_length: int,
         desc: Dict[str, Any],
-        callback: type,
+        callback: type,  # TODO(ming): deprecated
         buffer_desc: BufferDescription = None,
     ) -> Tuple[str, Dict[str, List]]:
         """Environment stepping, rollout/simulate with environment vectorization if it is feasible.
@@ -396,7 +410,7 @@ class Stepping:
 
         # behavior policies is a mapping from agents to policy ids
         # update with external behavior_policies
-        behavior_policies.update(desc["behavior_policies"])
+        behavior_policies.update(desc["behavior_policies"] or {})
         # specify the number of running episodes
         num_episodes = desc["num_episodes"]
         max_step = desc.get("max_step", -1)
@@ -411,6 +425,9 @@ class Stepping:
                 "max_step": max_step,
                 "fragment_length": fragment_length,
                 "num_envs": num_episodes,
+                "behavior_policies": behavior_policies,
+                # FIXME(ming): custom reset config is closed here
+                "custom_reset_config": None,
             },
             dataset_server=self._dataset_server if task_type == "rollout" else None,
         )

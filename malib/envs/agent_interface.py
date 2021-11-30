@@ -191,7 +191,7 @@ class AgentInterface:
             return
         policy = get_algorithm_space(policy_description["registered_name"]).policy(
             **policy_description,
-            env_agent_id=env_aid,
+            # env_agent_id=env_aid,
         )
         self.policies[policy_id] = policy
         self.parameter_desc_dict[policy_id] = ParameterDescription(

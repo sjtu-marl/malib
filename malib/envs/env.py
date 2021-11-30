@@ -79,7 +79,11 @@ class Environment:
         self.cnt = 0
 
         self.custom_reset_config = custom_reset_config or self.custom_reset_config
-        self.episode_metrics = {"env_step": 0, "agent_reward": {}, "agent_step": {}}
+        self.episode_metrics = {
+            "env_step": 0,
+            "agent_reward": {k: [] for k in self.possible_agents},
+            "agent_step": {k: 0.0 for k in self.possible_agents},
+        }
         self.episode_meta_info.update(
             {
                 "max_step": self.max_step,
@@ -95,11 +99,12 @@ class Environment:
         done2 = self.cnt >= self.max_step > 0
         return done1 or done2
 
-    @record_episode_info
+    # @record_episode_info
     def step(self, actions: Dict[AgentID, Any]):
         self.cnt += 1
         rets = self.time_step(actions)
         rets[EpisodeKey.DONE]["__all__"] = self.env_done_check(rets[EpisodeKey.DONE])
+        self.record_episode_info_step(rets)
         return rets
 
     def time_step(self, actions: Dict[AgentID, Any]):
@@ -123,7 +128,7 @@ class Environment:
 
     def collect_info(self) -> Dict[str, Any]:
         return {
-            "episode_runtime_info": self.episode_meta_info,
+            # "episode_runtime_info": self.episode_meta_info,
             "episode_metrics": self.episode_metrics,
             "custom_metrics": self.custom_metrics,
         }

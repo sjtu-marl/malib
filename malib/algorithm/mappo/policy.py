@@ -1,20 +1,20 @@
-# -*- coding: utf-8 -*-
 import copy
-
-import numpy as np
-from malib.algorithm.mappo.actor_critic import RNNNet
-from malib.algorithm.mappo.utils import PopArt, init_fc_weights
 import os
 import pickle
-from typing import List, Tuple, Any, Dict
 import gym
 import torch
+
 from torch import nn
+
+from malib.utils.typing import DataTransferType, Tuple, Any, Dict, EpisodeID, List
+from malib.utils.episode import EpisodeKey
+
 from malib.algorithm.common.model import get_model
 from malib.algorithm.common.policy import Policy
-from malib.utils.episode import EpisodeKey
-from malib.utils.typing import DataTransferType
 from malib.algorithm.common.misc import hard_update
+
+from malib.algorithm.mappo.actor_critic import RNNNet
+from malib.algorithm.mappo.utils import PopArt, init_fc_weights
 
 
 class MAPPO(Policy):
@@ -43,6 +43,7 @@ class MAPPO(Policy):
             "cuda" if custom_config.get("use_cuda", False) else "cpu"
         )
 
+        # TODO(ming): collect to custom config
         global_observation_space = custom_config["global_state_space"][
             kwargs["env_agent_id"]
         ]

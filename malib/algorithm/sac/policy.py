@@ -86,6 +86,7 @@ class SAC(Policy):
         behavior = kwargs.get("behavior_mode", BehaviorMode.EXPLORATION)
 
         logits = self.actor(observation)
+        print("-------- logits", logits)
         m = Normal(*logits)
 
         if behavior == BehaviorMode.EXPLORATION:
@@ -109,7 +110,7 @@ class SAC(Policy):
         return (
             actions.detach().to("cpu").numpy(),
             action_probs.detach().to("cpu").numpy(),
-            extra_info,
+            kwargs["rnn_state"],
         )
 
     def update_target(self):

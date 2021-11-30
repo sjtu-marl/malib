@@ -19,9 +19,9 @@ from malib.backend.datapool.test import FakeDataServer
 @pytest.mark.parametrize(
     "module_path,cname,env_id,scenario_configs",
     [
-        # ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
-        # ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
-        # ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
+        ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
+        ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
+        ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
         (
             "malib.envs.gr_football",
             "build_env",

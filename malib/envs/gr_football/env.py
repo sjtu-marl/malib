@@ -4,11 +4,10 @@ import numpy as np
 
 from gym import spaces
 from numpy.core.fromnumeric import mean
-from malib.utils.preprocessor import get_preprocessor
-
 
 from malib.utils.typing import AgentID, Callable, Dict, Any, Union, List
 from malib.utils.episode import EpisodeKey
+from malib.utils.preprocessor import get_preprocessor
 from malib.envs.env import Environment, ParameterSharingWrapper
 from malib.envs.gr_football.encoders import encoder_basic, rewarder_basic
 
@@ -25,14 +24,15 @@ class BaseGFootBall(Environment):
 
     def record_episode_info_step(self, rets):
         super(BaseGFootBall, self).record_episode_info_step(rets)
+
         reward = rets[EpisodeKey.REWARD]
-        # HACK(ziyu): what if there are two teams of agent?
-        # How can we use only one 'win'/'score'/'goal_diff'?
         info = list(rets[EpisodeKey.INFO].values())[0]
         self.custom_metrics["total_reward"] += mean(list(reward.values()))
         self.custom_metrics["win"] += info.get("win", 0.0)
         self.custom_metrics["score"] += info.get("score", 0.0)
         self.custom_metrics["goal_diff"] += info.get("goal_diff", 0.0)
+        self.custom_metrics["num_pass"] += info.get("num_pass", 0.0)
+        self.custom_metrics["num_shot"] += info.get("num_shot", 0.0)
 
     def __init__(self, env_id: str, use_built_in_GK: bool = True, scenario_configs={}):
         super(BaseGFootBall, self).__init__(
@@ -80,6 +80,7 @@ class BaseGFootBall(Environment):
 
     def seed(self, seed=None):
         self._raw_env.seed(seed)
+        return self.reset()
 
     @property
     def possible_agents(self) -> List[AgentID]:
@@ -174,6 +175,8 @@ class BaseGFootBall(Environment):
                 "win": 0.0,
                 "score": 0.0,
                 "goal_diff": 0.0,
+                "num_pass": 0.0,
+                "num_shot": 0.0,
             }
         )
 
