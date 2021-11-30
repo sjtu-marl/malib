@@ -70,6 +70,11 @@ class NewEpisodeDict(defaultdict):
     ):
         for env_id, env_output in env_outputs.items():
             for k, v in policy_outputs[env_id].items():
+                # FIXME(ziyu): @ming here I found that rnn_state
+                # which is a list of two rnn_state(actor/critic) 
+                # But some procedure will has dropped one of them.
+                if k == EpisodeKey.RNN_STATE:
+                    import pdb; pdb.set_trace()
                 agent_slot = self[env_id][k]
                 for aid, _v in v.items():
                     assert not isinstance(_v, Dict), (k, v)
