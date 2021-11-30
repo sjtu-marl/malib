@@ -44,51 +44,54 @@ from malib.envs.agent_interface import AgentInterface
 def _process_environment_returns(
     env_rets: Dict[EnvID, Dict[str, Dict[AgentID, Any]]],
     agent_interfaces: Dict[AgentID, AgentInterface],
+    filtered_env_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]],
 ) -> Tuple[
     Dict[EnvID, Dict[str, Dict[AgentID, Any]]],
     Dict[EnvID, Dict[str, Dict[AgentID, Any]]],
+    List[EnvID],
 ]:
     """Processes environment returns, including observation, rewards. Also the agent
     communication.
     """
 
-    outputs = {}
     policy_inputs = {}
+    drop_env_ids = []
+
     for env_id, rets in env_rets.items():
-        output = {}
         policy_input = {}
         drop = False
+
+        if env_id not in filtered_env_outputs:
+            filtered_env_outputs[env_id] = {}
+        filtered_env_output = filtered_env_outputs[env_id]
+
         for k, ret in rets.items():
-            if k in [
-                EpisodeKey.CUR_OBS, EpisodeKey.NEXT_OBS, 
-                EpisodeKey.CUR_STATE, EpisodeKey.DONE
-            ]:
-                # pop all done
-                if k == EpisodeKey.DONE:
-                    done = ret.pop("__all__")
-                    drop = done
-                # XXX(ziyu): I think this is wrong when we need 
-                # state, done also as inputs
-                # 
-                #  
-                # output[k] = {
-                #     aid: interface.transform_observation(
-                #         observation=ret[aid], state=rets.get("state", None)
-                #     )["obs"]
-                #     for aid, interface in agent_interfaces.items()
-                # }
-                policy_input[k] = ret
+            if k in [EpisodeKey.CUR_OBS, EpisodeKey.NEXT_OBS]:
+                output = {
+                    aid: interface.transform_observation(
+                        observation=ret[aid], state=None
+                    )["obs"]
+                    for aid, interface in agent_interfaces.items()
+                }
                 if k == EpisodeKey.NEXT_OBS:
-                    output[EpisodeKey.CUR_OBS] = output[k]
-                    policy_input[EpisodeKey.CUR_OBS] = output[k]
+                    if EpisodeKey.CUR_OBS not in filtered_env_output:
+                        filtered_env_output[EpisodeKey.CUR_OBS] = output
+                    policy_input[EpisodeKey.CUR_OBS] = output
             else:
-                output[k] = ret
+                if k == EpisodeKey.DONE:
+                    done = ret["__all__"]
+                    drop = done
+                    drop_env_ids.append(env_id)
+                    output = {k: v for k, v in ret.items() if k != "__all__"}
+                else:
+                    output = ret
+            policy_input[k] = output
+            filtered_env_output[k] = output
 
         if not drop:
-            outputs[env_id] = output
             policy_inputs[env_id] = policy_input
 
-    return policy_inputs, outputs
+    return policy_inputs, filtered_env_outputs, drop_env_ids
 
 
 def _do_policy_eval(
@@ -107,34 +110,34 @@ def _do_policy_eval(
     for env_id in env_ids:
         env_episode = episodes[env_id]
         for agent_id, interface in agent_interfaces.items():
-            # if interface.use_rnn:
-            # then feed last rnn state here
-            # 
-            # FIXME(ming): Check if it is wrong.
             if len(env_episode[EpisodeKey.RNN_STATE][agent_id]) < 1:
                 # FIXME(ziyu): I'm trying to make it compatable with parameter sharing wrapper,
                 # in which case batch_size may not be None but the number of agent
+                # print("-----", env_id, env_episode[EpisodeKey.DONE], env_episode[EpisodeKey.RNN_STATE])
+
                 obs_shape = policy_inputs[env_id][EpisodeKey.CUR_OBS][agent_id].shape
                 env_episode[EpisodeKey.RNN_STATE][agent_id].append(
-                    interface.get_initial_state(batch_size=None if len(obs_shape) == 1 else obs_shape[0])
+                    interface.get_initial_state(
+                        batch_size=None if len(obs_shape) == 1 else obs_shape[0]
+                    )
                 )
                 # XXX(ziyu): RNN also need rnn mask which is EpisodeKey.DONE,
                 # here I add them here and assume that if we have RNN state,
                 # we have DONE.
-                # print(f'++++++++++++ {env_episode.agent_entry.keys()}')
-                assert len(env_episode[EpisodeKey.DONE][agent_id]) < 1
-                env_episode[EpisodeKey.DONE][agent_id].append(
-                    np.zeros(obs_shape[:-1]))
-                
+                # env_episode[EpisodeKey.DONE][agent_id].append(np.zeros(obs_shape[:-1]))
+
                 # Add RNN mask for rnn
+                # FIXME(ming): maybe wrong
+                last_done = np.zeros(obs_shape[:-1])
+            else:
+                # print("-----", env_id, env_episode[EpisodeKey.DONE], env_episode[EpisodeKey.RNN_STATE])
                 last_done = env_episode[EpisodeKey.DONE][agent_id][-1]
-                agent_wise_inputs[agent_id][EpisodeKey.DONE].append(last_done)
             last_rnn_state = env_episode[EpisodeKey.RNN_STATE][agent_id][-1]
             agent_wise_inputs[agent_id][EpisodeKey.RNN_STATE].append(last_rnn_state)
             # print(f'###### {env_id} {agent_id}, {env_episode[EpisodeKey.DONE]}')
-            rs = env_episode[EpisodeKey.RNN_STATE][agent_id]
+            # rs = env_episode[EpisodeKey.RNN_STATE][agent_id]
             # print(f'###### {env_id} {agent_id}, {len(rs)}, {len(rs[-1])}')
-        
+
         for k, agent_v in policy_inputs[env_id].items():
             for agent_id, v in agent_v.items():
                 agent_wise_inputs[agent_id][k].append(v)
@@ -235,7 +238,6 @@ def env_runner(
         custom_reset_config=runtime_config["custom_reset_config"],
     )
 
-    # if dataset_server:
     episodes = NewEpisodeDict(lambda env_id: Episode(behavior_policies, env_id=env_id))
 
     process_environment_returns = (
@@ -245,25 +247,35 @@ def env_runner(
     do_policy_eval = custom_do_policy_eval or _do_policy_eval
 
     while not env.is_terminated():
-        # process environment observation
-        policy_inputs, filtered_env_outputs = process_environment_returns(
-            rets, agent_interfaces
+        filtered_env_outputs = {}
+        # ============ a frame =============
+        (
+            active_policy_inputs,
+            filtered_env_outputs,
+            drop_env_ids,
+        ) = process_environment_returns(rets, agent_interfaces, filtered_env_outputs)
+
+        active_policy_outputs, active_env_ids = do_policy_eval(
+            active_policy_inputs, agent_interfaces, episodes
         )
 
-        policy_outputs, active_env_ids = do_policy_eval(
-            policy_inputs, agent_interfaces, episodes
-        )
-
-        # process policy outputs
         env_inputs, detached_policy_outputs = process_policy_outputs(
-            active_env_ids, policy_outputs, env
+            active_env_ids, active_policy_outputs, env
         )
 
         # XXX(ming): maybe more general inputs.
         rets = env.step(env_inputs)
 
-        if dataset_server:
-            episodes.record(detached_policy_outputs, filtered_env_outputs)
+        # again, filter next_obs here
+        (
+            active_policy_inputs,
+            filtered_env_outputs,
+            drop_env_ids,
+        ) = process_environment_returns(rets, agent_interfaces, filtered_env_outputs)
+        # filter policy inputs here
+        # =================================
+
+        episodes.record(detached_policy_outputs, filtered_env_outputs)
 
     rollout_info = env.collect_info()
     if dataset_server:

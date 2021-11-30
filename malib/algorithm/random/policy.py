@@ -62,7 +62,7 @@ class RandomPolicy(Policy):
         if batch_size is None:
             shape = ()
         else:
-            shape = (batch_size, )
+            shape = (batch_size,)
         shape += (1,)
         return [
             # represent general actor and critic rnn states

@@ -17,7 +17,11 @@ def get_part_data_from_batch(batch_data, idx):
 def compute_return(policy, batch, mode="gae"):
     cm_cfg = policy.custom_config
     gamma, gae_lambda = cm_cfg["gamma"], cm_cfg["gae"]["gae_lambda"]
-    values, rewards, dones = batch["value"], batch[EpisodeKey.REWARD], batch[EpisodeKey.DONE]
+    values, rewards, dones = (
+        batch["value"],
+        batch[EpisodeKey.REWARD],
+        batch[EpisodeKey.DONE],
+    )
     if cm_cfg["use_popart"]:
         values = policy.value_normalizer.denormalize(values)
 
@@ -25,11 +29,17 @@ def compute_return(policy, batch, mode="gae"):
         return compute_gae(values, rewards, dones, gamma, gae_lambda)
     elif mode == "vtrace":
         return compute_vtrace(
-            policy, batch[EpisodeKey.CUR_OBS], rewards, values, dones,
-            batch["actor_rnn_states"], batch[EpisodeKey.ACTION], 
+            policy,
+            batch[EpisodeKey.CUR_OBS],
+            rewards,
+            values,
+            dones,
+            batch["actor_rnn_states"],
+            batch[EpisodeKey.ACTION],
             batch[EpisodeKey.ACTION_DIST],
-            gamma, cm_cfg["vtrace"]["clip_rho_threshold"],
-            cm_cfg["vtrace"]["clip_pg_rho_threshold"]
+            gamma,
+            cm_cfg["vtrace"]["clip_rho_threshold"],
+            cm_cfg["vtrace"]["clip_pg_rho_threshold"],
         )
     else:
         raise ValueError("Unexpected return mode: {}".format(mode))
@@ -44,12 +54,11 @@ def compute_gae(value, reward, done, gamma, gae_lambda):
 
     gae, ret = 0, np.zeros_like(reward)
     for t in reversed(range(Tp1 - 1)):
-        delta = reward[t] + gamma * (1-done[t]) * value[t+1] - value[t]
-        gae = delta + gamma * gae_lambda * (1-done[t]) * gae
+        delta = reward[t] + gamma * (1 - done[t]) * value[t + 1] - value[t]
+        gae = delta + gamma * gae_lambda * (1 - done[t]) * gae
         ret[t] = gae + value[t]
-    
-    return ret.transpose((1, 0, 2, 3))
 
+    return ret.transpose((1, 0, 2, 3))
 
 
 def simple_data_generator(batch, num_mini_batch, device):

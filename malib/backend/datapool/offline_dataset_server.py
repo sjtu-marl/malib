@@ -219,12 +219,15 @@ class Table:
                 t = BufferDict()
                 for dk, dshape in _dshapes.items():
                     # XXX(ming): use fragment length for RNN?
-                    # XXX(ziyu): For the case that need a total episode with each timestep in order, 
-                    # we add fragment_length + 1 to the shape, 
+                    # XXX(ziyu): For the case that need a total episode with each timestep in order,
+                    # we add fragment_length + 1 to the shape,
                     # '+1' is because truncated mode to get the bootstrap value.
-                    t[dk] = np.zeros((capacity,) \
-                        + ((fragment_length+1,) if self._fragment_length>0 else ()) \
-                            + dshape, dtype=data_dtypes[agent][dk])
+                    t[dk] = np.zeros(
+                        (capacity,)
+                        + ((fragment_length + 1,) if self._fragment_length > 0 else ())
+                        + dshape,
+                        dtype=data_dtypes[agent][dk],
+                    )
                 self._buffer[agent] = t
         else:
             self._buffer = None

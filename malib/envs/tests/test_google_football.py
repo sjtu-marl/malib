@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from malib.envs.gr_football import BaseGFootBall
@@ -78,10 +79,15 @@ class TestGoogleFootballEnv:
 
         for _ in range(20):
             actions = {
-                aid: [space.sample()] * rets[EpisodeKey.CUR_OBS][aid].shape[0]
+                aid: np.asarray(
+                    [space.sample()] * rets[EpisodeKey.CUR_OBS][aid].shape[0], dtype=int
+                )
                 for aid, space in act_spaces.items()
             }
             rets = env.step(actions)
+            # update next to cur
+            rets[EpisodeKey.CUR_OBS] = rets[EpisodeKey.NEXT_OBS]
+            rets[EpisodeKey.CUR_STATE] = rets[EpisodeKey.NEXT_STATE]
 
         assert self.env.cnt <= 20
         assert rets[EpisodeKey.DONE]["__all__"], (self.env.cnt, rets[EpisodeKey.DONE])

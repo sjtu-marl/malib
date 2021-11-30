@@ -82,10 +82,12 @@ class TestTable:
         mode: str = "queue",
     ):
         data_shapes = {k: shared_data_shapes for k in keys}
+        data_dtypes = {k: {_k: np.float16 for _k in shared_data_shapes} for k in keys}
         self.table = Table(
             capacity,
             fragment_length,
             data_shapes,
+            data_dtypes,
             sample_start_size,
             event_loop,
             mode,

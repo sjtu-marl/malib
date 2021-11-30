@@ -7,7 +7,7 @@ from malib.algorithm.common.trainer import Trainer
 from malib.algorithm.mappo.data_generator import (
     recurrent_generator,
     simple_data_generator,
-    compute_return
+    compute_return,
 )
 from malib.algorithm.mappo.loss import MAPPOLoss
 from malib.utils.episode import EpisodeKey
@@ -31,7 +31,9 @@ class MAPPOTrainer(Trainer):
         total_opt_result = defaultdict(lambda: 0)
         policy = self._loss._policy
 
-        new_data = compute_return(policy, batch, mode=policy.custom_config["return_mode"])
+        new_data = compute_return(
+            policy, batch, mode=policy.custom_config["return_mode"]
+        )
         # drop the last one of the timestep dimension
         batch.update(new_data)
         for k, v in batch.items():
@@ -53,9 +55,7 @@ class MAPPOTrainer(Trainer):
             len_traj, n_rollout_threads, n_agent, _ = batch[EpisodeKey.CUR_OBS].shape
             batch_size = len_traj * n_rollout_threads * n_agent
             for k in batch:
-                batch[k] = torch.FloatTensor(batch[k].copy()).to(
-                    policy.device
-                )
+                batch[k] = torch.FloatTensor(batch[k].copy()).to(policy.device)
                 batch[k] = batch[k].reshape([batch_size, -1])
 
             data_generator_fn = functools.partial(

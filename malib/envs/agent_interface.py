@@ -236,7 +236,9 @@ class AgentInterface:
             kwargs[EpisodeKey.CUR_STATE] = np.stack(kwargs[EpisodeKey.CUR_STATE])
         rnn_state = kwargs[EpisodeKey.RNN_STATE]
         if len(rnn_state[0]) < 2:
-            import pdb; pdb.set_trace()
+            import pdb
+
+            pdb.set_trace()
         rnn_state0 = [rs[0] for rs in rnn_state]
         rnn_state1 = [rs[1] for rs in rnn_state]
         kwargs[EpisodeKey.RNN_STATE] = [np.stack(rnn_state0), np.stack(rnn_state1)]
@@ -245,7 +247,9 @@ class AgentInterface:
     def get_policy(self, pid: PolicyID) -> Policy:
         return self.policies[pid]
 
-    def get_initial_state(self, pid=None, batch_size: int = None) -> List[DataTransferType]:
+    def get_initial_state(
+        self, pid=None, batch_size: int = None
+    ) -> List[DataTransferType]:
         """Return a list of initial rnn states"""
 
         pid = pid or self.behavior_policy

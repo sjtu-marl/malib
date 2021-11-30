@@ -64,22 +64,23 @@ class NewEpisodeDict(defaultdict):
         else:
             ret = self[env_id] = self.default_factory(env_id)
             return ret
+
     # XXX(ziyu): We can remove NEXT_OBS to improve efficiency.
     def record(
         self, policy_outputs, env_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]
     ):
-        for env_id, env_output in env_outputs.items():
-            for k, v in policy_outputs[env_id].items():
+        # since keys in policy outputs may lesser than env_outputs (some have been dropped)
+        for env_id, policy_output in policy_outputs.items():
+            for k, v in policy_output.items():
                 # # FIXME(ziyu): @ming here I found that rnn_state
-                # # which is a list of two rnn_state(actor/critic) 
+                # # which is a list of two rnn_state(actor/critic)
                 # # But some procedure will has dropped one of them.
                 # if k == EpisodeKey.RNN_STATE:
                 #     import pdb; pdb.set_trace()
                 agent_slot = self[env_id][k]
                 for aid, _v in v.items():
-                    assert not isinstance(_v, Dict), (k, v)
                     agent_slot[aid].append(_v)
-            for k, v in env_output.items():
+            for k, v in env_outputs[env_id].items():
                 if k == "infos":
                     continue
                 agent_slot = self[env_id][k]

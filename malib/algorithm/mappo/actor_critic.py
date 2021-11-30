@@ -46,7 +46,7 @@ class RNNNet(nn.Module):
                 use_orthogonal,
             )
         self.rnn_state_size = fc_last_hidden
-        self.rnn_layer_num = custom_config['rnn_layer_num']
+        self.rnn_layer_num = custom_config["rnn_layer_num"]
 
     def forward(self, obs, rnn_states, masks):
         obs = torch.as_tensor(obs, dtype=torch.float32)

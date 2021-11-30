@@ -363,7 +363,7 @@ class SubprocVecEnv(VectorEnv):
                 env = self._active_envs.pop(env_id)
                 runtime_id = uuid.uuid1().hex
                 self.active_envs[runtime_id] = env
-                rets.update(
+                _ret.update(
                     ray.get(
                         env.reset.remote(
                             runtime_id=runtime_id,

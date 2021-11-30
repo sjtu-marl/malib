@@ -75,7 +75,7 @@ class MAPPO(Policy):
 
         self.register_state(self._actor, "actor")
         self.register_state(self._critic, "critic")
-    
+
     def get_initial_state(self, batch_size) -> List[DataTransferType]:
         return [
             np.zeros((batch_size, rnn_net.rnn_layer_num, rnn_net.rnn_state_size))
@@ -125,9 +125,8 @@ class MAPPO(Policy):
             )
             extra_info["value"] = value.detach().cpu().numpy()
             critic_rnn_states = critic_rnn_states.detach().cpu().numpy()
-        
-        return action, action_prob, \
-            (actor_rnn_states, critic_rnn_states)
+
+        return action, action_prob, (actor_rnn_states, critic_rnn_states)
 
     def train(self):
         pass

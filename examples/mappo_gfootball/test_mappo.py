@@ -5,6 +5,7 @@ from malib.backend.datapool.test.utils import FakeDataServer
 from malib.envs.agent_interface import AgentInterface
 from malib.rollout.rollout_func import env_runner
 from malib.utils.typing import BufferDescription
+
 try:
     from yaml import CLoader as Loader, CDumper as Dumper
 except ImportError:
@@ -16,9 +17,10 @@ from pathlib import Path
 from malib.envs.vector_env import VectorEnv
 import ray
 
+
 @pytest.mark.parametrize(
-    'env_name,n_player_left,n_player_right',
-    [('5_vs_5', 4, 0)],
+    "env_name,n_player_left,n_player_right",
+    [("5_vs_5", 4, 0)],
 )
 class TestMAPPOonFootball:
     @pytest.fixture(autouse=True)
@@ -43,43 +45,39 @@ class TestMAPPOonFootball:
             "stacked": False,
         }
 
-        self.env = build_env('PSFootball', scenario_configs)
+        self.env = build_env("PSFootball", scenario_configs)
         self.env_creator = lambda **kwargs: build_env(**kwargs)
-        self.env_id = 'PSFootball'
+        self.env_id = "PSFootball"
         self.scenario_configs = scenario_configs
         self.build_policy()
-    
+
     def build_policy(self):
         base_dir = Path(__file__).parent
-        cfg = load(open(base_dir / 'mappo_5_vs_5.yaml', 'r'))
-        algo_cfg = cfg['algorithms']['MAPPO']
-        model_cfg = algo_cfg['model_config']
-        custom_cfg = algo_cfg['custom_config']
+        cfg = load(open(base_dir / "mappo_5_vs_5.yaml", "r"))
+        algo_cfg = cfg["algorithms"]["MAPPO"]
+        model_cfg = algo_cfg["model_config"]
+        custom_cfg = algo_cfg["custom_config"]
 
-        custom_cfg.update({'global_state_space': self.env.state_spaces})
+        custom_cfg.update({"global_state_space": self.env.state_spaces})
 
         self.policies = {
-            aid: 
-                MAPPO(
-                    'MAPPO',
-                    self.env.observation_spaces[aid],
-                    self.env.action_spaces[aid],
-                    model_cfg,
-                    custom_cfg,
-                    env_agent_id=aid
-                )
+            aid: MAPPO(
+                "MAPPO",
+                self.env.observation_spaces[aid],
+                self.env.action_spaces[aid],
+                model_cfg,
+                custom_cfg,
+                env_agent_id=aid,
+            )
             for aid in self.env.possible_agents
         }
-    
+
     def test_rollout(self):
         vec_env = VectorEnv(
             self.env.observation_spaces,
             self.env.action_spaces,
             self.env_creator,
-            configs={
-                'scenario_configs': self.scenario_configs,
-                'env_id': self.env_id
-            }
+            configs={"scenario_configs": self.scenario_configs, "env_id": self.env_id},
         )
 
         agent_interfaces = {
@@ -88,13 +86,12 @@ class TestMAPPOonFootball:
                 self.env.observation_spaces[aid],
                 self.env.action_spaces[aid],
                 parameter_server=None,
-                policies={'1': self.policies[aid]}
+                policies={"1": self.policies[aid]},
             )
             for aid in self.env.possible_agents
         }
 
         vec_env.add_envs(num=4)
-        
 
         _ = [interface.reset() for interface in agent_interfaces.values()]
 
@@ -106,9 +103,7 @@ class TestMAPPOonFootball:
         buffer_desc = BufferDescription(
             env_id=vec_env.env_configs["env_id"],
             agent_id=vec_env.possible_agents,
-            policy_id=[
-                behavior_policy_ids[aid] for aid in vec_env.possible_agents
-            ],
+            policy_id=[behavior_policy_ids[aid] for aid in vec_env.possible_agents],
         )
 
         rollout_info = env_runner(

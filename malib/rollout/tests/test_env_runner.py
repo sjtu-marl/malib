@@ -92,21 +92,23 @@ class TestEnvRunner:
         )
 
         while not self.vec_env.is_terminated():
-            policy_inputs, filtered_ouptuts = _process_environment_returns(
+            filtered_outputs = {}
+            policy_inputs, filtered_outputs, _ = _process_environment_returns(
                 env_rets=rets,
                 agent_interfaces=self.agent_interfaces,
+                filtered_env_outputs=filtered_outputs,
             )
 
             # check consistency in env ids
             pinput_env_ids = sorted(list(policy_inputs.keys()))
-            filtered_env_ids = sorted(list(filtered_ouptuts.keys()))
+            filtered_env_ids = sorted(list(filtered_outputs.keys()))
             real_env_ids = sorted(list(self.vec_env.active_envs.keys()))
 
-            assert pinput_env_ids == filtered_env_ids == real_env_ids, (
-                pinput_env_ids,
-                filtered_env_ids,
-                real_env_ids,
-            )
+            # assert pinput_env_ids == filtered_env_ids == real_env_ids, (
+            #     pinput_env_ids,
+            #     filtered_env_ids,
+            #     real_env_ids,
+            # )
 
             policy_outputs, active_env_ids = _do_policy_eval(
                 policy_inputs, self.agent_interfaces, episodes
@@ -118,13 +120,21 @@ class TestEnvRunner:
                 active_env_ids, policy_outputs, self.vec_env
             )
 
+            rets = self.vec_env.step(env_inputs)
+
+            policy_inputs, filtered_outputs, _ = _process_environment_returns(
+                env_rets=rets,
+                agent_interfaces=self.agent_interfaces,
+                filtered_env_outputs=filtered_outputs,
+            )
+
             detached_env_ids = sorted(detached_policy_outputs.keys())
             assert sorted_active_env_ids == detached_env_ids, (
                 sorted_active_env_ids,
                 detached_env_ids,
             )
 
-            rets = self.vec_env.step(env_inputs)
+            episodes.record(detached_policy_outputs, filtered_outputs)
 
     def test_env_runner_no_buffer_send(self):
         # random select agent behavior policies
