@@ -3,6 +3,7 @@ import os
 import pickle
 import gym
 import torch
+import numpy as np
 
 from torch import nn
 
@@ -43,7 +44,7 @@ class MAPPO(Policy):
             "cuda" if custom_config.get("use_cuda", False) else "cpu"
         )
 
-        # TODO(ming): collect to custom config
+        # TODO(ming): will collect to custom config
         global_observation_space = custom_config["global_state_space"][
             kwargs["env_agent_id"]
         ]
@@ -127,7 +128,7 @@ class MAPPO(Policy):
             extra_info["value"] = value.detach().cpu().numpy()
             critic_rnn_states = critic_rnn_states.detach().cpu().numpy()
 
-        return action, action_prob, (actor_rnn_states, critic_rnn_states)
+        return action, action_prob, [actor_rnn_states, critic_rnn_states]
 
     def train(self):
         pass

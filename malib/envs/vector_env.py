@@ -193,7 +193,7 @@ class VectorEnv:
                 self._cached_episode_infos[env_id] = env.collect_info()
                 if not self.is_terminated():
                     # write episode cache
-                # else:
+                    # else:
                     _tmp = env.reset(
                         max_step=self._max_step,
                         custom_reset_config=self._custom_reset_config,

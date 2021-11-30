@@ -65,6 +65,7 @@ class Policy(metaclass=ABCMeta):
         action_space: gym.spaces.Space,
         model_config: ModelConfig = None,
         custom_config: Dict[str, Any] = None,
+        **kwargs,
     ):
         """Create a policy instance.
 
@@ -196,7 +197,7 @@ class Policy(metaclass=ABCMeta):
 
         pass
 
-    def get_initial_state(self) -> List[DataTransferType]:
+    def get_initial_state(self, batch_size: int = None) -> List[DataTransferType]:
         """Return a list of rnn states if models are rnns"""
 
         return []

@@ -61,7 +61,8 @@ def _process_environment_returns(
     drop_env_ids = []
 
     for env_id, rets in env_rets.items():
-        policy_input = {}
+        # preset done if no done
+        policy_input = {EpisodeKey.DONE: dict.fromkeys(agent_interfaces, False)}
         drop = False
 
         if env_id not in filtered_env_outputs:
@@ -133,7 +134,6 @@ def _do_policy_eval(
                 # FIXME(ming): maybe wrong
                 last_done = np.zeros(obs_shape[:-1])
             else:
-                # print("-----", env_id, env_episode[EpisodeKey.DONE], env_episode[EpisodeKey.RNN_STATE])
                 last_done = env_episode[EpisodeKey.DONE][agent_id][-1]
             last_rnn_state = env_episode[EpisodeKey.RNN_STATE][agent_id][-1]
             agent_wise_inputs[agent_id][EpisodeKey.RNN_STATE].append(last_rnn_state)

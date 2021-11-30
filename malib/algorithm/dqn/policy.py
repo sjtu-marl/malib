@@ -17,6 +17,7 @@ class DQN(Policy):
         action_space: gym.spaces.Space,
         model_config: Dict[str, Any] = None,
         custom_config: Dict[str, Any] = None,
+        **kwargs
     ):
         super(DQN, self).__init__(
             registered_name=registered_name,
@@ -100,14 +101,14 @@ class DQN(Policy):
             if np.random.random() < self._calc_eps():
                 actions = m.sample()
                 return (
-                    actions.to("cpu").numpy(),
+                    actions.to("cpu").numpy().reshape((-1,) + self.action_space.shape),
                     action_probs.detach().to("cpu").numpy(),
                     kwargs[EpisodeKey.RNN_STATE],
                 )
 
         actions = torch.argmax(action_probs, dim=-1)
         return (
-            actions.detach().numpy(),
+            actions.detach().numpy().reshape((-1,) + self.action_space.shape),
             action_probs.detach().to("cpu").numpy(),
             kwargs[EpisodeKey.RNN_STATE],
         )

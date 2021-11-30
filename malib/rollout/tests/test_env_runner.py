@@ -24,7 +24,7 @@ from malib.backend.datapool.test import FakeDataServer
         ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
         (
             "malib.envs.gr_football",
-            "build_env",
+            "creator",
             "Gfootball",
             {
                 "env_name": "5_vs_5",
