@@ -1,49 +1,28 @@
-import gym
 import numpy as np
 
 from malib.utils.preprocessor import get_preprocessor
-from .env import BaseGFootBall as base_env, ParameterSharingWrapper
-from malib.envs.env import Environment, EpisodeInfo
-from malib.backend.datapool.offline_dataset_server import Episode
-
-def env(**kwargs):
-    return ParameterSharingWrapper(base_env(**kwargs), lambda x: x[:6])
+from malib.utils.episode import EpisodeKey
+from .env import BaseGFootBall
+from .wrappers import ParameterizedSharing
 
 
-def default_config_gen():
-    default_config = {
-        # env building config
-        "env_id": "Gfootball",
-        "use_built_in_GK": True,
-        "scenario_config": {
-            "env_name": "5_vs_5",
-            "number_of_left_players_agent_controls": 4,
-            "number_of_right_players_agent_controls": 4,
-            "representation": "raw",
-            "logdir": "",
-            "write_goal_dumps": False,
-            "write_full_episode_dumps": False,
-            "render": False,
-            "stacked": False,
-        },
-    }
-    return default_config
-
-
-def env_desc_gen(config):
-    default_config = default_config_gen()
-    default_config.update(config)
-    env_for_spec = env(**config)
-    env_desc = {
-        "creator": env,
-        "possible_agents": env_for_spec.possible_agents,
-        "action_spaces": env_for_spec.action_spaces,
-        "observation_spaces": env_for_spec.observation_spaces,
-        "state_spaces": env_for_spec.state_space,
-        "config": default_config,
-    }
-    env_for_spec.close()
-    return env_desc
+default_sharing_mapping = lambda x: x[:6]
+DEFAULT_ENV_CONNFIG = {
+    # env building config
+    "env_id": "Gfootball",
+    "use_built_in_GK": True,
+    "scenario_config": {
+        "env_name": "5_vs_5",
+        "number_of_left_players_agent_controls": 4,
+        "number_of_right_players_agent_controls": 4,
+        "representation": "raw",
+        "logdir": "",
+        "write_goal_dumps": False,
+        "write_full_episode_dumps": False,
+        "render": False,
+        "stacked": False,
+    },
+}
 
 
 def build_sampler_config(
@@ -51,7 +30,7 @@ def build_sampler_config(
     actor_rnn_state_shape,
     critic_rnn_state_shape,
 ):
-    env_for_spec = env(**env_desc['config'])
+    env_for_spec = env(**env_desc["config"])
     num_agents_share = env_for_spec.num_agent_share
     env_for_spec.close()
     observation_spaces = env_desc["observation_spaces"]
@@ -62,11 +41,11 @@ def build_sampler_config(
         stsp_prep = get_preprocessor(stsp)(stsp)
         sampler_config = {
             "dtypes": {
-                Episode.REWARD: np.float,
-                Episode.DONE: np.bool,
-                Episode.CUR_OBS: np.float,
-                Episode.ACTION: np.int,
-                Episode.ACTION_DIST: np.float,
+                EpisodeKey.REWARD: np.float,
+                EpisodeKey.DONE: np.bool,
+                EpisodeKey.CUR_OBS: np.float,
+                EpisodeKey.ACTION: np.int,
+                EpisodeKey.ACTION_DIST: np.float,
                 "active_mask": np.float,
                 "available_action": np.float,
                 "value": np.float,
@@ -76,13 +55,13 @@ def build_sampler_config(
                 "critic_rnn_states": np.float,
             },
             "data_shapes": {
-                Episode.REWARD: (1,),
-                Episode.DONE: (1,),
-                Episode.CUR_OBS: obsp.shape,
-                Episode.ACTION: (1,),
-                Episode.ACTION_DIST: (acsp.n,),
+                EpisodeKey.REWARD: (1,),
+                EpisodeKey.DONE: (1,),
+                EpisodeKey.CUR_OBS: obsp.shape,
+                EpisodeKey.ACTION: (1,),
+                EpisodeKey.ACTION_DIST: (acsp.n,),
                 "active_mask": (1,),
-                "available_action": (acsp.n, ),
+                "available_action": (acsp.n,),
                 "value": (1,),
                 # "return": (1,),
                 "share_obs": stsp_prep.shape,
@@ -91,5 +70,7 @@ def build_sampler_config(
             },
         }
         for k in sampler_config["data_shapes"]:
-            sampler_config["data_shapes"][k] = (num_ps, ) + sampler_config["data_shapes"][k]
+            sampler_config["data_shapes"][k] = (num_ps,) + sampler_config[
+                "data_shapes"
+            ][k]
         env_desc["data_shapes"][aid] = sampler_config["data_shapes"]

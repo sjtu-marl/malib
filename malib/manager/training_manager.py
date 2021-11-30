@@ -76,16 +76,16 @@ class TrainingManager:
                     self._agents[training_aid] = agent_cls.options(
                         max_concurrency=100
                     ).remote(
-                        training_aid,
-                        env_desc,
-                        algorithms,
-                        training_agent_mapping,
-                        interface_config["observation_spaces"],
-                        interface_config["action_spaces"],
-                        exp_cfg,
-                        interface_config["use_init_policy_pool"],
-                        interface_config["population_size"],
-                        interface_config["algorithm_mapping"],
+                        assign_id=training_aid,
+                        env_desc=env_desc,
+                        algorithm_candidates=algorithms,
+                        training_agent_mapping=training_agent_mapping,
+                        observation_spaces=interface_config["observation_spaces"],
+                        action_spaces=interface_config["action_spaces"],
+                        exp_cfg=exp_cfg,
+                        use_init_policy_pool=interface_config["use_init_policy_pool"],
+                        population_size=interface_config["population_size"],
+                        algorithm_mapping=interface_config["algorithm_mapping"],
                     )
                 # register trainable env agents
                 self._agents[training_aid].register_env_agent.remote(env_aid)

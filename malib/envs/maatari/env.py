@@ -5,7 +5,7 @@ import supersuit
 
 from malib.envs import Environment
 from malib.utils.typing import Dict, Any, Sequence, AgentID
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import Episode
 
 
 def nested_env_creator(ori_creator: type, wrappers: Sequence[Dict]) -> type:

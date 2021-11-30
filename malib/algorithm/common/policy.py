@@ -5,11 +5,20 @@ Implementation of basic PyTorch-based policy class
 import gym
 
 from abc import ABCMeta, abstractmethod
+from torch._C import device
 
 import torch.nn as nn
 
 from malib.utils import errors
-from malib.utils.typing import DataTransferType, ModelConfig, Dict, Any, Tuple, Callable
+from malib.utils.typing import (
+    DataTransferType,
+    ModelConfig,
+    Dict,
+    Any,
+    Tuple,
+    Callable,
+    List,
+)
 from malib.utils.preprocessor import get_preprocessor, Mode
 from malib.utils.notations import deprecated
 
@@ -70,6 +79,7 @@ class Policy(metaclass=ABCMeta):
         self.registered_name = registered_name
         self.observation_space = observation_space
         self.action_space = action_space
+        self.device = device
 
         self.custom_config = {
             "gamma": 0.99,
@@ -179,12 +189,17 @@ class Policy(metaclass=ABCMeta):
     @abstractmethod
     def compute_action(
         self, observation: DataTransferType, **kwargs
-    ) -> Tuple[Any, Any, Any]:
+    ) -> Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
         """Compute single action when rollout at each step, return 3 elements:
-        action, None, extra_info['actions_prob']
+        action, action_dist, a list of rnn_state
         """
 
         pass
+
+    def get_initial_state(self) -> List[DataTransferType]:
+        """Return a list of rnn states if models are rnns"""
+
+        return []
 
     def state_dict(self):
         """Return state dict in real time"""
@@ -251,3 +266,11 @@ class Policy(metaclass=ABCMeta):
     @deprecated
     def eval(self):
         pass
+
+    # @abstractmethod
+    def reset(self):
+        """Reset policy intermediates"""
+        pass
+
+    def to_device(self, device):
+        self.device = device

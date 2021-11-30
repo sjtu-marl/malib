@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 
 from malib.utils.typing import Dict, Any, List, Union, DataTransferType
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import Episode
 
 
 def soft_update(target, source, tau):

@@ -10,7 +10,7 @@ from malib.algorithm.mappo.data_generator import (
     compute_return
 )
 from malib.algorithm.mappo.loss import MAPPOLoss
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
 import torch
 import functools
 
@@ -50,7 +50,7 @@ class MAPPOTrainer(Trainer):
                 policy.device,
             )
         else:
-            len_traj, n_rollout_threads, n_agent, _ = batch[Episode.CUR_OBS].shape
+            len_traj, n_rollout_threads, n_agent, _ = batch[EpisodeKey.CUR_OBS].shape
             batch_size = len_traj * n_rollout_threads * n_agent
             for k in batch:
                 batch[k] = torch.FloatTensor(batch[k].copy()).to(
@@ -70,7 +70,7 @@ class MAPPOTrainer(Trainer):
 
         # TODO(ziyu & ming): find a way for customize optimizer and scheduler
         #  but now it doesn't affect the performance ...
-        # 
+        #
         # epoch = kwargs["epoch"]
         # total_epoch = kwargs["total_epoch"]
         # update_linear_schedule(

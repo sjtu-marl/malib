@@ -16,7 +16,6 @@ from malib.envs.gr_football import build_sampler_config, env_desc_gen
 BASE_DIR = pathlib.Path(__file__).parent.parent.parent.absolute()
 
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("General training on Google Research Football.")
     parser.add_argument(
@@ -35,7 +34,6 @@ if __name__ == "__main__":
 
     with open(args.config, "r") as f:
         config = yaml.load(f)
-
 
     training_config = config["training"]
     rollout_config = config["rollout"]
@@ -61,14 +59,12 @@ if __name__ == "__main__":
     # FOR MAPPO
     custom_config.update({"global_state_space": env_desc["state_spaces"]})
 
-
     model_config = config["algorithms"]["MAPPO"]["model_config"]
     build_sampler_config(
         env_desc,
         model_config["actor"]["layers"][-1]["units"],
         model_config["critic"]["layers"][-1]["units"],
     )
-
 
     run(
         group=config["group"],
@@ -87,5 +83,5 @@ if __name__ == "__main__":
         # "nash", "fictitious_self_play"
         # solver="nash",
         worker_config=config["worker_config"],
-        use_init_policy_pool=False
+        use_init_policy_pool=False,
     )

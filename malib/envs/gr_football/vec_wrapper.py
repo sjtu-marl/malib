@@ -1,11 +1,12 @@
-from abc import ABC, abstractmethod
-from collections import OrderedDict
-from typing import Dict, Sequence, Optional, List, Union
-import multiprocessing
-import cloudpickle
-import gym
 import os
+import multiprocessing
+
+import cloudpickle
 import numpy as np
+
+from abc import ABC, abstractmethod
+
+from malib.utils.typing import Dict, Optional, List, Union
 
 
 class VecEnv(ABC):
@@ -363,7 +364,7 @@ if __name__ == "__main__":
     # print("="*40)
     # print(_merge_list(action_split))
     from malib.envs.gr_football import default_config
-    from grf_env import BaseGFootBall, ParameterSharingWrapper
+    from malib.envs.gr_football import BaseGFootBall, ParameterSharingWrapper
 
     def env_fn():
         env = BaseGFootBall(**default_config)

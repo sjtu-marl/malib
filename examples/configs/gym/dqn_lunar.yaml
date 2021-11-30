@@ -46,6 +46,11 @@ algorithms:
             activation: ReLU
         output:
           activation: False
+      custom_config:
+        gamma: 0.95
+        eps_max: 1.0
+        eps_min: 0.1
+        eps_anneal_time: 10000
 
 global_evaluator:
   name: "generic"

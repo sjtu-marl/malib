@@ -30,7 +30,6 @@ from malib.utils.typing import (
     List,
 )
 
-from malib.backend.datapool.offline_dataset_server import Episode
 from malib.envs.agent_interface import AgentInterface
 from malib.algorithm.common.policy import Policy
 from malib.utils.logger import Logger, get_logger, Log
@@ -312,7 +311,9 @@ class BaseRolloutWorker:
         trainable_pairs = task_desc.content.agent_involve_info.trainable_pairs
         # XXX(ming): shall we authorize learner to determine the buffer description?
         buffer_desc = BufferDescription(
-            env_id=self._env_description["config"]["env_id"], # TODO(ziyu): this should be move outside "config"
+            env_id=self._env_description["config"][
+                "env_id"
+            ],  # TODO(ziyu): this should be move outside "config"
             agent_id=list(trainable_pairs.keys()),
             policy_id=[pid for pid, _ in trainable_pairs.values()],
             capacity=None,

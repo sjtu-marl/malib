@@ -4,7 +4,7 @@ name: "share/ddpg_simple"
 
 training:
   interface:
-    type: "sync"
+    type: "independent"
     population_size: -1
   config:
     # control the frequency of remote parameter update
@@ -25,7 +25,7 @@ rollout:
     max_step: 1000
   metric_type: "simple"
   fragment_length: 25
-  num_episodes: 250
+  num_episodes: 25
   episode_seg: 25
   terminate: "any"
 

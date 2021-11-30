@@ -5,7 +5,7 @@ from typing import Dict, Tuple, Any
 from torch.distributions import Categorical, Normal
 
 from malib.algorithm.common.loss_func import LossFunc
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
 from malib.utils.typing import TrainingMetric
 
 
@@ -53,31 +53,18 @@ class PPOLoss(LossFunc):
                 }
             )
 
-    def __call__(self, batch) -> Dict[str, Any]:
+    def loss_compute(self, batch) -> Dict[str, Any]:
 
-        FloatTensor = (
-            torch.cuda.FloatTensor
-            if self.policy.custom_config["use_cuda"]
-            else torch.FloatTensor
-        )
-        LongTensor = (
-            torch.cuda.LongTensor
-            if self.policy.custom_config["use_cuda"]
-            else torch.LongTensor
-        )
-        cast_to_tensor = lambda x: FloatTensor(x.copy())
-        cast_to_long_tensor = lambda x: LongTensor(x.copy())
-
-        rewards = cast_to_tensor(batch[Episode.REWARD])
+        rewards = batch[EpisodeKey.REWARD]
         if self.policy._discrete_action:
-            actions = cast_to_long_tensor(batch[Episode.ACTION].reshape(-1))
+            actions = batch[EpisodeKey.ACTION].reshape(-1)
         else:
-            actions = cast_to_tensor(batch[Episode.ACTION])
+            actions = batch[EpisodeKey.ACTION]
 
-        cur_obs = cast_to_tensor(batch[Episode.CUR_OBS])
-        next_obs = cast_to_tensor(batch[Episode.NEXT_OBS])
-        dones = cast_to_tensor(batch[Episode.DONE])
-        pi = cast_to_tensor(batch[Episode.ACTION_DIST])
+        cur_obs = batch[EpisodeKey.CUR_OBS]
+        next_obs = batch[EpisodeKey.NEXT_OBS]
+        dones = batch[EpisodeKey.DONE]
+        pi = batch[EpisodeKey.ACTION_DIST]
 
         cliprange = self._params["cliprange"]
         grad_cliprange = self._params["grad_norm_clipping"]

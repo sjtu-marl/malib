@@ -119,7 +119,7 @@ class IndependentAgent(AgentInterface):
             action_space=self._action_spaces[env_agent_id],
             model_config=algorithm_conf.get("model_config", {}),
             custom_config=algorithm_conf.get("custom_config", {}),
-            env_agent_id=env_agent_id,
+            # env_agent_id=env_agent_id,
         )
 
         pid = self.default_policy_id_gen(algorithm_conf)

@@ -13,7 +13,6 @@ from copy import deepcopy
 from malib.algorithm.common.model import get_model
 from malib.algorithm.common.policy import Policy
 from malib.utils.typing import DataTransferType, Dict, Tuple, BehaviorMode, Any
-from malib.backend.datapool.offline_dataset_server import Episode
 from malib.utils.typing import TrainingMetric
 
 EPS = 1e-5

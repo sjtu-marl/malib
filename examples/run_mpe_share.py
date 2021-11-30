@@ -23,7 +23,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     with open(os.path.join(BASE_DIR, args.config), "r") as f:
-        config = yaml.load(f)
+        config = yaml.safe_load(f)
 
     env_desc = config["env_description"]
     env_desc["config"] = env_desc.get("config", {})

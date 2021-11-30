@@ -7,6 +7,7 @@ import asyncio
 import time
 import traceback
 import numpy as np
+from numpy.ma.core import cumsum
 import torch
 import ray
 
@@ -16,6 +17,7 @@ from readerwriterlock import rwlock
 
 from malib import settings
 from malib.utils.errors import OversampleError
+from malib.utils.general import iter_dicts_recursively, iter_many_dicts_recursively
 from malib.utils.logger import Log, Logger
 from malib.utils.typing import (
     BufferDescription,
@@ -48,27 +50,6 @@ def _gen_table_name(env_id, main_id, pid):
 
 DATASET_TABLE_NAME_GEN = _gen_table_name
 Batch = namedtuple("Batch", "identity, data")
-
-
-class Episode:
-    """Unlimited buffer"""
-
-    CUR_OBS = "obs"
-    NEXT_OBS = "new_obs"
-    ACTION = "action"
-    ACTION_MASK = "action_mask"
-    REWARD = "reward"
-    DONE = "done"
-    ACTION_DIST = "action_prob"
-    # XXX(ming): seems useless
-    INFO = "infos"
-
-    # optional
-    STATE_VALUE = "state_value_estimation"
-    STATE_ACTION_VALUE = "state_action_value_estimation"
-    CUR_STATE = "cur_state"  # current global state
-    NEXT_STATE = "next_state"  # next global state
-    LAST_REWARD = "last_reward"
 
 
 def iterate_recursively(d: Dict):
@@ -197,20 +178,18 @@ class _QueueActor:
 class Table:
     def __init__(
         self,
-        keys,
         capacity: int,
         fragment_length: int,
-        data_shapes: Dict[AgentID, Dict[str, Tuple]],
+        data_shapes: Dict[AgentID, Dict[str, Tuple]] = None,
+        data_dtypes: Dict[AgentID, Dict[str, Tuple]] = None,
         sample_start_size: int = 0,
         event_loop: asyncio.BaseEventLoop = None,
         mode: str = "queue",
     ):
         """One table for one episode."""
 
-        self._keys = keys
         self._threading_lock = threading.Lock()
         self._rwlock = rwlock.RWLockFairD()
-        self._is_multi_agent = len(keys) > 1
         self._consumer_queue = None
         self._producer_queue = None
         self._is_fixed = False
@@ -232,15 +211,23 @@ class Table:
             self._producer_queue = None
 
         # build episode
-        self._buffer = BufferDict()
-        for agent, _dshapes in data_shapes.items():
-            if agent not in keys:
-                continue
-            t = BufferDict()
-            for dk, dshape in _dshapes.items():
-                # ziyu: record last step value if truncated
-                t[dk] = np.zeros((capacity, self._fragment_length+1) + dshape)
-            self._buffer[agent] = t
+        if data_shapes is not None:
+            self._buffer = BufferDict()
+            for agent, _dshapes in data_shapes.items():
+                # if agent not in keys:
+                #     continue
+                t = BufferDict()
+                for dk, dshape in _dshapes.items():
+                    # XXX(ming): use fragment length for RNN?
+                    # XXX(ziyu): For the case that need a total episode with each timestep in order, 
+                    # we add fragment_length + 1 to the shape, 
+                    # '+1' is because truncated mode to get the bootstrap value.
+                    t[dk] = np.zeros((capacity,) \
+                        + ((fragment_length+1,) if self._fragment_length>0 else ()) \
+                            + dshape, dtype=data_dtypes[agent][dk])
+                self._buffer[agent] = t
+        else:
+            self._buffer = None
 
     @property
     def is_fixed(self):
@@ -248,7 +235,7 @@ class Table:
 
     @property
     def is_multi_agent(self) -> bool:
-        return self._is_multi_agent
+        return len(self.buffer)
 
     @property
     def buffer(self) -> BufferDict:
@@ -265,6 +252,14 @@ class Table:
     @property
     def capacity(self):
         return self._capacity
+
+    def build_buffer_from_samples(self, sample: Dict):
+        self._buffer = BufferDict()
+        for agent, _buff in sample.items():
+            t = BufferDict()
+            for dk, v in _buff.items():
+                t[dk] = np.zeros((self.capacity,) + v.shape[1:], dtype=v.dtype)
+            self._buffer[agent] = t
 
     def sample_activated(self) -> bool:
         return self._consumer_queue.size() >= self._sample_start_size
@@ -299,12 +294,31 @@ class Table:
     def gen_table_name(*args, **kwargs):
         return DATASET_TABLE_NAME_GEN(*args, **kwargs)
 
-    def insert(self, data: Dict[str, Any], indices: List[int] = None, size: int = None):
+    def insert(
+        self, data: List[Dict[str, Any]], indices: List[int] = None, size: int = None
+    ):
+        if self.buffer is None:
+            self.build_buffer_from_samples(data[0])
+        shuffle_idx = np.random.shuffle(np.arange(len(indices)))
+        for d_list, k, value_list in iter_many_dicts_recursively(*data):
+            head_d = d_list[0]
+            batch_sizes = [v.shape[0] for v in value_list]
+            merged_shape = (sum(batch_sizes),) + value_list[0].shape[1:]
+            _placeholder = np.zeros(merged_shape, dtype=head_d[k].dtype)
+
+            index = 0
+            for batch_size, value in zip(batch_sizes, value_list):
+                _placeholder[index : index + batch_size] = value[::]
+                index += batch_size
+            assert len(_placeholder) >= len(indices), (len(_placeholder), len(indices))
+            head_d[k] = _placeholder[shuffle_idx]
+
         if indices is None:
             # generate indices
             indices = np.arange(self._flag, self._flag + size) % self._capacity
+
         # assert indices is not None, "indices: {}".format(indices)
-        self._buffer.set_data(indices, data)
+        self._buffer.set_data(indices, data[0])
         self._size += len(indices)
         self._size = min(self._size, self._capacity)
         self._flag = (self._flag + len(indices)) % self._capacity
@@ -351,7 +365,6 @@ class Table:
             serial_dict = pkl.load(f)
 
         table = Table(
-            keys=serial_dict["keys"],
             capacity=serial_dict["capacity"],
             data_shapes=serial_dict["data_shapes"],
             sample_start_size=serial_dict["sample_start_size"],
@@ -411,7 +424,7 @@ class OfflineDataset:
         self._episode_capacity = dataset_config.get(
             "episode_capacity", settings.DEFAULT_EPISODE_CAPACITY
         )
-        self._fragment_length = dataset_config["fragment_length"]
+        self._fragment_length = dataset_config.get("fragment_length")
         self._learning_start = dataset_config.get("learning_start", 64)
         self._tables: Dict[str, Table] = dict()
         self._threading_lock = threading.Lock()
@@ -501,7 +514,6 @@ class OfflineDataset:
             # return None
         else:
             self._tables[name] = Table(
-                buffer_desc.agent_id,
                 self._episode_capacity,
                 self._fragment_length,
                 buffer_desc.data_shapes,
@@ -554,9 +566,6 @@ class OfflineDataset:
             main_id=buffer_desc.agent_id,
             pid=buffer_desc.policy_id,
         )
-        # self.check_table(
-        #     table_name, buffer_desc.data, is_multi_agent=len(buffer_desc.data) > 1
-        # )
         table = self._tables[table_name]
         table.insert(buffer_desc.data, indices=buffer_desc.indices)
         table.free_producer_index(buffer_desc.indices)
@@ -574,26 +583,27 @@ class OfflineDataset:
         """
 
         # FIXME(ming): check its functionality
-        with open(file, "rb") as f:
-            dataset = pkl.load(file=f)
-            keys = set()
-            for batch in dataset:
-                keys = keys.union(batch.keys())
+        # with open(file, "rb") as f:
+        #     dataset = pkl.load(file=f)
+        #     keys = set()
+        #     for batch in dataset:
+        #         keys = keys.union(batch.keys())
 
-            table_size = len(dataset)
-            table_name = DATASET_TABLE_NAME_GEN(
-                env_id=env_id,
-                main_id=agent_id,
-                pid=policy_id,
-            )
-            if self._tables.get(table_name, None) is None:
-                self._tables[table_name] = Episode(
-                    env_id, policy_id, other_columns=None
-                )
+        #     table_size = len(dataset)
+        #     table_name = DATASET_TABLE_NAME_GEN(
+        #         env_id=env_id,
+        #         main_id=agent_id,
+        #         pid=policy_id,
+        #     )
+        #     if self._tables.get(table_name, None) is None:
+        #         self._tables[table_name] = Episode(
+        #             env_id, policy_id, other_columns=None
+        #         )
 
-            for batch in dataset:
-                assert isinstance(batch, Dict)
-                self._tables[table_name].insert(**batch)
+        #     for batch in dataset:
+        #         assert isinstance(batch, Dict)
+        #         self._tables[table_name].insert(**batch)
+        raise NotImplementedError
 
     # @Log.method_timer(enable=settings.PROFILING)
     def load(self, path, mode="replace") -> List[Dict[str, str]]:
@@ -751,5 +761,5 @@ class ExternalReadOnlyDataset(ExternalDataset):
             info = "others"
         return res, info
 
-    def save(self, agent_episodes: Dict[AgentID, Episode], wait_for_ready: bool = True):
-        raise NotImplementedError
+    # def save(self, agent_episodes: Dict[AgentID, Episode], wait_for_ready: bool = True):
+    #     raise NotImplementedError
