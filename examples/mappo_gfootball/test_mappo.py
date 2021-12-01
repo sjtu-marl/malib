@@ -117,6 +117,7 @@ class TestMAPPOonFootball:
                 "behavior_policies": behavior_policy_ids,
                 "custom_reset_config": None,
                 "batch_mode": "episode",
+                "postprocessor_type": "value",
             },
             dataset_server=dataset,
         )

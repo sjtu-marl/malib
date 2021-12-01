@@ -119,10 +119,6 @@ def _do_policy_eval(
         env_episode = episodes[env_id]
         for agent_id, interface in agent_interfaces.items():
             if len(env_episode[EpisodeKey.RNN_STATE][agent_id]) < 1:
-                # FIXME(ziyu): I'm trying to make it compatable with parameter sharing wrapper,
-                # in which case batch_size may not be None but the number of agent
-                # print("-----", env_id, env_episode[EpisodeKey.DONE], env_episode[EpisodeKey.RNN_STATE])
-
                 obs_shape = policy_inputs[env_id][EpisodeKey.CUR_OBS][agent_id].shape
                 env_episode[EpisodeKey.RNN_STATE][agent_id].append(
                     interface.get_initial_state(
@@ -136,15 +132,10 @@ def _do_policy_eval(
                 last_done = env_episode[EpisodeKey.DONE][agent_id][-1]
             last_rnn_state = env_episode[EpisodeKey.RNN_STATE][agent_id][-1]
             agent_wise_inputs[agent_id][EpisodeKey.RNN_STATE].append(last_rnn_state)
-            # print(f'###### {env_id} {agent_id}, {env_episode[EpisodeKey.DONE]}')
-            # rs = env_episode[EpisodeKey.RNN_STATE][agent_id]
-            # print(f'###### {env_id} {agent_id}, {len(rs)}, {len(rs[-1])}')
 
         for k, agent_v in policy_inputs[env_id].items():
             for agent_id, v in agent_v.items():
                 agent_wise_inputs[agent_id][k].append(v)
-    # print(f'----- agent_wise_inputs: {agent_wise_inputs["team_0"][EpisodeKey.DONE]}')
-    # print(f'----- {agent_wise_inputs["team_0"][EpisodeKey.RNN_STATE]}')
     for agent_id, interface in agent_interfaces.items():
         (
             actions[agent_id],
@@ -289,7 +280,7 @@ def env_runner(
         }
         batch_mode = runtime_config["batch_mode"]
         episodes: List[Dict[str, Dict[AgentID, np.ndarray]]] = get_postprocessor(
-            runtime_config.get("post_processor_type", "default")
+            runtime_config["postprocessor_type"]
         )(list(episodes.to_numpy(batch_mode).values()), policies)
 
         buffer_desc.batch_size = (
@@ -324,11 +315,13 @@ class Stepping:
         dataset_server=None,
         use_subproc_env: bool = False,
         batch_mode: str = "time_step",
+        postprocessor_type: str = "default",
     ):
 
         # init environment here
         self.env_desc = env_desc
         self.batch_mode = batch_mode
+        self.postprocessor_type = postprocessor_type
 
         # check whether env is simultaneous
         env = env_desc["creator"](**env_desc["config"])
@@ -433,6 +426,7 @@ class Stepping:
                 # FIXME(ming): custom reset config is closed here
                 "custom_reset_config": None,
                 "batch_mode": self.batch_mode,
+                "postprocessor_type": self.postprocessor_type,
             },
             dataset_server=self._dataset_server if task_type == "rollout" else None,
         )

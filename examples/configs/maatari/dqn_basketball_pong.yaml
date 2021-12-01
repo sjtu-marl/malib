@@ -46,7 +46,7 @@ rollout:
   fragment_length: 100
   # read rollout config to assign nested workers
   num_episodes: 200
-  episode_seg: 100
+  num_env_per_worker: 100
   terminate: "any"
   stopper: "simple_rollout"
   stopper_config:

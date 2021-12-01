@@ -59,7 +59,9 @@ class Episode:
                     tmp = [np.stack(r)[:-1] for r in list(zip(*v))]
                     if batch_mode == "episode":
                         tmp = [np.expand_dims(r, axis=0) for r in tmp]
-                    res[agent_id][ek] = tmp
+                    res[agent_id].update(
+                        {f"{ek}_{i}": _tmp for i, _tmp in enumerate(tmp)}
+                    )
                 else:
                     tmp = np.asarray(v, dtype=np.float32)
                     if batch_mode == "episode":

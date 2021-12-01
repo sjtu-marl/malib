@@ -132,6 +132,8 @@ def get_postprocessor(
     elif processor_type == "advantage":
         return compute_advantage
     elif processor_type == "default":
+        return default_processor
+    elif processor_type == "value":
         return compute_value
     else:
         return ValueError("Disallowed processor type: {}".format(processor_type))

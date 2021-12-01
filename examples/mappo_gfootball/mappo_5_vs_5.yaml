@@ -35,6 +35,7 @@ rollout:
   use_remote_env: False
   terminate: "any"
   batch_mode: episode # episode or time_step
+  postprocessor_type: value
 
 evaluation:
   # max_episode_length: -1

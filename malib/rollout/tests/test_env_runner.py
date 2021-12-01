@@ -17,11 +17,11 @@ from malib.backend.datapool.test import FakeDataServer
 
 
 @pytest.mark.parametrize(
-    "module_path,cname,env_id,scenario_configs",
+    "module_path,cname,env_id,scenario_configs,batch_mode",
     [
-        ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
-        ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
-        ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
+        ("malib.envs.gym", "GymEnv", "CartPole-v0", {}, "time_step"),
+        ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}, "time_step"),
+        ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}, "time_step"),
         (
             "malib.envs.gr_football",
             "creator",
@@ -37,12 +37,13 @@ from malib.backend.datapool.test import FakeDataServer
                 "render": False,
                 "stacked": False,
             },
+            "episode",
         ),
     ],
 )
 class TestEnvRunner:
     @pytest.fixture(autouse=True)
-    def _init(self, module_path, cname, env_id, scenario_configs):
+    def _init(self, module_path, cname, env_id, scenario_configs, batch_mode):
         if not ray.is_initialized():
             ray.init(local_mode=True)
         creator = getattr(importlib.import_module(module_path), cname)
@@ -66,6 +67,7 @@ class TestEnvRunner:
         self.agent_interfaces = agent_interfaces
 
         self.vec_env.add_envs(num=4)
+        self.batch_mode = batch_mode
 
     def test_process_in_runner(self):
         runtime_config = {
@@ -73,6 +75,8 @@ class TestEnvRunner:
             "fragment_length": 100,
             "max_step": 25,
             "custom_reset_config": None,
+            "batch_mode": self.batch_mode,
+            "postprocessor_type": "default",
         }
         _ = [interface.reset() for interface in self.agent_interfaces.values()]
         rets = self.vec_env.reset(
@@ -153,6 +157,8 @@ class TestEnvRunner:
                 "fragment_length": 100,
                 "behavior_policies": behavior_policy_ids,
                 "custom_reset_config": None,
+                "batch_mode": self.batch_mode,
+                "postprocessor_type": "default",
             },
             dataset_server=None,
         )
@@ -182,6 +188,8 @@ class TestEnvRunner:
                 "fragment_length": 100,
                 "behavior_policies": behavior_policy_ids,
                 "custom_reset_config": None,
+                "batch_mode": self.batch_mode,
+                "postprocessor_type": "default",
             },
             dataset_server=dataset,
         )

@@ -8,7 +8,7 @@ import numpy as np
 from torch import nn
 
 from malib.utils.typing import DataTransferType, Tuple, Any, Dict, EpisodeID, List
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode, EpisodeKey
 
 from malib.algorithm.common.model import get_model
 from malib.algorithm.common.policy import Policy
@@ -28,7 +28,8 @@ def shape_adjusting(wrapped, instance, args, kwargs):
         given inputs with shape (n_rollout_threads, n_agent, ...)
         reshape it to (n_rollout_threads * n_agent, ...)
     """
-    original_shape_pre = kwargs[EpisodeKey.RNN_STATE][0].shape[:-2]
+    offset = len(instance.preprocessor.shape)
+    original_shape_pre = kwargs[EpisodeKey.CUR_OBS].shape[:-offset]
     num_shape_ahead = len(original_shape_pre)
 
     def adjust_fn(x):
@@ -61,7 +62,7 @@ class MAPPO(Policy):
         action_space: gym.spaces.Space,
         model_config: Dict[str, Any] = None,
         custom_config: Dict[str, Any] = None,
-        **kwargs
+        **kwargs,
     ):
         super(MAPPO, self).__init__(
             registered_name=registered_name,
@@ -170,7 +171,7 @@ class MAPPO(Policy):
     def value_function(self, *args, **kwargs):
         # FIXME(ziyu): adjust shapes
         state = kwargs[EpisodeKey.CUR_STATE]
-        critic_rnn_state = kwargs[EpisodeKey.RNN_STATE][1]
+        critic_rnn_state = kwargs[f"{EpisodeKey.RNN_STATE}_1"]
         rnn_mask = kwargs[EpisodeKey.DONE]
         with torch.no_grad():
             value, _ = self.critic(state, critic_rnn_state, rnn_mask)
@@ -206,7 +207,7 @@ class MAPPO(Policy):
             desc_pkl["action_space"],
             desc_pkl["model_config"],
             desc_pkl["custom_config"],
-            **kwargs
+            **kwargs,
         )
 
         actor = torch.load(os.path.join(dump_dir, "actor.pt"), res.device)
