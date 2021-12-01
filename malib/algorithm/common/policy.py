@@ -185,7 +185,6 @@ class Policy(metaclass=ABCMeta):
         - action_mask: action mask.
         """
 
-
     @abstractmethod
     def compute_action(
         self, observation: DataTransferType, **kwargs
@@ -193,7 +192,6 @@ class Policy(metaclass=ABCMeta):
         """Compute single action when rollout at each step, return 3 elements:
         action, action_dist, a list of rnn_state
         """
-
 
     def get_initial_state(self, batch_size: int = None) -> List[DataTransferType]:
         """Return a list of rnn states if models are rnns"""
@@ -275,7 +273,6 @@ class Policy(metaclass=ABCMeta):
         self.device = device
         return self
 
-    
     def value_function(self, *args, **kwargs):
         """Compute values of critic."""
         raise NotImplementedError

@@ -38,7 +38,7 @@ rollout:
 
 evaluation:
   # max_episode_length: -1
-  num_episodes: 10
+  num_episodes: 1
 
 
 

@@ -56,8 +56,8 @@ class Episode:
         for ek, agent_v in self.agent_entry.items():
             for agent_id, v in agent_v.items():
                 if ek == EpisodeKey.RNN_STATE:
-                    tmp = [np.stack(r) for r in list(zip(*v))]
-                    if batch_mode == 'episode':
+                    tmp = [np.stack(r)[:-1] for r in list(zip(*v))]
+                    if batch_mode == "episode":
                         tmp = [np.expand_dims(r, axis=0) for r in tmp]
                     res[agent_id][ek] = tmp
                 else:

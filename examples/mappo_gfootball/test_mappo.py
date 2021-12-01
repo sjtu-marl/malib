@@ -116,7 +116,7 @@ class TestMAPPOonFootball:
                 "fragment_length": 3001,
                 "behavior_policies": behavior_policy_ids,
                 "custom_reset_config": None,
-                'batch_mode': 'episode'
+                "batch_mode": "episode",
             },
             dataset_server=dataset,
         )

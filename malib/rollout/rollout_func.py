@@ -305,7 +305,6 @@ def env_runner(
         dataset_server.save.remote(buffer_desc)
 
     ph = list(rollout_info.values())
-    assert len(ph) == 1, (len(ph), env.batched_step_cnt)
 
     holder = {}
     for history, ds, k, vs in iter_many_dicts_recursively(*ph, history=[]):
@@ -418,7 +417,7 @@ class Stepping:
         behavior_policies.update(desc["behavior_policies"] or {})
         # specify the number of running episodes
         num_episodes = desc["num_episodes"]
-        max_step = desc.get("max_step", -1)
+        max_step = desc.get("max_step", None)
 
         self.add_envs(num_episodes)
 

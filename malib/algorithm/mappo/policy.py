@@ -16,6 +16,41 @@ from malib.algorithm.common.misc import hard_update
 
 from malib.algorithm.mappo.actor_critic import RNNNet
 from malib.algorithm.mappo.utils import PopArt, init_fc_weights
+import wrapt
+import tree
+
+
+@wrapt.decorator
+def shape_adjusting(wrapped, instance, args, kwargs):
+    """
+    A wrapper that adjust the inputs to corrent shape.
+    e.g.
+        given inputs with shape (n_rollout_threads, n_agent, ...)
+        reshape it to (n_rollout_threads * n_agent, ...)
+    """
+    original_shape_pre = kwargs[EpisodeKey.RNN_STATE][0].shape[:-2]
+    num_shape_ahead = len(original_shape_pre)
+
+    def adjust_fn(x):
+        if isinstance(x, np.ndarray):
+            return np.reshape(x, (-1,) + x.shape[num_shape_ahead:])
+        else:
+            return x
+
+    def recover_fn(x):
+        if isinstance(x, np.ndarray):
+            return np.reshape(x, original_shape_pre + x.shape[1:])
+        else:
+            return x
+
+    adjusted_args = tree.map_structure(adjust_fn, args)
+    adjusted_kwargs = tree.map_structure(adjust_fn, kwargs)
+
+    rets = wrapped(*adjusted_args, **adjusted_kwargs)
+
+    recover_rets = tree.map_structure(recover_fn, rets)
+
+    return recover_rets
 
 
 class MAPPO(Policy):
@@ -102,8 +137,10 @@ class MAPPO(Policy):
         logits, actor_rnn_states = self.actor(obs, actor_rnn_states, rnn_masks)
         return logits, actor_rnn_states
 
+    @shape_adjusting
     def compute_action(self, observation, **kwargs):
         actor_rnn_states, critic_rnn_states = kwargs[EpisodeKey.RNN_STATE]
+
         rnn_masks = kwargs[EpisodeKey.DONE]
         logits, actor_rnn_states = self.actor(observation, actor_rnn_states, rnn_masks)
         actor_rnn_states = actor_rnn_states.detach().cpu().numpy()
@@ -129,17 +166,15 @@ class MAPPO(Policy):
 
         return action, action_prob, [actor_rnn_states, critic_rnn_states]
 
+    @shape_adjusting
     def value_function(self, *args, **kwargs):
         # FIXME(ziyu): adjust shapes
         state = kwargs[EpisodeKey.CUR_STATE]
-        print(kwargs[EpisodeKey.RNN_STATE][0].shape)
-        import pdb; pdb.set_trace()
-        critic_rnn_state = kwargs[EpisodeKey.RNN_STATE][0][1]
+        critic_rnn_state = kwargs[EpisodeKey.RNN_STATE][1]
         rnn_mask = kwargs[EpisodeKey.DONE]
         with torch.no_grad():
             value, _ = self.critic(state, critic_rnn_state, rnn_mask)
         return value.cpu().numpy()
-
 
     def train(self):
         pass

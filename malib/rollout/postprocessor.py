@@ -16,6 +16,7 @@ class PostProcessorType(enum.IntEnum):
     GAE = 1
     ACCUMULATED_REWORD = 2
 
+
 # FIXME(ziyu): For loop for episodes at the beginning
 def compute_acc_reward(
     episode: Dict[str, Dict[AgentID, np.ndarray]], policy_dict: Dict[AgentID, Policy]

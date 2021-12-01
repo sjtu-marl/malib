@@ -77,6 +77,7 @@ class BaseGFootBall(Environment):
         self.n_agents = len(self.possible_agents)
 
         self._build_interacting_spaces()
+        self.max_step = 3001
 
     def seed(self, seed=None):
         self._raw_env.seed(seed)
@@ -275,6 +276,7 @@ def ParameterSharing(base_env: BaseGFootBall, parameter_sharing_mapping: Callabl
             self.num_agent_share = {aid: len(v) for aid, v in self._ps_buckets.items()}
 
             self.is_sequential = False
+            self.max_step = self._env.max_step
 
         @property
         def observation_spaces(self) -> Dict[AgentID, gym.Space]:
@@ -365,8 +367,9 @@ def ParameterSharing(base_env: BaseGFootBall, parameter_sharing_mapping: Callabl
             )
 
             if EpisodeKey.ACTION_MASK in rets:
-                rets[EpisodeKey.ACTION_MASK] = f(rets[EpisodeKey.ACTION_MASK], 
-                                                np.vstack)
+                rets[EpisodeKey.ACTION_MASK] = f(
+                    rets[EpisodeKey.ACTION_MASK], np.vstack
+                )
 
             return rets
 
