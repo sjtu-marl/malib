@@ -54,14 +54,18 @@ class Episode:
         # switch agent key and episode key
         res = defaultdict(lambda: {})
         for ek, agent_v in self.agent_entry.items():
-            if ek == EpisodeKey.RNN_STATE:
-                continue
             for agent_id, v in agent_v.items():
-                tmp = np.asarray(v, dtype=np.float32)
-                if batch_mode == "episode":
-                    res[agent_id][ek] = np.expand_dims(tmp, axis=0)
-                else:
+                if ek == EpisodeKey.RNN_STATE:
+                    tmp = [np.stack(r) for r in list(zip(*v))]
+                    if batch_mode == 'episode':
+                        tmp = [np.expand_dims(r, axis=0) for r in tmp]
                     res[agent_id][ek] = tmp
+                else:
+                    tmp = np.asarray(v, dtype=np.float32)
+                    if batch_mode == "episode":
+                        res[agent_id][ek] = np.expand_dims(tmp, axis=0)
+                    else:
+                        res[agent_id][ek] = tmp
         return res
 
 

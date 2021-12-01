@@ -56,7 +56,7 @@ def run(**kwargs):
                 getattr(CoordinatorServer, "_request_simulation", None)
             )
         )
-        pprint.pprint(f"Logged experiment information:{infos}", indent=2)
+        # pprint.pprint(f"Logged experiment information:{infos}", indent=2)
 
         ray.init(local_mode=False)
 

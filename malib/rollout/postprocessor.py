@@ -2,6 +2,7 @@
 Environment/VecEnvironment -> Episode (stacked or not) -> postprocessor -> offline dataset
 """
 import enum
+from typing import List
 import numpy as np
 import scipy.signal
 
@@ -15,7 +16,7 @@ class PostProcessorType(enum.IntEnum):
     GAE = 1
     ACCUMULATED_REWORD = 2
 
-
+# FIXME(ziyu): For loop for episodes at the beginning
 def compute_acc_reward(
     episode: Dict[str, Dict[AgentID, np.ndarray]], policy_dict: Dict[AgentID, Policy]
 ) -> Dict[str, Dict[AgentID, np.ndarray]]:
@@ -39,12 +40,12 @@ def compute_acc_reward(
 
 
 def compute_advantage(
-    episode: Dict[str, Dict[AgentID, np.ndarray]],
+    episodes: List[Dict[str, Dict[AgentID, np.ndarray]]],
     policy_dict: Dict[AgentID, Policy],
     last_r: Dict[AgentID, float],
     use_gae: bool = False,
 ) -> Dict[str, Dict[AgentID, np.ndarray]]:
-    episode = compute_acc_reward(episode, policy_dict)
+    episode = compute_acc_reward(episodes, policy_dict)
     episode[EpisodeKey.ADVANTAGE] = {}
     for aid, policy in policy_dict.items():
         use_gae = policy.custom_config.get("use_gae", False)
@@ -84,25 +85,37 @@ def compute_advantage(
 
 
 def compute_gae(
-    episode: Dict[str, Dict[AgentID, np.ndarray]], policy_dict: Dict[AgentID, Policy]
+    episodes: List[Dict[str, Dict[AgentID, np.ndarray]]],
+    policy_dict: Dict[AgentID, Policy],
 ) -> Dict[str, Dict[AgentID, np.ndarray]]:
     last_r = {}
-    for aid, dones in episode[EpisodeKey.DONE].items():
+    for aid, dones in episodes[EpisodeKey.DONE].items():
         if dones[-1]:
             last_r[aid] = 0.0
         else:
             # compute value as last r
             assert hasattr(policy_dict[aid], "value_functon")
-            last_r[aid] = policy_dict[aid].value_function(episode, agent_key=aid)
+            last_r[aid] = policy_dict[aid].value_function(episodes, agent_key=aid)
 
-    episode = compute_advantage(episode, policy_dict, last_r=last_r, use_gae=True)
+    episode = compute_advantage(episodes, policy_dict, last_r=last_r, use_gae=True)
     return episode
+
+
+def compute_value(
+    episodes: List[Dict[str, Dict[AgentID, np.ndarray]]],
+    policy_dict: Dict[AgentID, Policy],
+):
+    for episode in episodes:
+        for aid, policy in policy_dict.items():
+            episode[aid][EpisodeKey.STATE_VALUE] = policy.value_function(**episode[aid])
+    return episodes
 
 
 def default_processor(
-    episode: Dict[str, Dict[AgentID, np.ndarray]], policy_dict: Dict[AgentID, Policy]
+    episodes: List[Dict[str, Dict[AgentID, np.ndarray]]],
+    policy_dict: Dict[AgentID, Policy],
 ) -> Dict[str, Dict[AgentID, np.ndarray]]:
-    return episode
+    return episodes
 
 
 def get_postprocessor(
@@ -118,6 +131,6 @@ def get_postprocessor(
     elif processor_type == "advantage":
         return compute_advantage
     elif processor_type == "default":
-        return default_processor
+        return compute_value
     else:
         return ValueError("Disallowed processor type: {}".format(processor_type))

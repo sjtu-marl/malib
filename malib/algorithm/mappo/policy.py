@@ -43,6 +43,7 @@ class MAPPO(Policy):
         self.device = torch.device(
             "cuda" if custom_config.get("use_cuda", False) else "cpu"
         )
+        self.env_agent_id = kwargs["env_agent_id"]
 
         # TODO(ming): will collect to custom config
         global_observation_space = custom_config["global_state_space"][
@@ -108,7 +109,7 @@ class MAPPO(Policy):
         actor_rnn_states = actor_rnn_states.detach().cpu().numpy()
         if "action_mask" in kwargs:
             illegal_action_mask = torch.FloatTensor(
-                1 - observation[..., : logits.shape[-1]]
+                1 - kwargs[EpisodeKey.ACTION_MASK]
             ).to(logits.device)
             assert illegal_action_mask.max() == 1 and illegal_action_mask.min() == 0, (
                 illegal_action_mask.max(),
@@ -116,7 +117,6 @@ class MAPPO(Policy):
             )
             logits = logits - 1e10 * illegal_action_mask
         dist = torch.distributions.Categorical(logits=logits)
-        extra_info = {}
         action_prob = dist.probs.detach().cpu().numpy()  # num_action
 
         # extra_info["action_probs"] = action_prob
@@ -125,10 +125,21 @@ class MAPPO(Policy):
             value, critic_rnn_states = self.critic(
                 kwargs[EpisodeKey.CUR_STATE], critic_rnn_states, rnn_masks
             )
-            extra_info["value"] = value.detach().cpu().numpy()
             critic_rnn_states = critic_rnn_states.detach().cpu().numpy()
 
         return action, action_prob, [actor_rnn_states, critic_rnn_states]
+
+    def value_function(self, *args, **kwargs):
+        # FIXME(ziyu): adjust shapes
+        state = kwargs[EpisodeKey.CUR_STATE]
+        print(kwargs[EpisodeKey.RNN_STATE][0].shape)
+        import pdb; pdb.set_trace()
+        critic_rnn_state = kwargs[EpisodeKey.RNN_STATE][0][1]
+        rnn_mask = kwargs[EpisodeKey.DONE]
+        with torch.no_grad():
+            value, _ = self.critic(state, critic_rnn_state, rnn_mask)
+        return value.cpu().numpy()
+
 
     def train(self):
         pass

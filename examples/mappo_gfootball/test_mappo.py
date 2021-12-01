@@ -12,7 +12,7 @@ except ImportError:
     from yaml import Loader, Dumper
 import pytest
 
-from malib.envs.gr_football import build_env
+from malib.envs.gr_football import creator
 from pathlib import Path
 from malib.envs.vector_env import VectorEnv
 import ray
@@ -45,8 +45,8 @@ class TestMAPPOonFootball:
             "stacked": False,
         }
 
-        self.env = build_env("PSFootball", scenario_configs)
-        self.env_creator = lambda **kwargs: build_env(**kwargs)
+        self.env = creator(env_id="PSFootball", scenario_configs=scenario_configs)
+        self.env_creator = creator
         self.env_id = "PSFootball"
         self.scenario_configs = scenario_configs
         self.build_policy()
@@ -116,6 +116,7 @@ class TestMAPPOonFootball:
                 "fragment_length": 3001,
                 "behavior_policies": behavior_policy_ids,
                 "custom_reset_config": None,
+                'batch_mode': 'episode'
             },
             dataset_server=dataset,
         )

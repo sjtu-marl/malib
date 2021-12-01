@@ -364,6 +364,10 @@ def ParameterSharing(base_env: BaseGFootBall, parameter_sharing_mapping: Callabl
                 rets[EpisodeKey.CUR_OBS]
             )
 
+            if EpisodeKey.ACTION_MASK in rets:
+                rets[EpisodeKey.ACTION_MASK] = f(rets[EpisodeKey.ACTION_MASK], 
+                                                np.vstack)
+
             return rets
 
         def seed(self, seed=None):

@@ -232,6 +232,7 @@ class AgentInterface:
             self._behavior_policy = policy_id
         kwargs.update({"behavior_mode": self.behavior_mode})
         kwargs[EpisodeKey.CUR_OBS] = np.stack(kwargs[EpisodeKey.CUR_OBS])
+        kwargs[EpisodeKey.ACTION_MASK] = np.stack(kwargs[EpisodeKey.ACTION_MASK])
         if kwargs.get(EpisodeKey.CUR_STATE) is not None:
             kwargs[EpisodeKey.CUR_STATE] = np.stack(kwargs[EpisodeKey.CUR_STATE])
         rnn_states_list = kwargs[EpisodeKey.RNN_STATE]

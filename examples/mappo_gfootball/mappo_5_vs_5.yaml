@@ -9,8 +9,8 @@ training:
   interface:
     type: "independent"
     population_size: -1
-    worker_config:
-      num_gpus: 1.0
+    # worker_config:
+      # num_gpus: 1.0
   config:
     # control the frequency of remote parameter update
     update_interval: 1

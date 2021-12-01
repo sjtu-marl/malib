@@ -185,7 +185,6 @@ class Policy(metaclass=ABCMeta):
         - action_mask: action mask.
         """
 
-        pass
 
     @abstractmethod
     def compute_action(
@@ -195,7 +194,6 @@ class Policy(metaclass=ABCMeta):
         action, action_dist, a list of rnn_state
         """
 
-        pass
 
     def get_initial_state(self, batch_size: int = None) -> List[DataTransferType]:
         """Return a list of rnn states if models are rnns"""
@@ -276,3 +274,8 @@ class Policy(metaclass=ABCMeta):
     def to_device(self, device):
         self.device = device
         return self
+
+    
+    def value_function(self, *args, **kwargs):
+        """Compute values of critic."""
+        raise NotImplementedError

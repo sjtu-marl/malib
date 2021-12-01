@@ -305,6 +305,7 @@ def env_runner(
         dataset_server.save.remote(buffer_desc)
 
     ph = list(rollout_info.values())
+    assert len(ph) == 1, (len(ph), env.batched_step_cnt)
 
     holder = {}
     for history, ds, k, vs in iter_many_dicts_recursively(*ph, history=[]):

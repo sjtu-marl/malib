@@ -224,11 +224,13 @@ class VectorEnv:
 
         return res
 
-    def collect_info(self) -> List[Dict[str, Any]]:
+    def collect_info(self, truncated=False) -> List[Dict[str, Any]]:
+        # XXX(ziyu): We can add a new param 'truncated' to determine whether to add
+        # the nonterminal env_info into rets. 
         ret = self._cached_episode_infos
-
-        for runtime_id, env in self.active_envs.items():
-            ret[runtime_id] = env.collect_info()
+        if truncated:
+            for runtime_id, env in self.active_envs.items():
+                ret[runtime_id] = env.collect_info()
 
         return ret
 

@@ -88,7 +88,7 @@ class MAPPOLoss(LossFunc):
             sample["return"],
             None,  # cast(sample["active_mask"]),
             sample[EpisodeKey.ACTION_DIST],
-            sample["available_action"],
+            sample[EpisodeKey.ACTION_MASK],
             sample["actor_rnn_states"],
             sample["critic_rnn_states"],
             sample[EpisodeKey.DONE],
