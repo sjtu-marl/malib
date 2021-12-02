@@ -2,13 +2,20 @@ import importlib
 import pytest
 
 from malib.envs import Environment
-from malib.envs.tests import build_dummy_agent_interfaces
+from tests.env.utils import build_dummy_agent_interfaces
 from malib.rollout.rollout_func import Stepping
 
 
 @pytest.mark.parametrize(
     "module_path,cname,env_id,scenario_configs,use_subproc_env",
     [
+        (
+            "malib.envs.poker",
+            "PokerParallelEnv",
+            "leduc_poker",
+            {"fixed_player": True},
+            False,
+        ),
         ("malib.envs.gym", "GymEnv", "CartPole-v0", {}, False),
         ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}, False),
         (

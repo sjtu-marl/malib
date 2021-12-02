@@ -5,7 +5,6 @@ from malib.utils.episode import NewEpisodeDict, Episode
 
 from malib.utils.typing import BufferDescription
 from malib.envs import Environment
-from malib.envs.tests import build_dummy_agent_interfaces
 from malib.envs.vector_env import VectorEnv
 from malib.rollout.rollout_func import (
     env_runner,
@@ -13,7 +12,9 @@ from malib.rollout.rollout_func import (
     _process_policy_outputs,
     _process_environment_returns,
 )
-from malib.backend.datapool.test import FakeDataServer
+
+from tests.env.utils import build_dummy_agent_interfaces
+from tests.dataset.utils import FakeDataServer
 
 
 @pytest.mark.parametrize(
