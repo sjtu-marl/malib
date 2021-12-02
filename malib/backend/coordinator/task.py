@@ -244,8 +244,6 @@ def _request_rollout(coordinator: CoordinatorServer, task_request: TaskRequest):
     else:
         policy_distribution = {}
 
-    Logger.debug("--- equi is: {}".format(policy_distribution))
-
     rollout_config = coordinator._configs["rollout"]
     task = TaskDescription(
         task_type=TaskType.ROLLOUT,

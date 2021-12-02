@@ -21,6 +21,7 @@ from malib.utils.typing import (
     EnvID,
     EpisodeID,
     List,
+    PolicyID,
     Tuple,
     Callable,
 )
@@ -83,13 +84,17 @@ class VectorEnv:
             not env.is_sequential
         ), "The nested environment must be an instance which steps in simultaneous."
 
-    @property
-    def trainable_agents(self):
-        return self._envs[0].trainable_agents
+    # @property
+    # def trainable_agents(self):
+    #     return self._envs[0].trainable_agents
 
     @property
     def batched_step_cnt(self) -> int:
-        return self._step_cnt
+        return (
+            self._step_cnt
+            if isinstance(self._step_cnt, int)
+            else self._step_cnt[self._trainable_agents]
+        )
 
     @property
     def num_envs(self) -> int:
@@ -160,6 +165,7 @@ class VectorEnv:
         fragment_length: int,
         max_step: int,
         custom_reset_config: Dict[str, Any] = None,
+        trainable_mapping: Dict[AgentID, PolicyID] = None,
     ) -> Dict[EnvID, Dict[str, Dict[AgentID, Any]]]:
         self._limits = limits or self.num_envs
         self._step_cnt = 0
@@ -171,6 +177,17 @@ class VectorEnv:
         # generate runtime env ids
         runtime_ids = [uuid.uuid1().hex for _ in range(self._limits)]
         self._active_envs = dict(zip(runtime_ids, self.envs[: self._limits]))
+
+        self._trainable_agents = (
+            list(trainable_mapping.keys()) if trainable_mapping is not None else None
+        )
+
+        if trainable_mapping is None or len(trainable_mapping) > 1:
+            self._step_cnt = 0
+            self._trainable_agents = None
+        else:
+            self._trainable_agents = self._trainable_agents[0]
+            self._step_cnt = {self._trainable_agents: 0}
 
         ret = {}
 
@@ -205,12 +222,20 @@ class VectorEnv:
                     self._active_envs[runtime_id] = env
                     env_rets[runtime_id] = _tmp
             env_rets[env_id] = ret
-
-        self._step_cnt += len(actions)
+        if isinstance(self._step_cnt, int):
+            self._step_cnt += len(actions)
+        else:
+            for _actions in actions.values():
+                # print("actionssssss", actions, self._trainable_agents, self._trainable_agents in actions.keys())
+                if self._trainable_agents in _actions:
+                    self._step_cnt[self._trainable_agents] += 1
         return env_rets
 
     def is_terminated(self):
-        return self._step_cnt >= self._fragment_length
+        if isinstance(self._step_cnt, int):
+            return self._step_cnt >= self._fragment_length
+        else:
+            return self._step_cnt[self._trainable_agents] >= self._fragment_length
 
     def action_adapter(
         self, policy_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]

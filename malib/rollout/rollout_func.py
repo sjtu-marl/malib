@@ -16,7 +16,7 @@ you wanna save by specifying extra columns when Episode initialization.
 """
 
 import collections
-from typing import Iterator
+from typing import Iterator, ValuesView
 import ray
 import numpy as np
 
@@ -113,6 +113,9 @@ def _do_policy_eval(
     actions, action_dists, next_rnn_state = {}, {}, {}
 
     env_ids = list(policy_inputs.keys())
+    # we need to link environment id to agent ids, especially in the case of
+    # sequential rollout
+    env_agent_ids = []
 
     # collect by agent wise
     agent_wise_inputs = collections.defaultdict(
@@ -121,6 +124,7 @@ def _do_policy_eval(
     for env_id in env_ids:
         env_episode = episodes[env_id]
         # for agent_id, interface in agent_interfaces.items():
+        env_agent_ids.append(list(policy_inputs[env_id][EpisodeKey.CUR_OBS].keys()))
         for agent_id in policy_inputs[env_id][EpisodeKey.CUR_OBS].keys():
             interface = agent_interfaces[agent_id]
             if len(env_episode[EpisodeKey.RNN_STATE][agent_id]) < 1:
@@ -153,11 +157,11 @@ def _do_policy_eval(
         EpisodeKey.ACTION: actions,
         EpisodeKey.ACTION_DIST: action_dists,
         EpisodeKey.RNN_STATE: next_rnn_state,
-    }, env_ids
+    }, dict(zip(env_ids, env_agent_ids))
 
 
 def _process_policy_outputs(
-    env_ids: List[EnvID],
+    active_env_to_agent_ids: Dict[EnvID, List[AgentID]],
     # policy_outputs: Dict[str, Dict[AgentID, DataTransferType]],
     policy_outputs: Dict[str, Dict[AgentID, Iterator]],
     env: VectorEnv,
@@ -171,21 +175,11 @@ def _process_policy_outputs(
     )
 
     detached_policy_outputs = {}
-    # sequential rollout environments may
-    for i, env_id in enumerate(env_ids):
-        # active_env = env.active_envs[env_id]
+    for i, (env_id, agent_ids) in enumerate(active_env_to_agent_ids.items()):
         detached = collections.defaultdict(lambda: collections.defaultdict())
-        # if active_env.is_sequential:
-        #     selected_aid = active_env.agent_selection
-        #     for k, agent_v in policy_outputs.items():
-        #         aid, _v = selected_aid, agent_v[selected_aid]
-        #         if k == EpisodeKey.RNN_STATE:
-        #             detached[k][aid] = [next(__v) for __v in _v]
-        #         else:
-        #             detached[k][aid] = next(_v)
-        # else:
         for k, agent_v in policy_outputs.items():
-            for aid, _v in agent_v.items():
+            for aid in agent_ids:
+                _v = agent_v[aid]
                 if k == EpisodeKey.RNN_STATE:
                     detached[k][aid] = [next(__v) for __v in _v]
                 else:
@@ -242,11 +236,15 @@ def env_runner(
     for agent_id, interface in agent_interfaces.items():
         interface.reset(policy_id=behavior_policies[agent_id], sample_dist=sample_dist)
 
+    # if buffer_desc is not None:
+    #     assert runtime_config["trainable_mapping"] is None, (runtime_config, dataset_server)
+
     rets = env.reset(
         limits=runtime_config["num_envs"],
         fragment_length=runtime_config["fragment_length"],
         max_step=runtime_config["max_step"],
         custom_reset_config=runtime_config["custom_reset_config"],
+        trainable_mapping=runtime_config["trainable_mapping"],
     )
     if isinstance(env, VectorEnv):
         assert len(env.active_envs) > 0, (env._active_envs, rets, env)
@@ -259,7 +257,7 @@ def env_runner(
     # process_policy_outputs = custom_policy_output_processor or _process_policy_outputs
     # do_policy_eval = custom_do_policy_eval or _do_policy_eval
 
-    # XXX(ming): currently, we mute all the processor cutomization to avoid unpredictable behaviors
+    # XXX(ming): currently, we mute all processors' cutomization to avoid unpredictable behaviors
     process_environment_returns = _process_environment_returns
     process_policy_outputs = _process_policy_outputs
     do_policy_eval = _do_policy_eval
@@ -273,12 +271,12 @@ def env_runner(
             drop_env_ids,
         ) = process_environment_returns(rets, agent_interfaces, filtered_env_outputs)
 
-        active_policy_outputs, active_env_ids = do_policy_eval(
+        active_policy_outputs, active_env_to_agent_ids = do_policy_eval(
             active_policy_inputs, agent_interfaces, episodes
         )
 
         env_inputs, detached_policy_outputs = process_policy_outputs(
-            active_env_ids, active_policy_outputs, env
+            active_env_to_agent_ids, active_policy_outputs, env
         )
 
         # XXX(ming): maybe more general inputs.
@@ -302,9 +300,13 @@ def env_runner(
             for aid, interface in agent_interfaces.items()
         }
         batch_mode = runtime_config["batch_mode"]
+        trainable_agents = list(runtime_config["trainable_mapping"].keys())
         episodes: List[Dict[str, Dict[AgentID, np.ndarray]]] = get_postprocessor(
             runtime_config["postprocessor_type"]
-        )(list(episodes.to_numpy(batch_mode).values()), policies)
+        )(
+            list(episodes.to_numpy(batch_mode, filter=trainable_agents).values()),
+            policies,
+        )
 
         buffer_desc.batch_size = (
             env.batched_step_cnt if batch_mode == "time_step" else len(episodes)
@@ -444,6 +446,9 @@ class Stepping:
                 # FIXME(ming): custom reset config is closed here
                 "custom_reset_config": None,
                 "batch_mode": self.batch_mode,
+                "trainable_mapping": desc["behavior_policies"]
+                if task_type == "rollout"
+                else None,
                 "postprocessor_type": self.postprocessor_type,
             },
             dataset_server=self._dataset_server if task_type == "rollout" else None,

@@ -227,8 +227,8 @@ class PokerParallelEnv(Environment):
         self.cache_agent_done[aid] = done
 
         rets = {}
-        if self.cache_agent_done[aid]:
-            rets[EpisodeKey.NEXT_OBS] = {aid: observation}
+        # if self.cache_agent_done[aid]:
+        #     rets[EpisodeKey.NEXT_OBS] = {aid: observation}
         rets[EpisodeKey.REWARD] = {aid: reward}
 
         rets.update(
@@ -245,7 +245,8 @@ class PokerParallelEnv(Environment):
         return rets
 
     def env_done_check(self, agent_dones: Dict[AgentID, bool]) -> bool:
-        return all(self.cache_agent_done.values())
+        done = all(self.cache_agent_done.values())
+        return done
 
     def time_step(self, actions: Dict[AgentID, Any]):
         assert (

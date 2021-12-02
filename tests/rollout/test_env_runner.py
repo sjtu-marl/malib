@@ -85,6 +85,7 @@ class TestEnvRunner:
             "custom_reset_config": None,
             "batch_mode": self.batch_mode,
             "postprocessor_type": "default",
+            "trainable_mapping": None,
         }
         _ = [interface.reset() for interface in self.agent_interfaces.values()]
         rets = self.vec_env.reset(
@@ -167,6 +168,7 @@ class TestEnvRunner:
                 "custom_reset_config": None,
                 "batch_mode": self.batch_mode,
                 "postprocessor_type": "default",
+                "trainable_mapping": None,
             },
             dataset_server=None,
         )
@@ -198,6 +200,7 @@ class TestEnvRunner:
                 "custom_reset_config": None,
                 "batch_mode": self.batch_mode,
                 "postprocessor_type": "default",
+                "trainable_mapping": behavior_policy_ids,
             },
             dataset_server=dataset,
         )

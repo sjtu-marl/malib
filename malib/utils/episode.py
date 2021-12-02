@@ -50,13 +50,21 @@ class Episode:
         self.agent_entry[__k] = v
 
     def to_numpy(
-        self, batch_mode: str = "time_step"
+        self, batch_mode: str = "time_step", filter: List[AgentID] = None
     ) -> Dict[str, Dict[AgentID, np.ndarray]]:
-        # switch agent key and episode key
         res = defaultdict(lambda: {})
-        # Logger.debug("--legal keys in current res: {}".format(list(self.agent_entry.keys())))
+
+        # check whether keys are enough
+        # keys = list(self.agent_entry.keys())
+        # for k in [EpisodeKey.CUR_OBS, EpisodeKey.DONE, EpisodeKey.ACTION, EpisodeKey.ACTION_DIST, EpisodeKey.ACTION_MASK, EpisodeKey.REWARD]:
+        #     assert k in keys, (k, keys)
+        #     # check agent
+        #     for aid, v in self.agent_entry[k].items():
+        #         assert len(v) > 0, (aid, k, v, self.agent_entry[k])
         for ek, agent_v in self.agent_entry.items():
-            for agent_id, v in agent_v.items():
+            _filter = filter or list(agent_v.keys())
+            for agent_id in _filter:
+                v = agent_v[agent_id]
                 if ek == EpisodeKey.RNN_STATE:
                     if len(v) == 0 or len(v[0]) == 0:
                         continue
@@ -102,9 +110,7 @@ class NewEpisodeDict(defaultdict):
                     agent_slot[aid].append(_v)
 
     def to_numpy(
-        self, batch_mode: str = "time_step"
+        self, batch_mode: str = "time_step", filter: List[AgentID] = None
     ) -> Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]:
-        res = {k: v.to_numpy(batch_mode) for k, v in self.items()}
-        # print(res)
-        # raise ValueError
+        res = {k: v.to_numpy(batch_mode, filter) for k, v in self.items()}
         return res
