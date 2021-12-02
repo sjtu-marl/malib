@@ -49,9 +49,7 @@ def test_env(module_path, cname, env_id, scenario_configs):
         ), "Illegal agent key: {}, expected keys: {}".format(aid, possible_agents)
         assert obs_spaces[aid].contains(
             obs
-        ), "Reset observation: {!r} of agent: {!r} not in space".format(
-            obs, aid
-        )
+        ), "Reset observation: {!r} of agent: {!r} not in space".format(obs, aid)
 
     if env.is_sequential:
         acts = {env.agent_selection: action_spaces[env.agent_selection].sample()}
@@ -83,7 +81,11 @@ def test_env(module_path, cname, env_id, scenario_configs):
             aid, r, env
         )
 
-    obs = rets[EpisodeKey.NEXT_OBS]
+    obs = (
+        rets[EpisodeKey.CUR_OBS]
+        if rets.get(EpisodeKey.NEXT_OBS) is None
+        else rets[EpisodeKey.NEXT_OBS]
+    )
     assert isinstance(obs, Dict), obs
     for aid, _obs in obs.items():
         assert (
@@ -130,7 +132,11 @@ def test_rollout(module_path, cname, env_id, scenario_configs):
     }
     for _ in range(10):
         if env.is_sequential:
-            acts = {env.agent_selection: agents[env.agent_selection](rets[env.agent_selection])}
+            acts = {
+                env.agent_selection: agents[env.agent_selection](
+                    rets[env.agent_selection]
+                )
+            }
         else:
             acts = {aid: agent_step(rets[aid]) for aid, agent_step in agents.items()}
         rets = env.step(acts)
@@ -138,5 +144,9 @@ def test_rollout(module_path, cname, env_id, scenario_configs):
         done = any(done.values())
         if done:
             break
-        rets = rets[EpisodeKey.NEXT_OBS]
+        rets = (
+            rets[EpisodeKey.CUR_OBS]
+            if rets.get(EpisodeKey.NEXT_OBS) is None
+            else rets[EpisodeKey.NEXT_OBS]
+        )
     env.close()

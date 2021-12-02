@@ -1,6 +1,7 @@
 from collections import defaultdict
 
 import numpy as np
+from malib.utils.logger import Logger
 
 from malib.utils.typing import AgentID, EnvID, Dict, Any, PolicyID, List
 
@@ -53,9 +54,12 @@ class Episode:
     ) -> Dict[str, Dict[AgentID, np.ndarray]]:
         # switch agent key and episode key
         res = defaultdict(lambda: {})
+        # Logger.debug("--legal keys in current res: {}".format(list(self.agent_entry.keys())))
         for ek, agent_v in self.agent_entry.items():
             for agent_id, v in agent_v.items():
                 if ek == EpisodeKey.RNN_STATE:
+                    if len(v) == 0 or len(v[0]) == 0:
+                        continue
                     tmp = [np.stack(r)[:-1] for r in list(zip(*v))]
                     if batch_mode == "episode":
                         tmp = [np.expand_dims(r, axis=0) for r in tmp]
@@ -63,6 +67,8 @@ class Episode:
                         {f"{ek}_{i}": _tmp for i, _tmp in enumerate(tmp)}
                     )
                 else:
+                    if len(v) == 0:
+                        continue
                     tmp = np.asarray(v, dtype=np.float32)
                     if batch_mode == "episode":
                         res[agent_id][ek] = np.expand_dims(tmp, axis=0)
@@ -99,4 +105,6 @@ class NewEpisodeDict(defaultdict):
         self, batch_mode: str = "time_step"
     ) -> Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]:
         res = {k: v.to_numpy(batch_mode) for k, v in self.items()}
+        # print(res)
+        # raise ValueError
         return res

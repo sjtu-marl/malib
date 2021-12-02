@@ -14,6 +14,7 @@ from pettingzoo.utils.env import AECEnv
 from open_spiel.python.rl_environment import Environment as OPEN_SPIEL_ENV, TimeStep
 
 from malib.utils.typing import Dict, AgentID, Any, Union
+from malib.utils.logger import Logger
 from malib.utils.episode import EpisodeKey
 from malib.envs.env import Environment
 
@@ -93,9 +94,14 @@ class PokerEnv(AECEnv):
 
     def observe(self, agent):
         obs = self._cur_time_step.observations["info_state"][self._name_to_int(agent)]
-        observation = np.array(obs, dtype=self.observation_spaces[agent]["observation"].dtype)
+        observation = np.array(
+            obs, dtype=self.observation_spaces[agent]["observation"].dtype
+        )
         legal_moves = self.next_legal_moves
-        action_mask = np.zeros(self._open_spiel_env.action_spec()["num_actions"], self.observation_spaces[agent]["action_mask"].dtype)
+        action_mask = np.zeros(
+            self._open_spiel_env.action_spec()["num_actions"],
+            self.observation_spaces[agent]["action_mask"].dtype,
+        )
         action_mask[legal_moves] = 1
 
         return {"observation": observation, "action_mask": action_mask}
@@ -213,37 +219,64 @@ class PokerParallelEnv(Environment):
         )
 
         self.env.reset()
+        self.cache_agent_done = {aid: False for aid in self.possible_agents}
         aid = next(iter(self.env.agent_iter(max_iter=self.max_step)))
         observation, reward, done, info = self.env.last()
         action_mask = np.asarray(observation["action_mask"])
+        self.cnt += 1
+        self.cache_agent_done[aid] = done
 
-        return {
-            EpisodeKey.CUR_OBS: {aid: observation},
-            # EpisodeKey.REWARD: {aid: reward},
-            # EpisodeKey.DONE: {aid: done},
-            EpisodeKey.INFO: {aid: info},
-            EpisodeKey.ACTION_MASK: {aid: action_mask},
-        }
+        rets = {}
+        if self.cache_agent_done[aid]:
+            rets[EpisodeKey.NEXT_OBS] = {aid: observation}
+        rets[EpisodeKey.REWARD] = {aid: reward}
+
+        rets.update(
+            {
+                EpisodeKey.CUR_OBS: {aid: observation},
+                EpisodeKey.DONE: {
+                    aid: done,
+                    "__all__": all(self.cache_agent_done.values()),
+                },
+                EpisodeKey.INFO: {aid: info},
+                EpisodeKey.ACTION_MASK: {aid: action_mask},
+            }
+        )
+        return rets
+
+    def env_done_check(self, agent_dones: Dict[AgentID, bool]) -> bool:
+        return all(self.cache_agent_done.values())
 
     def time_step(self, actions: Dict[AgentID, Any]):
         assert (
             len(actions) == 1
         ), "Sequential games allow only one agent per time step! {}".format(actions)
         # switch to the next player
-        self.env.step(actions[self.env.agent_selection])
 
-        # got next player id
+        # check whether last done or not
+        if not self.cache_agent_done[self.env.agent_selection]:
+            self.env.step(actions[self.env.agent_selection])
+        else:
+            self.env.step(None)
+
         aid = next(iter(self.env.agent_iter(max_iter=self.max_step)))
+
         observation, reward, done, info = self.env.last()
         action_mask = np.asarray(observation["action_mask"])
 
-        return {
-            EpisodeKey.NEXT_OBS: {aid: observation},
-            EpisodeKey.REWARD: {aid: reward},
-            EpisodeKey.DONE: {aid: done},
-            EpisodeKey.INFO: {aid: info},
-            EpisodeKey.ACTION_MASK: {aid: action_mask},
-        }
+        self.cache_agent_done.update({aid: done})
+        rets = {EpisodeKey.CUR_OBS: {aid: observation}}
+        rets[EpisodeKey.DONE] = {aid: done}
+
+        rets.update(
+            {
+                EpisodeKey.REWARD: {aid: reward},
+                EpisodeKey.INFO: {aid: info},
+                EpisodeKey.ACTION_MASK: {aid: action_mask},
+            }
+        )
+
+        return rets
 
     def close(self):
         self.env.close()

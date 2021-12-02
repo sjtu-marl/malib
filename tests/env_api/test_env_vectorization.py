@@ -64,6 +64,8 @@ class TestVecEnv:
             assert env_id in self.vec_env.active_envs
             for k, agent_v in ret.items():
                 for agent in agent_v:
+                    if agent == "__all__":
+                        continue
                     assert agent in self.vec_env.possible_agents
 
     def test_env_step(self):
@@ -82,13 +84,17 @@ class TestVecEnv:
                     obs_k = EpisodeKey.CUR_OBS
                 live_agents = list(ret[obs_k].keys())
                 actions[env_id] = {aid: act_spaces[aid].sample() for aid in live_agents}
-            rets = {eid: _ret for eid, _ret in self.vec_env.step(actions).items() if eid in self.vec_env.active_envs}
+            rets = {
+                eid: _ret
+                for eid, _ret in self.vec_env.step(actions).items()
+                if eid in self.vec_env.active_envs
+            }
 
 
 @pytest.mark.parametrize(
     "module_path,cname,env_id,scenario_configs",
     [
-        ("malib.envs.poker", "PokerParallelEnv", "leduc_poker", {"fixed_player": True}),
+        # ("malib.envs.poker", "PokerParallelEnv", "leduc_poker", {"fixed_player": True}),
         ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
         ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
         ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
@@ -154,6 +160,10 @@ class TestSubprocVecEnv:
                     obs_k = EpisodeKey.CUR_OBS
                 live_agents = list(ret[obs_k].keys())
                 actions[env_id] = {aid: act_spaces[aid].sample() for aid in live_agents}
-            rets = {eid: _ret for eid, _ret in self.vec_env.step(actions).items() if eid in self.vec_env.active_envs}
+            rets = {
+                eid: _ret
+                for eid, _ret in self.vec_env.step(actions).items()
+                if eid in self.vec_env.active_envs
+            }
 
         self.vec_env.close()

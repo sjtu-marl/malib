@@ -11,11 +11,10 @@ import numpy as np
 
 import ray
 
-from collections import defaultdict
 from functools import reduce
+
 from malib import settings
-from malib.algorithm.common import policy
-from malib.utils.general import iter_dicts_recursively, iter_many_dicts_recursively
+from malib.utils.general import iter_many_dicts_recursively
 from malib.utils.typing import (
     AgentID,
     BufferDescription,
@@ -42,6 +41,17 @@ from malib.utils.stoppers import get_stopper
 
 PARAMETER_GET_TIMEOUT = 3
 MAX_PARAMETER_GET_RETRIES = 10
+
+
+def _parse_rollout_info(raw_statistics: List[Dict[str, Any]]) -> Dict[str, Any]:
+    holder = {}
+    for history, ds, k, vs in iter_many_dicts_recursively(*raw_statistics, history=[]):
+        prefix = "/".join(history)
+        vs = reduce(operator.add, vs)
+        holder[f"{prefix}_mean"] = np.mean(vs)
+        holder[f"{prefix}_max"] = np.max(vs)
+        holder[f"{prefix}_min"] = np.min(vs)
+    return holder
 
 
 class BaseRolloutWorker:
@@ -193,7 +203,7 @@ class BaseRolloutWorker:
                         pconfig,
                         parameter_descs[aid].parameter_desc_dict[pid],
                     )
-                agent.reset()
+                # agent.reset()
 
             # add policies which need to be trained, and tag it as trainable
         for aid, (pid, description) in trainable_pairs.items():
@@ -206,7 +216,7 @@ class BaseRolloutWorker:
                         description,
                         parameter_descs[aid].parameter_desc_dict[pid],
                     )
-                agent.reset()
+                # agent.reset()
             except Exception as e:
                 print(e)
                 print(parameter_descs[aid].parameter_desc_dict)
@@ -354,15 +364,7 @@ class BaseRolloutWorker:
             total_num_frames += num_frames
             time_consump = time.time() - start_time
 
-            holder = {}
-            for history, ds, k, vs in iter_many_dicts_recursively(
-                *raw_statistics, history=[]
-            ):
-                prefix = "/".join(history)
-                vs = reduce(operator.add, vs)
-                holder[f"{prefix}_mean"] = np.mean(vs)
-                holder[f"{prefix}_max"] = np.max(vs)
-                holder[f"{prefix}_min"] = np.min(vs)
+            holder = _parse_rollout_info(raw_statistics)
 
             # log to tensorboard
             if (epoch + 1) % print_every == 0:
@@ -452,16 +454,12 @@ class BaseRolloutWorker:
             explore=False,
             role="simulation",
         )
-        Logger.debug("simulation done with return: %s", raw_statistics)
         for statistics, combination in zip(raw_statistics, combinations):
-            # merge statistics
-            statistics = dict(
-                map(lambda kv: (kv[0], sum(kv[1]) / len(kv[1])), statistics.items())
-            )
+            holder = _parse_rollout_info([statistics])
             rollout_feedback = RolloutFeedback(
                 worker_idx=self._worker_index,
                 agent_involve_info=agent_involve_info,
-                statistics=statistics,
+                statistics=holder,
                 policy_combination=combination,
             )
             task_req = TaskRequest.from_task_desc(
@@ -486,7 +484,6 @@ class BaseRolloutWorker:
                 pass
             else:
                 interface.set_behavior_dist(policy_distribution[aid])
-            interface.reset()
 
     def save_model(self):
         """Save policy model to log directory."""

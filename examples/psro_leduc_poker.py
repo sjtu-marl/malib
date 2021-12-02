@@ -19,10 +19,10 @@ parser.add_argument("--fragment_length", type=int, default=100)
 parser.add_argument("--worker_num", type=int, default=3)
 parser.add_argument("--algorithm", type=str, default="DQN")
 parser.add_argument("--num_total_training_episode", type=int, default=100)
-parser.add_argument("--num_episode", type=int, default=1000)
+parser.add_argument("--num_episode", type=int, default=1)
 parser.add_argument("--buffer_size", type=int, default=200000)
 parser.add_argument("--num_simulation", type=int, default=100)
-parser.add_argument("--episode_seg", type=int, default=100)
+parser.add_argument("--episode_seg", type=int, default=1)
 
 args = parser.parse_args()
 
@@ -90,4 +90,5 @@ if __name__ == "__main__":
             },
         },
         dataset_config={"episode_capacity": args.buffer_size},
+        task_mode="gt",
     )

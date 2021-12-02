@@ -140,6 +140,9 @@ def _request_update_payoff_table(
     with threading.Lock():
         coordinator.payoff_manager.update_payoff(rollout_feedback)
         task_cache = coordinator.task_cache[task_request.state_id]
+        Logger.debug(
+            "check population mapping: {}".format(task_cache.population_mapping)
+        )
         all_done = (
             coordinator.payoff_manager.check_done(task_cache.population_mapping)
             if coordinator.task_mode == "gt"
@@ -155,6 +158,8 @@ def _request_update_payoff_table(
             population_mapping = task_cache.population_mapping
             trainable_pairs = task_cache.trainable_pairs
             for aid, pid in trainable_pairs.items():
+                if pid in population_mapping[aid]:
+                    continue
                 population_mapping[aid].append(pid)
 
             if len(population_mapping) < 2:
@@ -206,6 +211,17 @@ def _request_rollout(coordinator: CoordinatorServer, task_request: TaskRequest):
     assert isinstance(task_request.content, TrainingFeedback)
 
     populations = task_request.content.agent_involve_info.populations
+    trainable_pairs = task_request.content.agent_involve_info.trainable_pairs
+    # then udpate task cache
+    with threading.Lock():
+        if coordinator.task_cache.get(task_request.state_id) is None:
+            coordinator.task_cache[task_request.state_id] = TaskCache()
+            Logger.debug(
+                "generate task cache for state_id={}".format(task_request.state_id)
+            )
+        coordinator.task_cache[task_request.state_id].trainable_pairs.update(
+            {aid: pid for aid, (pid, _) in trainable_pairs.items()}
+        )
     population_mapping = {}
     for k, v in populations.items():
         # FIXME(ming): sometimes may no population
@@ -228,6 +244,8 @@ def _request_rollout(coordinator: CoordinatorServer, task_request: TaskRequest):
     else:
         policy_distribution = {}
 
+    Logger.debug("--- equi is: {}".format(policy_distribution))
+
     rollout_config = coordinator._configs["rollout"]
     task = TaskDescription(
         task_type=TaskType.ROLLOUT,
@@ -241,7 +259,7 @@ def _request_rollout(coordinator: CoordinatorServer, task_request: TaskRequest):
             terminate_mode=rollout_config["terminate"],
             mode=rollout_config["mode"],
             callback=rollout_config["callback"],
-            episode_seg=rollout_config["episode_seg"],
+            episode_seg=rollout_config["num_env_per_worker"],
         ),
         state_id=task_request.state_id,
     )

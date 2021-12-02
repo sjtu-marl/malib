@@ -10,7 +10,7 @@ import numpy as np
 
 from malib import settings
 from malib.evaluator.utils.payoff_table import PayoffTable
-from malib.utils.logger import get_logger
+from malib.utils.logger import Logger, get_logger
 from malib.utils.notations import deprecated
 from malib.utils.typing import (
     AgentID,
@@ -286,8 +286,10 @@ class PayoffManager:
         }
         # for agent in self.agents:
         for k, v in content.statistics.items():
-            if "total_reward" in k:
-                agent = k.split("/")[-1]
+            # Logger.debug("get kd: {} {}".format(k, v))
+            ks = k.split("/")
+            if "agent_reward" == ks[-2] and "mean" in ks[-1]:
+                agent = ks[-1][:-5]
                 self._payoff_tables[agent][population_combination] = v
                 self._payoff_tables[agent].set_simulation_done(population_combination)
             # self._done_table[agent][population_combination] = True

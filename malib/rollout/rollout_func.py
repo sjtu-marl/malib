@@ -173,23 +173,23 @@ def _process_policy_outputs(
     detached_policy_outputs = {}
     # sequential rollout environments may
     for i, env_id in enumerate(env_ids):
-        active_env = env.active_envs[env_id]
+        # active_env = env.active_envs[env_id]
         detached = collections.defaultdict(lambda: collections.defaultdict())
-        if active_env.is_sequential:
-            selected_aid = active_env.agent_selection
-            for k, agent_v in policy_outputs.items():
-                aid, _v = selected_aid, agent_v[selected_aid]
+        # if active_env.is_sequential:
+        #     selected_aid = active_env.agent_selection
+        #     for k, agent_v in policy_outputs.items():
+        #         aid, _v = selected_aid, agent_v[selected_aid]
+        #         if k == EpisodeKey.RNN_STATE:
+        #             detached[k][aid] = [next(__v) for __v in _v]
+        #         else:
+        #             detached[k][aid] = next(_v)
+        # else:
+        for k, agent_v in policy_outputs.items():
+            for aid, _v in agent_v.items():
                 if k == EpisodeKey.RNN_STATE:
                     detached[k][aid] = [next(__v) for __v in _v]
                 else:
                     detached[k][aid] = next(_v)
-        else:
-            for k, agent_v in policy_outputs.items():
-                for aid, _v in agent_v.items():
-                    if k == EpisodeKey.RNN_STATE:
-                        detached[k][aid] = [next(__v) for __v in _v]
-                    else:
-                        detached[k][aid] = next(_v)
         detached_policy_outputs[env_id] = detached
     env_actions: Dict[EnvID, Dict[AgentID, Any]] = env.action_adapter(
         detached_policy_outputs

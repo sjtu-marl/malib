@@ -38,6 +38,7 @@ class DQNLoss(LossFunc):
         return gradients
 
     def loss_compute(self, batch) -> Dict[str, Any]:
+        print("batch size:", list(batch.keys()))
         self.loss = []
         reward = batch[EpisodeKey.REWARD].view(-1, 1)
         act = batch[EpisodeKey.ACTION].view(-1, 1)

@@ -16,6 +16,7 @@ from malib import settings
 from malib.algorithm.common.policy import Policy
 from malib.algorithm import get_algorithm_space
 from malib.utils.episode import EpisodeKey
+from malib.utils.logger import Logger
 from malib.utils.typing import (
     DataTransferType,
     Status,
@@ -139,8 +140,9 @@ class AgentInterface:
         for pid in distribution:
             assert pid in self.policies, (pid, list(self.policies.keys()))
 
-        self.sample_dist = dict.fromkeys(self.policies, 1.0 / len(self.policies))
+        self.sample_dist = {}  # dict.fromkeys(self.policies, 1.0 / len(self.policies))
         self.sample_dist.update(distribution)
+        Logger.debug("updated sample dist is: {}".format(self.sample_dist))
 
     def set_behavior_mode(
         self,

@@ -271,7 +271,12 @@ class AgentInterface(metaclass=ABCMeta):
             while len(self._agent_to_pids[env_aid]) == 0:
                 pass
             tmp = []
-            for pid in self._agent_to_pids[env_aid]:
+            fixed_or_single_pids = (
+                self._agent_to_pids[env_aid]
+                if len(self._agent_to_pids[env_aid]) < 2
+                else self._agent_to_pids[env_aid][:-1]
+            )
+            for pid in fixed_or_single_pids:
                 tmp.append((pid, self._policies[pid].description))
             res[env_aid] = tmp
 
