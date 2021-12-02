@@ -1,15 +1,20 @@
 # -*- coding: utf-8 -*-
 import random
 import numpy as np
+import gym
 
 from typing import List
 
 from gym import spaces
+
 from pettingzoo.utils import wrappers
 from pettingzoo.utils.env import AECEnv
 
 from open_spiel.python.rl_environment import Environment as OPEN_SPIEL_ENV, TimeStep
-from malib.utils.episode import Episode
+
+from malib.utils.typing import Dict, AgentID, Any, Union
+from malib.utils.episode import EpisodeKey
+from malib.envs.env import Environment
 
 
 class PokerEnv(AECEnv):
@@ -159,3 +164,68 @@ def env(**kwargs):
     # env = Environment.from_sequential_game(env, **kwargs)
     # env._extra_returns = [Episode.ACTION_MASK]
     return env
+
+
+class PokerParallelEnv(Environment):
+    def __init__(self, **configs):
+        super(PokerParallelEnv, self).__init__(**configs)
+        self.env = env(**configs)
+
+        self._observation_spaces = {
+            aid: self.env.observation_space(aid) for aid in self.env.possible_agents
+        }
+        self._action_spaces = {
+            aid: self.env.action_space(aid) for aid in self.env.possible_agents
+        }
+
+    @property
+    def possible_agents(self) -> List[AgentID]:
+        return self.env.possible_agents
+
+    @property
+    def observation_spaces(self) -> Dict[AgentID, gym.Space]:
+        return self._observation_spaces
+
+    @property
+    def action_spaces(self) -> Dict[AgentID, gym.Space]:
+        return self._action_spaces
+
+    def reset(
+        self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
+    ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
+        super(PokerParallelEnv, self).reset(
+            max_step=max_step, custom_reset_config=custom_reset_config
+        )
+
+        self.env.reset()
+        aid = next(iter(self.env.agent_iter(max_iter=self.max_step)))
+        observation, reward, done, info = self.env.last()
+        action_mask = np.asarray(observation["action_mask"])
+
+        return {
+            EpisodeKey.CUR_OBS: {aid: observation},
+            # EpisodeKey.REWARD: {aid: reward},
+            # EpisodeKey.DONE: {aid: done},
+            EpisodeKey.INFO: {aid: info},
+            EpisodeKey.ACTION_MASK: {aid: action_mask},
+        }
+
+    def time_step(self, actions: Dict[AgentID, Any]):
+        assert (
+            len(actions) == 1
+        ), "Sequential games allow only one agent per time step! {}".format(actions)
+        # switch to the next player
+        self.env.step(actions[self.env.agent_selection])
+
+        # got next player id
+        aid = next(iter(self.env.agent_iter(max_iter=self.max_step)))
+        observation, reward, done, info = self.env.last()
+        action_mask = np.asarray(observation["action_mask"])
+
+        return {
+            EpisodeKey.NEXT_OBS: {aid: observation},
+            EpisodeKey.REWARD: {aid: reward},
+            EpisodeKey.DONE: {aid: done},
+            EpisodeKey.INFO: {aid: info},
+            EpisodeKey.ACTION_MASK: {aid: action_mask},
+        }

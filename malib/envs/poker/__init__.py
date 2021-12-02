@@ -1,1 +1,1 @@
-from .poker_aec_env import env as PokerEnv
+from .poker_aec_env import PokerParallelEnv

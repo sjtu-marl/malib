@@ -16,8 +16,6 @@ you wanna save by specifying extra columns when Episode initialization.
 """
 
 import collections
-from dataclasses import dataclass
-from numpy.core.numeric import roll
 import ray
 import numpy as np
 
@@ -26,7 +24,6 @@ from malib.envs.env import Environment
 from malib.utils.general import iter_many_dicts_recursively
 from malib.utils.typing import (
     AgentID,
-    AgentInvolveInfo,
     BufferDescription,
     Dict,
     Any,
@@ -62,7 +59,7 @@ def _process_environment_returns(
 
     for env_id, rets in env_rets.items():
         # preset done if no done
-        policy_input = {EpisodeKey.DONE: dict.fromkeys(agent_interfaces, False)}
+        policy_input = {}
         drop = False
 
         if env_id not in filtered_env_outputs:
@@ -72,10 +69,10 @@ def _process_environment_returns(
         for k, ret in rets.items():
             if k in [EpisodeKey.CUR_OBS, EpisodeKey.NEXT_OBS]:
                 output = {
-                    aid: interface.transform_observation(
-                        observation=ret[aid], state=None
+                    aid: agent_interfaces[aid].transform_observation(
+                        observation=obs, state=None
                     )["obs"]
-                    for aid, interface in agent_interfaces.items()
+                    for aid, obs in ret.items()  # agent_interfaces.items()
                 }
                 if k == EpisodeKey.NEXT_OBS:
                     if EpisodeKey.CUR_OBS not in filtered_env_output:
@@ -98,6 +95,11 @@ def _process_environment_returns(
 
         if not drop:
             policy_inputs[env_id] = policy_input
+            # we transfer DONE key as a signal for some masking behaviors
+            if EpisodeKey.DONE not in policy_input:
+                policy_input = {
+                    EpisodeKey.DONE: dict.fromkeys(rets[EpisodeKey.CUR_OBS], False)
+                }
 
     return policy_inputs, filtered_env_outputs, drop_env_ids
 
@@ -117,7 +119,9 @@ def _do_policy_eval(
     )
     for env_id in env_ids:
         env_episode = episodes[env_id]
-        for agent_id, interface in agent_interfaces.items():
+        # for agent_id, interface in agent_interfaces.items():
+        for agent_id in policy_inputs[env_id][EpisodeKey.CUR_OBS].keys():
+            interface = agent_interfaces[agent_id]
             if len(env_episode[EpisodeKey.RNN_STATE][agent_id]) < 1:
                 obs_shape = policy_inputs[env_id][EpisodeKey.CUR_OBS][agent_id].shape
                 env_episode[EpisodeKey.RNN_STATE][agent_id].append(
@@ -136,12 +140,13 @@ def _do_policy_eval(
         for k, agent_v in policy_inputs[env_id].items():
             for agent_id, v in agent_v.items():
                 agent_wise_inputs[agent_id][k].append(v)
-    for agent_id, interface in agent_interfaces.items():
+    for agent_id, inputs in agent_wise_inputs.items():
+        interface = agent_interfaces[agent_id]
         (
             actions[agent_id],
             action_dists[agent_id],
             next_rnn_state[agent_id],
-        ) = interface.compute_action(**agent_wise_inputs[agent_id])
+        ) = interface.compute_action(**inputs)
 
     return {
         EpisodeKey.ACTION: actions,
@@ -235,11 +240,16 @@ def env_runner(
 
     episodes = NewEpisodeDict(lambda env_id: Episode(behavior_policies, env_id=env_id))
 
-    process_environment_returns = (
-        custom_environment_return_processor or _process_environment_returns
-    )
-    process_policy_outputs = custom_policy_output_processor or _process_policy_outputs
-    do_policy_eval = custom_do_policy_eval or _do_policy_eval
+    # process_environment_returns = (
+    #     custom_environment_return_processor or _process_environment_returns
+    # )
+    # process_policy_outputs = custom_policy_output_processor or _process_policy_outputs
+    # do_policy_eval = custom_do_policy_eval or _do_policy_eval
+
+    # XXX(ming): currently, we mute all the processor cutomization to avoid unpredictable behaviors
+    process_environment_returns = _process_environment_returns
+    process_policy_outputs = _process_policy_outputs
+    do_policy_eval = _do_policy_eval
 
     while not env.is_terminated():
         filtered_env_outputs = {}

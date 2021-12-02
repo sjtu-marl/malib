@@ -19,6 +19,13 @@ from malib.backend.datapool.test import FakeDataServer
 @pytest.mark.parametrize(
     "module_path,cname,env_id,scenario_configs,batch_mode",
     [
+        (
+            "malib.envs.poker",
+            "PokerParallelEnv",
+            "leduc_poker",
+            {"fixed_player": True},
+            "time_step",
+        ),
         ("malib.envs.gym", "GymEnv", "CartPole-v0", {}, "time_step"),
         ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}, "time_step"),
         ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}, "time_step"),
