@@ -110,10 +110,10 @@ class MADDPGLoss(DDPGLoss):
             "value_est",
         ]
         stats_list = [
-            policy_loss.detach().numpy(),
-            value_loss.detach().numpy(),
-            target_value.mean().detach().numpy(),
-            eval_value.mean().detach().numpy(),
+            policy_loss.detach().item(),
+            value_loss.detach().item(),
+            target_value.mean().detach().item(),
+            eval_value.mean().detach().item(),
         ]
 
         return dict(zip(loss_names, stats_list))

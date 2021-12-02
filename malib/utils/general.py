@@ -55,6 +55,55 @@ def iter_many_dicts_recursively(*d, history=None):
                 yield history + [k], d, k, tuple([_d[k] for _d in d])
 
 
+class BufferDict(dict):
+    @property
+    def capacity(self) -> int:
+        capacities = []
+        for _, _, v in iterate_recursively(self):
+            capacities.append(v.shape[0])
+        return max(capacities)
+
+    def index(self, indices):
+        return self.index_func(self, indices)
+
+    def index_func(self, x, indices):
+        if isinstance(x, (dict, BufferDict)):
+            res = BufferDict()
+            for k, v in x.items():
+                res[k] = self.index_func(v, indices)
+            return res
+        else:
+            t = x[indices]
+            # Logger.debug("sampled data shape: {} {}".format(t.shape, indices))
+            return t
+
+    def set_data(self, index, new_data):
+        return self.set_data_func(self, index, new_data)
+
+    def set_data_func(self, x, index, new_data):
+        if isinstance(new_data, (dict, BufferDict)):
+            for nk, nv in new_data.items():
+                self.set_data_func(x[nk], index, nv)
+        else:
+            if isinstance(new_data, torch.Tensor):
+                t = new_data.cpu().numpy()
+            elif isinstance(new_data, np.ndarray):
+                t = new_data
+            else:
+                raise TypeError(
+                    f"Unexpected type for new insert data: {type(new_data)}, expected is np.ndarray"
+                )
+            x[index] = t.copy()
+
+
+def iterate_recursively(d: Dict):
+    for k, v in d.items():
+        if isinstance(v, (dict, BufferDict)):
+            yield from iterate_recursively(v)
+        else:
+            yield d, k, v
+
+
 def _default_dtype_mapping(dtype):
     # FIXME(ming): cast 64 to 32?
     if dtype in [np.int32, np.int64, int]:
@@ -71,7 +120,7 @@ def _default_dtype_mapping(dtype):
 
 # wrap with type checking
 def _walk(caster, v):
-    if isinstance(v, Dict):
+    if isinstance(v, (dict, BufferDict)):
         for k, _v in v.items():
             v[k] = _walk(caster, _v)
     else:

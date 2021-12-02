@@ -26,7 +26,8 @@ rollout:
   metric_type: "simple"
   fragment_length: 25
   num_episodes: 250
-  num_env_per_worker: 25
+  num_env_per_worker: 10
+  max_step: 25
   terminate: "any"
 
 evaluation:

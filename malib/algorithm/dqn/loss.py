@@ -43,7 +43,7 @@ class DQNLoss(LossFunc):
         act = batch[EpisodeKey.ACTION].view(-1, 1)
         act = act.type(torch.LongTensor)
         obs = batch[EpisodeKey.CUR_OBS]
-        next_obs = batch[EpisodeKey.CUR_OBS]
+        next_obs = batch[EpisodeKey.NEXT_OBS]
         done = batch[EpisodeKey.DONE].view(-1, 1)
 
         state_action_values = self.policy.critic(obs).gather(1, act)

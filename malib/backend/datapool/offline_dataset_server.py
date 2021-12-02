@@ -17,7 +17,7 @@ from readerwriterlock import rwlock
 
 from malib import settings
 from malib.utils.errors import OversampleError
-from malib.utils.general import iter_dicts_recursively, iter_many_dicts_recursively
+from malib.utils.general import BufferDict, iter_many_dicts_recursively
 from malib.utils.logger import Log, Logger
 from malib.utils.typing import (
     BufferDescription,
@@ -50,55 +50,6 @@ def _gen_table_name(env_id, main_id, pid):
 
 DATASET_TABLE_NAME_GEN = _gen_table_name
 Batch = namedtuple("Batch", "identity, data")
-
-
-def iterate_recursively(d: Dict):
-    for k, v in d.items():
-        if isinstance(v, (dict, BufferDict)):
-            yield from iterate_recursively(v)
-        else:
-            yield d, k, v
-
-
-class BufferDict(dict):
-    @property
-    def capacity(self) -> int:
-        capacities = []
-        for _, _, v in iterate_recursively(self):
-            capacities.append(v.shape[0])
-        return max(capacities)
-
-    def index(self, indices):
-        return self.index_func(self, indices)
-
-    def index_func(self, x, indices):
-        if isinstance(x, (dict, BufferDict)):
-            res = BufferDict()
-            for k, v in x.items():
-                res[k] = self.index_func(v, indices)
-            return res
-        else:
-            t = x[indices]
-            # Logger.debug("sampled data shape: {} {}".format(t.shape, indices))
-            return t
-
-    def set_data(self, index, new_data):
-        return self.set_data_func(self, index, new_data)
-
-    def set_data_func(self, x, index, new_data):
-        if isinstance(new_data, (dict, BufferDict)):
-            for nk, nv in new_data.items():
-                self.set_data_func(x[nk], index, nv)
-        else:
-            if isinstance(new_data, torch.Tensor):
-                t = new_data.cpu().numpy()
-            elif isinstance(new_data, np.ndarray):
-                t = new_data
-            else:
-                raise TypeError(
-                    f"Unexpected type for new insert data: {type(new_data)}, expected is np.ndarray"
-                )
-            x[index] = t.copy()
 
 
 class Empty(Exception):
