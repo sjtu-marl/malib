@@ -13,7 +13,7 @@ from malib.rollout.rollout_func import (
     _process_environment_returns,
 )
 
-from tests.env.utils import build_dummy_agent_interfaces
+from tests.env_api.utils import build_dummy_agent_interfaces
 from tests.dataset.utils import FakeDataServer
 
 

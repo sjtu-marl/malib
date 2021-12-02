@@ -2,7 +2,7 @@ import importlib
 import pytest
 
 from malib.envs import Environment
-from tests.env.utils import build_dummy_agent_interfaces
+from tests.env_api.utils import build_dummy_agent_interfaces
 from malib.rollout.rollout_func import Stepping
 
 

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from collections import defaultdict
 import random
 import numpy as np
 import gym
@@ -92,9 +93,9 @@ class PokerEnv(AECEnv):
 
     def observe(self, agent):
         obs = self._cur_time_step.observations["info_state"][self._name_to_int(agent)]
-        observation = np.array(obs, dtype=np.int8)
+        observation = np.array(obs, dtype=self.observation_spaces[agent]["observation"].dtype)
         legal_moves = self.next_legal_moves
-        action_mask = np.zeros(self._open_spiel_env.action_spec()["num_actions"], int)
+        action_mask = np.zeros(self._open_spiel_env.action_spec()["num_actions"], self.observation_spaces[agent]["action_mask"].dtype)
         action_mask[legal_moves] = 1
 
         return {"observation": observation, "action_mask": action_mask}
@@ -243,3 +244,6 @@ class PokerParallelEnv(Environment):
             EpisodeKey.INFO: {aid: info},
             EpisodeKey.ACTION_MASK: {aid: action_mask},
         }
+
+    def close(self):
+        self.env.close()
