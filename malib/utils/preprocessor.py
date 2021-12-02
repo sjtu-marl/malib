@@ -116,7 +116,7 @@ class TupleFlattenPreprocessor(Preprocessor):
         assert isinstance(space, spaces.Tuple), space
         super(TupleFlattenPreprocessor, self).__init__(space)
         self._preprocessors = []
-        for k, _space in space.spaces:
+        for k, _space in enumerate(space.spaces):
             self._preprocessors.append(get_preprocessor(_space)(_space))
         self._size = sum([prep.size for prep in self._preprocessors])
 
@@ -166,13 +166,12 @@ class BoxFlattenPreprocessor(Preprocessor):
         if nested:
             data = _get_batched(data)
 
-        if isinstance(data, list):
-            array = np.stack(data)
-            array = array.reshape((len(array), -1))
-            return array
-        else:
-            array = np.asarray(data).reshape((-1,))
-            return array
+        # if isinstance(data, list):
+        #     array = np.vtack(data)
+        #     return array
+        # else:
+        array = np.asarray(data).reshape((-1,) + self.shape).squeeze()
+        return array
 
     def write(self, array, offset, data):
         pass

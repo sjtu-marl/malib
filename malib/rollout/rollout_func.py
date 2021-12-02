@@ -59,17 +59,21 @@ def _process_environment_returns(
 
     policy_inputs = {}
     drop_env_ids = []
+
     for env_id, rets in env_rets.items():
-        policy_input = {}
+        # preset done if no done
+        policy_input = {EpisodeKey.DONE: dict.fromkeys(agent_interfaces, False)}
         drop = False
+
         if env_id not in filtered_env_outputs:
             filtered_env_outputs[env_id] = {}
         filtered_env_output = filtered_env_outputs[env_id]
+
         for k, ret in rets.items():
             if k in [EpisodeKey.CUR_OBS, EpisodeKey.NEXT_OBS]:
                 output = {
                     aid: interface.transform_observation(
-                        observation=ret[aid], state=rets.get("state", None)
+                        observation=ret[aid], state=None
                     )["obs"]
                     for aid, interface in agent_interfaces.items()
                 }
@@ -77,20 +81,21 @@ def _process_environment_returns(
                     if EpisodeKey.CUR_OBS not in filtered_env_output:
                         filtered_env_output[EpisodeKey.CUR_OBS] = output
                     policy_input[EpisodeKey.CUR_OBS] = output
+            elif k == EpisodeKey.NEXT_STATE:
+                if EpisodeKey.CUR_STATE not in filtered_env_output:
+                    filtered_env_output[EpisodeKey.CUR_STATE] = ret
+                policy_input[EpisodeKey.CUR_STATE] = ret
             else:
-                # pop all done
                 if k == EpisodeKey.DONE:
-                    done = rets[EpisodeKey.DONE]["__all__"]
-                    if done:
-                        drop = True
-                        drop_env_ids.append(env_id)
+                    done = ret["__all__"]
+                    drop = done
+                    drop_env_ids.append(env_id)
                     output = {k: v for k, v in ret.items() if k != "__all__"}
                 else:
                     output = ret
             policy_input[k] = output
             filtered_env_output[k] = output
 
-        # filtered_env_outputs[env_id] = output
         if not drop:
             policy_inputs[env_id] = policy_input
 
@@ -113,18 +118,24 @@ def _do_policy_eval(
     for env_id in env_ids:
         env_episode = episodes[env_id]
         for agent_id, interface in agent_interfaces.items():
-            # if interface.use_rnn:
-            # then feed last rnn state here
             if len(env_episode[EpisodeKey.RNN_STATE][agent_id]) < 1:
+                obs_shape = policy_inputs[env_id][EpisodeKey.CUR_OBS][agent_id].shape
                 env_episode[EpisodeKey.RNN_STATE][agent_id].append(
-                    interface.get_initial_state()
+                    interface.get_initial_state(
+                        batch_size=None if len(obs_shape) == 1 else obs_shape[0]
+                    )
                 )
+
+                # FIXME(ming): maybe wrong in some cases, I didn't load it yet.
+                last_done = np.zeros(obs_shape[:-1])
+            else:
+                last_done = env_episode[EpisodeKey.DONE][agent_id][-1]
             last_rnn_state = env_episode[EpisodeKey.RNN_STATE][agent_id][-1]
             agent_wise_inputs[agent_id][EpisodeKey.RNN_STATE].append(last_rnn_state)
+
         for k, agent_v in policy_inputs[env_id].items():
             for agent_id, v in agent_v.items():
                 agent_wise_inputs[agent_id][k].append(v)
-
     for agent_id, interface in agent_interfaces.items():
         (
             actions[agent_id],
@@ -157,7 +168,10 @@ def _process_policy_outputs(
         detached = collections.defaultdict(lambda: collections.defaultdict())
         for k, agent_v in policy_outputs.items():
             for aid, _v in agent_v.items():
-                detached[k][aid] = _v[i]
+                if k == EpisodeKey.RNN_STATE:
+                    detached[k][aid] = [__v[i] for __v in _v]
+                else:
+                    detached[k][aid] = _v[i]
         detached_policy_outputs[env_id] = detached
     env_actions: Dict[EnvID, Dict[AgentID, Any]] = env.action_adapter(
         detached_policy_outputs
@@ -219,7 +233,6 @@ def env_runner(
     if isinstance(env, VectorEnv):
         assert len(env.active_envs) > 0, (env._active_envs, rets, env)
 
-    # if dataset_server:
     episodes = NewEpisodeDict(lambda env_id: Episode(behavior_policies, env_id=env_id))
 
     process_environment_returns = (
@@ -265,11 +278,14 @@ def env_runner(
             aid: interface.get_policy(behavior_policies[aid])
             for aid, interface in agent_interfaces.items()
         }
+        batch_mode = runtime_config["batch_mode"]
         episodes: List[Dict[str, Dict[AgentID, np.ndarray]]] = get_postprocessor(
-            runtime_config.get("post_processor_type", "default")
-        )(list(episodes.to_numpy().values()), policies)
+            runtime_config["postprocessor_type"]
+        )(list(episodes.to_numpy(batch_mode).values()), policies)
 
-        buffer_desc.batch_size = env.batched_step_cnt
+        buffer_desc.batch_size = (
+            env.batched_step_cnt if batch_mode == "time_step" else len(episodes)
+        )
         indices = None
         while indices is None:
             batch = ray.get(dataset_server.get_producer_index.remote(buffer_desc))
@@ -298,10 +314,14 @@ class Stepping:
         env_desc: Dict[str, Any],
         dataset_server=None,
         use_subproc_env: bool = False,
+        batch_mode: str = "time_step",
+        postprocessor_type: str = "default",
     ):
 
         # init environment here
         self.env_desc = env_desc
+        self.batch_mode = batch_mode
+        self.postprocessor_type = postprocessor_type
 
         # check whether env is simultaneous
         env = env_desc["creator"](**env_desc["config"])
@@ -390,7 +410,7 @@ class Stepping:
         behavior_policies.update(desc["behavior_policies"] or {})
         # specify the number of running episodes
         num_episodes = desc["num_episodes"]
-        max_step = desc.get("max_step", -1)
+        max_step = desc.get("max_step", None)
 
         self.add_envs(num_episodes)
 
@@ -405,6 +425,8 @@ class Stepping:
                 "behavior_policies": behavior_policies,
                 # FIXME(ming): custom reset config is closed here
                 "custom_reset_config": None,
+                "batch_mode": self.batch_mode,
+                "postprocessor_type": self.postprocessor_type,
             },
             dataset_server=self._dataset_server if task_type == "rollout" else None,
         )

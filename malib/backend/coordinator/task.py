@@ -208,16 +208,20 @@ def _request_rollout(coordinator: CoordinatorServer, task_request: TaskRequest):
     populations = task_request.content.agent_involve_info.populations
     population_mapping = {}
     for k, v in populations.items():
-        assert len(v) > 0, v
+        # FIXME(ming): sometimes may no population
+        assert len(v) > 0, k
         population_mapping[k] = [p[0] for p in v]
     agent_involve_info = task_request.content.agent_involve_info
 
     if all([len(p_list) for p_list in population_mapping.values()]):
-        policy_distribution = coordinator.payoff_manager.get_equilibrium(
-            population_mapping
-        ) if coordinator.task_mode == "gta" else {
-            k: [1 / len(v)] * len(v) for k, v in population_mapping.items()
-        }
+        policy_distribution = (
+            coordinator.payoff_manager.get_equilibrium(population_mapping)
+            if coordinator.task_mode == "gta"
+            else {
+                k: dict(zip(v, [1 / len(v)] * len(v)))
+                for k, v in population_mapping.items()
+            }
+        )
         for env_aid, (pid, _) in agent_involve_info.trainable_pairs.items():
             policy_distribution[env_aid] = {pid: 1.0}
         # since in meta_policy this is a default_dict with value 0.0

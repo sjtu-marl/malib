@@ -1,12 +1,14 @@
+import numpy as np
 import pytest
 
-from malib.envs.gr_football import BaseGFootBall, ParameterizedSharing
+from malib.envs.gr_football import BaseGFootBall
+from malib.envs.gr_football.env import ParameterSharing
 from malib.utils.episode import EpisodeKey
 
 
 @pytest.mark.parametrize(
     "env_name,n_player_left,n_player_right",
-    [("academy_run_pass_and_shoot_with_keeper", 2, 1)],
+    [("5_vs_5", 4, 0)],
 )
 class TestGoogleFootballEnv:
     @pytest.fixture(autouse=True)
@@ -53,9 +55,9 @@ class TestGoogleFootballEnv:
 
         print(self.env.collect_info())
 
-    def test_wrapper(self):
+    def test_parameter_sharing_wrapper(self):
         mapping_func = lambda x: x[:6]
-        env = ParameterizedSharing(self.env, mapping_func)
+        env = ParameterSharing(self.env, mapping_func)
 
         state_spaces = env.state_spaces
         observation_spaces = env.observation_spaces
@@ -64,12 +66,28 @@ class TestGoogleFootballEnv:
         rets = env.reset(max_step=20)
         assert EpisodeKey.CUR_STATE in rets
 
+        for aid, obs in rets[EpisodeKey.CUR_OBS].items():
+            assert obs.shape[1] == observation_spaces[aid].shape[0]
+
         for aid, state in rets[EpisodeKey.CUR_STATE].items():
-            assert state_spaces[aid].contains(state), (aid, state_spaces, state)
+            assert len(state.shape) == 2
+            assert state_spaces[aid].shape[0] == state.shape[1], (
+                aid,
+                state_spaces,
+                state,
+            )
 
         for _ in range(20):
-            actions = {aid: space.sample() for aid, space in act_spaces.items()}
+            actions = {
+                aid: np.asarray(
+                    [space.sample()] * rets[EpisodeKey.CUR_OBS][aid].shape[0], dtype=int
+                )
+                for aid, space in act_spaces.items()
+            }
             rets = env.step(actions)
+            # update next to cur
+            rets[EpisodeKey.CUR_OBS] = rets[EpisodeKey.NEXT_OBS]
+            rets[EpisodeKey.CUR_STATE] = rets[EpisodeKey.NEXT_STATE]
 
         assert self.env.cnt <= 20
         assert rets[EpisodeKey.DONE]["__all__"], (self.env.cnt, rets[EpisodeKey.DONE])

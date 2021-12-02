@@ -14,6 +14,7 @@ import ray
 from collections import defaultdict
 from functools import reduce
 from malib import settings
+from malib.algorithm.common import policy
 from malib.utils.general import iter_dicts_recursively, iter_many_dicts_recursively
 from malib.utils.typing import (
     AgentID,

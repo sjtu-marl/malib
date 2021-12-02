@@ -8,6 +8,10 @@ from malib.envs.env import ParameterSharingWrapper
 
 def ParameterizedSharing(base_env, parameter_sharing_func: Callable):
     class PSGFootBall(ParameterSharingWrapper):
+        def __init__(self, env):
+            super().__init__(env)
+            self.is_sequential = False
+
         def build_state_from_observation(
             self, agent_observation: Dict[AgentID, Any]
         ) -> Dict[AgentID, Any]:

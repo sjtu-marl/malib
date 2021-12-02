@@ -8,7 +8,7 @@ import gym
 import ray
 import uuid
 import numpy as np
-
+import copy
 from collections import ChainMap
 
 from ray.actor import ActorHandle
@@ -165,7 +165,7 @@ class VectorEnv:
         self._step_cnt = 0
         self._fragment_length = fragment_length
         self._custom_reset_config = custom_reset_config
-        self._max_step = max_step
+        self.max_step = max_step
         self._cached_episode_infos = {}
 
         # generate runtime env ids
@@ -188,14 +188,15 @@ class VectorEnv:
         for env_id, _actions in actions.items():
             ret = active_envs[env_id].step(_actions)
             env_done = ret[EpisodeKey.DONE]["__all__"]
+            env = self.active_envs[env_id]
             if env_done:
                 env = active_envs.pop(env_id)
                 self._cached_episode_infos[env_id] = env.collect_info()
                 if not self.is_terminated():
                     # write episode cache
-                # else:
+                    # else:
                     _tmp = env.reset(
-                        max_step=self._max_step,
+                        max_step=self.max_step,
                         custom_reset_config=self._custom_reset_config,
                     )
                     ret.update(_tmp)
@@ -224,11 +225,13 @@ class VectorEnv:
 
         return res
 
-    def collect_info(self) -> List[Dict[str, Any]]:
+    def collect_info(self, truncated=False) -> List[Dict[str, Any]]:
+        # XXX(ziyu): We can add a new param 'truncated' to determine whether to add
+        # the nonterminal env_info into rets.
         ret = self._cached_episode_infos
-
         for runtime_id, env in self.active_envs.items():
-            ret[runtime_id] = env.collect_info()
+            if env.cnt > 0:
+                ret[runtime_id] = env.collect_info()
 
         return ret
 
@@ -316,7 +319,7 @@ class SubprocVecEnv(VectorEnv):
         self._step_cnt = 0
         self._fragment_length = fragment_length
         self._custom_reset_config = custom_reset_config
-        self._max_step = max_step
+        self.max_step = max_step
 
         # clean peanding tasks
         if len(self.pending_tasks) > 0:
@@ -363,11 +366,11 @@ class SubprocVecEnv(VectorEnv):
                 env = self._active_envs.pop(env_id)
                 runtime_id = uuid.uuid1().hex
                 self.active_envs[runtime_id] = env
-                rets.update(
+                _ret.update(
                     ray.get(
                         env.reset.remote(
                             runtime_id=runtime_id,
-                            max_step=self._max_step,
+                            max_step=self.max_step,
                             custom_reset_config=self._custom_reset_config,
                         )
                     )

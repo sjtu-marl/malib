@@ -13,5 +13,3 @@ https://github.com/google-research/football
 *More features about football and mappo is coming !*
 
 HAVE FUN & ENJOY IT !
-
-886~

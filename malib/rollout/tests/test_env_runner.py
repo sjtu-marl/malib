@@ -1,5 +1,6 @@
 import importlib
 import pytest
+import ray
 from malib.utils.episode import NewEpisodeDict, Episode
 
 from malib.utils.typing import BufferDescription
@@ -16,19 +17,19 @@ from malib.backend.datapool.test import FakeDataServer
 
 
 @pytest.mark.parametrize(
-    "module_path,cname,env_id,scenario_configs",
+    "module_path,cname,env_id,scenario_configs,batch_mode",
     [
-        ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
-        ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
-        ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
+        ("malib.envs.gym", "GymEnv", "CartPole-v0", {}, "time_step"),
+        ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}, "time_step"),
+        ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}, "time_step"),
         (
             "malib.envs.gr_football",
-            "BaseGFootBall",
+            "creator",
             "Gfootball",
             {
-                "env_name": "academy_run_pass_and_shoot_with_keeper",
-                "number_of_left_players_agent_controls": 2,
-                "number_of_right_players_agent_controls": 1,
+                "env_name": "5_vs_5",
+                "number_of_left_players_agent_controls": 4,
+                "number_of_right_players_agent_controls": 4,
                 "representation": "raw",
                 "logdir": "",
                 "write_goal_dumps": False,
@@ -36,12 +37,15 @@ from malib.backend.datapool.test import FakeDataServer
                 "render": False,
                 "stacked": False,
             },
+            "episode",
         ),
     ],
 )
 class TestEnvRunner:
     @pytest.fixture(autouse=True)
-    def _init(self, module_path, cname, env_id, scenario_configs):
+    def _init(self, module_path, cname, env_id, scenario_configs, batch_mode):
+        if not ray.is_initialized():
+            ray.init(local_mode=True)
         creator = getattr(importlib.import_module(module_path), cname)
         env: Environment = creator(env_id=env_id, scenario_configs=scenario_configs)
 
@@ -63,6 +67,7 @@ class TestEnvRunner:
         self.agent_interfaces = agent_interfaces
 
         self.vec_env.add_envs(num=4)
+        self.batch_mode = batch_mode
 
     def test_process_in_runner(self):
         runtime_config = {
@@ -70,6 +75,8 @@ class TestEnvRunner:
             "fragment_length": 100,
             "max_step": 25,
             "custom_reset_config": None,
+            "batch_mode": self.batch_mode,
+            "postprocessor_type": "default",
         }
         _ = [interface.reset() for interface in self.agent_interfaces.values()]
         rets = self.vec_env.reset(
@@ -89,16 +96,16 @@ class TestEnvRunner:
         )
 
         while not self.vec_env.is_terminated():
-            filtered_ouptuts = {}
-            policy_inputs, filtered_ouptuts, _ = _process_environment_returns(
+            filtered_outputs = {}
+            policy_inputs, filtered_outputs, _ = _process_environment_returns(
                 env_rets=rets,
                 agent_interfaces=self.agent_interfaces,
-                filtered_env_outputs=filtered_ouptuts,
+                filtered_env_outputs=filtered_outputs,
             )
 
             # check consistency in env ids
             pinput_env_ids = sorted(list(policy_inputs.keys()))
-            filtered_env_ids = sorted(list(filtered_ouptuts.keys()))
+            filtered_env_ids = sorted(list(filtered_outputs.keys()))
             real_env_ids = sorted(list(self.vec_env.active_envs.keys()))
 
             # assert pinput_env_ids == filtered_env_ids == real_env_ids, (
@@ -117,10 +124,12 @@ class TestEnvRunner:
                 active_env_ids, policy_outputs, self.vec_env
             )
 
-            policy_inputs, filtered_ouptuts, _ = _process_environment_returns(
+            rets = self.vec_env.step(env_inputs)
+
+            policy_inputs, filtered_outputs, _ = _process_environment_returns(
                 env_rets=rets,
                 agent_interfaces=self.agent_interfaces,
-                filtered_env_outputs=filtered_ouptuts,
+                filtered_env_outputs=filtered_outputs,
             )
 
             detached_env_ids = sorted(detached_policy_outputs.keys())
@@ -129,7 +138,7 @@ class TestEnvRunner:
                 detached_env_ids,
             )
 
-            rets = self.vec_env.step(env_inputs)
+            episodes.record(detached_policy_outputs, filtered_outputs)
 
     def test_env_runner_no_buffer_send(self):
         # random select agent behavior policies
@@ -148,6 +157,8 @@ class TestEnvRunner:
                 "fragment_length": 100,
                 "behavior_policies": behavior_policy_ids,
                 "custom_reset_config": None,
+                "batch_mode": self.batch_mode,
+                "postprocessor_type": "default",
             },
             dataset_server=None,
         )
@@ -177,6 +188,8 @@ class TestEnvRunner:
                 "fragment_length": 100,
                 "behavior_policies": behavior_policy_ids,
                 "custom_reset_config": None,
+                "batch_mode": self.batch_mode,
+                "postprocessor_type": "default",
             },
             dataset_server=dataset,
         )

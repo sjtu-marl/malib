@@ -180,10 +180,6 @@ class RNNLayer(nn.Module):
                         .repeat(self._recurrent_N, 1, 1)
                     ).contiguous()
                 except Exception as e:
-                    import pdb
-
-                    pdb.set_trace()
-                    print("PROBLEMS HAPPEN!")
                     raise e
                 rnn_scores, hxs = self.rnn(x[start_idx:end_idx], temp)
                 outputs.append(rnn_scores)

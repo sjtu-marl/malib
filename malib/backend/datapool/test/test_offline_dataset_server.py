@@ -63,7 +63,7 @@ class TestBufferDict:
         (
             [1, 2],
             1000,
-            10,
+            0,
             {EpisodeKey.CUR_OBS: (3, 4), EpisodeKey.REWARD: (), EpisodeKey.DONE: ()},
             {
                 EpisodeKey.CUR_OBS: np.float16,

@@ -3,11 +3,12 @@ import os
 import pickle
 import gym
 import torch
+import numpy as np
 
 from torch import nn
 
 from malib.utils.typing import DataTransferType, Tuple, Any, Dict, EpisodeID, List
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode, EpisodeKey
 
 from malib.algorithm.common.model import get_model
 from malib.algorithm.common.policy import Policy
@@ -15,6 +16,42 @@ from malib.algorithm.common.misc import hard_update
 
 from malib.algorithm.mappo.actor_critic import RNNNet
 from malib.algorithm.mappo.utils import PopArt, init_fc_weights
+import wrapt
+import tree
+
+
+@wrapt.decorator
+def shape_adjusting(wrapped, instance, args, kwargs):
+    """
+    A wrapper that adjust the inputs to corrent shape.
+    e.g.
+        given inputs with shape (n_rollout_threads, n_agent, ...)
+        reshape it to (n_rollout_threads * n_agent, ...)
+    """
+    offset = len(instance.preprocessor.shape)
+    original_shape_pre = kwargs[EpisodeKey.CUR_OBS].shape[:-offset]
+    num_shape_ahead = len(original_shape_pre)
+
+    def adjust_fn(x):
+        if isinstance(x, np.ndarray):
+            return np.reshape(x, (-1,) + x.shape[num_shape_ahead:])
+        else:
+            return x
+
+    def recover_fn(x):
+        if isinstance(x, np.ndarray):
+            return np.reshape(x, original_shape_pre + x.shape[1:])
+        else:
+            return x
+
+    adjusted_args = tree.map_structure(adjust_fn, args)
+    adjusted_kwargs = tree.map_structure(adjust_fn, kwargs)
+
+    rets = wrapped(*adjusted_args, **adjusted_kwargs)
+
+    recover_rets = tree.map_structure(recover_fn, rets)
+
+    return recover_rets
 
 
 class MAPPO(Policy):
@@ -25,7 +62,7 @@ class MAPPO(Policy):
         action_space: gym.spaces.Space,
         model_config: Dict[str, Any] = None,
         custom_config: Dict[str, Any] = None,
-        **kwargs
+        **kwargs,
     ):
         super(MAPPO, self).__init__(
             registered_name=registered_name,
@@ -42,8 +79,9 @@ class MAPPO(Policy):
         self.device = torch.device(
             "cuda" if custom_config.get("use_cuda", False) else "cpu"
         )
+        self.env_agent_id = kwargs["env_agent_id"]
 
-        # TODO(ming): collect to custom config
+        # TODO(ming): will collect to custom config
         global_observation_space = custom_config["global_state_space"][
             kwargs["env_agent_id"]
         ]
@@ -77,6 +115,12 @@ class MAPPO(Policy):
         self.register_state(self._actor, "actor")
         self.register_state(self._critic, "critic")
 
+    def get_initial_state(self, batch_size) -> List[DataTransferType]:
+        return [
+            np.zeros((batch_size, rnn_net.rnn_layer_num, rnn_net.rnn_state_size))
+            for rnn_net in [self._actor, self._critic]
+        ]
+
     def to_device(self, device):
         self_copy = copy.deepcopy(self)
         self_copy.device = device
@@ -90,48 +134,48 @@ class MAPPO(Policy):
     def compute_actions(self, observation, **kwargs):
         raise RuntimeError("Shouldn't use it currently")
 
+    def forward_actor(self, obs, actor_rnn_states, rnn_masks):
+        logits, actor_rnn_states = self.actor(obs, actor_rnn_states, rnn_masks)
+        return logits, actor_rnn_states
+
+    @shape_adjusting
     def compute_action(self, observation, **kwargs):
-        actor_rnn_states, critic_rnn_states, rnn_masks = None, None
-        cur_state = kwargs.get(EpisodeKey.CUR_STATE, None)
-        rnn_state = kwargs[EpisodeKey.RNN_STATE]
-        if len(rnn_state) == 2:
-            actor_rnn_states, critic_rnn_states = rnn_state
-        if len(rnn_state) == 3:
-            actor_rnn_states, critic_rnn_states, rnn_masks = rnn_state
+        actor_rnn_states, critic_rnn_states = kwargs[EpisodeKey.RNN_STATE]
+
+        rnn_masks = kwargs[EpisodeKey.DONE]
         logits, actor_rnn_states = self.actor(observation, actor_rnn_states, rnn_masks)
+        actor_rnn_states = actor_rnn_states.detach().cpu().numpy()
         if "action_mask" in kwargs:
-            illegal_action_mask = 1 - observation[..., : logits.shape[-1]]
+            illegal_action_mask = torch.FloatTensor(
+                1 - kwargs[EpisodeKey.ACTION_MASK]
+            ).to(logits.device)
             assert illegal_action_mask.max() == 1 and illegal_action_mask.min() == 0, (
                 illegal_action_mask.max(),
                 illegal_action_mask.min(),
             )
             logits = logits - 1e10 * illegal_action_mask
         dist = torch.distributions.Categorical(logits=logits)
-        extra_info = {}
-        action_prob = dist.probs.detach().numpy()  # num_action
+        action_prob = dist.probs.detach().cpu().numpy()  # num_action
 
-        extra_info["action_probs"] = action_prob
-        action = dist.sample().numpy()
-        if cur_state is not None:
+        # extra_info["action_probs"] = action_prob
+        action = dist.sample().cpu().numpy()
+        if EpisodeKey.CUR_STATE in kwargs and kwargs[EpisodeKey.CUR_STATE] is not None:
             value, critic_rnn_states = self.critic(
-                cur_state, critic_rnn_states, rnn_masks
+                kwargs[EpisodeKey.CUR_STATE], critic_rnn_states, rnn_masks
             )
-            extra_info["value"] = value.detach().numpy()
-            extra_info["critic_rnn_states"] = critic_rnn_states.detach().numpy()
+            critic_rnn_states = critic_rnn_states.detach().cpu().numpy()
 
-        extra_info["actor_rnn_states"] = actor_rnn_states.detach().numpy()
-        return (
-            action,
-            action_prob,
-            [
-                actor_rnn_states.detach().numpy(),
-                critic_rnn_states.detach().numpy(),
-                rnn_masks,
-            ],
-        )
+        return action, action_prob, [actor_rnn_states, critic_rnn_states]
 
-    def get_initial_state(self) -> List[DataTransferType]:
-        return self.actor.get_initial_state() + self.critic.get_initial_state() + []
+    @shape_adjusting
+    def value_function(self, *args, **kwargs):
+        # FIXME(ziyu): adjust shapes
+        state = kwargs[EpisodeKey.CUR_STATE]
+        critic_rnn_state = kwargs[f"{EpisodeKey.RNN_STATE}_1"]
+        rnn_mask = kwargs[EpisodeKey.DONE]
+        with torch.no_grad():
+            value, _ = self.critic(state, critic_rnn_state, rnn_mask)
+        return value.cpu().numpy()
 
     def train(self):
         pass
@@ -163,7 +207,7 @@ class MAPPO(Policy):
             desc_pkl["action_space"],
             desc_pkl["model_config"],
             desc_pkl["custom_config"],
-            **kwargs
+            **kwargs,
         )
 
         actor = torch.load(os.path.join(dump_dir, "actor.pt"), res.device)

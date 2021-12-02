@@ -78,4 +78,5 @@ if __name__ == "__main__":
         # solver="nash",
         worker_config=config["worker_config"],
         use_init_policy_pool=False,
+        task_mode="marl",
     )

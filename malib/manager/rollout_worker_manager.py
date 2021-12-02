@@ -77,6 +77,8 @@ class RolloutWorkerManager:
                 // rollout_config["num_env_per_worker"],
                 use_subproc_env=rollout_config.get("use_subproc_env", False),
                 exp_cfg=exp_cfg,
+                batch_mode=rollout_config.get("batch_mode", "time_step"),
+                postprocessor_type=rollout_config.get("postprocessor_type", "default"),
             )
 
         Logger.info(

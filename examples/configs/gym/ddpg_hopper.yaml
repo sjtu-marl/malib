@@ -25,7 +25,7 @@ rollout:
   metric_type: "simple"
   fragment_length: 1000
   num_episodes: 150
-  episode_seg: 50
+  num_env_per_worker: 50
   terminate: "any"
   callback: "simultaneous"
   save_model: False

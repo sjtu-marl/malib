@@ -6,6 +6,8 @@ from malib.utils.episode import EpisodeKey
 
 from malib.utils.general import tensor_cast
 
+from malib.utils.general import tensor_cast
+
 
 class LossFunc(metaclass=ABCMeta):
     """Define loss function and optimizers

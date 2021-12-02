@@ -191,7 +191,7 @@ class AgentInterface:
             return
         policy = get_algorithm_space(policy_description["registered_name"]).policy(
             **policy_description,
-            # env_agent_id=env_aid,
+            env_agent_id=env_aid,
         )
         self.policies[policy_id] = policy
         self.parameter_desc_dict[policy_id] = ParameterDescription(
@@ -231,23 +231,31 @@ class AgentInterface:
             policy_id = self._random_select_policy()
             self._behavior_policy = policy_id
         kwargs.update({"behavior_mode": self.behavior_mode})
-        kwargs[EpisodeKey.CUR_OBS] = np.vstack(kwargs[EpisodeKey.CUR_OBS])
+        kwargs[EpisodeKey.CUR_OBS] = np.stack(kwargs[EpisodeKey.CUR_OBS])
+        if EpisodeKey.ACTION_MASK in kwargs:
+            kwargs[EpisodeKey.ACTION_MASK] = np.stack(kwargs[EpisodeKey.ACTION_MASK])
         if kwargs.get(EpisodeKey.CUR_STATE) is not None:
-            kwargs[EpisodeKey.CUR_STATE] = np.vstack(kwargs[EpisodeKey.CUR_STATE])
-        rnn_state = kwargs[EpisodeKey.RNN_STATE]
-        for i, e in enumerate(rnn_state):
-            rnn_state[i] = np.vstack(e) if len(e) > 0 else e
-        return self.policies[policy_id].compute_action(*args, **kwargs)
+            kwargs[EpisodeKey.CUR_STATE] = np.stack(kwargs[EpisodeKey.CUR_STATE])
+        rnn_states_list = kwargs[EpisodeKey.RNN_STATE]
+        rnn_states_list = list(zip(*rnn_states_list))
+        kwargs[EpisodeKey.RNN_STATE] = [
+            np.stack(_v) for _v in rnn_states_list if len(_v) > 0
+        ]
+        rets = self.policies[policy_id].compute_action(*args, **kwargs)
+        return rets
 
     def get_policy(self, pid: PolicyID) -> Policy:
         return self.policies[pid]
 
-    def get_initial_state(self, pid=None) -> List[DataTransferType]:
+    def get_initial_state(
+        self, pid=None, batch_size: int = None
+    ) -> List[DataTransferType]:
         """Return a list of initial rnn states"""
 
         pid = pid or self.behavior_policy
         assert pid is not None, "Behavior policy or input pid cannot both be None"
-        return self.policies[pid].get_initial_state()
+        res = self.policies[pid].get_initial_state(batch_size)
+        return res
 
     def update_weights(
         self, pids: Sequence = None, waiting: bool = False

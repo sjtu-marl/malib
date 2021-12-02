@@ -7,6 +7,7 @@ from malib.algorithm.common.trainer import Trainer
 from malib.algorithm.mappo.data_generator import (
     recurrent_generator,
     simple_data_generator,
+    compute_return,
 )
 from malib.algorithm.mappo.loss import MAPPOLoss
 from malib.utils.episode import EpisodeKey
@@ -28,35 +29,37 @@ class MAPPOTrainer(Trainer):
 
     def optimize(self, batch, **kwargs):
         total_opt_result = defaultdict(lambda: 0)
-        _, _, n_agent, _ = batch[EpisodeKey.CUR_OBS].shape
-        agent_dim = 2
-        for k in batch:
-            if batch[k].shape[agent_dim] != n_agent:
-                batch[k] = np.repeat(batch[k], n_agent, axis=agent_dim)
+        policy = self._loss._policy
 
-        ppo_epoch = self.policy.custom_config["ppo_epoch"]
-        num_mini_batch = self.policy.custom_config["num_mini_batch"]  # num_mini_batch
+        new_data = compute_return(
+            policy, batch, mode=policy.custom_config["return_mode"]
+        )
+        # drop the last one of the timestep dimension
+        batch.update(new_data)
+        for k, v in batch.items():
+            batch[k] = v[:, :-1]
+
+        ppo_epoch = policy.custom_config["ppo_epoch"]
+        num_mini_batch = policy.custom_config["num_mini_batch"]  # num_mini_batch
         num_updates = num_mini_batch * ppo_epoch
 
-        if self._loss._policy.custom_config["use_rnn"]:
+        if policy.custom_config["use_rnn"]:
             data_generator_fn = functools.partial(
                 recurrent_generator,
                 batch,
                 num_mini_batch,
-                self._loss._policy.custom_config["rnn_data_chunk_length"],
-                self._loss._policy.device,
+                policy.custom_config["rnn_data_chunk_length"],
+                policy.device,
             )
         else:
             len_traj, n_rollout_threads, n_agent, _ = batch[EpisodeKey.CUR_OBS].shape
             batch_size = len_traj * n_rollout_threads * n_agent
             for k in batch:
-                batch[k] = torch.FloatTensor(batch[k].copy()).to(
-                    self._loss._policy.device
-                )
+                batch[k] = torch.FloatTensor(batch[k].copy()).to(policy.device)
                 batch[k] = batch[k].reshape([batch_size, -1])
 
             data_generator_fn = functools.partial(
-                simple_data_generator, batch, num_mini_batch, self._loss._policy.device
+                simple_data_generator, batch, num_mini_batch, policy.device
             )
 
         for i_epoch in range(ppo_epoch):

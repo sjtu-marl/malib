@@ -1,6 +1,6 @@
 # battle: https://github.com/wsjeon/maddpg-rllib
 group: "Football"
-name: "5_vs_5_rnn/exp"
+name: "5_vs_5_rnn/vtrace"
 
 worker_config:
   worker_num: 1
@@ -9,8 +9,8 @@ training:
   interface:
     type: "independent"
     population_size: -1
-    worker_config:
-      num_gpus: 1.0
+    # worker_config:
+      # num_gpus: 1.0
   config:
     # control the frequency of remote parameter update
     update_interval: 1
@@ -34,10 +34,12 @@ rollout:
   num_env_per_worker: 1
   use_remote_env: False
   terminate: "any"
+  batch_mode: episode # episode or time_step
+  postprocessor_type: value
 
 evaluation:
   # max_episode_length: -1
-  num_episodes: 10
+  num_episodes: 1
 
 
 
@@ -66,18 +68,22 @@ algorithms:
       actor:
         network: mlp
         layers:
-          - units: 128
+          - units: 256
             activation: ReLU
           - units: 128
+            activation: ReLU
+          - units: 64
             activation: ReLU
         output:
           activation: False
       critic:
         network: mlp
         layers:
-          - units: 128
+          - units: 256
             activation: ReLU
           - units: 128
+            activation: ReLU
+          - units: 64
             activation: ReLU
         output:
           activation: False
@@ -85,13 +91,20 @@ algorithms:
     # set hyper parameter
     custom_config:
       gamma: 0.99
-      gae_lambda: 0.95
       use_cuda: False  # enable cuda or not
       use_q_head: False
       ppo_epoch: 4
       num_mini_batch: 1  # the number of mini-batches
       
-      use_rnn: True
+      return_mode: gae
+      gae:
+        gae_lambda: 0.95
+      vtrace:
+        clip_rho_threshold: 1.0
+        clip_pg_rho_threshold: 1.0
+
+
+      use_rnn: False
       # this is not used, instead it is fixed to last hidden in actor/critic
       rnn_layer_num: 1
       rnn_data_chunk_length: 16

@@ -81,25 +81,23 @@ class MAPPOLoss(LossFunc):
             critic_rnn_states_batch,
             dones_batch,
         ) = (
-            sample["share_obs"],
+            sample[EpisodeKey.CUR_STATE],
             sample[EpisodeKey.CUR_OBS],
             sample[EpisodeKey.ACTION].long(),
-            sample["value"],
+            sample[EpisodeKey.STATE_VALUE],
             sample["return"],
             None,  # cast(sample["active_mask"]),
             sample[EpisodeKey.ACTION_DIST],
-            sample["available_action"],
-            sample["actor_rnn_states"],
-            sample["critic_rnn_states"],
+            sample[EpisodeKey.ACTION_MASK],
+            sample[f"{EpisodeKey.RNN_STATE}_0"],
+            sample[f"{EpisodeKey.RNN_STATE}_1"],
             sample[EpisodeKey.DONE],
         )
         # for k, v in sample.items():
         #     print(f"{k}: {v.shape}")
         #
         if self._policy.custom_config["use_popart"]:
-            adv_targ = return_batch - torch.FloatTensor(
-                self._policy.value_normalizer.denormalize(value_preds_batch)
-            ).to(return_batch.device)
+            adv_targ = (return_batch - value_preds_batch).to(return_batch.device)
         else:
             adv_targ = return_batch - value_preds_batch
         adv_targ = (adv_targ - adv_targ.mean()) / (1e-9 + adv_targ.std())

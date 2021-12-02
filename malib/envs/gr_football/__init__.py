@@ -3,7 +3,7 @@ import numpy as np
 from malib.utils.typing import Dict
 from malib.utils.preprocessor import get_preprocessor
 from malib.utils.episode import EpisodeKey
-from .env import BaseGFootBall
+from .env import BaseGFootBall, ParameterSharing
 from .wrappers import ParameterizedSharing
 
 
@@ -28,7 +28,7 @@ DEFAULT_ENV_CONNFIG = {
 
 def creator(**kwargs):
     base = BaseGFootBall(**kwargs)
-    return ParameterizedSharing(base, default_sharing_mapping)
+    return ParameterSharing(base, default_sharing_mapping)
 
 
 def env_desc_gen(config):

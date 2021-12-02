@@ -29,7 +29,7 @@ class RNNNet(nn.Module):
         fc_last_hidden = model_config["layers"][-1]["units"]
 
         act_dim = act_dim = get_preprocessor(action_space)(action_space).size
-        self.out = nn.Sequential(nn.Linear(fc_last_hidden, act_dim))
+        self.out = nn.Linear(fc_last_hidden, act_dim)
 
         use_orthogonal = initialization["use_orthogonal"]
         init_method = [nn.init.xavier_uniform_, nn.init.orthogonal_][use_orthogonal]
@@ -48,6 +48,8 @@ class RNNNet(nn.Module):
                 custom_config["rnn_layer_num"],
                 use_orthogonal,
             )
+        self.rnn_state_size = fc_last_hidden
+        self.rnn_layer_num = custom_config["rnn_layer_num"]
 
     def forward(self, obs, rnn_states, masks):
         obs = torch.as_tensor(obs, dtype=torch.float32)

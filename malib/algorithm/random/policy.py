@@ -42,8 +42,9 @@ class RandomPolicy(Policy):
     def compute_action(
         self, observation: DataTransferType, **kwargs
     ) -> Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
-        rnn_state = kwargs[EpisodeKey.RNN_STATE]
-        assert len(rnn_state) == len(observation)
+        actor_rnn_state, critic_rnn_state = kwargs[EpisodeKey.RNN_STATE]
+        assert len(actor_rnn_state) == len(critic_rnn_state) == len(observation)
+
         logits = torch.softmax(self.actor(observation), dim=-1)
         action_prob = torch.zeros((len(observation), self.action_space.n))
         if "legal_moves" in kwargs:
@@ -54,13 +55,18 @@ class RandomPolicy(Policy):
         else:
             mask = torch.ones_like(logits)
         logits = mask * logits
-        action = logits.argmax(dim=-1).view((-1, 1)).squeeze(-1).numpy()
-        return action, action_prob.numpy(), rnn_state
+        action = logits.argmax(dim=-1).numpy()
+        return action, action_prob.numpy(), (actor_rnn_state, critic_rnn_state)
 
     def get_initial_state(self, batch_size: int = None) -> List[DataTransferType]:
+        if batch_size is None:
+            shape = ()
+        else:
+            shape = (batch_size,)
+        shape += (1,)
         return [
             # represent general actor and critic rnn states
-            np.zeros(2)
+            np.zeros(shape)
             for _ in range(2)
         ]
 
