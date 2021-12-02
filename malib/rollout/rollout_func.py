@@ -16,6 +16,7 @@ you wanna save by specifying extra columns when Episode initialization.
 """
 
 import collections
+from typing import Iterator
 import ray
 import numpy as np
 
@@ -157,8 +158,9 @@ def _do_policy_eval(
 
 def _process_policy_outputs(
     env_ids: List[EnvID],
-    policy_outputs: Dict[str, Dict[AgentID, DataTransferType]],
-    env: Environment,
+    # policy_outputs: Dict[str, Dict[AgentID, DataTransferType]],
+    policy_outputs: Dict[str, Dict[AgentID, Iterator]],
+    env: VectorEnv,
 ) -> Dict[EnvID, Dict[AgentID, Any]]:
     """Proceses the policy returns. Here we convert the policy return to legal environment step inputs."""
 
@@ -169,14 +171,25 @@ def _process_policy_outputs(
     )
 
     detached_policy_outputs = {}
+    # sequential rollout environments may
     for i, env_id in enumerate(env_ids):
+        active_env = env.active_envs[env_id]
         detached = collections.defaultdict(lambda: collections.defaultdict())
-        for k, agent_v in policy_outputs.items():
-            for aid, _v in agent_v.items():
+        if active_env.is_sequential:
+            selected_aid = active_env.agent_selection
+            for k, agent_v in policy_outputs.items():
+                aid, _v = selected_aid, agent_v[selected_aid]
                 if k == EpisodeKey.RNN_STATE:
-                    detached[k][aid] = [__v[i] for __v in _v]
+                    detached[k][aid] = [next(__v) for __v in _v]
                 else:
-                    detached[k][aid] = _v[i]
+                    detached[k][aid] = next(_v)
+        else:
+            for k, agent_v in policy_outputs.items():
+                for aid, _v in agent_v.items():
+                    if k == EpisodeKey.RNN_STATE:
+                        detached[k][aid] = [next(__v) for __v in _v]
+                    else:
+                        detached[k][aid] = next(_v)
         detached_policy_outputs[env_id] = detached
     env_actions: Dict[EnvID, Dict[AgentID, Any]] = env.action_adapter(
         detached_policy_outputs
@@ -335,28 +348,23 @@ class Stepping:
 
         # check whether env is simultaneous
         env = env_desc["creator"](**env_desc["config"])
-        self._is_sequential = env.is_sequential
 
-        if not env.is_sequential:
-            if use_subproc_env:
-                self.env = SubprocVecEnv(
-                    env.observation_spaces,
-                    env.action_spaces,
-                    env_desc["creator"],
-                    env_desc["config"],
-                    max_num_envs=2,  # FIXME(ziyu): currently just fixed it.
-                )
-            else:
-                self.env = VectorEnv(
-                    observation_spaces=env.observation_spaces,
-                    action_spaces=env.action_spaces,
-                    creator=env_desc["creator"],
-                    configs=env_desc["config"],
-                )
-            # self._default_callback = simultaneous
+        # if not env.is_sequential:
+        if use_subproc_env:
+            self.env = SubprocVecEnv(
+                env.observation_spaces,
+                env.action_spaces,
+                env_desc["creator"],
+                env_desc["config"],
+                max_num_envs=2,  # FIXME(ziyu): currently just fixed it.
+            )
         else:
-            self.env = env
-            # self._default_callback = sequential
+            self.env = VectorEnv(
+                observation_spaces=env.observation_spaces,
+                action_spaces=env.action_spaces,
+                creator=env_desc["creator"],
+                configs=env_desc["config"],
+            )
 
         self._dataset_server = dataset_server
 

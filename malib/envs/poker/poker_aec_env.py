@@ -61,6 +61,14 @@ class PokerEnv(AECEnv):
         self._fixed_player = kwargs.get("fixed_player", False)
         self._player_map = None
 
+    def observation_space(self, agent):
+        # to avoid pettingzoo warning
+        return self.observation_spaces[agent]
+
+    def action_space(self, agent):
+        # to avoid pettingzoo warning
+        return self.action_spaces[agent]
+
     def seed(self, seed=None):
         # warning: nothing will be done since I don't know
         #  how to set the random seed in the underlying game.
@@ -177,6 +185,12 @@ class PokerParallelEnv(Environment):
         self._action_spaces = {
             aid: self.env.action_space(aid) for aid in self.env.possible_agents
         }
+        self.is_sequential = True
+        self.max_step = 2 ** 63
+
+    @property
+    def agent_selection(self):
+        return self.env.agent_selection
 
     @property
     def possible_agents(self) -> List[AgentID]:

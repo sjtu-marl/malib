@@ -3,7 +3,7 @@ Environment agent interface is designed for rollout and simulation.
 """
 
 import os
-from typing import Tuple
+from typing import Iterator, Tuple
 import gym
 import ray
 import numpy as np
@@ -219,7 +219,9 @@ class AgentInterface:
 
     def compute_action(
         self, *args, **kwargs
-    ) -> Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
+    ) -> Tuple[
+        Iterator, Iterator, List[Iterator]
+    ]:  # Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
         """Return an action by calling `compute_action` of a policy instance.
 
         :param args: list of args
@@ -242,6 +244,9 @@ class AgentInterface:
             np.stack(_v) for _v in rnn_states_list if len(_v) > 0
         ]
         rets = self.policies[policy_id].compute_action(*args, **kwargs)
+
+        # convert rets to iteratable
+        rets = (iter(rets[0]), iter(rets[1]), [iter(v) for v in rets[2]])
         return rets
 
     def get_policy(self, pid: PolicyID) -> Policy:

@@ -6,7 +6,7 @@ import os
 # from pettingzoo.classic import leduc_holdem_v2 as leduc_holdem
 # https://www.pettingzoo.ml/classic/leduc_holdem
 from malib import settings
-from malib.envs import PokerEnv
+from malib.envs import PokerParallelEnv
 from malib.runner import run
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -28,14 +28,14 @@ args = parser.parse_args()
 
 if __name__ == "__main__":
     env_description = {
-        "creator": PokerEnv,
+        "creator": PokerParallelEnv,
         "config": {
             "scenario_configs": {"fixed_player": True},
             "env_id": "leduc_poker",
         },
     }
 
-    env = PokerEnv(**env_description["config"])
+    env = PokerParallelEnv(**env_description["config"])
     possible_agents = env.possible_agents
     observation_spaces = env.observation_spaces
     action_spaces = env.action_spaces
@@ -76,7 +76,8 @@ if __name__ == "__main__":
             "metric_type": "simple",
             "fragment_length": args.fragment_length,
             "num_episodes": args.num_episode,
-            "episode_seg": args.episode_seg,
+            "num_env_per_worker": args.episode_seg,
+            "max_step": 10,
         },
         evaluation={
             "max_episode_length": 100,
