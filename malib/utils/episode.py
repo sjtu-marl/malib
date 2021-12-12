@@ -54,13 +54,6 @@ class Episode:
     ) -> Dict[str, Dict[AgentID, np.ndarray]]:
         res = defaultdict(lambda: {})
 
-        # check whether keys are enough
-        # keys = list(self.agent_entry.keys())
-        # for k in [EpisodeKey.CUR_OBS, EpisodeKey.DONE, EpisodeKey.ACTION, EpisodeKey.ACTION_DIST, EpisodeKey.ACTION_MASK, EpisodeKey.REWARD]:
-        #     assert k in keys, (k, keys)
-        #     # check agent
-        #     for aid, v in self.agent_entry[k].items():
-        #         assert len(v) > 0, (aid, k, v, self.agent_entry[k])
         for ek, agent_v in self.agent_entry.items():
             _filter = filter or list(agent_v.keys())
             for agent_id in _filter:

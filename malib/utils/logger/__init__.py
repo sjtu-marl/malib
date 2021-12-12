@@ -298,7 +298,7 @@ def start(group: str, name: str, host="localhost", port=12333) -> Dict[str, Any]
     # create a logger instance to test
     _wait_for_ready_start_time = time.time()
 
-    general_expr_cfg = {"expr_group": group, "expr_name": name}
+    general_expr_cfg = {"expr_group": group, "expr_name": name, "port": endpoint}
 
     while True:
         try:

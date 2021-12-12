@@ -245,6 +245,7 @@ class AgentInterface:
         kwargs[EpisodeKey.RNN_STATE] = [
             np.stack(_v) for _v in rnn_states_list if len(_v) > 0
         ]
+        # XXX(ming): how about EpisodeKey.RNN_MASK ?
         rets = self.policies[policy_id].compute_action(*args, **kwargs)
 
         # convert rets to iteratable

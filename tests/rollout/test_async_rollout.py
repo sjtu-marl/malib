@@ -77,4 +77,4 @@ class TestRollout:
             callback=None,
             buffer_desc=None,
         )
-        print("task_type: {}\eval_info: {}".format(task_type, rollout_results))
+        print("task_type: {}\neval_info: {}".format(task_type, rollout_results))

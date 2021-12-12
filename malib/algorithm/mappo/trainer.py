@@ -68,23 +68,6 @@ class MAPPOTrainer(Trainer):
                 for k, v in tmp_opt_result.items():
                     total_opt_result[k] += v / num_updates
 
-        # TODO(ziyu & ming): find a way for customize optimizer and scheduler
-        #  but now it doesn't affect the performance ...
-        #
-        # epoch = kwargs["epoch"]
-        # total_epoch = kwargs["total_epoch"]
-        # update_linear_schedule(
-        #     self.loss.optimizers["critic"],
-        #     epoch,
-        #     total_epoch,
-        #     self.loss._params["critic_lr"],
-        # )
-        # update_linear_schedule(
-        #     self.loss.optimizers["actor"],
-        #     epoch,
-        #     total_epoch,
-        #     self.loss._params["actor_lr"],
-        # )
         return total_opt_result
 
     def preprocess(self, batch, **kwargs):
