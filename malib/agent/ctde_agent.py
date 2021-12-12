@@ -12,7 +12,6 @@ Example:
     >>> learner = CTDEAgent("agent_0", ..., algorithm_candidates)
 """
 
-import copy
 import gym
 
 from malib.utils.typing import (
@@ -50,6 +49,7 @@ class CTDEAgent(AgentInterface):
         use_init_policy_pool: bool,
         population_size: int = -1,
         algorithm_mapping: Callable = None,
+        local_buffer_config: Dict = None,
     ):
         """Create a centralized agent interface instance.
 
@@ -81,6 +81,7 @@ class CTDEAgent(AgentInterface):
             use_init_policy_pool=use_init_policy_pool,
             population_size=population_size,
             algorithm_mapping=algorithm_mapping,
+            local_buffer_config=local_buffer_config,
         )
 
     def gen_buffer_description(

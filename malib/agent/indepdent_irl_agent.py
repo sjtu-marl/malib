@@ -34,6 +34,7 @@ class IndependentIRLAgent(AgentInterface):
         exp_cfg: Dict[str, Any],
         population_size: int = -1,
         algorithm_mapping: Callable = None,
+        local_buffer_config: Dict = None,
     ):
         """Create an independent agent instance work in asynchronous mode.
 
@@ -64,6 +65,7 @@ class IndependentIRLAgent(AgentInterface):
             exp_cfg,
             population_size,
             algorithm_mapping,
+            local_buffer_config,
         )
 
         self._rewards = {}

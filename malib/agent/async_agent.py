@@ -39,6 +39,7 @@ class AsyncAgent(IndependentAgent):
         exp_cfg: Dict[str, Any],
         population_size: int,
         algorithm_mapping: Callable = None,
+        local_buffer_config: Dict = None,
     ):
         """Create an independent agent instance works in async mode.
 
@@ -72,6 +73,7 @@ class AsyncAgent(IndependentAgent):
             exp_cfg=exp_cfg,
             population_size=population_size,
             algorithm_mapping=algorithm_mapping,
+            local_buffer_config=local_buffer_config,
         )
 
         self._cumulative_grads: Dict[PolicyID, List[Dict]] = defaultdict(lambda: [])

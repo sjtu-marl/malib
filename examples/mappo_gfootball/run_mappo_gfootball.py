@@ -6,12 +6,7 @@ import yaml
 
 from malib.utils.logger import Logger
 from malib.runner import run
-from malib.envs.gr_football import (
-    ParameterizedSharing,
-    BaseGFootBall,
-    DEFAULT_ENV_CONNFIG,
-    env_desc_gen,
-)
+from malib.envs.gr_football import env_desc_gen
 import pathlib
 
 BASE_DIR = pathlib.Path(__file__).parent.parent.parent.absolute()
@@ -47,7 +42,7 @@ if __name__ == "__main__":
     ]
 
     evaluation_config = config["evaluation"]
-    env_desc = env_desc_gen(DEFAULT_ENV_CONNFIG)
+    env_desc = env_desc_gen(config["env_description"]["config"])
 
     training_config["interface"]["observation_spaces"] = env_desc["observation_spaces"]
     training_config["interface"]["action_spaces"] = env_desc["action_spaces"]
@@ -74,8 +69,6 @@ if __name__ == "__main__":
         global_evaluator=config["global_evaluator"],
         dataset_config=config.get("dataset_config", {}),
         parameter_server=config.get("parameter_server", {}),
-        # "nash", "fictitious_self_play"
-        # solver="nash",
         worker_config=config["worker_config"],
         use_init_policy_pool=False,
         task_mode="marl",

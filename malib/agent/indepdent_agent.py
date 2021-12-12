@@ -33,6 +33,7 @@ class IndependentAgent(AgentInterface):
         use_init_policy_pool: bool,
         population_size: int = -1,
         algorithm_mapping: Callable = None,
+        local_buffer_config: Dict = None,
     ):
         """Create an independent agent instance work in asynchronous mode.
 
@@ -64,6 +65,7 @@ class IndependentAgent(AgentInterface):
             population_size,
             use_init_policy_pool,
             algorithm_mapping,
+            local_buffer_config,
         )
 
     def optimize(

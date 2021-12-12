@@ -1,4 +1,3 @@
-# battle: https://github.com/wsjeon/maddpg-rllib
 group: "Football"
 name: "5_vs_5_rnn/vtrace"
 
@@ -9,13 +8,12 @@ training:
   interface:
     type: "independent"
     population_size: -1
-    # worker_config:
-      # num_gpus: 1.0
+    local_buffer_config:
+      size: 100
   config:
-    # control the frequency of remote parameter update
     update_interval: 1
-    saving_interval: 100 # the sequence of dump model's weight
-    batch_size: 64 # how many data sample from DatasetServer per time.
+    saving_interval: 100
+    batch_size: 64
     optimizer: "Adam"
     actor_lr: 5.e-4
     critic_lr: 5.e-4
@@ -24,12 +22,12 @@ training:
 
 
 rollout:
-  type: "independent" # FIXME(ziyu): original is "sync" # TODO(ming): update sync agent, rollout
+  type: "independent"
   stopper: "simple_rollout"
   stopper_config:
     max_step: 1000
   metric_type: "grf"
-  fragment_length: 3001  # XXX(ziyu): fragment length meaning should be changed 
+  fragment_length: 3001
   num_episodes: 1
   num_env_per_worker: 1
   use_remote_env: False
@@ -47,7 +45,7 @@ env_description:
   config:
     env_id: PSGFootball
     use_built_in_GK: True
-    scenario_config:
+    scenario_configs:
       env_name: "5_vs_5"
       number_of_left_players_agent_controls: 4
       number_of_right_players_agent_controls: 0

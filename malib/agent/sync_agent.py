@@ -41,6 +41,7 @@ class SyncAgent(IndependentAgent):
         population_size,
         use_init_policy_pool: bool,
         algorithm_mapping: Callable = None,
+        local_buffer_config: Dict = None,
     ):
         """Create an independent agent instance work in synchronous mode.
 
@@ -72,6 +73,7 @@ class SyncAgent(IndependentAgent):
             population_size,
             use_init_policy_pool,
             algorithm_mapping,
+            local_buffer_config,
         )
 
     def gen_buffer_description(

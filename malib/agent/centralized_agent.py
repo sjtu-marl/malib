@@ -42,6 +42,7 @@ class CentralizedAgent(CTDEAgent):
         use_init_policy_pool: bool,
         population_size: int = -1,
         algorithm_mapping: Callable = None,
+        local_buffer_config: Dict = None,
     ):
         assert "teams" in env_desc, (
             "Env description should specify the teams: %s" % env_desc
@@ -59,6 +60,7 @@ class CentralizedAgent(CTDEAgent):
             use_init_policy_pool=use_init_policy_pool,
             population_size=population_size,
             algorithm_mapping=algorithm_mapping,
+            local_buffer_config=local_buffer_config,
         )
 
         self._teams = deepcopy(env_desc["teams"])
