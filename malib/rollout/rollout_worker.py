@@ -71,7 +71,7 @@ class RolloutWorker(BaseRolloutWorker):
                     self._offline_dataset,
                     use_subproc_env=kwargs["use_subproc_env"],
                     batch_mode=kwargs["batch_mode"],
-                    postprocessor_type=kwargs["postprocessor_type"],
+                    postprocessor_types=kwargs["postprocessor_types"],
                 )
                 for _ in range(self._parallel_num)
             ]
@@ -83,7 +83,7 @@ class RolloutWorker(BaseRolloutWorker):
                         None,
                         use_subproc_env=kwargs["use_subproc_env"],
                         batch_mode=kwargs["batch_mode"],
-                        postprocessor_type=kwargs["postprocessor_type"],
+                        postprocessor_types=kwargs["postprocessor_types"],
                     )
                     for _ in range(self._evaluation_worker_num)
                 ]
@@ -108,7 +108,7 @@ class RolloutWorker(BaseRolloutWorker):
                     self._offline_dataset,
                     use_subproc_env=self._kwargs["use_subproc_env"],
                     batch_mode=self._kwargs["batch_mode"],
-                    postprocessor_type=self._kwargs["postprocessor_type"],
+                    postprocessor_types=self._kwargs["postprocessor_types"],
                 )
                 for _ in range(self._parallel_num)
             ]
@@ -120,7 +120,7 @@ class RolloutWorker(BaseRolloutWorker):
                         None,
                         use_subproc_env=self._kwargs["use_subproc_env"],
                         batch_mode=self._kwargs["batch_mode"],
-                        postprocessor_type=self._kwargs["postprocessor_type"],
+                        postprocessor_types=self._kwargs["postprocessor_types"],
                     )
                     for _ in self._evaluation_worker_num
                 ]

@@ -78,7 +78,7 @@ if __name__ == "__main__":
             "num_episodes": args.num_episode,
             "num_env_per_worker": args.episode_seg,
             "max_step": 10,
-        },
+            "postprocessor_types": ["copy_next_frame"],        },
         evaluation={
             "max_episode_length": 100,
             "num_episode": args.num_simulation,

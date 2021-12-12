@@ -34,6 +34,7 @@ from malib.utils.typing import (
     DataTransferType,
     EnvID,
     Callable,
+    Union,
 )
 from malib.utils.logger import Log
 from malib.utils.episode import Episode, NewEpisodeDict, EpisodeKey
@@ -73,7 +74,7 @@ def _process_environment_returns(
                     aid: agent_interfaces[aid].transform_observation(
                         observation=obs, state=None
                     )["obs"]
-                    for aid, obs in ret.items()  # agent_interfaces.items()
+                    for aid, obs in ret.items()
                 }
                 if k == EpisodeKey.NEXT_OBS:
                     if EpisodeKey.CUR_OBS not in filtered_env_output:
@@ -141,6 +142,8 @@ def _do_policy_eval(
                 last_done = env_episode[EpisodeKey.DONE][agent_id][-1]
             last_rnn_state = env_episode[EpisodeKey.RNN_STATE][agent_id][-1]
             agent_wise_inputs[agent_id][EpisodeKey.RNN_STATE].append(last_rnn_state)
+            # rnn mask dependences on done or not
+            agent_wise_inputs[agent_id][EpisodeKey.DONE].append(last_done)
 
         for k, agent_v in policy_inputs[env_id].items():
             for agent_id, v in agent_v.items():
@@ -301,12 +304,10 @@ def env_runner(
         }
         batch_mode = runtime_config["batch_mode"]
         trainable_agents = list(runtime_config["trainable_mapping"].keys())
-        episodes: List[Dict[str, Dict[AgentID, np.ndarray]]] = get_postprocessor(
-            runtime_config["postprocessor_type"]
-        )(
-            list(episodes.to_numpy(batch_mode, filter=trainable_agents).values()),
-            policies,
-        )
+
+        episodes = list(episodes.to_numpy(batch_mode, filter=trainable_agents).values())
+        for handler in get_postprocessor(runtime_config["postprocessor_types"]):
+            episodes = handler(episodes, policies)
 
         buffer_desc.batch_size = (
             env.batched_step_cnt if batch_mode == "time_step" else len(episodes)
@@ -340,13 +341,13 @@ class Stepping:
         dataset_server=None,
         use_subproc_env: bool = False,
         batch_mode: str = "time_step",
-        postprocessor_type: str = "default",
+        postprocessor_types: List[Union[str, Callable]] = ["default"],
     ):
 
         # init environment here
         self.env_desc = env_desc
         self.batch_mode = batch_mode
-        self.postprocessor_type = postprocessor_type
+        self.postprocessor_types = postprocessor_types
 
         # check whether env is simultaneous
         env = env_desc["creator"](**env_desc["config"])
@@ -449,7 +450,7 @@ class Stepping:
                 "trainable_mapping": desc["behavior_policies"]
                 if task_type == "rollout"
                 else None,
-                "postprocessor_type": self.postprocessor_type,
+                "postprocessor_types": self.postprocessor_types,
             },
             dataset_server=self._dataset_server if task_type == "rollout" else None,
         )
