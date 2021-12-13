@@ -120,12 +120,12 @@ def compute_value(
 
 # XXX(ming): require test
 def copy_next_frame(
-    episodes: List[Dict[str, Dict[AgentID, np.ndarray]]],
+    episodes: List[Dict[AgentID, Dict[str, np.ndarray]]],
     policy_dict: Dict[AgentID, Policy],
 ):
     for episode in episodes:
-        for aid in policy_dict:
-            agent_episode = episode[aid]
+        for aid, agent_episode in episode.items():
+            assert EpisodeKey.CUR_OBS in agent_episode, (aid, episode)
             agent_episode[EpisodeKey.NEXT_OBS] = agent_episode[
                 EpisodeKey.CUR_OBS
             ].copy()

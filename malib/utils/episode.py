@@ -69,13 +69,13 @@ class Episode:
                     )
                 else:
                     if len(v) == 0:
-                        continue
+                        return {}
                     tmp = np.asarray(v, dtype=np.float32)
                     if batch_mode == "episode":
                         res[agent_id][ek] = np.expand_dims(tmp, axis=0)
                     else:
                         res[agent_id][ek] = tmp
-        return res
+        return dict(res)
 
 
 class NewEpisodeDict(defaultdict):
@@ -90,6 +90,7 @@ class NewEpisodeDict(defaultdict):
         self, policy_outputs, env_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]
     ):
         for env_id, policy_output in policy_outputs.items():
+            assert EpisodeKey.CUR_OBS in env_outputs[env_id]
             for k, v in env_outputs[env_id].items():
                 if k == "infos":
                     continue
@@ -105,5 +106,15 @@ class NewEpisodeDict(defaultdict):
     def to_numpy(
         self, batch_mode: str = "time_step", filter: List[AgentID] = None
     ) -> Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]:
-        res = {k: v.to_numpy(batch_mode, filter) for k, v in self.items()}
+        res = {}
+        for k, v in self.items():
+            tmp = v.to_numpy(batch_mode, filter)
+            if len(tmp) == 0:
+                continue
+            res[k] = tmp
+        a = len(res)
+        b = len(self.items())
+        Logger.debug(
+            "{} valid episode out of {} episodes (%{})".format(a, b, a / b * 100.0)
+        )
         return res

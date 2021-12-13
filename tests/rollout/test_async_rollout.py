@@ -3,7 +3,12 @@ import pytest
 
 from malib.envs import Environment
 from tests.env_api.utils import build_dummy_agent_interfaces
-from malib.rollout.rollout_func import Stepping
+from malib.rollout.rollout_func import (
+    Stepping,
+    _process_policy_outputs,
+    _process_environment_returns,
+    _do_policy_eval,
+)
 
 
 @pytest.mark.parametrize(
@@ -60,6 +65,10 @@ class TestRollout:
         self.env_desc = env_desc
         self.agent_interfaces = agent_interfaces
         self.use_subproc_env = use_subproc_env
+
+    def test_process_env_return(self):
+        pass
+        # _process_environment_returns()
 
     def test_stepping(self):
         stepping = Stepping({}, self.env_desc, use_subproc_env=self.use_subproc_env)

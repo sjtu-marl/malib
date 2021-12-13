@@ -146,6 +146,8 @@ class AgentInterface(metaclass=ABCMeta):
             mode="local",
         )
 
+        self._print_every = 100
+
     def get_policies(self) -> Dict[PolicyID, Policy]:
         """Get a dict of policies.
 
@@ -381,7 +383,12 @@ class AgentInterface(metaclass=ABCMeta):
                     buffer_desc.indices = None
                     break
         res = self.local_buffer.sample(size=buffer_desc.batch_size)
-        Logger.debug("Trainer got {} data".format(buffer_desc.batch_size))
+        if (self._global_step + 1) % self._print_every == 0:
+            Logger.debug(
+                "iteration: {} Trainer got {} data".format(
+                    self._global_step, buffer_desc.batch_size
+                )
+            )
         return res, size
 
     def gen_buffer_description(
