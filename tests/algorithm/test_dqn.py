@@ -1,12 +1,15 @@
 from typing import Dict
 from gym.spaces import space
 from malib.algorithm import dqn
-from malib.algorithm.tests.test_dqn import custom_config
+from malib.algorithm.dqn.loss import DQNLoss
+from malib.utils.episode import EpisodeKey
 from tests.algorithm import AlgorithmTestMixin
 from gym import spaces
 import numpy as np
-from malib.algorithm.dqn import CONFIG, DQN
+from malib.algorithm.dqn import CONFIG, DQN, DQNTrainer
 
+
+trainer_config = CONFIG['training']
 custom_config = CONFIG['policy']
 
 model_config = {
@@ -30,8 +33,24 @@ class TestDQN(AlgorithmTestMixin):
             custom_config=custom_config
         )
 
+    def make_trainer_and_config(self):
+        return DQNTrainer('test_trainer'), trainer_config
+
+    def make_loss(self):
+        return DQNLoss()
+
     def build_env_inputs(self) -> Dict:
         return {
-            'observation': np.zeros((1,)+ test_obs_shape),
-            'rnn_state': []
+            EpisodeKey.CUR_OBS: np.zeros((1,)+ test_obs_shape),
+            EpisodeKey.RNN_STATE: []
+        }
+
+    def build_train_inputs(self) -> Dict:
+        batch_size = 32
+        return {
+            EpisodeKey.CUR_OBS: np.zeros((batch_size,) + test_obs_shape),
+            EpisodeKey.NEXT_OBS: np.zeros((batch_size,) + test_obs_shape),
+            EpisodeKey.ACTION: np.zeros((batch_size, 1)),
+            EpisodeKey.DONE: np.zeros((batch_size, 1)),
+            EpisodeKey.REWARD: np.zeros((batch_size, 1))
         }

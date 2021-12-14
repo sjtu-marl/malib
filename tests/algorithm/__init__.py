@@ -15,18 +15,41 @@ class AlgorithmTestMixin:
     def setUp(self):
         """Set up configs for build algorithms, environments to be tested on."""
         self._algorithm_to_test = self.make_algorithm()
+        self._trainer_to_test, self._trainer_config = self.make_trainer_and_config()
+        self._loss_to_test = self.make_loss()
+        self._trainer_config.update({'optimizer': 'Adam', 'lr': 1e-3})
 
     def make_algorithm(self, *args):
-        """Build the instance of algorithm to be tested."""
+        """Build instance of algorithm to be tested."""
+        raise NotImplementedError
+
+    def make_trainer_and_config(self):
+        """Build instance of loss"""
+        raise NotImplementedError
+
+    def make_loss(self):
+        """Build instance of loss"""
         raise NotImplementedError
 
     def build_env_inputs(self) -> Dict:
         """Build dummy inputs for compute_action"""
         raise NotImplementedError
 
+    def build_train_inputs(self) -> Dict:
+        "Build dummy inputs for loss"
+        raise NotImplementedError
+
     @property
     def algorithm(self) -> policy.Policy:
         return self._algorithm_to_test
+
+    @property
+    def loss(self) -> loss_func.LossFunc:
+        return self._loss_to_test
+
+    @property
+    def trainer(self) -> trainer.Trainer:
+        return self._trainer_to_test
 
     def assertRNNStates(self, states):
         if states:
@@ -79,3 +102,18 @@ class AlgorithmTestMixin:
             "custom_config",
         ]:
             assert k in desc
+
+    def test_trainer_optimize(self):
+        self.trainer._loss = self.loss
+        self.trainer.reset(self.algorithm, self._trainer_config)
+
+        result_log = self.trainer.optimize(self.build_train_inputs())
+
+    def test_trainer_reset(self):
+        self.trainer.reset(self.algorithm, self._trainer_config)
+
+    def test_trainer_preprocess(self):
+        self.trainer.preprocess(self.build_train_inputs())
+
+    def test_loss_reset(self):
+        self.loss.reset(self.algorithm, self._trainer_config)

@@ -90,7 +90,7 @@ def recurrent_generator(data, num_mini_batch, rnn_data_chunk_length, device):
         if isinstance(batch[k], np.ndarray):
             batch[k] = torch.FloatTensor(batch[k])  # .to(device)
             # FIXME（ziyu): the put on GPU operation here should be considered in detail
-        if k not in ["actor_rnn_states", "critic_rnn_states"]:
+        if k not in ["rnn_state_0", "rnn_state_1"]:
             batch[k] = _cast(batch[k])
         else:
             batch[k] = batch[k].permute(1, 2, 0, 3, 4).reshape(-1, *batch[k].shape[3:])
