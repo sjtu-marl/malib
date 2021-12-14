@@ -5,8 +5,8 @@ Implementation of basic PyTorch-based policy class
 import gym
 
 from abc import ABCMeta, abstractmethod
-from torch._C import device
 
+import torch
 import torch.nn as nn
 
 from malib.utils import errors
@@ -80,7 +80,7 @@ class Policy(metaclass=ABCMeta):
         self.registered_name = registered_name
         self.observation_space = observation_space
         self.action_space = action_space
-        self.device = device
+        self.device = torch.device('cpu')
 
         self.custom_config = {
             "gamma": 0.99,
@@ -216,6 +216,7 @@ class Policy(metaclass=ABCMeta):
         for k, v in state_dict.items():
             self._state_handler_dict[k].load_state_dict(v)
 
+    # XXX(ziyu): Add tests for it.
     def set_weights(self, parameters: Dict[str, Any]):
         """Set parameter weights.
 
