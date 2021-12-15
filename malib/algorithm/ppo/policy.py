@@ -81,7 +81,7 @@ class PPO(Policy):
                 pi = torch.cat(logits, dim=-1)
                 actions = m.sample().detach()
         # print(f"------ action: {pi.argmax(-1).numpy()} {pi.numpy()}")
-        return actions.numpy(), pi.numpy(), {EpisodeKey.ACTION_DIST: pi.numpy()}
+        return actions.numpy(), pi.numpy(), kwargs[EpisodeKey.RNN_STATE],
 
     def compute_actions(self, observation, **kwargs):
         logits = self.actor(observation)
@@ -94,14 +94,13 @@ class PPO(Policy):
 
     def compute_advantage(self, batch):
         # td_value - value
-        next_value = self.critic(batch[EpisodeKey.NEXT_OBS].copy())
+        cast = lambda x: torch.from_numpy(x.copy()) if isinstance(x, np.ndarray) else x
+        next_value = self.critic(cast(batch[EpisodeKey.NEXT_OBS]))
         td_value = (
-            torch.from_numpy(batch[EpisodeKey.REWARD].copy())
-            + self.gamma
-            * (1.0 - torch.from_numpy(batch[EpisodeKey.DONE].copy()).float())
-            * next_value
+            cast(batch[EpisodeKey.REWARD])
+            + self.gamma * (1.0 - cast(batch[EpisodeKey.DONE]).float()) * next_value
         )
-        value = self.critic(batch[EpisodeKey.CUR_OBS].copy())
+        value = self.critic(cast(batch[EpisodeKey.CUR_OBS]))
         adv = td_value - value
         return adv
 

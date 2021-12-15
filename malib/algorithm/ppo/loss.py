@@ -57,9 +57,9 @@ class PPOLoss(LossFunc):
 
         rewards = batch[EpisodeKey.REWARD]
         if self.policy._discrete_action:
-            actions = batch[EpisodeKey.ACTION].reshape(-1)
+            actions = batch[EpisodeKey.ACTION].reshape(-1).long()
         else:
-            actions = batch[EpisodeKey.ACTION]
+            actions = batch[EpisodeKey.ACTION].long()
 
         cur_obs = batch[EpisodeKey.CUR_OBS]
         next_obs = batch[EpisodeKey.NEXT_OBS]

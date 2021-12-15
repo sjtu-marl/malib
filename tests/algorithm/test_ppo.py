@@ -1,15 +1,19 @@
 from typing import Dict
+from malib.algorithm.ppo import CONFIG, PPO, PPOLoss, PPOTrainer
 from malib.utils.episode import EpisodeKey
 from tests.algorithm import AlgorithmTestMixin
 from gym import spaces
 import numpy as np
-from malib.algorithm.dqn import CONFIG, DQN, DQNTrainer, DQNLoss
-
 
 trainer_config = CONFIG['training']
 custom_config = CONFIG['policy']
 
 model_config = {
+    'actor': {
+        'network': 'mlp',
+        'layers': [{'units': 64, 'activation': 'ReLU'}],
+        'output': {'activation': False},
+    },
     'critic': {
         'network': 'mlp',
         'layers': [{'units': 64, 'activation': 'ReLU'}],
@@ -17,13 +21,15 @@ model_config = {
     }
 }
 
+
+
 test_obs_shape = (3,)
 test_action_dim = 2
 
-class TestDQN(AlgorithmTestMixin):
+class TestPPO(AlgorithmTestMixin):
     def make_algorithm(self, *args):
-        return DQN(
-            registered_name='DQN',
+        return PPO(
+            registered_name='PPO',
             observation_space=spaces.Box(low=0, high=1, shape=test_obs_shape),
             action_space=spaces.Discrete(n=test_action_dim),
             model_config=model_config,
@@ -31,10 +37,10 @@ class TestDQN(AlgorithmTestMixin):
         )
 
     def make_trainer_and_config(self):
-        return DQNTrainer('test_trainer'), trainer_config
+        return PPOTrainer('test_trainer'), trainer_config
 
     def make_loss(self):
-        return DQNLoss()
+        return PPOLoss()
 
     def build_env_inputs(self) -> Dict:
         return {
@@ -48,6 +54,7 @@ class TestDQN(AlgorithmTestMixin):
             EpisodeKey.CUR_OBS: np.zeros((batch_size,) + test_obs_shape),
             EpisodeKey.NEXT_OBS: np.zeros((batch_size,) + test_obs_shape),
             EpisodeKey.ACTION: np.zeros((batch_size, 1)),
+            EpisodeKey.ACTION_DIST: np.ones((batch_size, test_action_dim)) / test_action_dim,
             EpisodeKey.DONE: np.zeros((batch_size, 1)),
             EpisodeKey.REWARD: np.zeros((batch_size, 1))
         }

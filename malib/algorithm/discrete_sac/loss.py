@@ -77,7 +77,7 @@ class DiscreteSACLoss(LossFunc):
 
         # total loss = policy_gradient_loss - entropy * entropy_coefficient + value_coefficient * value_loss
         rewards = batch[EpisodeKey.REWARD]
-        actions = batch[EpisodeKey.ACTION]
+        actions = batch[EpisodeKey.ACTION].long()
         cur_obs = batch[EpisodeKey.CUR_OBS]
         next_obs = batch[EpisodeKey.NEXT_OBS]
         dones = batch[EpisodeKey.DONE]
