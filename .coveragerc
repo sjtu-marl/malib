@@ -1,0 +1,15 @@
+[run]
+branch = False
+omit = 
+	*/__init__.py
+	malib/envs/smarts/*
+	# ignore base agent interface
+	malib/agent/agent_interface.py
+
+[report]
+skip_empty = True
+omit =
+	malib/envs/smarts/*
+
+[html]
+directory = cov_html

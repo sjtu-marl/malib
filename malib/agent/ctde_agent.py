@@ -27,7 +27,6 @@ from malib.utils.typing import (
 from malib.agent.agent_interface import AgentInterface
 from malib.algorithm.common.policy import Policy
 from malib.algorithm import get_algorithm_space
-from malib.utils import metrics
 
 
 class CTDEAgent(AgentInterface):

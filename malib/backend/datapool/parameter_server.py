@@ -98,6 +98,17 @@ class Table:
         self.gradients = []
         self._threading_lock = threading.Lock()
 
+    def __setstate__(self, v):
+        self.__dict__ = v
+
+    def __getstate__(self):
+        res = {}
+        for k, v in self.__dict__.items():
+            if k == "_threading_lock":
+                continue
+            res[k] = v
+        return res
+
     @staticmethod
     def parameter_hash_key(parameter_desc: ParameterDescription) -> str:
         """Generate a hash key.
@@ -335,12 +346,12 @@ class ParameterServer:
 
     def dump(self, file_path=None):
         """Export parameters to local storage"""
-        # (hanjing): The original implementation directly serialize the table,
-        # however, which contains a threading lock that can not be serialized.
-        # Now reorganize the table when dumping, each table is dumped as a separated
-        # file. Note that consider possible changes in the  parallel num, we will trust
-        # the parallel num recovered from the serialized files. Hence it will be checked and
-        # modified during each pull request if there is a conflict with parameter_desc.parallel_num
+        # XXX(hanjing): The original implementation directly serialize the table,
+        #   however, which contains a threading lock that can not be serialized.
+        #   Now reorganize the table when dumping, each table is dumped as a separated
+        #   file. Note that consider possible changes in the  parallel num, we will trust
+        #   the parallel num recovered from the serialized files. Hence it will be checked and
+        #   modified during each pull request if there is a conflict with parameter_desc.parallel_num
         with self._threading_lock:
             file_path = file_path or settings.PARAM_DIR
 

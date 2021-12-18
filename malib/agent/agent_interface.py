@@ -432,6 +432,7 @@ class AgentInterface(metaclass=ABCMeta):
         # retrieve policy ids required to training
 
         batch_size = training_config.get("batch_size", 64)
+        # XXX(ming): sample mode seems useless?
         sample_mode = training_task.mode
 
         buffer_desc = self.gen_buffer_description(
@@ -705,8 +706,6 @@ class AgentInterface(metaclass=ABCMeta):
         :param trainable: bool, tag added policy is trainable or not
         :return: a tuple of policy id and policy
         """
-
-        pass
 
     @abstractmethod
     def save(self, model_dir: str) -> None:
