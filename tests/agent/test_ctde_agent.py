@@ -1,7 +1,12 @@
 import pytest
+import ray
+from ray.worker import time_string
 
+from malib import settings
+from malib.agent.agent_interface import AgentTaggedFeedback
 from malib.agent.ctde_agent import CTDEAgent
-from malib.utils.typing import BufferDescription
+from malib.algorithm.ddpg import CONFIG
+from malib.utils.typing import BufferDescription, ParameterDescription
 
 from tests.dataset import FakeDataServer
 from tests.coordinator import FakeCoordinator
@@ -11,26 +16,40 @@ from . import AgentTestMixin
 
 
 @pytest.mark.parametrize(
-    "agent_cls,env_desc,algorithm_candidates,training_agent_mapping,observation_spaces,action_spaces,exp_cfg,use_init_policy_pool,population_size,algorithm_mapping,local_buffer_config",
+    "agent_cls,yaml_path",
     [
-        (CTDEAgent, ...),
+        (CTDEAgent, "examples/configs/mpe/maddpg_simple_spread.yaml"),
     ],
 )
 class TestCTDE(AgentTestMixin):
     def init_coordinator(self):
-        return FakeCoordinator.remote()
+        return FakeCoordinator.options(name=settings.COORDINATOR_SERVER_ACTOR).remote()
 
     def init_dataserver(self):
-        return FakeDataServer.remote()
+        return FakeDataServer.options(name=settings.OFFLINE_DATASET_ACTOR).remote()
 
     def init_parameter_server(self):
-        return FakeParameterServer.remote()
-
-    def test_get_stationary_state(self):
-        raise NotImplementedError
+        return FakeParameterServer.options(
+            name=settings.PARAMETER_SERVER_ACTOR
+        ).remote()
 
     def test_parameter_description_gen(self):
-        return super().test_parameter_description_gen()
+        env_aid = None
+        policy_id = None
+        trainable = None
+        data = None
+
+        desc: ParameterDescription = self.instance.parameter_desc_gen()
+        assert desc.env_id == self.CONFIG["env_desc"]["config"]["env_id"]
+        assert desc.identify == env_aid
+        assert desc.id == policy_id
+        assert desc.data == data
+        assert desc.lock == (not trainable)
+
+        pytest.fixture(scope="class", name="parameter_desc")(lambda: desc)
+
+    def test_get_stationary_state(self):
+        feedback: AgentTaggedFeedback = self.instance.get_stationary_state()
 
     def test_buffer_description_gen(self):
         batch_size = 64
@@ -59,9 +78,12 @@ class TestCTDE(AgentTestMixin):
         assert buffer_desc.batch_size == batch_size, buffer_desc.batch_size
         assert buffer_desc.sample_mode == sample_mode, buffer_desc.sample_mode
 
-    def test_data_request(self):
-        buffer_desc = self.instance.gen_buffer_description()
-        self.instance.request_data(buffer_desc)
+        pytest.fixture(scope="class", name="buffer_desc")(lambda: buffer_desc)
 
-    def test_training(self):
-        return super().test_training()
+    def test_data_request(self, buffer_desc):
+        res, size = self.instance.request_data(buffer_desc)
+
+    def test_training(self, buffer_desc):
+        # we use an easy training config here
+        task_desc = ray.get(self.coordinator.gen_training_task.remote())
+        self.instance.train(task_desc, training_config={})

@@ -1,38 +1,32 @@
+import os
+import yaml
 import pytest
+
+from malib.settings import BASE_DIR
+from malib.backend.datapool.parameter_server import ParameterServer
+from malib.backend.datapool.offline_dataset_server import OfflineDataset
+from malib.envs import get_env_cls
+from malib.utils.general import update_configs
 
 
 class AgentTestMixin:
     @pytest.fixture(autouse=True)
-    def setup(
-        self,
-        agent_cls,
-        env_desc,
-        algorithm_candidates,
-        training_agent_mapping,
-        observation_spaces,
-        action_spaces,
-        exp_cfg,
-        use_init_policy_pool,
-        population_size,
-        algorithm_mapping,
-        local_buffer_config,
-    ):
-        self.CONFIGS = locals()
+    def setup(self, agent_cls, yaml_path):
+        # parse yaml configs
+        with open(os.path.join(BASE_DIR, yaml_path), "r") as f:
+            config = yaml.safe_load(f)
+        self.CONFIGS = config
         self.dataset = self.init_dataserver()
         self.parameter_server = self.init_parameter_server()
         self.coordinator = self.init_coordinator_server()
 
+        self.CONFIGS = update_configs(config)
         self.instance = agent_cls(
-            env_desc=env_desc,
-            algorithm_candidates=algorithm_candidates,
-            training_agent_mapping=training_agent_mapping,
-            observation_spaces=observation_spaces,
-            action_spaces=action_spaces,
-            exp_cfg=exp_cfg,
-            use_init_policy_pool=use_init_policy_pool,
-            population_size=population_size,
-            algorithm_mapping=algorithm_mapping,
-            local_buffer_config=local_buffer_config,
+            assign_id="Learner",
+            env_desc=self.CONFIGS["env_description"],
+            algorithm_candidates=self.CONFIGS["algorithms"],
+            training_agent_mapping=self.CONFIGS["agent_mapping_func"],
+            **self.CONFIGS["training"]["interface"]
         )
 
         self.learner.start()
@@ -68,9 +62,7 @@ class AgentTestMixin:
     def test_parameter_description_gen(self):
         """Test parameter desciption generator"""
 
-        # got agents in group
-
-        desc = self.instance.parameter_desc_gen()
+        raise NotImplementedError
 
     def test_get_stationary_state(self):
         raise NotImplementedError

@@ -48,6 +48,7 @@ setup(
             "sphinxcontrib-apidoc",
             "pytest-profiling",
             "pytest-cov",
+            "pytest-mock",
         ],
     },
 )

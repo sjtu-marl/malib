@@ -24,6 +24,8 @@ def update_configs(update_dict, ori_dict=None):
             ori_configs[k] = update_configs(v, ph)
         else:
             ori_configs[k] = copy.copy(v)
+
+    # clean environment desc
     return ori_configs
 
 
