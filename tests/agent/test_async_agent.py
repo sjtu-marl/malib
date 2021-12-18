@@ -2,7 +2,7 @@ import pytest
 import ray
 
 from malib.agent.agent_interface import AgentTaggedFeedback
-from malib.agent.indepdent_agent import IndependentAgent
+from malib.agent.async_agent import AsyncAgent
 from malib.utils.typing import BufferDescription, ParameterDescription
 
 from . import AgentTestMixin
@@ -11,11 +11,11 @@ from . import AgentTestMixin
 @pytest.mark.parametrize(
     "agent_cls,yaml_path",
     [
-        (IndependentAgent, "examples/configs/mpe/ddpg_simple_spread.yaml"),
+        (AsyncAgent, "examples/configs/mpe/maddpg_simple_spread.yaml"),
     ],
     scope="class",
 )
-class TestIndependentAgent(AgentTestMixin):
+class TestAsyncAgent(AgentTestMixin):
     def test_parameter_description_gen(self):
         agent_policy_mapping = {k: v[0] for k, v in self.trainable_pairs.items()}
         env_aid = list(agent_policy_mapping.keys())[0]

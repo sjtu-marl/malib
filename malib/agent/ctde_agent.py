@@ -181,7 +181,7 @@ class CTDEAgent(AgentInterface):
             return pid, policy
 
     def save(self, model_dir):
-        raise NotImplementedError
+        pass
 
     def load(self, model_dir):
-        raise NotImplementedError
+        pass

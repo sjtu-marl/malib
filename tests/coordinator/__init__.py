@@ -1,6 +1,14 @@
 import ray
+from malib import agent
+from malib.utils.logger import Logger
 
-from malib.utils.typing import TaskRequest, List
+from malib.utils.typing import (
+    TaskDescription,
+    TaskRequest,
+    List,
+    TaskType,
+    TrainingDescription,
+)
 
 
 @ray.remote
@@ -9,7 +17,10 @@ class FakeCoordinator:
         pass
 
     def gen_training_task(self):
-        raise NotImplementedError
+        return None
 
     def gen_rollout_task(self):
         raise NotImplementedError
+
+    def request(self, task_request: TaskRequest):
+        pass

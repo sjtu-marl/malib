@@ -5,11 +5,18 @@ omit =
 	malib/envs/smarts/*
 	# ignore base agent interface
 	malib/agent/agent_interface.py
+	malib/algorithm/imitation/*
+	malib/utils/typing.py
 
 [report]
 skip_empty = True
 omit =
 	malib/envs/smarts/*
+	malib/algorithm/imitation/*
+	malib/utils/typing.py
+	malib/settings.py
+	malib/registration.py
+	malib/backend/coordinator/light_server.py
 
 [html]
 directory = cov_html

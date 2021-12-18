@@ -1,16 +1,9 @@
 import pytest
 import ray
-from ray.worker import time_string
 
-from malib import settings
 from malib.agent.agent_interface import AgentTaggedFeedback
 from malib.agent.ctde_agent import CTDEAgent
-from malib.algorithm.ddpg import CONFIG
 from malib.utils.typing import BufferDescription, ParameterDescription
-
-from tests.dataset import FakeDataServer
-from tests.coordinator import FakeCoordinator
-from tests.parameter_server import FakeParameterServer
 
 from . import AgentTestMixin
 
@@ -20,27 +13,20 @@ from . import AgentTestMixin
     [
         (CTDEAgent, "examples/configs/mpe/maddpg_simple_spread.yaml"),
     ],
+    scope="class",
 )
-class TestCTDE(AgentTestMixin):
-    def init_coordinator(self):
-        return FakeCoordinator.options(name=settings.COORDINATOR_SERVER_ACTOR).remote()
-
-    def init_dataserver(self):
-        return FakeDataServer.options(name=settings.OFFLINE_DATASET_ACTOR).remote()
-
-    def init_parameter_server(self):
-        return FakeParameterServer.options(
-            name=settings.PARAMETER_SERVER_ACTOR
-        ).remote()
-
+class TestCTDEAgent(AgentTestMixin):
     def test_parameter_description_gen(self):
-        env_aid = None
-        policy_id = None
-        trainable = None
+        agent_policy_mapping = {k: v[0] for k, v in self.trainable_pairs.items()}
+        env_aid = list(agent_policy_mapping.keys())[0]
+        policy_id = list(agent_policy_mapping.values())[0]
+        trainable = False
         data = None
 
-        desc: ParameterDescription = self.instance.parameter_desc_gen()
-        assert desc.env_id == self.CONFIG["env_desc"]["config"]["env_id"]
+        desc: ParameterDescription = self.instance.parameter_desc_gen(
+            env_aid, policy_id, trainable, data
+        )
+        assert desc.env_id == self.CONFIGS["env_description"]["config"]["env_id"]
         assert desc.identify == env_aid
         assert desc.id == policy_id
         assert desc.data == data
@@ -55,16 +41,17 @@ class TestCTDE(AgentTestMixin):
         batch_size = 64
         sample_mode = "time_step"
 
-        self.instance.register
-        agent_policy_mapping = None
+        agent_policy_mapping = {k: v[0] for k, v in self.trainable_pairs.items()}
         # CTDE agent should generate a single buffer description for all of its governed agents
         buffer_desc = self.instance.gen_buffer_description(
-            agent_policy_mapping=None, batch_size=batch_size, sample_mode=sample_mode
+            agent_policy_mapping=agent_policy_mapping,
+            batch_size=batch_size,
+            sample_mode=sample_mode,
         )
         assert isinstance(buffer_desc, BufferDescription), type(buffer_desc)
         # check keys in buffer desc
         assert (
-            buffer_desc.env_id == self.CONFIGS["env_desc"]["config"]["env_id"]
+            buffer_desc.env_id == self.CONFIGS["env_description"]["config"]["env_id"]
         ), buffer_desc.env_id
         assert isinstance(buffer_desc.agent_id, (list, tuple)), type(
             buffer_desc.agent_id
@@ -80,10 +67,31 @@ class TestCTDE(AgentTestMixin):
 
         pytest.fixture(scope="class", name="buffer_desc")(lambda: buffer_desc)
 
-    def test_data_request(self, buffer_desc):
+    def test_parameter_push_and_pull(self):
+        pass
+
+    def test_data_request(self):
+        batch_size = 64
+        sample_mode = "time_step"
+
+        agent_policy_mapping = {k: v[0] for k, v in self.trainable_pairs.items()}
+        buffer_desc = self.instance.gen_buffer_description(
+            agent_policy_mapping=agent_policy_mapping,
+            batch_size=batch_size,
+            sample_mode=sample_mode,
+        )
         res, size = self.instance.request_data(buffer_desc)
 
-    def test_training(self, buffer_desc):
+    def test_training(self):
+        batch_size = 64
+        sample_mode = "time_step"
+
+        agent_policy_mapping = {k: v[0] for k, v in self.trainable_pairs.items()}
+        buffer_desc = self.instance.gen_buffer_description(
+            agent_policy_mapping=agent_policy_mapping,
+            batch_size=batch_size,
+            sample_mode=sample_mode,
+        )
         # we use an easy training config here
         task_desc = ray.get(self.coordinator.gen_training_task.remote())
-        self.instance.train(task_desc, training_config={})
+        # self.instance.train(task_desc, training_config={})

@@ -2,6 +2,8 @@
 group: "MPE"
 name: "share/maddpg_simple_spread"
 
+task_mode: marl
+
 training:
   interface:
     type: "ctde"

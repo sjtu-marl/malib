@@ -50,6 +50,7 @@ DEFAULT_CONFIG = {
             # algorithm mapping could be a mapping function from environment agents algorithm keys
             # if default, then training agent interface will add policy randomly.
             "algorithm_mapping": None,
+            "use_init_policy_pool": False,
         },
         # training config, determine batch size and ...
         "config": {
@@ -120,5 +121,7 @@ DEFAULT_CONFIG = {
     # configuration for dataset server
     "dataset_config": {},  #
     "parameter_server": {},
+    # should be specified
+    "task_mode": None,
 }
 # __sphinx_doc_end__

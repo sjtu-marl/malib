@@ -1,9 +1,6 @@
-import copy
-import pprint
 import threading
 import time
 from typing import Counter, Dict, Any, List
-from numpy import add
 
 import ray
 
@@ -43,16 +40,10 @@ def run(**kwargs):
     infos = DefaultConfigFormatter.parse(global_configs)
 
     try:
+        # XXX(ming): too ugly an import
         from malib.backend.coordinator.task import CoordinatorServer
         from malib.backend.datapool.offline_dataset_server import OfflineDataset
         from malib.backend.datapool.parameter_server import ParameterServer
-
-        Logger.info(
-            "Pre launch checking for Coordinator server ... {}".format(
-                getattr(CoordinatorServer, "_request_simulation", None)
-            )
-        )
-        # pprint.pprint(f"Logged experiment information:{infos}", indent=2)
 
         try:
             start_ray_info = ray.init(address="auto")
@@ -70,6 +61,8 @@ def run(**kwargs):
             host=start_ray_info["node_ip_address"],
         )
 
+        CoordinatorServer = CoordinatorServer.as_remote()
+
         offline_dataset = OfflineDataset.options(
             name=settings.OFFLINE_DATASET_ACTOR, max_concurrency=1000
         ).remote(global_configs["dataset_config"], exp_cfg)
@@ -80,11 +73,7 @@ def run(**kwargs):
             name=settings.COORDINATOR_SERVER_ACTOR, max_concurrency=100
         ).remote(exp_cfg=exp_cfg, **global_configs)
 
-        _ = ray.get(
-            coordinator_server.start.remote(
-                use_init_policy_pool=config.get("use_init_policy_pool", True)
-            )
-        )
+        _ = ray.get(coordinator_server.start.remote())
 
         performance_logger = get_logger(
             name="performance",

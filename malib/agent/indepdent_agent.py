@@ -137,7 +137,7 @@ class IndependentAgent(AgentInterface):
         :return: None
         """
 
-        raise NotImplementedError
+        pass
 
     def load(self, model_dir) -> None:
         """Load states and policies from local storage.
@@ -146,7 +146,7 @@ class IndependentAgent(AgentInterface):
         :return: None
         """
 
-        raise NotImplementedError
+        pass
 
     def load_single_policy(self, env_agent_id, model_dir) -> None:
         """Load one policy for one env_agent.
