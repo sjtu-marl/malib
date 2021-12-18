@@ -87,8 +87,8 @@ class SAC(Policy):
         behavior = kwargs.get("behavior_mode", BehaviorMode.EXPLORATION)
 
         logits = self.actor(observation)
-        print("-------- logits", logits)
-        m = Normal(*logits)
+        # FIXME(ming): we need to ensure that the sigma is non-negative here
+        m = Normal(logits[:, 0], logits[:, 1])
 
         if behavior == BehaviorMode.EXPLORATION:
             actions = m.sample().detach()
@@ -97,7 +97,7 @@ class SAC(Policy):
 
         log_probs = m.log_prob(actions).sum(dim=-1, keepdim=True)
 
-        if self.custom_config["action_squash"]:
+        if self.custom_config.get("action_squash", False):
             actions = torch.tanh(actions)
             log_probs = log_probs - torch.log(1 - actions.pow(2) + self._eps).sum(
                 -1, keepdim=True

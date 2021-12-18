@@ -81,7 +81,11 @@ class PPO(Policy):
                 pi = torch.cat(logits, dim=-1)
                 actions = m.sample().detach()
         # print(f"------ action: {pi.argmax(-1).numpy()} {pi.numpy()}")
-        return actions.numpy(), pi.numpy(), kwargs[EpisodeKey.RNN_STATE],
+        return (
+            actions.numpy(),
+            pi.numpy(),
+            kwargs[EpisodeKey.RNN_STATE],
+        )
 
     def compute_actions(self, observation, **kwargs):
         logits = self.actor(observation)

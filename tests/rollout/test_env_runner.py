@@ -84,7 +84,7 @@ class TestEnvRunner:
             "max_step": 25,
             "custom_reset_config": None,
             "batch_mode": self.batch_mode,
-            "postprocessor_type": "default",
+            "postprocessor_types": ["default"],
             "trainable_mapping": None,
         }
         _ = [interface.reset() for interface in self.agent_interfaces.values()]
@@ -167,7 +167,7 @@ class TestEnvRunner:
                 "behavior_policies": behavior_policy_ids,
                 "custom_reset_config": None,
                 "batch_mode": self.batch_mode,
-                "postprocessor_type": "default",
+                "postprocessor_types": ["default"],
                 "trainable_mapping": None,
             },
             dataset_server=None,
@@ -199,7 +199,7 @@ class TestEnvRunner:
                 "behavior_policies": behavior_policy_ids,
                 "custom_reset_config": None,
                 "batch_mode": self.batch_mode,
-                "postprocessor_type": "default",
+                "postprocessor_types": ["default"],
                 "trainable_mapping": behavior_policy_ids,
             },
             dataset_server=dataset,

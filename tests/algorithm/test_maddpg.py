@@ -37,7 +37,7 @@ test_action_dim = 2
 class TestMADDPG(AlgorithmTestMixin):
     def make_algorithm(self, *args):
         custom_config["global_state_space"] = spaces.Box(
-            low=0, high=1, shape=(test_obs_shape[0] + test_action_dim, )
+            low=0, high=1, shape=(test_obs_shape[0] + test_action_dim,)
         )
         return POLICY(
             registered_name="MADDPG",
@@ -72,7 +72,8 @@ class TestMADDPG(AlgorithmTestMixin):
                 EpisodeKey.DONE: np.zeros((batch_size, 1)),
                 EpisodeKey.REWARD: np.zeros((batch_size, 1)),
                 EpisodeKey.ACTION: np.zeros((batch_size, 1)),
-                EpisodeKey.ACTION_DIST: np.ones((batch_size, test_action_dim))/test_action_dim,
+                EpisodeKey.ACTION_DIST: np.ones((batch_size, test_action_dim))
+                / test_action_dim,
                 "next_act_by_target": np.zeros((batch_size, test_action_dim)),
             },
         }

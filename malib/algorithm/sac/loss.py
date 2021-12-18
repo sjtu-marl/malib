@@ -38,19 +38,6 @@ class SACLoss(LossFunc):
                 self.policy.critic_2.parameters(), lr=self._params["critic_lr"]
             ),
         }
-        # else:
-        #     self.optimizers["actor"].param_groups = []
-        #     self.optimizers["actor"].add_param_group(
-        #         {"params": self.policy.actor.parameters()}
-        #     )
-        #     self.optimizers["critic_1"].param_groups = []
-        #     self.optimizers["critic_1"].add_param_group(
-        #         {"params": self.policy.critic_1.parameters()}
-        #     )
-        #     self.optimizers["critic_2"].param_groups = []
-        #     self.optimizers["critic_2"].add_param_group(
-        #         {"params": self.policy.critic_2.parameters()}
-        #     )
 
     def loss_compute(self, batch) -> Dict[str, Any]:
         self.loss = []
@@ -72,8 +59,10 @@ class SACLoss(LossFunc):
 
         with torch.no_grad():
             next_action_logits = self.policy.actor(next_obs)
-            next_action_dist = Independent(Normal(*next_action_logits), 1)
-            next_actions = next_action_dist.sample()
+            next_action_dist = Independent(
+                Normal(next_action_logits[:, 0], next_action_logits[:, 1]), 1
+            )
+            next_actions = next_action_dist.sample().reshape(-1, 1)
             next_action_log_prob = next_action_dist.log_prob(next_actions).unsqueeze(-1)
             if action_squash:
                 next_actions = torch.tanh(next_actions)

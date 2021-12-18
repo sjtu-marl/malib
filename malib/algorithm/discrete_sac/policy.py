@@ -105,7 +105,7 @@ class DiscreteSAC(Policy):
         return (
             actions.cpu().numpy(),
             action_probs.detach().cpu().numpy(),
-            kwargs[EpisodeKey.RNN_STATE]
+            kwargs[EpisodeKey.RNN_STATE],
         )
 
     def compute_actions_by_target_actor(

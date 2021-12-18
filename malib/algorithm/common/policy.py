@@ -80,7 +80,7 @@ class Policy(metaclass=ABCMeta):
         self.registered_name = registered_name
         self.observation_space = observation_space
         self.action_space = action_space
-        self.device = torch.device('cpu')
+        self.device = torch.device("cpu")
 
         self.custom_config = {
             "gamma": 0.99,
