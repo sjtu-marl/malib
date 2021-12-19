@@ -27,7 +27,7 @@ rm-pycache:
 
 .PHONY: test
 test:
-	pytest --cov-config=.coveragerc --cov=malib --cov-report html --doctest-modules tests
+	pytest --cov-config=.coveragerc --cov=malib/backend/datapool --cov-report html --doctest-modules tests/dataset
 	rm -f .coverage.*
 
 .PHONY: test-dataset
@@ -45,7 +45,7 @@ test-coordinator:
 .PHONY: test-backend
 test-backend: test-dataset test-parameter-server test-coordinator
 
-.PHONY: test-algorithm
+.PHONY: test-algorith
 test-algorithm:
 	pytest -v --doctest-modules tests/algorithm
 
