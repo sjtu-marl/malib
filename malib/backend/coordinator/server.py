@@ -152,7 +152,6 @@ class CoordinatorServer(BaseCoordinator):
             CoordinatorServer, "_request_{}".format(task_request.task_type.value), None
         )
 
-        # class_method = getattr(CoordinatorServer, "_request_{}".format(task_request.task_type.value), None)
         if generic_task_handler:
             generic_task_handler(self, task_request)
         else:

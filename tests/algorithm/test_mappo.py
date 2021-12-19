@@ -64,7 +64,7 @@ class TestMAPPO(AlgorithmTestMixin):
             EpisodeKey.CUR_STATE: np.zeros((4,) + test_obs_shape),
             EpisodeKey.RNN_STATE: self.algorithm.get_initial_state(batch_size=4),
             EpisodeKey.DONE: np.zeros((4, 1)),
-            EpisodeKey.ACTION_MASK: action_mask
+            EpisodeKey.ACTION_MASK: action_mask,
         }
 
     def build_train_inputs(self) -> Dict:

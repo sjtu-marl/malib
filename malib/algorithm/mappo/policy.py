@@ -134,7 +134,6 @@ class MAPPO(Policy):
     def compute_actions(self, observation, **kwargs):
         raise RuntimeError("Shouldn't use it currently")
 
-
     @shape_adjusting
     def compute_action(self, observation, **kwargs):
         actor_rnn_states, critic_rnn_states = kwargs[EpisodeKey.RNN_STATE]
@@ -225,4 +224,3 @@ class MAPPO(Policy):
             for k, v in self._state_handler_dict.items()
         }
         return res
-
