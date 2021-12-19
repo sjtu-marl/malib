@@ -1,6 +1,7 @@
 """Basic class for algorithm tests"""
 
 from typing import Callable, Dict
+import gym
 
 import torch
 from malib.algorithm.common import policy, model, loss_func, trainer
@@ -63,10 +64,11 @@ class AlgorithmTestMixin:
         action, action_probs, rnn_states = self.algorithm.compute_action(
             **self.build_env_inputs()
         )
-        assert len(action.shape) + 1 == len(action_probs.shape), (
-            action.shape,
-            action_probs.shape,
-        )
+        if isinstance(self.algorithm.action_space, gym.spaces.Discrete):
+            assert len(action.shape) + 1 == len(action_probs.shape), (
+                action.shape,
+                action_probs.shape,
+            )
         self.assertRNNStates(rnn_states)
 
     def test_initial_state(self):

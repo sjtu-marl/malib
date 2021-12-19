@@ -58,11 +58,12 @@ class SACLoss(LossFunc):
         pred_q_2 = self.policy.critic_2(vf_in).view(-1)
 
         with torch.no_grad():
-            next_action_logits = self.policy.actor(next_obs)
+            
             next_action_dist = Independent(
-                Normal(next_action_logits[:, 0], next_action_logits[:, 1]), 1
+                self._policy._distribution(next_obs), 1
             )
-            next_actions = next_action_dist.sample().reshape(-1, 1)
+            next_actions = next_action_dist.sample()
+
             next_action_log_prob = next_action_dist.log_prob(next_actions).unsqueeze(-1)
             if action_squash:
                 next_actions = torch.tanh(next_actions)
@@ -91,8 +92,7 @@ class SACLoss(LossFunc):
         self.optimizers["critic_2"].step()
 
         # actor update
-        policy_action_logits = self.policy.actor(cur_obs)
-        policy_action_dist = Independent(Normal(*policy_action_logits), 1)
+        policy_action_dist = Independent(self._policy._distribution(cur_obs), 1)
         policy_actions = policy_action_dist.rsample()
         policy_action_log_prob = policy_action_dist.log_prob(policy_actions).unsqueeze(
             -1
