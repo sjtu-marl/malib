@@ -37,18 +37,19 @@ class SAC(Policy):
         self.action_squash = self.custom_config.get("action_squash", False)
 
         self.actor_encoder = get_model(self.model_config.get("actor"))(
-                observation_space, None, self.custom_config["use_cuda"]
-            )
-        
-        last_fc_size = model_config['actor']['layers'][-1]['units']
+            observation_space, None, self.custom_config["use_cuda"]
+        )
+
+        last_fc_size = model_config["actor"]["layers"][-1]["units"]
         self.mu_head = nn.Linear(last_fc_size, action_space.shape[0])
         self.log_std_head = nn.Linear(last_fc_size, action_space.shape[0])
 
-        self.set_actor(nn.ModuleList([self.actor_encoder, self.mu_head, self.log_std_head]))
+        self.set_actor(
+            nn.ModuleList([self.actor_encoder, self.mu_head, self.log_std_head])
+        )
 
-        self._min_log_std = custom_config.get('min_log_std', -20)
-        self._max_log_std = custom_config.get('max_log_std', 2)
-        
+        self._min_log_std = custom_config.get("min_log_std", -20)
+        self._max_log_std = custom_config.get("max_log_std", 2)
 
         critic_state_space = gym.spaces.Dict(
             {"obs": observation_space, "act": action_space}

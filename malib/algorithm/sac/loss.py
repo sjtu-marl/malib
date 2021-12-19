@@ -58,10 +58,8 @@ class SACLoss(LossFunc):
         pred_q_2 = self.policy.critic_2(vf_in).view(-1)
 
         with torch.no_grad():
-            
-            next_action_dist = Independent(
-                self._policy._distribution(next_obs), 1
-            )
+
+            next_action_dist = Independent(self._policy._distribution(next_obs), 1)
             next_actions = next_action_dist.sample()
 
             next_action_log_prob = next_action_dist.log_prob(next_actions).unsqueeze(-1)

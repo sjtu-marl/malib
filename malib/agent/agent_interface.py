@@ -435,7 +435,7 @@ class AgentInterface(metaclass=ABCMeta):
 
         Note:
             This method could only be called in multi-instance scenarios. Or, `OfflineDataset` and `CoordinatorServer`
-            have been started.
+            have been started.t
 
         :param TaskDescription task_desc: Task description entity, `task_desc.content` must be a `TrainingTask` entity.
         :param Dict[str,Any] training_config: Training configuration. Default to None.

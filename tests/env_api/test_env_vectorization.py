@@ -1,5 +1,6 @@
 import importlib
 import pytest
+import ray
 
 from malib.envs import Environment, vector_env
 from malib.utils.episode import EpisodeKey
@@ -167,3 +168,7 @@ class TestSubprocVecEnv:
             }
 
         self.vec_env.close()
+
+    @classmethod
+    def teardown_class(cls):
+        ray.shutdown()

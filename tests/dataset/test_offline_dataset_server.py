@@ -226,3 +226,7 @@ class TestOfflineDataset:
 
     def test_rw_efficiency(self):
         pass
+
+    @classmethod
+    def teardown_class(cls):
+        ray.shutdown()

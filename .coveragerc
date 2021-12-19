@@ -1,12 +1,12 @@
 [run]
 branch = False
 omit = 
-	# ignore typings
+	# ignore typings and base class
 	*/__init__.py
 	malib/utils/typing.py
-	malib/envs/smarts/*
-	# ignore base agent
 	malib/agent/agent_interface.py
+	malib/backend/coordinator/base_coordinator.py
+	malib/envs/smarts/*
 	# ignore imitation training suit
 	malib/algorithm/imitation/*
 	malib/algorithm/common/reward.py

@@ -38,12 +38,6 @@ from malib.backend.coordinator.base_coordinator import BaseCoordinator
 class CoordinatorServer(BaseCoordinator):
     """Coordinator server maintains the payoff matrix and serves for the task assignment."""
 
-    def push(self, **kwargs):
-        pass
-
-    def pull(self, **kwargs):
-        pass
-
     def gen_simulation_task(self, task_request: TaskRequest, matches: List):
         """Generate simulation task for a group of agents"""
 
