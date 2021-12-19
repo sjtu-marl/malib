@@ -38,7 +38,7 @@ class SyncAgent(IndependentAgent):
         observation_spaces: Dict[AgentID, gym.spaces.Space],
         action_spaces: Dict[AgentID, gym.spaces.Space],
         exp_cfg: Dict[str, Any],
-        population_size,
+        population_size: int,
         use_init_policy_pool: bool,
         algorithm_mapping: Callable = None,
         local_buffer_config: Dict = None,
@@ -93,7 +93,7 @@ class SyncAgent(IndependentAgent):
         return {
             aid: BufferDescription(
                 env_id=self._env_desc["config"]["env_id"],
-                agent_id=self._group,
+                agent_id=aid,
                 policy_id=pid,
                 batch_size=batch_size,
                 sample_mode=sample_mode,

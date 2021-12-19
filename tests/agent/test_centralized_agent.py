@@ -11,7 +11,7 @@ from . import AgentTestMixin
 @pytest.mark.parametrize(
     "agent_cls,yaml_path",
     [
-        (CentralizedAgent, "examples/configs/sc2/qmix.yaml"),
+        (CentralizedAgent, "examples/configs/mpe/qmix_simple_spread.yaml"),
     ],
     scope="class",
 )

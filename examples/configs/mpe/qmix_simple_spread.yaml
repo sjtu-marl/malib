@@ -1,61 +1,49 @@
-# battle: https://github.com/wsjeon/maddpg-rllib
 group: "MPE"
-name: "share/ddpg_simple_spread"
+name: "share/qmix_simple_spread"
 task_mode: marl
 
 training:
   interface:
-    type: "independent"
+    type: "centralized"
     population_size: -1
     use_init_population_pool: False
   config:
     # control the frequency of remote parameter update
     update_interval: 1
-    saving_interval: 10
     batch_size: 1024
     optimizer: "Adam"
-    actor_lr: 0.01
-    critic_lr: 0.01
-    lr: 0.01
+    lr: 0.0005
     tau: 0.01  # soft update
-    grad_norm_clipping: 0.5
 
 rollout:
   type: "async"
   stopper: "simple_rollout"
   stopper_config:
-    max_step: 1000
+    max_step: 10000
   metric_type: "simple"
-  fragment_length: 500
-  num_episodes: 320
-  num_env_per_worker: 10
+  fragment_length: 100
+  num_episodes: 4
+  episode_seg: 1
   terminate: "any"
-
-evaluation:
-  fragment_length: 25
-  num_episodes: 100
 
 env_description:
   #  scenario_name: "simple_spread"
-  creator: "MPE"
+  creator: MPE
   config:
-    env_id: "simple_spread_v2"
+    env_id: simple_spread_v2
     scenario_configs:
       max_cycles: 25
+      teams:
+        default:
+          - agent_0
+          - agent_1
+          - agent_2
 
 algorithms:
-  DDPG:
-    name: "DDPG"
+  QMIX:
+    name: "QMIX"
+    # set hyper parameter
     model_config:
-      actor:
-        network: mlp
-        layers:
-          - units: 64
-            activation: ReLU
-          - units: 64
-            activation: ReLU
-        output:
-          activation: False
       critic:
         network: mlp
         layers:
@@ -64,16 +52,17 @@ algorithms:
           - units: 64
             activation: ReLU
         output:
-          activation: False
-
-    # set hyper parameter
+          activation: Identity
     custom_config:
-      gamma: 0.95
+      eps_min: 0.05
+      eps_max: 1.0
+      eps_anneal_time: 50000
+      gamma: 0.99
       use_cuda: False  # enable cuda or not
 
 global_evaluator:
   name: "generic"
 
 dataset_config:
-  episode_capacity: 1000000
-  learning_start: 2560
+  episode_capacity: 100000
+  learning_start: 100

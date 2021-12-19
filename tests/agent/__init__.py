@@ -5,21 +5,24 @@ import yaml
 import pytest
 import ray
 
+from pytest_mock import MockerFixture
+
 from malib import settings
-from malib.agent.agent_interface import AgentInterface
-from malib.envs.gym import env_desc_gen
-from malib.settings import BASE_DIR
-from malib.backend.datapool.parameter_server import ParameterServer
-from malib.backend.datapool.offline_dataset_server import OfflineDataset
-from malib.envs import gen_env_desc
-from malib.utils.general import update_configs
-from malib.utils import logger
 from malib.utils.typing import (
     TaskDescription,
     TaskType,
     TrainingDescription,
     AgentInvolveInfo,
+    Dict,
+    Any,
+    ParameterDescription,
 )
+from malib.settings import BASE_DIR
+from malib.utils.general import update_configs
+from malib.utils import logger
+from malib.algorithm.common.trainer import Trainer
+from malib.agent.agent_interface import AgentInterface
+from malib.envs import gen_env_desc
 
 from tests.dataset import FakeDataServer
 from tests.coordinator import FakeCoordinator
@@ -125,10 +128,43 @@ class AgentTestMixin:
         policies = self.instance.get_policies()
         assert isinstance(policies, dict)
 
-    def test_parameter_description_gen(self):
-        """Test parameter desciption generator"""
+    def test_optimize(self, mocker: MockerFixture):
+        agent_policy_mapping = {k: v[0] for k, v in self.trainable_pairs.items()}
+        batch = {agent: {} for agent in self.governed_agents}
 
-        raise NotImplementedError
+        class faketrainer(Trainer):
+            def reset(self, policy, training_config):
+                pass
+
+            def preprocess(self, batch, **kwargs):
+                return batch
+
+            def optimize(self, batch) -> Dict[str, Any]:
+                return {"ploss": 0.0, "vloss": 0.0}
+
+        self.instance._trainers = {k: faketrainer(k) for k in self.instance._trainers}
+        res = self.instance.optimize(agent_policy_mapping, batch, training_config={})
+        assert isinstance(res, dict), res
+        for k, v in res.items():
+            assert isinstance(v, float)
+
+    def test_parameter_description_gen(self):
+        agent_policy_mapping = {k: v[0] for k, v in self.trainable_pairs.items()}
+        env_aid = list(agent_policy_mapping.keys())[0]
+        policy_id = list(agent_policy_mapping.values())[0]
+        trainable = False
+        data = None
+
+        desc: ParameterDescription = self.instance.parameter_desc_gen(
+            env_aid, policy_id, trainable, data
+        )
+        assert desc.env_id == self.CONFIGS["env_description"]["config"]["env_id"]
+        assert desc.identify == env_aid
+        assert desc.id == policy_id
+        assert desc.data == data
+        assert desc.lock == (not trainable)
+
+        pytest.fixture(scope="class", name="parameter_desc")(lambda: desc)
 
     def test_get_stationary_state(self):
         raise NotImplementedError
