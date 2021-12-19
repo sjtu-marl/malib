@@ -15,7 +15,6 @@ class QMIXLoss(LossFunc):
         self._cast_to_tensor = None
         self._mixer = None
         self._mixer_target = None
-        self._params = {"gamma": 0.99, "lr": 5e-4, "tau": 0.01}
 
     @property
     def mixer(self):
@@ -32,15 +31,15 @@ class QMIXLoss(LossFunc):
         self._mixer_target = mixer_target
 
     def update_target(self):
-        for _, p in self.policy.items():
-            assert isinstance(p, DQN), type(p)
-            p.soft_update(self._params["tau"])
+        # for _, p in self.policy.items():
+        assert isinstance(self.policy, DQN), type(p)
+        self.policy.soft_update(self._params["tau"])
         with torch.no_grad():
             misc.soft_update(self.mixer_target, self.mixer, self._params["tau"])
 
     def reset(self, policy, configs):
         super(QMIXLoss, self).reset(policy, configs)
-        self._params.update(list(self.policy.values())[0].custom_config)
+        self._params.update(self.policy.custom_config)
         if self._cast_to_tensor is None:
             self._cast_to_tensor = (
                 lambda x: torch.cuda.FloatTensor(x.copy())
@@ -57,15 +56,13 @@ class QMIXLoss(LossFunc):
         else:
             self.optimizers.param_groups = []
             self.optimizers.add_param_group({"params": self.mixer.parameters()})
-        for policy in self.policy.values():
-            self.optimizers.add_param_group({"params": policy.critic.parameters()})
+        self.optimizers.add_param_group({"params": self.policy.critic.parameters()})
 
     def step(self) -> Any:
         _ = [item.backward() for item in self.loss]
         self.optimizers.step()
         self.update_target()
-        for p in self.policy.values():
-            p._step += 1
+        self.policy._step += 1
 
     def loss_compute(self, batch) -> Dict[str, Any]:
         self.loss = []
@@ -80,10 +77,10 @@ class QMIXLoss(LossFunc):
             _batch = batch[env_agent_id]
             obs = _batch[EpisodeKey.CUR_OBS]
             next_obs = _batch[EpisodeKey.NEXT_OBS]
-            act = _batch[EpisodeKey.ACTION]
-            next_action_mask = _batch[EpisodeKey.NEXT_ACTION_MASK]
-            policy: DQN = self.policy[env_agent_id]
-            q = policy.critic(obs).gather(-1, act.unsqueeze(1)).squeeze()
+            act = _batch[EpisodeKey.ACTION].long()
+            next_action_mask = _batch['next_action_mask']
+            policy: DQN = self.policy
+            q = policy.critic(obs).gather(-1, act).squeeze()
             q_vals.append(q)
             next_q = policy.target_critic(next_obs)
             next_q[next_action_mask == 0] = -9999999
