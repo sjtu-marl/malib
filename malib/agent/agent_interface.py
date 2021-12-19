@@ -373,7 +373,7 @@ class AgentInterface(metaclass=ABCMeta):
                 if batch.data is None:
                     # means interface can use local buffer for training
                     if (
-                        self.localbuffer
+                        self.local_buffer
                         and self.local_buffer.size >= buffer_desc.batch_size
                     ):
                         break

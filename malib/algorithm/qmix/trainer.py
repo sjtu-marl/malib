@@ -25,9 +25,7 @@ class QMIXTrainer(Trainer):
         return loss_stat
 
     def reset(self, policy, training_config):
-        global_state_space = policy.custom_config[
-            "global_state_space"
-        ]
+        global_state_space = policy.custom_config["global_state_space"]
         if self.loss.mixer is None:
             self.global_state_preprocessor = get_preprocessor(global_state_space)(
                 global_state_space

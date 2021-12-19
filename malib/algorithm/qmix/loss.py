@@ -78,7 +78,7 @@ class QMIXLoss(LossFunc):
             obs = _batch[EpisodeKey.CUR_OBS]
             next_obs = _batch[EpisodeKey.NEXT_OBS]
             act = _batch[EpisodeKey.ACTION].long()
-            next_action_mask = _batch['next_action_mask']
+            next_action_mask = _batch["next_action_mask"]
             policy: DQN = self.policy
             q = policy.critic(obs).gather(-1, act).squeeze()
             q_vals.append(q)
