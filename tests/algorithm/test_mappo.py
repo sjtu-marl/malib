@@ -1,12 +1,10 @@
 from typing import Dict
 from gym.spaces import space
-from malib.algorithm.mappo.loss import MAPPOLoss
-from malib.algorithm.mappo.trainer import MAPPOTrainer
 from malib.utils.episode import EpisodeKey
 from tests.algorithm import AlgorithmTestMixin
 from gym import spaces
 import numpy as np
-from malib.algorithm.mappo import CONFIG, MAPPO
+from malib.algorithm.mappo import CONFIG, MAPPO, MAPPOLoss, MAPPOTrainer
 import os
 import shutil
 
