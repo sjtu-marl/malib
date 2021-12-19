@@ -134,9 +134,6 @@ class MAPPO(Policy):
     def compute_actions(self, observation, **kwargs):
         raise RuntimeError("Shouldn't use it currently")
 
-    def forward_actor(self, obs, actor_rnn_states, rnn_masks):
-        logits, actor_rnn_states = self.actor(obs, actor_rnn_states, rnn_masks)
-        return logits, actor_rnn_states
 
     @shape_adjusting
     def compute_action(self, observation, **kwargs):
@@ -145,7 +142,7 @@ class MAPPO(Policy):
         rnn_masks = kwargs[EpisodeKey.DONE]
         logits, actor_rnn_states = self.actor(observation, actor_rnn_states, rnn_masks)
         actor_rnn_states = actor_rnn_states.detach().cpu().numpy()
-        if "action_mask" in kwargs:
+        if EpisodeKey.ACTION_MASK in kwargs:
             illegal_action_mask = torch.FloatTensor(
                 1 - kwargs[EpisodeKey.ACTION_MASK]
             ).to(logits.device)
@@ -229,23 +226,3 @@ class MAPPO(Policy):
         }
         return res
 
-
-if __name__ == "__main__":
-    from malib.envs.gr_football import env, default_config
-    import yaml
-
-    cfg = yaml.load(open("mappo_grfootball/mappo_5_vs_5.yaml"))
-    env = env(**default_config)
-    custom_cfg = cfg["algorithms"]["MAPPO"]["custom_config"]
-    custom_cfg.update({"global_state_space": env.observation_spaces})
-    policy = MAPPO(
-        "MAPPO",
-        env.observation_spaces["team_0"],
-        env.action_spaces["team_0"],
-        cfg["algorithms"]["MAPPO"]["model_config"],
-        custom_cfg,
-        env_agent_id="team_0",
-    )
-    os.makedirs("play")
-    policy.dump("play")
-    MAPPO.load("play", env_agent_id="team_0")
