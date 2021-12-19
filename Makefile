@@ -55,7 +55,7 @@ test-rollout:
 
 .PHONY: test-agent
 test-agent:
-	pytest -v --doctest-modules tests/agent
+	pytest --doctest-modules tests/agent
 
 .PHONY: test-env-api
 test-env-api:

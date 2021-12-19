@@ -7,6 +7,8 @@ from tests.algorithm import AlgorithmTestMixin
 from gym import spaces
 import numpy as np
 from malib.algorithm.mappo import CONFIG, MAPPO
+import os
+import shutil
 
 custom_config = CONFIG["policy"]
 trainer_config = CONFIG["training"]
@@ -55,10 +57,14 @@ class TestMAPPO(AlgorithmTestMixin):
         return MAPPOLoss()
 
     def build_env_inputs(self) -> Dict:
+        action_mask = np.zeros((4, test_action_dim))
+        action_mask[:, 0] = 1
         return {
-            "observation": np.zeros((4,) + test_obs_shape),
-            "rnn_state": self.algorithm.get_initial_state(batch_size=4),
-            "done": np.zeros((4, 1)),
+            EpisodeKey.CUR_OBS: np.zeros((4,) + test_obs_shape),
+            EpisodeKey.CUR_STATE: np.zeros((4,) + test_obs_shape),
+            EpisodeKey.RNN_STATE: self.algorithm.get_initial_state(batch_size=4),
+            EpisodeKey.DONE: np.zeros((4, 1)),
+            EpisodeKey.ACTION_MASK: action_mask
         }
 
     def build_train_inputs(self) -> Dict:
@@ -104,3 +110,10 @@ class TestMAPPO(AlgorithmTestMixin):
             EpisodeKey.RNN_STATE + "_0": actor_rnn_state,
             EpisodeKey.RNN_STATE + "_1": critic_rnn_state,
         }
+
+    def test_dump_and_load(self):
+        dump_dir = "play"
+        os.makedirs(dump_dir)
+        self.algorithm.dump(dump_dir)
+        MAPPO.load(dump_dir, env_agent_id="agent_0")
+        shutil.rmtree(dump_dir)

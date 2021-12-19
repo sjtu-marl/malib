@@ -102,7 +102,9 @@ class AgentInterface(metaclass=ABCMeta):
         """
         Logger.info("\tray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
         Logger.info(
-            "\tCUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"])
+            "\tCUDA_VISIBLE_DEVICES: {}".format(
+                os.environ.get("CUDA_VISIBLE_DEVICES", [])
+            )
         )
 
         self._device = torch.device("cuda" if ray.get_gpu_ids() else "cpu")
@@ -138,13 +140,17 @@ class AgentInterface(metaclass=ABCMeta):
         )
 
         local_buffer_config = local_buffer_config or {}
-        self.local_buffer = Table(
-            capacity=local_buffer_config.get("size", 10000),
-            fragment_length=None,
-            data_shapes=None,
-            sample_start_size=0,
-            mode="local",
-        )
+
+        if len(local_buffer_config) > 0:
+            self.local_buffer = Table(
+                capacity=local_buffer_config["size"],
+                fragment_length=None,
+                data_shapes=None,
+                sample_start_size=0,
+                mode="local",
+            )
+        else:
+            self.local_buffer = None
 
         self._print_every = 100
 
@@ -328,8 +334,10 @@ class AgentInterface(metaclass=ABCMeta):
         # returned batch.data is a dict of agent batch if it is not None.
         if isinstance(buffer_desc, Dict):
             # multiple tasks
+            buffer_keys = list(buffer_desc.keys())
             tasks = [
-                self._offline_dataset.get_index.remote(v) for v in buffer_desc.values()
+                self._offline_dataset.get_consumer_index.remote(v)
+                for v in buffer_desc.values()
             ]
             while len(tasks) > 0:
                 dones, tasks = ray.wait(tasks)
@@ -339,7 +347,7 @@ class AgentInterface(metaclass=ABCMeta):
                         # push task
                         # Logger.warning("index not ready")
                         tasks.append(
-                            self._offline_dataset.get_index.remote(
+                            self._offline_dataset.get_consumer_index.remote(
                                 buffer_desc[batch.identify]
                             )
                         )
@@ -364,7 +372,10 @@ class AgentInterface(metaclass=ABCMeta):
                 )
                 if batch.data is None:
                     # means interface can use local buffer for training
-                    if self.local_buffer.size >= buffer_desc.batch_size:
+                    if (
+                        self.local_buffer
+                        and self.local_buffer.size >= buffer_desc.batch_size
+                    ):
                         break
                     else:
                         continue
@@ -375,14 +386,18 @@ class AgentInterface(metaclass=ABCMeta):
                     )
                     assert batch.data is not None
                     size += len(buffer_desc.indices)
-                    self.local_buffer.insert(
-                        data=[batch.data], size=len(buffer_desc.indices)
-                    )
+                    if self.local_buffer is not None:
+                        self.local_buffer.insert(
+                            data=[batch.data], size=len(buffer_desc.indices)
+                        )
+                    else:
+                        res = batch.data
 
                     buffer_desc.data = None
                     buffer_desc.indices = None
                     break
-        res = self.local_buffer.sample(size=buffer_desc.batch_size)
+        if self.local_buffer is not None:
+            res = self.local_buffer.sample(size=buffer_desc.batch_size)
         if (self._global_step + 1) % self._print_every == 0:
             Logger.debug(
                 "iteration: {} Trainer got {} data".format(
@@ -420,7 +435,7 @@ class AgentInterface(metaclass=ABCMeta):
 
         Note:
             This method could only be called in multi-instance scenarios. Or, `OfflineDataset` and `CoordinatorServer`
-            have been started.
+            have been started.t
 
         :param TaskDescription task_desc: Task description entity, `task_desc.content` must be a `TrainingTask` entity.
         :param Dict[str,Any] training_config: Training configuration. Default to None.
@@ -560,7 +575,6 @@ class AgentInterface(metaclass=ABCMeta):
         :raise: errors.NoEnoughSpace
         :return: None
         """
-
         if self._population_size < 0:
             return
         if len(self.policies) + len(self._group) < self._population_size:
@@ -639,6 +653,8 @@ class AgentInterface(metaclass=ABCMeta):
             task_request.task_type = TaskType.OPTIMIZE
             Logger.debug(f"Learner={self._id} send a request={task_request.task_type}")
             self._coordinator.request.remote(task_request)
+
+        return task_request
 
     def get_trainer(self, pid: PolicyID) -> Trainer:
         """Return a registered trainer with given policy id.

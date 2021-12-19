@@ -24,10 +24,8 @@ class QMIXTrainer(Trainer):
         _ = self.loss.step()
         return loss_stat
 
-    def reset(self, policies: Dict[AgentID, Policy], training_config):
-        global_state_space = list(policies.values())[0].custom_config[
-            "global_state_space"
-        ]
+    def reset(self, policy, training_config):
+        global_state_space = policy.custom_config["global_state_space"]
         if self.loss.mixer is None:
             self.global_state_preprocessor = get_preprocessor(global_state_space)(
                 global_state_space
@@ -43,7 +41,7 @@ class QMIXTrainer(Trainer):
             with torch.no_grad():
                 misc.hard_update(self.loss.mixer_target, self.loss.mixer)
 
-        super(QMIXTrainer, self).reset(policies, training_config)
+        super(QMIXTrainer, self).reset(policy, training_config)
 
     def preprocess(self, batch, **kwargs):
         return batch

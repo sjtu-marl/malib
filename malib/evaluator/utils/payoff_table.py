@@ -66,6 +66,7 @@ class PayoffTable:
 
             new_policy_add_num = 0
             for p in policy_seq:
+                print("---------------- agent:, p", agent, p)
                 if self._policy_idx[agent].get(p) is None:
                     expand_flag = True
                     self._policy_idx[agent][p] = len(self._policy_idx[agent])

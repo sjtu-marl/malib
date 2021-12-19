@@ -1,8 +1,4 @@
-import gym
-import numpy as np
-
-from malib.utils.typing import Dict, AgentID
-from malib.utils.episode import Episode
+from malib.utils.typing import Dict
 
 from .env import GymEnv
 

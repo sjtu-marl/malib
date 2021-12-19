@@ -289,41 +289,43 @@ def start(group: str, name: str, host="localhost", port=12333) -> Dict[str, Any]
     WAIT_FOR_READY_THRESHOLD = 10
     endpoint = f"{host}:{port}"
 
-    logger_server = ExperimentServer.start_logging_server(
-        port=endpoint, logdir=settings.LOG_DIR
-    )
-
-    logger_server.start()
-
-    # create a logger instance to test
-    _wait_for_ready_start_time = time.time()
-
     general_expr_cfg = {"expr_group": group, "expr_name": name, "port": endpoint}
+    if logger_server is None:
+        logger_server = ExperimentServer.start_logging_server(
+            port=endpoint, logdir=settings.LOG_DIR
+        )
 
-    while True:
-        try:
-            instance = get_logger(
-                name="test",
-                log_dir=settings.LOG_DIR,
-                expr_group=general_expr_cfg["expr_group"],
-                expr_name=general_expr_cfg["expr_name"],
-                port=endpoint,
-                remote=True,
-                mongo=settings.USE_MONGO_LOGGER,
-                file_stream=False,
-            )
-            instance.info("wait for server ready")
-            del instance
-            break
-        except Exception as e:
-            if time.time() - _wait_for_ready_start_time > WAIT_FOR_READY_THRESHOLD:
-                raise RuntimeError(
-                    "Wait time exceed threshold, "
-                    "task cancelled, "
-                    "cannot connect to logging server, "
-                    "please check the network availability!"
+        logger_server.start()
+
+        # create a logger instance to test
+        _wait_for_ready_start_time = time.time()
+
+        while True:
+            try:
+                instance = get_logger(
+                    name="test",
+                    log_dir=settings.LOG_DIR,
+                    expr_group=general_expr_cfg["expr_group"],
+                    expr_name=general_expr_cfg["expr_name"],
+                    port=endpoint,
+                    remote=True,
+                    mongo=settings.USE_MONGO_LOGGER,
+                    file_stream=False,
                 )
-            time.sleep(1)
+                instance.info("wait for server ready")
+                del instance
+                break
+            except Exception as e:
+                if time.time() - _wait_for_ready_start_time > WAIT_FOR_READY_THRESHOLD:
+                    raise RuntimeError(
+                        "Wait time exceed threshold, "
+                        "task cancelled, "
+                        "cannot connect to logging server, "
+                        "please check the network availability!"
+                    )
+                time.sleep(1)
+    else:
+        Logger.warning("Logger server has been started at: {}".format(endpoint))
 
     return general_expr_cfg
 
@@ -332,3 +334,4 @@ def terminate():
     """Terminate logging server"""
     global logger_server
     logger_server.terminate()
+    logger_server = None

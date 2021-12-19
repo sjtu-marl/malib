@@ -49,6 +49,7 @@ setup(
             "pytest-profiling",
             "pytest-cov",
             "pytest-mock",
+            "pytest-xdist",
         ],
     },
 )

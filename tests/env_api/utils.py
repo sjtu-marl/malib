@@ -2,7 +2,7 @@ import gym
 
 from malib.utils.typing import Dict, AgentID
 from malib.envs.agent_interface import AgentInterface
-from malib.algorithm.tests import build_random_policy
+from tests.algorithm.utils import build_random_policy
 
 
 def build_dummy_agent_interfaces(

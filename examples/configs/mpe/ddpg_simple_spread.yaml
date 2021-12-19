@@ -1,11 +1,13 @@
 # battle: https://github.com/wsjeon/maddpg-rllib
 group: "MPE"
 name: "share/ddpg_simple_spread"
+task_mode: marl
 
 training:
   interface:
     type: "independent"
     population_size: -1
+    use_init_population_pool: False
   config:
     # control the frequency of remote parameter update
     update_interval: 1

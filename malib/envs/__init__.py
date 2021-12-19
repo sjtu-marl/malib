@@ -1,14 +1,24 @@
 from .env import Environment
-from .maatari.env import MAAtari
-from .mpe.env import MPE
-from .poker import PokerParallelEnv
-from .gym.env import GymEnv
+from .maatari import env_desc_gen as maatari_desc_gen, MAAtari
+from .mpe import env_desc_gen as mpe_desc_gen, MPE
+from .poker import PokerParallelEnv, env_desc_gen as poker_desc_gen
+from .gym import GymEnv, env_desc_gen as gym_desc_gen
 
 # from .star_craft2 import SC2Env
 # from .smarts.env import SMARTS
 
-_LIB = {"MAAtari": MAAtari, "MPE": MPE, "Poker": PokerParallelEnv, "Gym": GymEnv}
+_ENV_LIB = {"MAAtari": MAAtari, "MPE": MPE, "Poker": PokerParallelEnv, "Gym": GymEnv}
+_ENV_DESC_GEN_LIB = {
+    "MAAtari": maatari_desc_gen,
+    "MPE": mpe_desc_gen,
+    "Poker": poker_desc_gen,
+    "Gym": gym_desc_gen,
+}
 
 
 def get_env_cls(name: str):
-    return _LIB[name]
+    return _ENV_LIB[name]
+
+
+def gen_env_desc(name: str):
+    return _ENV_DESC_GEN_LIB[name]

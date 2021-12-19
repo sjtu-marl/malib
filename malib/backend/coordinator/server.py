@@ -34,15 +34,9 @@ from malib.evaluator.utils.payoff_manager import PayoffManager
 from malib.backend.coordinator.base_coordinator import BaseCoordinator
 
 
-@ray.remote
+# @ray.remote
 class CoordinatorServer(BaseCoordinator):
     """Coordinator server maintains the payoff matrix and serves for the task assignment."""
-
-    def push(self, **kwargs):
-        pass
-
-    def pull(self, **kwargs):
-        pass
 
     def gen_simulation_task(self, task_request: TaskRequest, matches: List):
         """Generate simulation task for a group of agents"""
@@ -122,10 +116,7 @@ class CoordinatorServer(BaseCoordinator):
     def payoff_manager(self) -> PayoffManager:
         return self._payoff_manager
 
-    def start(self, use_init_policy_pool: bool = False):
-        self._configs["training"]["interface"][
-            "use_init_policy_pool"
-        ] = use_init_policy_pool
+    def start(self):
         self._training_manager = TrainingManager(
             algorithms=self._configs["algorithms"],
             env_desc=self._configs["env_description"],
@@ -148,7 +139,6 @@ class CoordinatorServer(BaseCoordinator):
             exp_cfg=self._exp_cfg,
         )
 
-        Logger.info("use_init_policy_pool: {}".format(use_init_policy_pool))
         self._training_manager.init(state_id=self.generate_task_id())
 
         Logger.info("Coordinator server started")

@@ -2,7 +2,6 @@ import gym
 
 from malib.utils.typing import Dict, Any
 from malib.algorithm.random.policy import RandomPolicy
-from malib.algorithm.mappo import MAPPO
 
 
 def build_random_policy(

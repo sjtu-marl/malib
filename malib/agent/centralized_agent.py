@@ -39,8 +39,8 @@ class CentralizedAgent(CTDEAgent):
         observation_spaces: Dict[AgentID, gym.spaces.Space],
         action_spaces: Dict[AgentID, gym.spaces.Space],
         exp_cfg: Dict[str, Any],
-        use_init_policy_pool: bool,
         population_size: int = -1,
+        use_init_policy_pool: bool = False,
         algorithm_mapping: Callable = None,
         local_buffer_config: Dict = None,
     ):
@@ -71,25 +71,6 @@ class CentralizedAgent(CTDEAgent):
             for k, ids in self._teams.items()
         ]
 
-    def gen_buffer_description(
-        self,
-        agent_policy_mapping: Dict[AgentID, PolicyID],
-        batch_size: int,
-        sample_mode: str,
-    ):
-        """Generate buffer description by team"""
-        res = {}
-        for tid, agents in self._teams.items():
-            res[tid] = BufferDescription(
-                env_id=self._env_desc["config"]["env_id"],
-                agent_id=agents,
-                policy_id=[agent_policy_mapping[aid][0] for aid in agents],
-                batch_size=batch_size,
-                sample_mode=sample_mode,
-                identify=tid,
-            )
-        return res
-
     def optimize(
         self,
         policy_ids: Dict[AgentID, PolicyID],
@@ -108,7 +89,8 @@ class CentralizedAgent(CTDEAgent):
             # filter batch with env_agent_ids
             # _batch = {aid: data for aid, data in batch.items()}
             batch = trainer.preprocess(batch, other_policies=t_policies)
-            res[tid] = metrics.to_metric_entry(trainer.optimize(batch), prefix=tid)
+            tmp = trainer.optimize(batch)
+            res.update(dict(map(lambda kv: (f"{tid}/{kv[0]}", kv[1]), tmp.items())))
         return res
 
     def add_policy_for_agent(

@@ -111,7 +111,7 @@ def _request_evaluation(coordinator: CoordinatorServer, task_request: TaskReques
     if len(pending_matches) == 0:
         Logger.warning("repeated policy id detected!")
         for env_aid, ptup in trainable_pairs.items():
-            pending_trainable_pairs[env_aid] = ptup
+            pending_trainable_pairs[env_aid] = ptup[0]
     else:
         coordinator.gen_simulation_task(task_request, pending_matches)
 

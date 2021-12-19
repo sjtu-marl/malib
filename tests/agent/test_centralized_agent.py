@@ -2,9 +2,8 @@ import pytest
 import ray
 
 from malib.agent.agent_interface import AgentTaggedFeedback
-from malib.agent.ctde_agent import CTDEAgent
-
-from malib.utils.typing import BufferDescription
+from malib.agent.centralized_agent import CentralizedAgent
+from malib.utils.typing import BufferDescription, ParameterDescription
 
 from . import AgentTestMixin
 
@@ -12,11 +11,29 @@ from . import AgentTestMixin
 @pytest.mark.parametrize(
     "agent_cls,yaml_path",
     [
-        (CTDEAgent, "examples/configs/mpe/maddpg_simple_spread.yaml"),
+        (CentralizedAgent, "examples/configs/mpe/qmix_simple_spread.yaml"),
     ],
     scope="class",
 )
-class TestCTDEAgent(AgentTestMixin):
+class TestCentralizedAgent(AgentTestMixin):
+    def test_parameter_description_gen(self):
+        agent_policy_mapping = {k: v[0] for k, v in self.trainable_pairs.items()}
+        env_aid = list(agent_policy_mapping.keys())[0]
+        policy_id = list(agent_policy_mapping.values())[0]
+        trainable = False
+        data = None
+
+        desc: ParameterDescription = self.instance.parameter_desc_gen(
+            env_aid, policy_id, trainable, data
+        )
+        assert desc.env_id == self.CONFIGS["env_description"]["config"]["env_id"]
+        assert desc.identify == env_aid
+        assert desc.id == policy_id
+        assert desc.data == data
+        assert desc.lock == (not trainable)
+
+        pytest.fixture(scope="class", name="parameter_desc")(lambda: desc)
+
     def test_get_stationary_state(self):
         feedback: AgentTaggedFeedback = self.instance.get_stationary_state()
 

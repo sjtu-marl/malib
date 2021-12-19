@@ -1,15 +1,28 @@
 [run]
 branch = False
 omit = 
+	# ignore typings and base class
 	*/__init__.py
-	malib/envs/smarts/*
-	# ignore base agent interface
+	malib/utils/typing.py
 	malib/agent/agent_interface.py
+	malib/backend/coordinator/base_coordinator.py
+	malib/envs/smarts/*
+	# ignore imitation training suit
+	malib/algorithm/imitation/*
+	malib/algorithm/common/reward.py
+
 
 [report]
 skip_empty = True
 omit =
 	malib/envs/smarts/*
+	malib/algorithm/imitation/*
+	malib/utils/typing.py
+	malib/settings.py
+	malib/registration.py
+	malib/backend/coordinator/light_server.py
+	malib/backend/datapool/data_array.py
+	malib/algorithm/common/reward.py
 
 [html]
 directory = cov_html
