@@ -3,7 +3,7 @@ import ray
 
 from malib.agent.agent_interface import AgentTaggedFeedback
 from malib.agent.sync_agent import SyncAgent
-from malib.utils.typing import BufferDescription, ParameterDescription
+from malib.utils.typing import AgentID, BufferDescription, ParameterDescription
 
 from . import AgentTestMixin
 
@@ -11,11 +11,11 @@ from . import AgentTestMixin
 @pytest.mark.parametrize(
     "agent_cls,yaml_path",
     [
-        (SyncAgent, "examples/configs/mpe/maddpg_simple_spread.yaml"),
+        (SyncAgent, "examples/configs/mpe/sync_mode_ddpg_simple_spread.yaml"),
     ],
     scope="class",
 )
-class TestAsyncAgent(AgentTestMixin):
+class TestSyncAgent(AgentTestMixin):
     def test_parameter_description_gen(self):
         agent_policy_mapping = {k: v[0] for k, v in self.trainable_pairs.items()}
         env_aid = list(agent_policy_mapping.keys())[0]
@@ -48,22 +48,19 @@ class TestAsyncAgent(AgentTestMixin):
             batch_size=batch_size,
             sample_mode=sample_mode,
         )
-        assert isinstance(buffer_desc, BufferDescription), type(buffer_desc)
+        assert isinstance(buffer_desc, dict), type(buffer_desc)
         # check keys in buffer desc
-        assert (
-            buffer_desc.env_id == self.CONFIGS["env_description"]["config"]["env_id"]
-        ), buffer_desc.env_id
-        assert isinstance(buffer_desc.agent_id, (list, tuple)), type(
-            buffer_desc.agent_id
-        )
-        # CTDE agent should include only one team, that is, all agents will be registered in _groups, then we can visit them
-        #   via method agent_group()
-        assert len(buffer_desc.agent_id) == len(self.instance.agent_group())
-        for e in buffer_desc.agent_id:
-            assert e in self.instance.agent_group()
 
-        assert buffer_desc.batch_size == batch_size, buffer_desc.batch_size
-        assert buffer_desc.sample_mode == sample_mode, buffer_desc.sample_mode
+        for k, v in buffer_desc.items():
+            assert k in self.instance.agent_group()
+            assert (
+                v.env_id == self.CONFIGS["env_description"]["config"]["env_id"]
+            ), v.env_id
+            assert isinstance(v.agent_id, AgentID), type(v.agent_id)
+            assert v.batch_size == batch_size, v.batch_size
+            assert v.sample_mode == sample_mode, v.sample_mode
+
+        assert len(buffer_desc) == len(self.instance.agent_group())
 
         pytest.fixture(scope="class", name="buffer_desc")(lambda: buffer_desc)
 

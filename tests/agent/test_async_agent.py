@@ -1,9 +1,12 @@
 import pytest
 import ray
 
+from pytest_mock import MockerFixture
+
 from malib.agent.agent_interface import AgentTaggedFeedback
 from malib.agent.async_agent import AsyncAgent
-from malib.utils.typing import BufferDescription, ParameterDescription
+from malib.algorithm.common.trainer import Trainer
+from malib.utils.typing import BufferDescription, ParameterDescription, Dict, Any
 
 from . import AgentTestMixin
 
@@ -69,6 +72,26 @@ class TestAsyncAgent(AgentTestMixin):
 
     def test_parameter_push_and_pull(self):
         pass
+
+    def test_optimize(self, mocker: MockerFixture):
+        agent_policy_mapping = {k: v[0] for k, v in self.trainable_pairs.items()}
+        batch = {agent: {} for agent in self.governed_agents}
+
+        class faketrainer(Trainer):
+            def reset(self, policy, training_config):
+                pass
+
+            def preprocess(self, batch, **kwargs):
+                return batch
+
+            def optimize(self, batch) -> Dict[str, Any]:
+                return {"ploss": 0.0, "vloss": 0.0, "gradients": 0.0}
+
+        self.instance._trainers = {k: faketrainer(k) for k in self.instance._trainers}
+        res = self.instance.optimize(agent_policy_mapping, batch, training_config={})
+        assert isinstance(res, dict), res
+        for k, v in res.items():
+            assert isinstance(v, float)
 
     def test_data_request(self):
         batch_size = 64

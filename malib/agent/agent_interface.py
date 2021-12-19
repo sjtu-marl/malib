@@ -334,8 +334,10 @@ class AgentInterface(metaclass=ABCMeta):
         # returned batch.data is a dict of agent batch if it is not None.
         if isinstance(buffer_desc, Dict):
             # multiple tasks
+            buffer_keys = list(buffer_desc.keys())
             tasks = [
-                self._offline_dataset.get_index.remote(v) for v in buffer_desc.values()
+                self._offline_dataset.get_consumer_index.remote(v)
+                for v in buffer_desc.values()
             ]
             while len(tasks) > 0:
                 dones, tasks = ray.wait(tasks)
@@ -345,7 +347,7 @@ class AgentInterface(metaclass=ABCMeta):
                         # push task
                         # Logger.warning("index not ready")
                         tasks.append(
-                            self._offline_dataset.get_index.remote(
+                            self._offline_dataset.get_consumer_index.remote(
                                 buffer_desc[batch.identify]
                             )
                         )
@@ -573,7 +575,6 @@ class AgentInterface(metaclass=ABCMeta):
         :raise: errors.NoEnoughSpace
         :return: None
         """
-
         if self._population_size < 0:
             return
         if len(self.policies) + len(self._group) < self._population_size:
