@@ -3,12 +3,9 @@ The `VectorEnv` is an interface that integrates multiple environment instances t
 with shared multi-agent policies. Currently, the `VectorEnv` support parallel rollout for environment which steps in simultaneous mode.
 """
 
-import time
 import gym
 import ray
 import uuid
-import numpy as np
-import copy
 from collections import ChainMap
 
 from ray.actor import ActorHandle
@@ -30,18 +27,18 @@ from malib.envs import Environment
 from malib.utils.episode import EpisodeKey
 
 
-class AgentItems:
-    def __init__(self) -> None:
-        self._data = {}
+# class AgentItems:
+#     def __init__(self) -> None:
+#         self._data = {}
 
-    def update(self, agent_items: Dict[AgentID, Any]):
-        for k, v in agent_items.items():
-            if k not in self._data:
-                self._data[k] = []
-            self._data[k].append(v)
+#     def update(self, agent_items: Dict[AgentID, Any]):
+#         for k, v in agent_items.items():
+#             if k not in self._data:
+#                 self._data[k] = []
+#             self._data[k].append(v)
 
-    def cleaned_data(self):
-        return self._data
+#     def cleaned_data(self):
+#         return self._data
 
 
 class VectorEnv:
@@ -108,11 +105,11 @@ class VectorEnv:
 
         return self._envs[: self._limits]
 
-    @property
-    def extra_returns(self) -> List[str]:
-        """Return extra columns required by this environment"""
+    # @property
+    # def extra_returns(self) -> List[str]:
+    #     """Return extra columns required by this environment"""
 
-        return self._envs[0].extra_returns
+    #     return self._envs[0].extra_returns
 
     @property
     def env_creator(self):
