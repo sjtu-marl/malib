@@ -8,9 +8,12 @@ omit =
 	malib/envs/smarts/*
 	malib/envs/env.py
 	malib/rollout/base_worker.py
+	malib/evaluator/base_evaluator.py
 	# ignore imitation training suit
 	malib/algorithm/imitation/*
 	malib/algorithm/common/reward.py
+	# ignore random policy, just for test
+	malib/algorithm/random/*
 	# require test, URGENT!
 	malib/utils/*
 	malib/rpc/*
