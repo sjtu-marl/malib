@@ -247,9 +247,11 @@ class AgentInterface:
         :return: A tuple of action, action_dist, a list of rnn_state
         """
         policy_id = kwargs.get("policy_id", self.behavior_policy)
-        if policy_id is None:
-            policy_id = self._random_select_policy()
-            self._behavior_policy = policy_id
+        # by default, we do not allow dynamic policy id in an episode.
+        assert policy_id is not None
+        # if policy_id is None:
+        #     policy_id = self._random_select_policy()
+        #     self._behavior_policy = policy_id
         kwargs.update({"behavior_mode": self.behavior_mode})
         kwargs[EpisodeKey.CUR_OBS] = np.stack(kwargs[EpisodeKey.CUR_OBS])
         if EpisodeKey.ACTION_MASK in kwargs:

@@ -1,11 +1,10 @@
-import logging
 import importlib
-from numpy import mat
 import supersuit
+import gym
 
 from malib.envs import Environment
-from malib.utils.typing import Dict, Any, Sequence, AgentID
-from malib.utils.episode import Episode
+from malib.utils.typing import Dict, Any, Sequence, AgentID, List
+from malib.utils.episode import EpisodeKey
 
 
 def nested_env_creator(ori_creator: type, wrappers: Sequence[Dict]) -> type:
@@ -35,37 +34,65 @@ def nested_env_creator(ori_creator: type, wrappers: Sequence[Dict]) -> type:
 
 class MAAtari(Environment):
     def __init__(self, **configs):
-        super().__init__(**configs)
+        super(MAAtari, self).__init__(**configs)
 
         env_id = self._configs["env_id"]
-        wrappers = self._configs.get("wrappers", [])
         scenario_configs = self._configs.get("scenario_configs", {})
+        if "wrappers" in scenario_configs:
+            wrappers = scenario_configs.pop("wrappers")
+        else:
+            wrappers = {}
         env_module = env_module = importlib.import_module(f"pettingzoo.atari.{env_id}")
         ori_caller = env_module.parallel_env
         wrapped_caller = nested_env_creator(ori_caller, wrappers)
 
         self.is_sequential = False
-        self._env = wrapped_caller(**scenario_configs)
-        self._trainable_agents = self._env.possible_agents
-        self._max_step = 1000
+        self.max_step = 1000
 
-    def step(self, actions: Dict[AgentID, Any]):
+        self._env = wrapped_caller(**scenario_configs)
+        # we need to recover scenario configs
+        if len(wrappers) > 0:
+            scenario_configs["wrappers"] = wrappers
+        self._trainable_agents = self._env.possible_agents
+        self._observation_spaces = {
+            aid: self._env.observation_space(aid) for aid in self.possible_agents
+        }
+        self._action_spaces = {
+            aid: self._env.action_space(aid) for aid in self.possible_agents
+        }
+
+    @property
+    def possible_agents(self) -> List[AgentID]:
+        return self._env.possible_agents
+
+    @property
+    def observation_spaces(self) -> Dict[AgentID, gym.Space]:
+        return self._observation_spaces
+
+    @property
+    def action_spaces(self) -> Dict[AgentID, gym.Space]:
+        return self._action_spaces
+
+    def action_adapter(self, policy_outputs: Dict[str, Dict[AgentID, Any]], **kwargs):
+        """Return only actions"""
+        return policy_outputs[EpisodeKey.ACTION]
+
+    def time_step(self, actions: Dict[AgentID, Any]):
         observations, rewards, dones, infos = self._env.step(actions)
-        # hard clipping
-        if self.cnt >= self._max_step:
-            dones = dict.fromkeys(self.possible_agents, True)
-        super(MAAtari, self).step(actions, rewards=rewards, dones=dones, infos=infos)
         return {
-            Episode.CUR_OBS: observations,
-            Episode.REWARD: rewards,
-            Episode.DONE: dones,
-            Episode.INFO: infos,
+            EpisodeKey.NEXT_OBS: observations,
+            EpisodeKey.REWARD: rewards,
+            EpisodeKey.DONE: dones,
+            EpisodeKey.INFO: infos,
         }
 
     def render(self, *args, **kwargs):
         pass
 
     def reset(self, *args, **kwargs):
-        observations = self._env.reset(*args, **kwargs)
-        self._max_step = self._max_step or kwargs.get("max_step", None)
-        return {Episode.CUR_OBS: observations}
+        observations = self._env.reset()
+        self.max_step = self.max_step or kwargs.get("max_step", None)
+        return {EpisodeKey.CUR_OBS: observations}
+
+    def close(self):
+        return self._env.close()

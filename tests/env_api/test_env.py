@@ -29,7 +29,25 @@ from malib.utils.episode import EpisodeKey
                 "stacked": False,
             },
         ),
+        (
+            "malib.envs.maatari",
+            "MAAtari",
+            "basketball_pong_v2",
+            {
+                "wrappers": [
+                    {"name": "resize_v0", "params": [84, 84]},
+                    {"name": "dtype_v0", "params": ["float32"]},
+                    {
+                        "name": "normalize_obs_v0",
+                        "params": {"env_min": 0.0, "env_max": 1.0},
+                    },
+                ],
+                "obs_type": "grayscale_image",
+                "num_players": 2,
+            },
+        ),
     ],
+    scope="class",
 )
 def test_env(module_path, cname, env_id, scenario_configs):
     creator = getattr(importlib.import_module(module_path), cname)
@@ -117,6 +135,23 @@ def test_env(module_path, cname, env_id, scenario_configs):
                 "write_full_episode_dumps": False,
                 "render": False,
                 "stacked": False,
+            },
+        ),
+        (
+            "malib.envs.maatari",
+            "MAAtari",
+            "basketball_pong_v2",
+            {
+                "wrappers": [
+                    {"name": "resize_v0", "params": [84, 84]},
+                    {"name": "dtype_v0", "params": ["float32"]},
+                    {
+                        "name": "normalize_obs_v0",
+                        "params": {"env_min": 0.0, "env_max": 1.0},
+                    },
+                ],
+                "obs_type": "grayscale_image",
+                "num_players": 2,
             },
         ),
     ],

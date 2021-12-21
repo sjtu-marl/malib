@@ -47,7 +47,26 @@ from tests.dataset.utils import FakeDataServer
             },
             "episode",
         ),
+        (
+            "malib.envs.maatari",
+            "MAAtari",
+            "basketball_pong_v2",
+            {
+                "wrappers": [
+                    {"name": "resize_v0", "params": [84, 84]},
+                    {"name": "dtype_v0", "params": ["float32"]},
+                    {
+                        "name": "normalize_obs_v0",
+                        "params": {"env_min": 0.0, "env_max": 1.0},
+                    },
+                ],
+                "obs_type": "grayscale_image",
+                "num_players": 2,
+            },
+            "time_step",
+        ),
     ],
+    scope="class",
 )
 class TestEnvRunner:
     @pytest.fixture(autouse=True)
@@ -76,6 +95,8 @@ class TestEnvRunner:
 
         self.vec_env.add_envs(num=4)
         self.batch_mode = batch_mode
+        self.observation_spaces = observation_spaces
+        self.action_spaces = action_spaces
 
     def test_process_in_runner(self):
         runtime_config = {
