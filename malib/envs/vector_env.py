@@ -147,7 +147,6 @@ class VectorEnv:
 
         if envs and len(envs) > 0:
             for env in envs:
-                self._validate_env(env)
                 self._envs.append(env)
                 self._num_envs += 1
             Logger.debug(f"added {len(envs)} exisiting environments.")

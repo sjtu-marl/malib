@@ -58,6 +58,12 @@ class BaseGFootBall(Environment):
             assert self._num_right == 5 or self._num_right == 0
             self._num_right = self._num_right - 1
             self._num_left = self._num_left - 1
+            assert (
+                scenario_configs.get("other_config_options") is not None
+            ), "You should specify `other_config_options`"
+            assert (
+                scenario_configs["other_config_options"].get("action_set") == "v2"
+            ), "You should specify `action_set` in `other_config_options` with `v2`"
 
         self.possible_players = {
             "team_0": [
