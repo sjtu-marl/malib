@@ -8,7 +8,7 @@ from numpy.core.fromnumeric import mean
 from malib.utils.typing import AgentID, Callable, Dict, Any, Union, List
 from malib.utils.episode import EpisodeKey
 from malib.utils.preprocessor import get_preprocessor
-from malib.envs.env import Environment, ParameterSharingWrapper
+from malib.envs.env import Environment
 from malib.envs.gr_football.encoders import encoder_basic, rewarder_basic
 
 try:
@@ -446,31 +446,3 @@ def ParameterSharing(base_env: BaseGFootBall, parameter_sharing_mapping: Callabl
                 self.custom_metrics[aid]["num_shot"] += info[aid]["num_shot"]
 
     return Env()
-
-
-if __name__ == "__main__":
-    from malib.envs.gr_football import default_config
-    from malib.envs.gr_football.vec_wrapper import DummyVecEnv
-
-    # default_config["other_config_options"] = {"action_set": "v2"}
-    default_config["scenario_config"][
-        "env_name"
-    ] = "academy_run_pass_and_shoot_with_keeper"
-    default_config["scenario_config"]["number_of_left_players_agent_controls"] = 2
-    default_config["scenario_config"]["number_of_right_players_agent_controls"] = 1
-    default_config["use_built_in_GK"] = True
-
-    def env_fn():
-        env = BaseGFootBall(**default_config)
-        env = ParameterSharingWrapper(env, lambda x: x[:6])
-        return env
-
-    env = DummyVecEnv([env_fn] * 2)
-    print(env.possible_agents)
-    print(env.observation_spaces)
-    print(env.action_spaces)
-    env.reset()
-    # done = False
-    # while True:
-    #     actions = {aid: np.zeros(4, dtype=int) for aid in env.possible_agents}
-    #     obs, reward, done, info = env.step(actions)

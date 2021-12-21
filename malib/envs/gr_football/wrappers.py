@@ -3,11 +3,11 @@ import numpy as np
 
 from malib.utils.typing import Callable, AgentID, Any, Dict
 
-from malib.envs.env import ParameterSharingWrapper
+from malib.envs.env import GroupWrapper
 
 
-def ParameterizedSharing(base_env, parameter_sharing_func: Callable):
-    class PSGFootBall(ParameterSharingWrapper):
+def GroupedGFBall(base_env, parameter_sharing_func: Callable):
+    class PSGFootBall(GroupWrapper):
         def __init__(self, env):
             super().__init__(env)
             self.is_sequential = False

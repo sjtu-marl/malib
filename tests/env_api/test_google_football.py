@@ -3,12 +3,12 @@ import pytest
 
 from malib.envs.gr_football import BaseGFootBall
 from malib.envs.gr_football.env import ParameterSharing
+from malib.envs.gr_football.wrappers import GroupedGFBall
 from malib.utils.episode import EpisodeKey
 
 
 @pytest.mark.parametrize(
-    "env_name,n_player_left,n_player_right",
-    [("5_vs_5", 4, 0)],
+    "env_name,n_player_left,n_player_right", [("5_vs_5", 4, 0)], scope="class"
 )
 class TestGoogleFootballEnv:
     @pytest.fixture(autouse=True)
@@ -84,6 +84,48 @@ class TestGoogleFootballEnv:
                 )
                 for aid, space in act_spaces.items()
             }
+            rets = env.step(actions)
+            # update next to cur
+            rets[EpisodeKey.CUR_OBS] = rets[EpisodeKey.NEXT_OBS]
+            rets[EpisodeKey.CUR_STATE] = rets[EpisodeKey.NEXT_STATE]
+
+        assert self.env.cnt <= 20
+        assert rets[EpisodeKey.DONE]["__all__"], (self.env.cnt, rets[EpisodeKey.DONE])
+
+    @pytest.mark.parametrize(
+        "group_func",
+        [
+            lambda agent_id: agent_id,
+        ],
+    )
+    def test_group_wrapper(self, group_func):
+        env = GroupedGFBall(self.env, group_func)
+
+        state_spaces = env.state_spaces
+        observation_spaces = env.observation_spaces
+        action_spaces = env.action_spaces
+
+        # check whether the group rule matches the group_func
+        possible_agents = self.env.possible_agents
+        for aid in possible_agents:
+            group_pred = env.group_rule(aid)
+            group_target = group_func(aid)
+            assert group_pred == group_target, (group_pred, group_target)
+            assert aid in state_spaces
+            assert aid in observation_spaces
+            assert aid in action_spaces
+
+        rets = env.reset(max_step=20)
+        assert EpisodeKey.CUR_STATE in rets
+
+        for aid, obs in rets[EpisodeKey.CUR_OBS].items():
+            assert observation_spaces[aid].contains(obs)
+
+        for aid, state in rets[EpisodeKey.CUR_STATE].items():
+            assert state_spaces[aid].contains(state)
+
+        for _ in range(20):
+            actions = {aid: space.sample() for aid, space in action_spaces.items()}
             rets = env.step(actions)
             # update next to cur
             rets[EpisodeKey.CUR_OBS] = rets[EpisodeKey.NEXT_OBS]

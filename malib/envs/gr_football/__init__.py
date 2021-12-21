@@ -1,10 +1,5 @@
-import numpy as np
-
-from malib.utils.typing import Dict
-from malib.utils.preprocessor import get_preprocessor
-from malib.utils.episode import EpisodeKey
 from .env import BaseGFootBall, ParameterSharing
-from .wrappers import ParameterizedSharing
+from .wrappers import GroupedGFBall
 
 
 default_sharing_mapping = lambda x: x[:6]

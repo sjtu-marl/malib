@@ -7,6 +7,7 @@ omit =
 	malib/agent/agent_interface.py
 	malib/backend/coordinator/base_coordinator.py
 	malib/envs/smarts/*
+	malib/envs/env.py
 	# ignore imitation training suit
 	malib/algorithm/imitation/*
 	malib/algorithm/common/reward.py

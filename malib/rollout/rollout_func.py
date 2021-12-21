@@ -194,20 +194,20 @@ def _process_policy_outputs(
     return env_actions, detached_policy_outputs
 
 
-def _reduce_rollout_info(rollout_info) -> Dict[str, float]:
-    res = {}
-    if isinstance(rollout_info, list) or isinstance(rollout_info, tuple):
-        _item = np.array(rollout_info)
-        res["mean"] = np.mean(_item)
-        res["min"] = np.min(_item)
-        res["max"] = np.max(_item)
-    elif isinstance(rollout_info, dict):
-        for k, item in rollout_info.items():
-            res[k] = _reduce_rollout_info(item)
-    else:
-        res = rollout_info
+# def _reduce_rollout_info(rollout_info) -> Dict[str, float]:
+#     res = {}
+#     if isinstance(rollout_info, list) or isinstance(rollout_info, tuple):
+#         _item = np.array(rollout_info)
+#         res["mean"] = np.mean(_item)
+#         res["min"] = np.min(_item)
+#         res["max"] = np.max(_item)
+#     elif isinstance(rollout_info, dict):
+#         for k, item in rollout_info.items():
+#             res[k] = _reduce_rollout_info(item)
+#     else:
+#         res = rollout_info
 
-    return res
+#     return res
 
 
 def env_runner(

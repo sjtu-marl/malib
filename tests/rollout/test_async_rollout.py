@@ -73,8 +73,8 @@ class TestRollout:
     def test_stepping(self):
         stepping = Stepping({}, self.env_desc, use_subproc_env=self.use_subproc_env)
 
-        task_type, rollout_results = stepping.run(
-            self.agent_interfaces,
+        runtime_config = dict(
+            agent_interfaces=self.agent_interfaces,
             fragment_length=100,
             desc={
                 "flag": "rollout",
@@ -86,4 +86,15 @@ class TestRollout:
             callback=None,
             buffer_desc=None,
         )
+
+        task_type, rollout_results = stepping.run(**runtime_config)
         print("task_type: {}\neval_info: {}".format(task_type, rollout_results))
+
+        runtime_config["desc"]["flag"] = "evaluation"
+        task_type, rollout_results = stepping.run(**runtime_config)
+
+        # TODO(ming): and simulation tasks, use mock here
+        runtime_config["desc"]["flag"] = "simulation"
+        task_type, rollout_results = stepping.run(**runtime_config)
+
+        stepping.close()

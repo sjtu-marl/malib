@@ -30,6 +30,9 @@ function do_install_for_linux {
     nasm tar libbz2-dev libgtk2.0-dev cmake git libfluidsynth-dev libgme-dev \
     libopenal-dev timidity libwildmidi-dev unzip cmake
 
+    echo "Install StarCraftII environments"
+    sh malib/envs/star_craft2/install.sh
+
     # vizdoom dependencies
     sudo apt install libboost-all-dev
 

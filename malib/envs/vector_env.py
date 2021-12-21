@@ -76,10 +76,11 @@ class VectorEnv:
 
         self.add_envs(num=preset_num_envs)
 
-    def _validate_env(self, env: Environment):
-        assert (
-            not env.is_sequential
-        ), "The nested environment must be an instance which steps in simultaneous."
+    # TODO(ming): replace with a warning - sequential env support only 1 env in vec
+    # def _validate_env(self, env: Environment):
+    #     assert (
+    #         not env.is_sequential
+    #     ), "The nested environment must be an instance which steps in simultaneous."
 
     # @property
     # def trainable_agents(self):

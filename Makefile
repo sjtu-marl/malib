@@ -7,7 +7,7 @@
 #
 #.PHONY: profiling
 #profiling:
-
+# run visualization for cov_html: ruby -run -ehttpd . -p8000
 .PHONY: clean
 clean:
 	rm -rf ./logs/*

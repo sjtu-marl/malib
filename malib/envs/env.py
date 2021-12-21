@@ -150,6 +150,14 @@ class Wrapper(Environment):
 
     def __init__(self, env: Environment):
         self.env = env
+        self.max_step = self.env.max_step
+        self.cnt = self.env.cnt
+        self.episode_meta_info = self.env.episode_meta_info
+        self.custom_reset_config = self.env.custom_reset_config
+        self.custom_metrics = self.env.custom_metrics
+        self.runtime_id = self.env.runtime_id
+        self.is_sequential = self.env.is_sequential
+        self.episode_metrics = self.env.episode_metrics
 
     @property
     def possible_agents(self) -> List[AgentID]:
@@ -168,7 +176,7 @@ class Wrapper(Environment):
     def observation_spaces(self) -> Dict[AgentID, gym.Space]:
         return self.env.observation_spaces
 
-    def step(self, actions: Dict[AgentID, Any]):
+    def time_step(self, actions: Dict[AgentID, Any]):
         return self.env.step(actions)
 
     def close(self):
@@ -189,9 +197,9 @@ class Wrapper(Environment):
         return self.env.collect_info()
 
 
-class ParameterSharingWrapper(Wrapper):
+class GroupWrapper(Wrapper):
     def __init__(self, env: Environment):
-        super(ParameterSharingWrapper, self).__init__(env)
+        super(GroupWrapper, self).__init__(env)
 
         self.group_to_agents = defaultdict(lambda: [])
         # self.agent_to_group = {}
@@ -227,7 +235,7 @@ class ParameterSharingWrapper(Wrapper):
     def reset(
         self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
     ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
-        rets = super(ParameterSharingWrapper, self).reset(
+        rets = super(GroupWrapper, self).reset(
             max_step=max_step, custom_reset_config=custom_reset_config
         )
         # add CUR_STATE
@@ -237,7 +245,7 @@ class ParameterSharingWrapper(Wrapper):
         return rets
 
     def time_step(self, actions: Dict[AgentID, Any]):
-        rets = super(ParameterSharingWrapper, self).time_step(actions)
+        rets = super(GroupWrapper, self).time_step(actions)
         rets[EpisodeKey.NEXT_STATE] = self.build_state_from_observation(
             rets[EpisodeKey.NEXT_OBS]
         )
