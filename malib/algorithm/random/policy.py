@@ -16,6 +16,7 @@ class RandomPolicy(Policy):
         action_space,
         model_config,
         custom_config,
+        **kwargs
     ):
         super().__init__(
             registered_name=registered_name,
@@ -23,6 +24,7 @@ class RandomPolicy(Policy):
             action_space=action_space,
             model_config=model_config,
             custom_config=custom_config,
+            **kwargs
         )
 
         self.set_actor(
@@ -44,9 +46,11 @@ class RandomPolicy(Policy):
     ) -> Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
         actor_rnn_state, critic_rnn_state = kwargs[EpisodeKey.RNN_STATE]
         assert len(actor_rnn_state) == len(critic_rnn_state) == len(observation)
-
         logits = torch.softmax(self.actor(observation), dim=-1)
-        action_prob = torch.zeros((len(observation), self.action_space.n))
+        if isinstance(self.action_space, gym.spaces.Discrete):
+            action_prob = torch.zeros((len(observation), self.action_space.n)).numpy()
+        elif isinstance(self.action_space, gym.spaces.Box):
+            action_prob = np.random.random(len(observation))
         if "legal_moves" in kwargs:
             mask = torch.zeros_like(logits)
             mask[kwargs["legal_moves"]] = 1
@@ -55,8 +59,16 @@ class RandomPolicy(Policy):
         else:
             mask = torch.ones_like(logits)
         logits = mask * logits
-        action = logits.argmax(dim=-1).numpy()
-        return action, action_prob.numpy(), (actor_rnn_state, critic_rnn_state)
+        if isinstance(self.action_space, gym.spaces.Discrete):
+            if len(logits.shape) > 1:
+                action = logits.argmax(dim=-1).numpy()
+            else:
+                action = logits.detach().numpy()
+        else:
+            action = (
+                torch.distributions.Normal(logits[:, 0], logits[:, 1]).sample().numpy()
+            )
+        return action, action_prob, (actor_rnn_state, critic_rnn_state)
 
     def get_initial_state(self, batch_size: int = None) -> List[DataTransferType]:
         if batch_size is None:

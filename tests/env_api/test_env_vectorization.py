@@ -31,7 +31,7 @@ from malib.utils.episode import EpisodeKey
             },
         ),
     ],
-    scope="class"
+    scope="class",
 )
 class TestVecEnv:
     @pytest.fixture(autouse=True)
@@ -59,7 +59,9 @@ class TestVecEnv:
         assert self.vec_env.num_envs == 3
 
     def test_from_envs(self, env_id, scenario_configs):
-        envs: List[Environment] = [self.creator(env_id=env_id, scenario_configs=scenario_configs)]
+        envs: List[Environment] = [
+            self.creator(env_id=env_id, scenario_configs=scenario_configs)
+        ]
         vec_env = vector_env.VectorEnv.from_envs(envs, scenario_configs)
 
     def test_env_reset(self):

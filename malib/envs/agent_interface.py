@@ -155,11 +155,24 @@ class AgentInterface:
 
         self.behavior_mode = behavior_mode
 
-    def reset(self, policy_id=None, sample_dist=None) -> None:
-        """Reset agent interface. Sample dist will reseted with a no-none given `sample_dist`. If `self.sample_dist` is None or `self.policies` has changed length. Then `self.sample_dist` will be reset as uniform."""
+    def reset(self, policy_id=None, sample_dist: Dict[PolicyID, float] = None) -> None:
+        """Reset agent interface.
+
+        Sample dist will be reset with a no-none given `sample_dist`.
+        If `self.sample_dist` is None or `self.policies` has changed length.
+        Then `self.sample_dist` will be reset as an uniform.
+
+        The, the behavior policy will be reset. If the given `policy_id` is not None, the agent
+        will select policy identified with `policy_id` as its behavior_policy. Or, random select one
+        with its behavior distribution.
+        """
 
         if sample_dist is not None:
+            assert isinstance(sample_dist, dict)
             self.sample_dist = sample_dist
+
+        # len(sample_dist) != len(self.policies) means that some new policies were added,
+        # and the sample dist has not beeen reset yet.
         if self.sample_dist is None or len(self.sample_dist) != len(self.policies):
             self.sample_dist = dict.fromkeys(self.policies, 1.0 / len(self.policies))
 
@@ -182,6 +195,8 @@ class AgentInterface:
         parameter_desc: ParameterDescription,
     ) -> None:
         """Add new policy to policy set, if policy id existed, will return a existing policy.
+
+        Note: users must to call `reset` to ensure the consistency between `sample_dist` and `policies` before using.
 
         :param PolicyID policy_id: Policy id.
         :param Dict[str,Any] policy_description: Policy description, used to create policy instance
@@ -224,7 +239,8 @@ class AgentInterface:
     ) -> Tuple[
         Iterator, Iterator, List[Iterator]
     ]:  # Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
-        """Return an action by calling `compute_action` of a policy instance.
+        """Return a batch of action by calling `compute_action` of a policy instance.
+        Args contains a batch of data.
 
         :param args: list of args
         :param kwargs: dict of args
@@ -290,7 +306,7 @@ class AgentInterface:
         return status
 
     def transform_observation(
-        self, observation: Any, state: Any, policy_id: PolicyID = None
+        self, observation: Any, state: Any = None, policy_id: PolicyID = None
     ) -> Dict[str, Any]:
         """Transform environment observation with behavior policy's preprocessor. The preprocessed observation will be
         transferred to policy's `compute_action` as an input.
@@ -303,7 +319,10 @@ class AgentInterface:
         policy_id = policy_id or self._random_select_policy()
         policy = self.policies[policy_id]
         if policy.preprocessor is not None:
-            return {"obs": policy.preprocessor.transform(observation), "state": state}
+            return {
+                "obs": policy.preprocessor.transform(observation).squeeze(),
+                "state": state,
+            }
         else:
             return {"obs": observation, "state": state}
 

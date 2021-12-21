@@ -8,7 +8,16 @@ from malib.utils.episode import EpisodeKey
 
 
 @pytest.mark.parametrize(
-    "env_name,n_player_left,n_player_right", [("5_vs_5", 4, 0)], scope="class"
+    "env_name,n_player_left,n_player_right,use_built_in_GK, action_set",
+    [
+        ("5_vs_5", 4, 0, True, "default"),
+        ("5_vs_5", 5, 5, True, "v2"),  # 5v5 failed
+        ("5_vs_5", 5, 0, True, "v2"),
+        ("5_vs_5", 4, 0, False, "default"),
+        ("5_vs_5", 5, 5, False, "v2"),  # 5v5 failed
+        ("5_vs_5", 5, 0, False, "v2"),
+    ],
+    scope="class",
 )
 class TestGoogleFootballEnv:
     @pytest.fixture(autouse=True)
@@ -17,7 +26,8 @@ class TestGoogleFootballEnv:
         env_name: str,
         n_player_left: int,
         n_player_right: int,
-        use_built_in_GK: bool = True,
+        action_set: str,
+        use_built_in_GK: bool,
     ):
         scenario_configs = {
             "env_name": env_name,
@@ -29,6 +39,7 @@ class TestGoogleFootballEnv:
             "write_full_episode_dumps": False,
             "render": False,
             "stacked": False,
+            "other_config_options": {"action_set": action_set},
         }
 
         self.env = BaseGFootBall(
@@ -36,6 +47,8 @@ class TestGoogleFootballEnv:
             use_built_in_GK=use_built_in_GK,
             scenario_configs=scenario_configs,
         )
+
+        self.env.seed()
 
         self.env_id = "Gfootball"
         self.use_built_in_GK = use_built_in_GK
@@ -91,6 +104,7 @@ class TestGoogleFootballEnv:
 
         assert self.env.cnt <= 20
         assert rets[EpisodeKey.DONE]["__all__"], (self.env.cnt, rets[EpisodeKey.DONE])
+        env.close()
 
     @pytest.mark.parametrize(
         "group_func",
@@ -133,3 +147,5 @@ class TestGoogleFootballEnv:
 
         assert self.env.cnt <= 20
         assert rets[EpisodeKey.DONE]["__all__"], (self.env.cnt, rets[EpisodeKey.DONE])
+
+        env.close()

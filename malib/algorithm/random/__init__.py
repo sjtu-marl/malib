@@ -1,4 +1,7 @@
 from .policy import RandomPolicy
 from .random_trainer import RandomTrainer
 
-POLICY_NAME = "random"
+NAME = "random"
+POLICY = RandomPolicy
+TRAINER = RandomTrainer
+LOSS = None

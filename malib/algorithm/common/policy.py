@@ -107,6 +107,7 @@ class Policy(metaclass=ABCMeta):
         self._actor = None
         self._critic = None
         self._exploration_callback = None
+        self._kwargs = kwargs
 
     @property
     def exploration_callback(self) -> Callable:
