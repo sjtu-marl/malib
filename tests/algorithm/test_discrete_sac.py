@@ -1,4 +1,6 @@
 from typing import Dict
+
+import pytest
 from malib.algorithm.discrete_sac import (
     CONFIG,
     DiscreteSAC,
@@ -30,8 +32,13 @@ model_config = {
 test_obs_shape = (3,)
 test_action_dim = 2
 
-
+@pytest.mark.parametrize('use_auto_alpha', [True, False], scope='class')
 class TestDiscreteSAC(AlgorithmTestMixin):
+    @pytest.fixture(autouse=True)
+    def custom_cfg(self, use_auto_alpha):
+        custom_config['use_auto_alpha'] = use_auto_alpha
+        return custom_config
+
     def make_algorithm(self, *args):
         return DiscreteSAC(
             registered_name="DiscreteSAC",
@@ -64,3 +71,5 @@ class TestDiscreteSAC(AlgorithmTestMixin):
             EpisodeKey.DONE: np.zeros((batch_size, 1)),
             EpisodeKey.REWARD: np.zeros((batch_size, 1)),
         }
+    
+    

@@ -37,7 +37,7 @@ def compute_return(policy, batch, mode="gae"):
             values,
             dones,
             # XXX(ming): why load rnn states from batch? we do not save it.
-            batch["rnn_states_0"],
+            batch["rnn_state_0"],
             batch[EpisodeKey.ACTION],
             batch[EpisodeKey.ACTION_DIST],
             gamma,

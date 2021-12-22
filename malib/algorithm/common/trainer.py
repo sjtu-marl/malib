@@ -31,7 +31,6 @@ class Trainer(metaclass=ABCMeta):
     @abstractmethod
     def optimize(self, batch) -> Dict[str, Any]:
         """Execution policy optimization then return a dict of statistics"""
-        pass
 
     @property
     def policy(self) -> Policy:
@@ -54,4 +53,3 @@ class Trainer(metaclass=ABCMeta):
     @abstractmethod
     def preprocess(self, batch, **kwargs) -> Any:
         """Preprocess batch if need"""
-        pass
