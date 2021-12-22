@@ -49,7 +49,7 @@ class BaseCoordinator(metaclass=ABCMeta):
 
     @property
     def rollout_manager(self) -> RolloutWorkerManager:
-        return self._rollout_worker_manager
+        return self._rollout_manager
 
     # def aggregate(self, **kwargs):
     #     pass
