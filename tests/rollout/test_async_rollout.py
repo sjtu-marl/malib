@@ -60,6 +60,9 @@ class TestRollout:
         env_desc = {
             "creator": creator,
             "config": {"env_id": env_id, "scenario_configs": scenario_configs},
+            "possible_agents": env.possible_agents,
+            "action_spaces": env.action_spaces,
+            "observation_spaces": env.observation_spaces,
         }
 
         self.env_desc = env_desc
