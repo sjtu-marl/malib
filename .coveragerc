@@ -17,6 +17,8 @@ omit =
 	# require test, URGENT!
 	malib/utils/*
 	malib/rpc/*
+	# ignore cli
+	malib/runner.py
 
 
 [report]
