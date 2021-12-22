@@ -34,8 +34,9 @@ model_config = {
 test_obs_shape = (3,)
 test_action_dim = 2
 
-@pytest.mark.parametrize('use_rnn',[True, False], scope='class')
-@pytest.mark.parametrize('use_vtrace', [True, False], scope='class')
+
+@pytest.mark.parametrize("use_rnn", [True, False], scope="class")
+@pytest.mark.parametrize("use_vtrace", [True, False], scope="class")
 class TestMAPPO(AlgorithmTestMixin):
     @pytest.fixture(autouse=True)
     def setUp(self, use_rnn, use_vtrace):
@@ -47,10 +48,10 @@ class TestMAPPO(AlgorithmTestMixin):
     def make_algorithm(self, *args):
         use_rnn, use_vtrace = args
         custom_config["global_state_space"] = {
-        "agent_0": spaces.Box(low=0, high=1, shape=test_obs_shape)
+            "agent_0": spaces.Box(low=0, high=1, shape=test_obs_shape)
         }
-        custom_config['use_rnn'] = use_rnn
-        custom_config['return_mode'] = 'vtrace' if use_vtrace else 'gae' 
+        custom_config["use_rnn"] = use_rnn
+        custom_config["return_mode"] = "vtrace" if use_vtrace else "gae"
         return MAPPO(
             registered_name="MAPPO",
             observation_space=spaces.Box(low=0, high=1, shape=test_obs_shape),
@@ -127,7 +128,7 @@ class TestMAPPO(AlgorithmTestMixin):
         self.algorithm.dump(dump_dir)
         MAPPO.load(dump_dir, env_agent_id="agent_0")
         shutil.rmtree(dump_dir)
-    
+
     def test_value_function(self):
         return self.algorithm.value_function(**self.build_train_inputs())
 

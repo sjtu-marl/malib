@@ -53,5 +53,5 @@ class TestDQN(AlgorithmTestMixin):
             EpisodeKey.ACTION: np.zeros((batch_size, 1)),
             EpisodeKey.DONE: np.zeros((batch_size, 1)),
             EpisodeKey.REWARD: np.zeros((batch_size, 1)),
-            'next_action_mask': action_mask
+            "next_action_mask": action_mask,
         }

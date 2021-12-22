@@ -90,8 +90,9 @@ class MAAtari(Environment):
         pass
 
     def reset(self, *args, **kwargs):
+        super(MAAtari, self).reset(*args, **kwargs)
+
         observations = self._env.reset()
-        self.max_step = self.max_step or kwargs.get("max_step", None)
         return {EpisodeKey.CUR_OBS: observations}
 
     def close(self):

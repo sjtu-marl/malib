@@ -2,12 +2,13 @@ import os
 import pytest
 import ray
 import yaml
+import time
 
 from pytest_mock import MockerFixture
 
 from malib.agent.agent_interface import AgentFeedback
 from malib.utils import logger
-from malib.utils.typing import TaskRequest, TaskType
+from malib.utils.typing import SimulationDescription, TaskRequest, TaskType
 from malib.backend.coordinator.task import CoordinatorServer
 
 from .mixin import ServerTestMixin
@@ -36,6 +37,8 @@ class TestServer(ServerTestMixin):
             ),
             state_id="test",
         )
+
+        assert self.server.hyper_evaluator is not None
 
         # ray.get(self.remote_server.start.remote())
 
@@ -67,6 +70,47 @@ class TestServer(ServerTestMixin):
             CoordinatorServer, f"_request_{name}", return_value=ret_value
         )
         mocked(self.server, None)
+
+    def test_helpers_and_close_server(self, mocker: MockerFixture):
+        class fake_tmanager:
+            def terminate(self):
+                pass
+
+            def add_policy(self, aid, task_desc):
+                pass
+
+        class fake_rmanager:
+            def terminate(self):
+                pass
+
+            def simulate(self, task_desc):
+                pass
+
+        mocked_training_manager = mocker.patch(
+            "malib.backend.coordinator.server.TrainingManager",
+            side_effect=fake_tmanager,
+        )
+        mocked_rollout_manager = mocker.patch(
+            "malib.backend.coordinator.server.RolloutWorkerManager",
+            side_effect=fake_rmanager,
+        )
+        self.server._training_manager = mocked_training_manager()
+        self.server._rollout_manager = mocked_rollout_manager()
+
+        self.server.gen_add_policy_task(None, str(time.time()))
+        self.server.gen_simulation_task(
+            TaskRequest(
+                task_type=TaskType.SIMULATION,
+                content=SimulationDescription(
+                    agent_involve_info=None, policy_combinations=None, num_episodes=1
+                ),
+                state_id=str(time.time()),
+            ),
+            matches=[],
+        )
+
+        self.server.terminate()
+        assert self.server.is_terminate()
 
     @classmethod
     def teardown_class(cls):

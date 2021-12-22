@@ -230,6 +230,8 @@ class GroupWrapper(Wrapper):
     def build_state_from_observation(
         self, agent_observation: Dict[AgentID, Any]
     ) -> Dict[AgentID, Any]:
+        """Return a dict of state"""
+
         raise NotImplementedError
 
     def reset(

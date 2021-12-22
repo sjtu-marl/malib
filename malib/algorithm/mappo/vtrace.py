@@ -12,7 +12,9 @@ def target_logp_from_policy_and_act(policy, obs, act, rnn_states, masks):
         obs = _cast(obs)
         masks = _cast(masks)
         rnn_states = torch.tensor(
-            rnn_states.reshape((B * T * N, *rnn_states.shape[-2:])), dtype=torch.float32, device=policy.device
+            rnn_states.reshape((B * T * N, *rnn_states.shape[-2:])),
+            dtype=torch.float32,
+            device=policy.device,
         )
     logits, _ = policy.actor(obs, rnn_states, masks)
     logits = logits.reshape((B, T, N, -1)).detach()

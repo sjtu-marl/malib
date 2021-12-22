@@ -174,11 +174,9 @@ class RNNLayer(nn.Module):
                 end_idx = has_zeros[i + 1]
                 temp = (
                     hxs
-                    * masks[start_idx]
-                    .view(1, -1, 1)
-                    .repeat(self._recurrent_N, 1, 1)
+                    * masks[start_idx].view(1, -1, 1).repeat(self._recurrent_N, 1, 1)
                 ).contiguous()
-                
+
                 rnn_scores, hxs = self.rnn(x[start_idx:end_idx], temp)
                 outputs.append(rnn_scores)
 

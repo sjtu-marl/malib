@@ -58,7 +58,7 @@ class CoordinatorServer(BaseCoordinator):
             ),
             state_id=task_request.state_id,
         )
-        self._rollout_worker_manager.simulate(task_desc)
+        self._rollout_manager.simulate(task_desc)
 
     def gen_add_policy_task(self, aid: str, state_id):
         """Generate policy adding task then dispatch to one agent interface.
@@ -102,7 +102,6 @@ class CoordinatorServer(BaseCoordinator):
             self._configs["global_evaluator"]["name"]
         )(**self._configs["global_evaluator"]["config"])
 
-        self._rollout_worker_manager = None
         self._training_manager = None
         self._exp_cfg = kwargs["exp_cfg"]
 
@@ -133,7 +132,7 @@ class CoordinatorServer(BaseCoordinator):
         Logger.info(
             "set worker num as {}".format(self._configs["rollout"]["worker_num"])
         )
-        self._rollout_worker_manager = RolloutWorkerManager(
+        self._rollout_manager = RolloutWorkerManager(
             rollout_config=self._configs["rollout"],
             env_desc=self._configs["env_description"],
             exp_cfg=self._exp_cfg,
@@ -163,5 +162,6 @@ class CoordinatorServer(BaseCoordinator):
         return self._terminate
 
     def terminate(self):
+        self._terminate = True  # hard terminate
         self._training_manager.terminate()
-        self._rollout_worker_manager.terminate()
+        self._rollout_manager.terminate()

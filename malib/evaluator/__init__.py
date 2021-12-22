@@ -8,9 +8,10 @@ from .generic import GenericEvaluator
 class EvaluatorType:
     PSRO = "psro"
     GENERIC = "generic"
+    SIMPLE = "simple"
 
     def __repr__(self):
-        return "<EvaluatorType: [psro, generic]>"
+        return "<EvaluatorType: [psro, generic, simple]>"
 
 
 def get_evaluator(name: str) -> Callable:
