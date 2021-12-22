@@ -74,9 +74,18 @@ class TestMADDPG(AlgorithmTestMixin):
                 EpisodeKey.ACTION: np.zeros((batch_size, 1)),
                 EpisodeKey.ACTION_DIST: np.ones((batch_size, test_action_dim))
                 / test_action_dim,
-                "next_act_by_target": np.zeros((batch_size, test_action_dim)),
+                # "next_act_by_target": np.zeros((batch_size, test_action_dim)),
             },
         }
 
     def test_trainer_preprocess(self):
-        self.trainer.preprocess(self.build_train_inputs, other_policies={})
+        self.trainer.preprocess(self.build_train_inputs(), other_policies={})
+
+    def test_trainer_optimize(self):
+        self.trainer._loss = self.loss
+        self.trainer.reset(self.algorithm, self._trainer_config)
+        batch = self.trainer.preprocess(
+            self.build_train_inputs(), other_policies={"agent_0": self.algorithm}
+        )
+        print(batch.keys())
+        self.trainer.optimize(batch)

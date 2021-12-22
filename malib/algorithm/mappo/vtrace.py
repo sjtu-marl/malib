@@ -7,11 +7,13 @@ def target_logp_from_policy_and_act(policy, obs, act, rnn_states, masks):
     if obs.ndim == 4:  # [B, T, N, *]
         B, T, N, _ = obs.shape
         _cast = lambda x: torch.tensor(
-            x.reshape((1, B * T * N, -1)), dtype=torch.float32, device=policy.device
+            x.reshape((B * T * N, -1)), dtype=torch.float32, device=policy.device
         )
         obs = _cast(obs)
-        rnn_states = _cast(rnn_states)
         masks = _cast(masks)
+        rnn_states = torch.tensor(
+            rnn_states.reshape((B * T * N, *rnn_states.shape[-2:])), dtype=torch.float32, device=policy.device
+        )
     logits, _ = policy.actor(obs, rnn_states, masks)
     logits = logits.reshape((B, T, N, -1)).detach()
     dist = Categorical(logits=logits)

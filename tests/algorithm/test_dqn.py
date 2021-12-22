@@ -45,10 +45,13 @@ class TestDQN(AlgorithmTestMixin):
 
     def build_train_inputs(self) -> Dict:
         batch_size = 32
+        action_mask = np.zeros((batch_size, test_action_dim))
+        action_mask[:, 0] = 1
         return {
             EpisodeKey.CUR_OBS: np.zeros((batch_size,) + test_obs_shape),
             EpisodeKey.NEXT_OBS: np.zeros((batch_size,) + test_obs_shape),
             EpisodeKey.ACTION: np.zeros((batch_size, 1)),
             EpisodeKey.DONE: np.zeros((batch_size, 1)),
             EpisodeKey.REWARD: np.zeros((batch_size, 1)),
+            'next_action_mask': action_mask
         }

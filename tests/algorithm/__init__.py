@@ -124,3 +124,18 @@ class AlgorithmTestMixin:
 
     def test_loss_reset(self):
         self.loss.reset(self.algorithm, self._trainer_config)
+
+
+    def test_train_eval(self):
+        self.algorithm.eval()
+        self.algorithm.train()
+
+    
+    def test_compute_actions(self):
+        try:
+            action, action_probs, rnn_states = self.algorithm.compute_actions(
+            **self.build_env_inputs()
+        )
+        except Exception as e:
+            print(f"Exception happens: {e}")
+    

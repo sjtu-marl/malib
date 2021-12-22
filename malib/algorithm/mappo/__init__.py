@@ -24,7 +24,7 @@ CONFIG = {
         "num_mini_batch": 1,
         "return_mode": "gae",
         "gae": {"gae_lambda": 0.95},
-        "vtrace": {"clip_rho_threshold": 1.0, "clip_pg_threshold": 1.0},
+        "vtrace": {"clip_rho_threshold": 1.0, "clip_pg_rho_threshold": 1.0},
         # this is not used, instead it is fixed to last hidden in actor/critic
         "use_rnn": False,
         "rnn_layer_num": 1,
