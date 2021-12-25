@@ -232,7 +232,7 @@ def _request_rollout(coordinator: CoordinatorServer, task_request: TaskRequest):
     if all([len(p_list) for p_list in population_mapping.values()]):
         policy_distribution = (
             coordinator.payoff_manager.get_equilibrium(population_mapping)
-            if coordinator.task_mode == "gta"
+            if coordinator.task_mode == "gt"
             else {
                 k: dict(zip(v, [1 / len(v)] * len(v)))
                 for k, v in population_mapping.items()

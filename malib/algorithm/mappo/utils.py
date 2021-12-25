@@ -172,15 +172,11 @@ class RNNLayer(nn.Module):
                 # This is much faster
                 start_idx = has_zeros[i]
                 end_idx = has_zeros[i + 1]
-                try:
-                    temp = (
-                        hxs
-                        * masks[start_idx]
-                        .view(1, -1, 1)
-                        .repeat(self._recurrent_N, 1, 1)
-                    ).contiguous()
-                except Exception as e:
-                    raise e
+                temp = (
+                    hxs
+                    * masks[start_idx].view(1, -1, 1).repeat(self._recurrent_N, 1, 1)
+                ).contiguous()
+
                 rnn_scores, hxs = self.rnn(x[start_idx:end_idx], temp)
                 outputs.append(rnn_scores)
 

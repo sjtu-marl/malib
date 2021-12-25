@@ -4,7 +4,8 @@ from .mpe import env_desc_gen as mpe_desc_gen, MPE
 from .poker import PokerParallelEnv, env_desc_gen as poker_desc_gen
 from .gym import GymEnv, env_desc_gen as gym_desc_gen
 
-# from .star_craft2 import SC2Env
+# FIXME(ming): check environment installation here
+# from .star_craft2 import SC2Env, StatedSC2
 # from .smarts.env import SMARTS
 
 _ENV_LIB = {"MAAtari": MAAtari, "MPE": MPE, "Poker": PokerParallelEnv, "Gym": GymEnv}

@@ -5,7 +5,6 @@ exploitablility between weighted payoff and an oracle payoff.
 
 
 from malib.evaluator.base_evaluator import BaseEvaluator
-from malib.utils.formatter import pretty_print
 from malib.utils.typing import RolloutFeedback, EvaluateResult, TrainingFeedback, Union
 
 
@@ -59,6 +58,7 @@ class PSROEvaluator(BaseEvaluator):
         # res["exploitability"] = nash_cov
 
         # default by no limitation on iteration
+        self._iteration += 1
         res[
             EvaluateResult.REACHED_MAX_ITERATION
         ] = self._iteration == self._metrics.get(
@@ -68,5 +68,4 @@ class PSROEvaluator(BaseEvaluator):
         if res[EvaluateResult.REACHED_MAX_ITERATION]:
             res[EvaluateResult.CONVERGED] = True
 
-        self._iteration += 1
         return res

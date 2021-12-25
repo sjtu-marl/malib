@@ -2,6 +2,7 @@ import importlib
 import pytest
 import ray
 
+from malib.utils.typing import List
 from malib.envs import Environment, vector_env
 from malib.utils.episode import EpisodeKey
 
@@ -29,7 +30,25 @@ from malib.utils.episode import EpisodeKey
                 "stacked": False,
             },
         ),
+        (
+            "malib.envs.maatari",
+            "MAAtari",
+            "basketball_pong_v2",
+            {
+                "wrappers": [
+                    {"name": "resize_v0", "params": [84, 84]},
+                    {"name": "dtype_v0", "params": ["float32"]},
+                    {
+                        "name": "normalize_obs_v0",
+                        "params": {"env_min": 0.0, "env_max": 1.0},
+                    },
+                ],
+                "obs_type": "grayscale_image",
+                "num_players": 2,
+            },
+        ),
     ],
+    scope="class",
 )
 class TestVecEnv:
     @pytest.fixture(autouse=True)
@@ -49,9 +68,18 @@ class TestVecEnv:
             configs={"scenario_configs": scenario_configs, "env_id": env_id},
         )
 
-    def test_add_envs(self):
+    def test_add_envs(self, env_id, scenario_configs):
+        envs = [self.creator(env_id=env_id, scenario_configs=scenario_configs)]
         self.vec_env.add_envs(num=2)
         assert self.vec_env.num_envs == 2
+        self.vec_env.add_envs(envs)
+        assert self.vec_env.num_envs == 3
+
+    def test_from_envs(self, env_id, scenario_configs):
+        envs: List[Environment] = [
+            self.creator(env_id=env_id, scenario_configs=scenario_configs)
+        ]
+        vec_env = vector_env.VectorEnv.from_envs(envs, scenario_configs)
 
     def test_env_reset(self):
         self.vec_env.add_envs(num=4)
@@ -113,6 +141,23 @@ class TestVecEnv:
                 "write_full_episode_dumps": False,
                 "render": False,
                 "stacked": False,
+            },
+        ),
+        (
+            "malib.envs.maatari",
+            "MAAtari",
+            "basketball_pong_v2",
+            {
+                "wrappers": [
+                    {"name": "resize_v0", "params": [84, 84]},
+                    {"name": "dtype_v0", "params": ["float32"]},
+                    {
+                        "name": "normalize_obs_v0",
+                        "params": {"env_min": 0.0, "env_max": 1.0},
+                    },
+                ],
+                "obs_type": "grayscale_image",
+                "num_players": 2,
             },
         ),
     ],

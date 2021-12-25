@@ -17,9 +17,6 @@ class DDPGLoss(LossFunc):
             self._policy = policy
             self.setup_optimizers()
 
-    def zero_grad(self):
-        _ = [p.zero_grad() for p in self.optimizers.values()]
-
     def step(self):
         self.policy.soft_update(self._params["tau"])
 

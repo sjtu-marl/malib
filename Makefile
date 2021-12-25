@@ -7,7 +7,7 @@
 #
 #.PHONY: profiling
 #profiling:
-
+# run visualization for cov_html: ruby -run -ehttpd . -p8000
 .PHONY: clean
 clean:
 	rm -rf ./logs/*
@@ -27,7 +27,7 @@ rm-pycache:
 
 .PHONY: test
 test:
-	pytest --cov-config=.coveragerc --cov=malib/backend/datapool --cov-report html --doctest-modules tests/dataset
+	pytest -v --cov-config=.coveragerc --cov=malib --cov-report html --doctest-modules tests
 	rm -f .coverage.*
 
 .PHONY: test-dataset

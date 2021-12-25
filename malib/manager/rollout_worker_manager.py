@@ -96,7 +96,7 @@ class RolloutWorkerManager:
 
         return task_request
 
-    def get_idle_worker(self, test: bool = False) -> Tuple[str, RolloutWorker]:
+    def get_idle_worker(self) -> Tuple[str, RolloutWorker]:
         """Wait until an idle worker is available.
 
         :return: A tuple of worker index and worker.
@@ -118,13 +118,10 @@ class RolloutWorkerManager:
     def simulate(self, task_desc: TaskDescription, worker_idx=None):
         """Parse simulation task and dispatch it to available workers"""
 
-        Logger.debug(
-            f"got simulation task from handler: {task_desc.content.agent_involve_info.training_handler}"
-        )
         worker_idx, worker = self.get_idle_worker()
         worker.simulation.remote(task_desc)
 
-    def rollout(self, task_desc: TaskDescription, test: bool = False) -> None:
+    def rollout(self, task_desc: TaskDescription) -> None:
         """Parse rollout task and dispatch it to available worker.
 
         :param TaskDescription task_desc: A task description.
@@ -132,7 +129,7 @@ class RolloutWorkerManager:
         """
 
         # split into several sub tasks rollout
-        worker_idx, worker = self.get_idle_worker(test=test)
+        worker_idx, worker = self.get_idle_worker()
         worker.rollout.remote(task_desc)
 
     def terminate(self):
@@ -140,5 +137,4 @@ class RolloutWorkerManager:
 
         for worker in self._workers.values():
             worker.close.remote()
-            worker.stop.remote()
-            worker.__ray_terminate__.remote()
+            ray.kill(worker)

@@ -37,7 +37,7 @@ def compute_return(policy, batch, mode="gae"):
             values,
             dones,
             # XXX(ming): why load rnn states from batch? we do not save it.
-            batch["actor_rnn_states"],
+            batch["rnn_state_0"],
             batch[EpisodeKey.ACTION],
             batch[EpisodeKey.ACTION_DIST],
             gamma,
@@ -109,7 +109,7 @@ def recurrent_generator(data, num_mini_batch, rnn_data_chunk_length, device):
         for index in indices:
             ind = index * rnn_data_chunk_length
             for k in batch:
-                if k not in ["actor_rnn_states", "critic_rnn_states"]:
+                if k not in ["rnn_state_0", "rnn_state_1"]:
                     tmp_batch_list[k].append(
                         batch[k][ind : ind + rnn_data_chunk_length]
                     )
@@ -120,7 +120,7 @@ def recurrent_generator(data, num_mini_batch, rnn_data_chunk_length, device):
 
         tmp_batch = {}
         for k in batch:
-            if k not in ["actor_rnn_states", "critic_rnn_states"]:
+            if k not in ["rnn_state_0", "rnn_state_1"]:
                 tmp_batch[k] = torch.stack(tmp_batch_list[k], dim=1)
                 tmp_batch[k] = tmp_batch[k].reshape(N * T, *tmp_batch[k].shape[2:])
             else:

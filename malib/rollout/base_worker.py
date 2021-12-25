@@ -83,8 +83,7 @@ class BaseRolloutWorker:
         self._parameter_server = None
         self._offline_dataset = None
 
-        env = env_desc["creator"](**env_desc["config"])
-        self._agents = env.possible_agents
+        self._agents = env_desc["possible_agents"]
         self._kwargs = kwargs
 
         if remote:
@@ -94,8 +93,8 @@ class BaseRolloutWorker:
         self._agent_interfaces = {
             aid: AgentInterface(
                 aid,
-                env.observation_spaces[aid],
-                env.action_spaces[aid],
+                env_desc["observation_spaces"][aid],
+                env_desc["action_spaces"][aid],
                 self._parameter_server,
             )
             for aid in self._agents

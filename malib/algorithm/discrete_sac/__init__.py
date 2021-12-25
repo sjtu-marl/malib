@@ -19,6 +19,7 @@ CONFIG = {
         "critic_lr": 1e-2,
         "grad_norm_clipping": 0.5,
         "sac_alpha": 0.2,
+        "alpha_lr": 1e-3,
     },
     "policy": {},
 }

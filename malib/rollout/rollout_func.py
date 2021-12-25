@@ -194,20 +194,20 @@ def _process_policy_outputs(
     return env_actions, detached_policy_outputs
 
 
-def _reduce_rollout_info(rollout_info) -> Dict[str, float]:
-    res = {}
-    if isinstance(rollout_info, list) or isinstance(rollout_info, tuple):
-        _item = np.array(rollout_info)
-        res["mean"] = np.mean(_item)
-        res["min"] = np.min(_item)
-        res["max"] = np.max(_item)
-    elif isinstance(rollout_info, dict):
-        for k, item in rollout_info.items():
-            res[k] = _reduce_rollout_info(item)
-    else:
-        res = rollout_info
+# def _reduce_rollout_info(rollout_info) -> Dict[str, float]:
+#     res = {}
+#     if isinstance(rollout_info, list) or isinstance(rollout_info, tuple):
+#         _item = np.array(rollout_info)
+#         res["mean"] = np.mean(_item)
+#         res["min"] = np.min(_item)
+#         res["max"] = np.max(_item)
+#     elif isinstance(rollout_info, dict):
+#         for k, item in rollout_info.items():
+#             res[k] = _reduce_rollout_info(item)
+#     else:
+#         res = rollout_info
 
-    return res
+#     return res
 
 
 def env_runner(
@@ -349,22 +349,19 @@ class Stepping:
         self.batch_mode = batch_mode
         self.postprocessor_types = postprocessor_types
 
-        # check whether env is simultaneous
-        env = env_desc["creator"](**env_desc["config"])
-
         # if not env.is_sequential:
         if use_subproc_env:
             self.env = SubprocVecEnv(
-                env.observation_spaces,
-                env.action_spaces,
+                env_desc["observation_spaces"],
+                env_desc["action_spaces"],
                 env_desc["creator"],
                 env_desc["config"],
                 max_num_envs=2,  # FIXME(ziyu): currently just fixed it.
             )
         else:
             self.env = VectorEnv(
-                observation_spaces=env.observation_spaces,
-                action_spaces=env.action_spaces,
+                observation_spaces=env_desc["observation_spaces"],
+                action_spaces=env_desc["action_spaces"],
                 creator=env_desc["creator"],
                 configs=env_desc["config"],
             )

@@ -2,21 +2,16 @@ import os
 import pytest
 import ray
 import yaml
+import time
 
 from pytest_mock import MockerFixture
 
-from malib import settings
 from malib.agent.agent_interface import AgentFeedback
-from malib.envs.gym import env_desc_gen
 from malib.utils import logger
-from malib.utils.typing import TaskRequest, TaskType
-from malib.utils.general import update_configs
-from malib.envs import gen_env_desc
+from malib.utils.typing import SimulationDescription, TaskRequest, TaskType
 from malib.backend.coordinator.task import CoordinatorServer
 
-from tests.dataset import FakeDataServer
-from tests.coordinator import FakeCoordinator
-from tests.parameter_server import FakeParameterServer
+from .mixin import ServerTestMixin
 
 
 @pytest.mark.parametrize(
@@ -29,29 +24,9 @@ from tests.parameter_server import FakeParameterServer
     ],
     scope="class",
 )
-class TestServer:
-    @pytest.fixture(autouse=True)
-    def setup(self, yaml_path):
-        # load yaml
-        full_path = os.path.join(settings.BASE_DIR, yaml_path)
-        assert os.path.exists(full_path), full_path
-        with open(full_path, "r") as f:
-            config = yaml.safe_load(f)
-
-        config = update_configs(config)
-        config["env_description"] = gen_env_desc(config["env_description"]["creator"])(
-            **config["env_description"]["config"]
-        )
-
-        env_desc = config["env_description"]
-        interface_config = config["training"]["interface"]
-        interface_config["observation_spaces"] = env_desc["observation_spaces"]
-        interface_config["action_spaces"] = env_desc["action_spaces"]
-        self.task_mode = config["task_mode"]
-        self.CONFIG = config
-
-        exp_cfg = logger.start("test", "test")
-        possible_agents = self.CONFIG["env_description"]["possible_agents"]
+class TestServer(ServerTestMixin):
+    def init_custom(self, exp_cfg, config):
+        possible_agents = config["env_description"]["possible_agents"]
         self.server = CoordinatorServer(exp_cfg=exp_cfg, **config)
         self.request_template = TaskRequest(
             task_type=TaskType.OPTIMIZE,
@@ -63,41 +38,9 @@ class TestServer:
             state_id="test",
         )
 
-        self.init_remote_servers(exp_cfg, config)
+        assert self.server.hyper_evaluator is not None
 
-    def init_remote_servers(self, exp_cfg, config):
-
-        dataset = None
-
-        try:
-            dataset = ray.get_actor(settings.OFFLINE_DATASET_ACTOR)
-        except ValueError:
-            dataset = FakeDataServer.options(
-                name=settings.OFFLINE_DATASET_ACTOR
-            ).remote()
-
-        parameter_server = None
-        try:
-            parameter_server = ray.get_actor(settings.PARAMETER_SERVER_ACTOR)
-        except ValueError:
-            parameter_server = FakeParameterServer.options(
-                name=settings.PARAMETER_SERVER_ACTOR
-            ).remote()
-
-        self.dataset = dataset
-        self.parameter_server = parameter_server
-
-        self.remote_server = None
-
-        try:
-            self.remote_server = ray.get_actor(settings.COORDINATOR_SERVER_ACTOR)
-        except ValueError:
-            self.remote_server = (
-                CoordinatorServer.as_remote()
-                .options(name=settings.COORDINATOR_SERVER_ACTOR)
-                .remote(exp_cfg=exp_cfg, **config)
-            )
-        ray.get(self.remote_server.start.remote())
+        # ray.get(self.remote_server.start.remote())
 
     def test_task_register(self):
         for task_type in [
@@ -109,7 +52,7 @@ class TestServer:
         ]:
             handler_name = f"_request_{task_type}"
             assert getattr(
-                self.server, handler_name
+                CoordinatorServer, handler_name
             ), f"`{handler_name}` registered failed in CoordinatorServer."
 
     @pytest.mark.parametrize(
@@ -124,9 +67,50 @@ class TestServer:
     )
     def test_handler(self, mocker: MockerFixture, name, ret_value):
         mocked = mocker.patch.object(
-            self.server, f"_request_{name}", return_value=ret_value
+            CoordinatorServer, f"_request_{name}", return_value=ret_value
         )
-        assert mocked(self.request_template) == None
+        mocked(self.server, None)
+
+    def test_helpers_and_close_server(self, mocker: MockerFixture):
+        class fake_tmanager:
+            def terminate(self):
+                pass
+
+            def add_policy(self, aid, task_desc):
+                pass
+
+        class fake_rmanager:
+            def terminate(self):
+                pass
+
+            def simulate(self, task_desc):
+                pass
+
+        mocked_training_manager = mocker.patch(
+            "malib.backend.coordinator.server.TrainingManager",
+            side_effect=fake_tmanager,
+        )
+        mocked_rollout_manager = mocker.patch(
+            "malib.backend.coordinator.server.RolloutWorkerManager",
+            side_effect=fake_rmanager,
+        )
+        self.server._training_manager = mocked_training_manager()
+        self.server._rollout_manager = mocked_rollout_manager()
+
+        self.server.gen_add_policy_task(None, str(time.time()))
+        self.server.gen_simulation_task(
+            TaskRequest(
+                task_type=TaskType.SIMULATION,
+                content=SimulationDescription(
+                    agent_involve_info=None, policy_combinations=None, num_episodes=1
+                ),
+                state_id=str(time.time()),
+            ),
+            matches=[],
+        )
+
+        self.server.terminate()
+        assert self.server.is_terminate()
 
     @classmethod
     def teardown_class(cls):

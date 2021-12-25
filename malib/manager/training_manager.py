@@ -15,7 +15,10 @@ from malib.gt.algos.exploitability import measure_exploitability
 from malib.utils.logger import Log, Logger
 from malib.utils.typing import (
     List,
+    Tuple,
+    PolicyConfig,
     TaskType,
+    AgentID,
     PolicyID,
     TaskRequest,
     TrainingFeedback,
@@ -96,13 +99,14 @@ class TrainingManager:
         _ = ray.get([agent.start.remote() for agent in self._agents.values()])
 
         self._groups = groups
-        self.proc = psutil.Process(os.getpid())
 
         Logger.info(
             f"training manager launched, {len(self._agents)} learner(s) created"
         )
 
     def get_agent_interface_num(self) -> int:
+        """Get the number of agent interfaces."""
+
         return len(self._agents)
 
     def init(self, state_id: str) -> None:
@@ -162,7 +166,9 @@ class TrainingManager:
         interface = self._agents[agent_involve_info.training_handler]
         interface.train.remote(task, self._training_config)
 
-    def _get_population_desc(self, state_id: str) -> Dict[PolicyID, Sequence[Any]]:
+    def _get_population_desc(
+        self, state_id: str
+    ) -> Dict[AgentID, List[Tuple[PolicyID, PolicyConfig]]]:
         """Return stationary population description with given state_id which is related to a muted object stored as a
         Ray object.
 
@@ -230,7 +236,7 @@ class TrainingManager:
 
         for agent in self._agents.values():
             # TODO(ming): save interval state
-            agent.exit_actor()
+            ray.kill(agent)
         del self._agents
 
     def get_exp(self, policy_distribution):
