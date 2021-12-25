@@ -1,17 +1,37 @@
+import asyncio
+from asyncio.events import AbstractEventLoop
+from genericpath import exists
+import os
 import operator
 import pytest
 import ray
 import numpy as np
+import pickle as pkl
 
 from functools import reduce
 
-from malib.utils.typing import BufferDescription, List, Any, Dict, Tuple
+from malib.utils.typing import BufferDescription, List, Any, Dict, Status, Tuple
 from malib.utils.episode import EpisodeKey
 from malib.backend.datapool.offline_dataset_server import (
     BufferDict,
     OfflineDataset,
     Table,
+    get_or_create_eventloop,
 )
+
+def test_get_or_create_eventloop():
+    asyncio.set_event_loop(None)
+    default_constructed_loop = get_or_create_eventloop()
+    assert isinstance(default_constructed_loop, AbstractEventLoop)
+    default_constructed_loop.close()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    assert isinstance(get_or_create_eventloop(), AbstractEventLoop)
+    assert (get_or_create_eventloop() == loop)
+    loop.close()
+    asyncio.set_event_loop(None)
+    get_or_create_eventloop()
 
 
 @pytest.mark.parametrize(
@@ -155,13 +175,159 @@ class TestTable:
         data: BufferDict = self.table.sample(size=sum(sizes))
 
     def test_queue_mode(self):
-        pass
+        def _size_check():
+            assert (0 <= self.table._producer_queue.qsize() <= self.table.capacity)
+            assert (0 <= self.table._consumer_queue.qsize() <= self.table.capacity)
+            assert (self.table._producer_queue.qsize() + self.table._consumer_queue.qsize() == self.table.capacity)
+
+        _size_check()
+        cur_p_queue_size = self.table._producer_queue.qsize()
+        cur_c_queue_size = self.table._consumer_queue.qsize()
+        
+        assert (self.table._producer_queue.full())
+        assert (self.table._consumer_queue.empty())
+
+        # sanity check: expect None
+        assert (self.table.get_producer_index(buffer_size=-1) is None)
+        assert (self.table.get_producer_index(buffer_size=0) is None)
+        assert (self.table._producer_queue.qsize() == cur_p_queue_size)
+
+        assert (self.table.get_consumer_index(buffer_size=-1) is None)
+        assert (self.table.get_consumer_index(buffer_size=0) is None)
+        assert (self.table._consumer_queue.qsize() == cur_c_queue_size)
+        
+        # sanity check: p -> c
+        assert (self.table._producer_queue.qsize() == cur_p_queue_size)
+        
+        pidx = []
+        while self.table._producer_queue.qsize() > 0:
+            pidx.extend(self.table.get_producer_index(1))
+        assert(len(pidx) == cur_p_queue_size)
+        self.table.free_consumer_index(indices=pidx)
+        assert self.table._producer_queue.qsize() == cur_p_queue_size
+
+        pidx = self.table.get_producer_index(buffer_size=cur_p_queue_size+1)
+        assert (isinstance(pidx, List) and len(pidx) == cur_p_queue_size)
+        self.table.free_producer_index(pidx)
+        _size_check()
+
+        assert self.table._producer_queue.qsize() == 0, pidx
+        assert (self.table._consumer_queue.qsize() == self.table.capacity)
+        
+        cur_p_queue_size = 0
+        cur_c_queue_size = self.table.capacity
+
+        # sanity check: c -> p
+        cidx = self.table.get_consumer_index(buffer_size=cur_c_queue_size+1)
+        assert (isinstance(cidx, List) and len(cidx) == cur_c_queue_size)
+        self.table.free_consumer_index(cidx)
+        _size_check()
+        del cidx
+
+        assert self.table._consumer_queue.qsize() == 0
+        assert (self.table._producer_queue.qsize() == self.table.capacity)
+
+    def test_to_csv(self):
+        def _split_csv_line(line: str):
+            line = line.replace("\n", "")
+            line = line.replace(" ", "")
+            return line.split("/")
+
+        fp = "/tmp/_csvfile_dumped"
+        os.makedirs(fp, exist_ok=True)
+        self.table.to_csv(fp)
+
+        buffer = self.table.buffer
+        # check existance of dumped csv files
+        for aid in buffer.keys():
+            csv_path = os.path.join(fp, str(aid))
+            assert (os.path.exists(csv_path))
+            data = buffer[aid]
+            col_names = [str(cname) for cname in data.keys()]
+            with open(csv_path, "r") as csv:
+                # check columns
+                col_line = csv.readline()
+                cols = _split_csv_line(col_line)
+                assert (col_names == cols)
+                
+                for idx in range(len(next(iter(data.values())))):
+                    line = csv.readline()
+                    split_line = _split_csv_line(line)
+                    cnames = list(data.keys())
+                    assert (len(split_line) == len(cnames))
+                    for cname, entry in zip(cnames, split_line):
+                        assert np.all(np.abs(data[cname][idx] - np.array(eval(entry))) < 1e-5)
+            os.remove(csv_path)
+        os.rmdir(fp)
 
     def test_serialization(self):
-        pass
+        multi_agent = self.table.is_multi_agent
+        sample_start_size = self.table._sample_start_size
+        data_shapes = self.table._data_shapes
+        fragment_length =  self.table._fragment_length
+        data = self.table._buffer
+
+        direct_comparable_attrs = [
+            "multi_agent",
+            "sample_start_size",
+            "fragment_length",
+        ]
+        
+        fp = "/tmp"
+        name = "_table_dump"
+        self.table.dump(fp=fp, name=name)
+
+        path = os.path.join(fp, name+".tpkl")
+        assert (os.path.exists(path))
+        with open(path, "rb") as f:
+            serial_dict = pkl.load(f)
+        assert isinstance(serial_dict, Dict)
+
+        for attr_name in direct_comparable_attrs:
+            assert(eval(attr_name) == serial_dict.get(attr_name))
+
+        for aid, shapes in serial_dict.get("data_shapes").items():
+            assert (aid in data_shapes)
+            inmem_shapes = data_shapes[aid]
+            assert (shapes == inmem_shapes)
+        dumped_buffer = serial_dict.get("data")
+        assert (data.capacity == dumped_buffer.capacity)
+        assert (data.keys() == dumped_buffer.keys())
+        for k in data.keys():
+            for col in data[k].keys():
+                assert np.all((data[k][col] == dumped_buffer[k][col]))
+        os.remove(path)
 
     def test_deserialization(self):
-        pass
+        fp = "/tmp"
+        name = "_table_dump"
+        self.table.dump(fp=fp, name=name)
+        path = os.path.join(fp, name+".tpkl")
+        table = Table.load(path)
+
+        assert (table.is_multi_agent == self.table.is_multi_agent)
+        assert (table._sample_start_size == self.table._sample_start_size)
+
+        for aid, shapes in self.table._data_shapes.items():
+            assert (aid in table._data_shapes.keys())
+            assert (shapes == table._data_shapes[aid])
+
+        
+        assert (table.buffer.capacity == self.table.buffer.capacity)
+        assert (table.buffer.keys() == self.table.buffer.keys())
+        for k in self.table.buffer.keys():
+            for col in self.table.buffer[k].keys():
+                assert np.all((table.buffer[k][col] == self.table.buffer[k][col]))
+        os.remove(path)
+
+    def test_fix_table(self):
+        assert (not self.table.is_fixed)
+
+        # expect shutdown() only invoked once
+        for _ in range(10):
+            self.table.fix_table()
+
+        assert (self.table.is_fixed)
 
 
 @pytest.mark.parametrize(
@@ -198,6 +364,11 @@ class TestOfflineDataset:
             policy_id="default",
             data_shapes=data_shapes,
         )
+        self.preset_table_name = Table.gen_table_name(
+            env_id="fake",
+            main_id=list(data_shapes.keys()),
+            pid="default",
+        )
         ray.get(self.server.create_table.remote(self.preset_buffer_desc))
 
     def _gen_data(self, size):
@@ -227,6 +398,62 @@ class TestOfflineDataset:
     def test_rw_efficiency(self):
         pass
 
+    def test_lock(self):
+        non_existed_desc = {
+            "agent0": BufferDescription("hello", ["agent0", "agent1"], policy_id="plain"),
+            "agent1": BufferDescription("hello", ["agent0", "agent1"], policy_id="plain")
+        }
+
+        assert ray.get(self.server.lock.remote("try_lock", non_existed_desc)) == Status.FAILED
+        assert ray.get(self.server.unlock.remote("try_lock", non_existed_desc)) == Status.FAILED
+
+    def test_to_csv(self):
+        sizes = [10, 20, 10]
+        self.preset_buffer_desc.data = [self._gen_data(v) for v in sizes]
+        self.preset_buffer_desc.batch_size = sum(sizes)
+        self.preset_buffer_desc.indices = ray.get(
+            self.server.get_producer_index.remote(self.preset_buffer_desc)
+        ).data
+        ray.get(self.server.save.remote(self.preset_buffer_desc))
+
+        for as_csv in [True, False]:
+            fp = "/tmp/_dataset_dumped"
+            # content consistent ensured in Table unit test
+            status = ray.get(self.server.dump.remote(fp, as_csv=as_csv))
+            assert (status != Status.FAILED)
+            dumped_dir = os.path.join(fp, self.preset_table_name + ("" if as_csv else ".tpkl"))
+            assert (os.path.exists(dumped_dir)), as_csv
+            if as_csv:
+                for k in self.data_shapes.keys():
+                    file_path = os.path.join(dumped_dir, str(k))
+                    assert (os.path.exists(file_path))
+                    os.remove(file_path)
+            if as_csv:
+                os.rmdir(dumped_dir)
+            else:
+                os.remove(dumped_dir)
+            os.rmdir(fp)
+
+    def test_load(self):
+        sizes = [10, 20, 10]
+        self.preset_buffer_desc.data = [self._gen_data(v) for v in sizes]
+        self.preset_buffer_desc.batch_size = sum(sizes)
+        self.preset_buffer_desc.indices = ray.get(
+            self.server.get_producer_index.remote(self.preset_buffer_desc)
+        ).data
+        ray.get(self.server.save.remote(self.preset_buffer_desc))
+
+        fp = "/tmp/_dataset_test_load"
+        status = ray.get(self.server.dump.remote(fp, as_csv=False))
+        ray.get(self.server.load.remote(fp))
+        dumped_dir = os.path.join(fp, self.preset_table_name + ".tpkl")
+        os.remove(dumped_dir)
+        os.rmdir(fp)
+
+    def test_shutdown(self):
+        ray.get(self.server.shutdown.remote())
+
     @classmethod
     def teardown_class(cls):
         ray.shutdown()
+    
