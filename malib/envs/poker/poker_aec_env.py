@@ -110,7 +110,6 @@ class PokerEnv(AECEnv):
         if self.dones[self.agent_selection]:
             return self._was_done_step(action)
         self._cur_time_step = self._open_spiel_env.step([action])
-        self._last_obs = self.observe(self.agent_selection)
 
         if self._cur_time_step.last():
             self.rewards = self._convert_to_dict(
@@ -127,6 +126,7 @@ class PokerEnv(AECEnv):
             ]
         self._cumulative_rewards[self.agent_selection] = 0
         self.agent_selection = next_player
+        self._last_obs = self.observe(self.agent_selection)
         self.infos[self.agent_selection]["legal_moves"] = self.next_legal_moves
         self._accumulate_rewards()
         self._dones_step_first()
