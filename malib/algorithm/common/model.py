@@ -3,6 +3,7 @@ Model factory. Add more description
 """
 
 import copy
+from typing import Optional
 
 import gym
 import torch
@@ -44,7 +45,9 @@ class Model(nn.Module):
         else:
             self.output_dim = output_space
 
-    def get_initial_state(self) -> List[torch.TensorType]:
+    def get_initial_state(
+        self, batch_size: Optional[int] = None
+    ) -> List[torch.TensorType]:
         """Return a list of initial rnn state, if current model is rnn"""
 
         return []
@@ -99,26 +102,29 @@ class RNN(Model):
         model_config: Dict[str, Any],
     ):
         super(RNN, self).__init__(observation_space, action_space)
-        self.hidden_dims = (
+        self.hidden_dim = (
             64 if model_config is None else model_config.get("rnn_hidden_dim", 64)
         )
 
         # default by flatten
-        self.fc1 = nn.Linear(self.input_dim, self.hidden_dims)
-        self.rnn = nn.GRUCell(self.hidden_dims, self.hidden_dims)
-        self.fc2 = nn.Linear(self.hidden_dims, self.output_dim)
+        self.fc1 = nn.Linear(self.input_dim, self.hidden_dim)
+        self.rnn = nn.GRUCell(self.hidden_dim, self.hidden_dim)
+        self.fc2 = nn.Linear(self.hidden_dim, self.output_dim)
 
-    def _init_hidden(self):
+    def _init_hidden(self, batch_size: Optional[int] = None):
         # make hidden states on same device as model
-        return self.fc1.weight.new(1, self.hidden_dims).zero_()
+        if batch_size is None:
+            batch_size = 1
+        return self.fc1.weight.new(batch_size, self.hidden_dim).zero_()
 
-    def get_initial_state(self) -> List[torch.TensorType]:
-        return [self._init_hidden()]
+    def get_initial_state(self, batch_size: Optional[int] = None) -> List[torch.TensorType]:
+        return [self._init_hidden(batch_size)]
 
     def forward(self, obs, hidden_state):
         obs = torch.as_tensor(obs, dtype=torch.float32)
+
         x = F.relu(self.fc1(obs))
-        h_in = hidden_state.reshape(-1, self.hidden_dims)
+        h_in = hidden_state.reshape(-1, self.hidden_dim)
         h = self.rnn(x, h_in)
         q = self.fc2(h)
         return q, h
