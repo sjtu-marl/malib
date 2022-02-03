@@ -46,6 +46,7 @@ from malib.utils.episode import EpisodeKey
                 "num_players": 2,
             },
         ),
+        ("malib.envs.star_craft2", "SC2Env", "3m", {"map_name": "3m"}),
     ],
     scope="class",
 )
@@ -154,6 +155,7 @@ def test_env(module_path, cname, env_id, scenario_configs):
                 "num_players": 2,
             },
         ),
+        ("malib.envs.star_craft2", "SC2Env", "3m", {"map_name": "3m"}),
     ],
 )
 def test_rollout(module_path, cname, env_id, scenario_configs):

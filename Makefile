@@ -59,5 +59,5 @@ test-agent:
 
 .PHONY: test-env-api
 test-env-api:
-	pytest -v --doctest-modules test-env-api
+	pytest -v --doctest-modules tests/env_api
 

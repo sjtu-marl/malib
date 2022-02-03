@@ -124,10 +124,9 @@ class _QueueActor:
                 f"Cannot get {num_items} items from queue of size " f"{self.qsize()}."
             )
         return [self.queue.get_nowait() for _ in range(num_items)]
-    
+
     def shutdown(self):
         self.queue = None
-
 
 
 class Table:
@@ -139,7 +138,7 @@ class Table:
         data_dtypes: Dict[AgentID, Dict[str, Tuple]] = None,
         sample_start_size: int = 0,
         event_loop: asyncio.BaseEventLoop = None,
-        name: str="",
+        name: str = "",
         mode: str = "queue",
     ):
         """One table for one episode."""
@@ -212,7 +211,7 @@ class Table:
     @property
     def capacity(self):
         return self._capacity
-    
+
     @property
     def name(self):
         return self._name
@@ -329,7 +328,7 @@ class Table:
                 "sample_start_size": self._sample_start_size,
                 "data_shapes": self._data_shapes,
                 "data": self._buffer,
-                "name": self._name
+                "name": self._name,
             }
             self._save_helper_func(serial_dict, fp, name)
 
@@ -353,7 +352,7 @@ class Table:
             data_dtypes=dtypes,
             sample_start_size=serial_dict["sample_start_size"],
             event_loop=event_loop,
-            name=serial_dict.get("name", "")
+            name=serial_dict.get("name", ""),
         )
         table._buffer = buffer
         return table
@@ -388,11 +387,10 @@ class Table:
             except:
                 pass
 
-            assert (self.is_multi_agent)
+            assert self.is_multi_agent
             for aid in self._buffer.keys():
                 episode = self._buffer[aid]
                 _dump_episode(os.path.join(fp, str(aid)), episode)
-
 
 
 @ray.remote
@@ -506,7 +504,7 @@ class OfflineDataset:
                 # buffer_desc.data_shapes,
                 sample_start_size=self._learning_start,
                 event_loop=self.event_loop,
-                name=name
+                name=name,
             )
             Logger.info("created data table: {}".format(name))
 
@@ -603,8 +601,7 @@ class OfflineDataset:
                     table = Table.load(os.path.join(path, fn))
                     victim_table = None
 
-                    if table.name in self._tables.keys() \
-                        and mode.lower() == "replace":
+                    if table.name in self._tables.keys() and mode.lower() == "replace":
                         victim_table = self._tables[table.name]
                         Logger.debug(
                             f"Conflicts in loading table {table.name}, act as replacing"
@@ -752,5 +749,5 @@ class OfflineDataset:
 #             info = "others"
 #         return res, info
 
-    # def save(self, agent_episodes: Dict[AgentID, Episode], wait_for_ready: bool = True):
-    #     raise NotImplementedError
+# def save(self, agent_episodes: Dict[AgentID, Episode], wait_for_ready: bool = True):
+#     raise NotImplementedError

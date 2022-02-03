@@ -117,7 +117,9 @@ class RNN(Model):
             batch_size = 1
         return self.fc1.weight.new(batch_size, self.hidden_dim).zero_()
 
-    def get_initial_state(self, batch_size: Optional[int] = None) -> List[torch.TensorType]:
+    def get_initial_state(
+        self, batch_size: Optional[int] = None
+    ) -> List[torch.TensorType]:
         return [self._init_hidden(batch_size)]
 
     def forward(self, obs, hidden_state):

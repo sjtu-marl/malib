@@ -17,7 +17,6 @@ def test_mlp_func(layers_config):
     mlp(layers_config)
 
 
-
 @pytest.mark.parametrize(
     "model_fn, model_config",
     [
@@ -79,20 +78,15 @@ class TestModel:
             raise ValueError("Please add tests for {}".format(type(self.model)))
 
 
-
-
-@pytest.mark.parametrize('model_type', ['mlp', 'rnn', 'cnn', 'rcnn'])
+@pytest.mark.parametrize("model_type", ["mlp", "rnn", "cnn", "rcnn"])
 def test_get_model(model_type, layers_config):
-    
-    model_config = {
-        'network': model_type,
-        'layers': layers_config
-    }
 
-    if model_type in ['rnn', 'rcnn']:
-        model_config.update({'rnn_hidden_dim': 32})
+    model_config = {"network": model_type, "layers": layers_config}
+
+    if model_type in ["rnn", "rcnn"]:
+        model_config.update({"rnn_hidden_dim": 32})
 
     try:
         get_model(model_config)
     except NotImplementedError:
-        print('model_type {} is not implement yet.'.format(model_type))
+        print("model_type {} is not implement yet.".format(model_type))

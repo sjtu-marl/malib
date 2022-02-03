@@ -4,8 +4,7 @@ import torch.nn.functional as F
 
 from torch.autograd import Variable
 
-from malib.utils.typing import Dict, Any, List, Union, DataTransferType
-from malib.utils.episode import Episode
+from malib.utils.typing import Dict, List, DataTransferType
 
 
 def soft_update(target, source, tau):
@@ -112,8 +111,6 @@ def masked_softmax(logits: torch.Tensor, mask: torch.Tensor):
     return probs / Z
 
 
-
-
 # def non_centered_rmsprop(
 #     gradient: Union[torch.Tensor, DataTransferType],
 #     delta: Union[torch.Tensor, DataTransferType],
@@ -136,53 +133,53 @@ def masked_softmax(logits: torch.Tensor, mask: torch.Tensor):
 #     return delta
 
 
-# class GradientOps:
-#     @staticmethod
-#     def add(source: Dict, delta: Dict):
-#         for k, v in delta.items():
-#             if isinstance(v, Dict):
-#                 source[k] = GradientOps.add(source[k], v)
-#             else:  # if isinstance(v, DataTransferType):
-#                 assert source[k].data.shape == v.shape, (source[k].data.shape, v.shape)
-#                 source[k].data = source[k].data + v  # v
-#             # else:
-#             #     raise errors.UnexpectedType(f"unexpected gradient type: {type(v)}")
-#         return source
+class GradientOps:
+    @staticmethod
+    def add(source: Dict, delta: Dict):
+        for k, v in delta.items():
+            if isinstance(v, Dict):
+                source[k] = GradientOps.add(source[k], v)
+            else:  # if isinstance(v, DataTransferType):
+                assert source[k].data.shape == v.shape, (source[k].data.shape, v.shape)
+                source[k].data = source[k].data + v  # v
+            # else:
+            #     raise errors.UnexpectedType(f"unexpected gradient type: {type(v)}")
+        return source
 
-#     @staticmethod
-#     def mean(gradients: List):
-#         if len(gradients) < 1:
-#             return gradients
-#         if isinstance(gradients[0], dict):
-#             keys = list(gradients[0].keys())
-#             res = {}
-#             for k in keys:
-#                 res[k] = GradientOps.mean([grad[k] for grad in gradients])
-#             return res
-#         else:
-#             res = np.mean(gradients, axis=0)
-#             return res
+    @staticmethod
+    def mean(gradients: List):
+        if len(gradients) < 1:
+            return gradients
+        if isinstance(gradients[0], dict):
+            keys = list(gradients[0].keys())
+            res = {}
+            for k in keys:
+                res[k] = GradientOps.mean([grad[k] for grad in gradients])
+            return res
+        else:
+            res = np.mean(gradients, axis=0)
+            return res
 
-#     @staticmethod
-#     def sum(gradients: List):
-#         """Sum gradients.
+    @staticmethod
+    def sum(gradients: List):
+        """Sum gradients.
 
-#         :param List gradients: A list of gradients.
-#         :return:
-#         """
+        :param List gradients: A list of gradients.
+        :return:
+        """
 
-#         if len(gradients) < 1:
-#             return gradients
+        if len(gradients) < 1:
+            return gradients
 
-#         if isinstance(gradients[0], dict):
-#             keys = list(gradients[0].keys())
-#             res = {}
-#             for k in keys:
-#                 res[k] = GradientOps.sum([grad[k] for grad in gradients])
-#             return res
-#         else:  # if isinstance(gradients[0], DataTransferType):
-#             res = np.sum(gradients, axis=0)
-#             return res
+        if isinstance(gradients[0], dict):
+            keys = list(gradients[0].keys())
+            res = {}
+            for k in keys:
+                res[k] = GradientOps.sum([grad[k] for grad in gradients])
+            return res
+        else:  # if isinstance(gradients[0], DataTransferType):
+            res = np.sum(gradients, axis=0)
+            return res
 
 
 class OUNoise:

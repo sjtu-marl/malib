@@ -7,5 +7,6 @@ def test_ounoise():
     ou_noise.reset()
     ou_noise.noise()
 
+
 def test_eps_greedy():
     epsg = EPSGreedy(action_dimension=2)

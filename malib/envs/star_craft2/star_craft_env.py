@@ -157,6 +157,9 @@ class SC2Env(Environment):
         self.scenario_configs = configs["scenario_configs"]
 
         self._env = env
+        self._possible_agents = get_agent_names(self.scenario_configs["map_name"])
+
+        n_agents = len(self.possible_agents)
 
         self._observation_spaces = dict(
             zip(
@@ -172,7 +175,7 @@ class SC2Env(Environment):
                             ),
                         }
                     )
-                    for _ in range(len(self.possible_agents))
+                    for _ in range(n_agents)
                 ],
             )
         )
@@ -180,7 +183,7 @@ class SC2Env(Environment):
         self._action_spaces = dict(
             zip(
                 self.possible_agents,
-                [spaces.Discrete(num_actions) for _ in range(self.n_agents)],
+                [spaces.Discrete(num_actions) for _ in range(n_agents)],
             )
         )
 
@@ -188,9 +191,7 @@ class SC2Env(Environment):
 
     @property
     def possible_agents(self) -> List[AgentID]:
-        return agents_list.get(
-            self.scenario_configs["map_name"], [f"{i}" for i in range(self.n_agents)]
-        )
+        return self._possible_agents
 
     @property
     def observation_spaces(self) -> Dict[AgentID, gym.Space]:
