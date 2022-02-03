@@ -1,5 +1,4 @@
 # TODO
 
-- [ ] malib/gt/algos/exploitability
-- [ ] malib/evaluator/simple_evaluator.py
+- [x] malib/gt/algos/exploitability
 - [ ] malib/evaluator/utils/payoff_manager.py (improve it!)
