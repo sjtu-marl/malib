@@ -45,7 +45,7 @@ test-coordinator:
 .PHONY: test-backend
 test-backend: test-dataset test-parameter-server test-coordinator
 
-.PHONY: test-algorithm
+.PHONY: test-algorith
 test-algorithm:
 	pytest -v --doctest-modules tests/algorithm
 

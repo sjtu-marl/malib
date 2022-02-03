@@ -3,6 +3,7 @@ Model factory. Add more description
 """
 
 import copy
+from typing import Optional
 
 import gym
 import torch
@@ -44,7 +45,9 @@ class Model(nn.Module):
         else:
             self.output_dim = output_space
 
-    def get_initial_state(self) -> List[torch.TensorType]:
+    def get_initial_state(
+        self, batch_size: Optional[int] = None
+    ) -> List[torch.TensorType]:
         """Return a list of initial rnn state, if current model is rnn"""
 
         return []
@@ -99,82 +102,32 @@ class RNN(Model):
         model_config: Dict[str, Any],
     ):
         super(RNN, self).__init__(observation_space, action_space)
-        self.hidden_dims = (
+        self.hidden_dim = (
             64 if model_config is None else model_config.get("rnn_hidden_dim", 64)
         )
 
         # default by flatten
-        self.fc1 = nn.Linear(self.input_dim, self.hidden_dims)
-        self.rnn = nn.GRUCell(self.hidden_dims, self.hidden_dims)
-        self.fc2 = nn.Linear(self.hidden_dims, self.output_dim)
+        self.fc1 = nn.Linear(self.input_dim, self.hidden_dim)
+        self.rnn = nn.GRUCell(self.hidden_dim, self.hidden_dim)
+        self.fc2 = nn.Linear(self.hidden_dim, self.output_dim)
 
-    def _init_hidden(self):
+    def _init_hidden(self, batch_size: Optional[int] = None):
         # make hidden states on same device as model
-        return self.fc1.weight.new(1, self.hidden_dims).zero_()
+        if batch_size is None:
+            batch_size = 1
+        return self.fc1.weight.new(batch_size, self.hidden_dim).zero_()
 
-    def get_initial_state(self) -> List[torch.TensorType]:
-        return [self._init_hidden()]
+    def get_initial_state(self, batch_size: Optional[int] = None) -> List[torch.TensorType]:
+        return [self._init_hidden(batch_size)]
 
     def forward(self, obs, hidden_state):
         obs = torch.as_tensor(obs, dtype=torch.float32)
+
         x = F.relu(self.fc1(obs))
-        h_in = hidden_state.reshape(-1, self.hidden_dims)
+        h_in = hidden_state.reshape(-1, self.hidden_dim)
         h = self.rnn(x, h_in)
         q = self.fc2(h)
         return q, h
-
-
-class QMixer(Model):
-    def __init__(self, obs_dim, num_agents, model_config=None):
-        super(QMixer, self).__init__(obs_dim, 1)
-        self.n_agents = num_agents
-
-        self.embed_dim = (
-            32 if model_config is None else model_config.get("mixer_embed_dim", 32)
-        )
-        self.hyper_hidden_dim = (
-            64 if model_config is None else model_config.get("hyper_hidden_dim", 64)
-        )
-
-        self.hyper_w_1 = nn.Sequential(
-            nn.Linear(obs_dim, self.hyper_hidden_dim),
-            nn.ReLU(),
-            nn.Linear(self.hyper_hidden_dim, self.embed_dim * num_agents),
-        )
-        self.hyper_w_final = nn.Sequential(
-            nn.Linear(obs_dim, self.hyper_hidden_dim),
-            nn.ReLU(),
-            nn.Linear(self.hyper_hidden_dim, self.embed_dim),
-        )
-
-        # State dependent bias for hidden layer
-        self.hyper_b_1 = nn.Linear(obs_dim, self.embed_dim)
-
-        # V(s) instead of a bias for the last layers
-        self.V = nn.Sequential(
-            nn.Linear(obs_dim, self.embed_dim),
-            nn.ReLU(),
-            nn.Linear(self.embed_dim, self.output_dim),
-        )
-
-    def forward(self, agent_qs, obs):
-        bs = agent_qs.size(0)
-        obs = torch.as_tensor(obs, dtype=torch.float32)
-        agent_qs = torch.as_tensor(agent_qs, dtype=torch.float32)
-        agent_qs = agent_qs.view(-1, 1, self.n_agents)
-        # First layer
-        w1 = torch.abs(self.hyper_w_1(obs))
-        b1 = self.hyper_b_1(obs)
-        w1 = w1.view(-1, self.n_agents, self.embed_dim)
-        b1 = b1.view(-1, 1, self.embed_dim)
-        hidden = F.elu(torch.bmm(agent_qs, w1) + b1)
-        # Second layer
-        w_final = torch.abs(self.hyper_w_final(obs))
-        w_final = w_final.view(-1, self.embed_dim, 1)
-        v = self.V(obs).view(-1, 1, 1)
-        y = torch.bmm(hidden, w_final) + v
-        q_tot = y.view(bs, -1)
-        return q_tot
 
 
 def get_model(model_config: Dict[str, Any]):

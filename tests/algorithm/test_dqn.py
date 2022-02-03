@@ -4,7 +4,8 @@ from tests.algorithm import AlgorithmTestMixin
 from gym import spaces
 import numpy as np
 from malib.algorithm.dqn import CONFIG, DQN, DQNTrainer, DQNLoss
-
+from malib.algorithm.dqn.conv import DuelQNet
+import torch
 
 trainer_config = CONFIG["training"]
 custom_config = CONFIG["policy"]
@@ -55,3 +56,11 @@ class TestDQN(AlgorithmTestMixin):
             EpisodeKey.REWARD: np.zeros((batch_size, 1)),
             "next_action_mask": action_mask,
         }
+
+    def test_conv_dqn(self):
+        """Test conv DQN network."""
+        net = DuelQNet(input_shape=(4, 84, 84), available_actions_count=3)
+
+        input_data = torch.zeros((5, 4, 84, 84))
+        output = net(input_data)
+        assert list(output.shape) == [5, 3]

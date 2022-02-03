@@ -7,13 +7,13 @@ import asyncio
 import time
 import traceback
 import numpy as np
-from numpy.ma.core import cumsum
 import torch
 import ray
 
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from readerwriterlock import rwlock
+from torch._C import dtype
 
 from malib import settings
 from malib.utils.errors import OversampleError
@@ -124,6 +124,10 @@ class _QueueActor:
                 f"Cannot get {num_items} items from queue of size " f"{self.qsize()}."
             )
         return [self.queue.get_nowait() for _ in range(num_items)]
+    
+    def shutdown(self):
+        self.queue = None
+
 
 
 class Table:
@@ -135,10 +139,11 @@ class Table:
         data_dtypes: Dict[AgentID, Dict[str, Tuple]] = None,
         sample_start_size: int = 0,
         event_loop: asyncio.BaseEventLoop = None,
+        name: str="",
         mode: str = "queue",
     ):
         """One table for one episode."""
-
+        self._name = name
         self._threading_lock = threading.Lock()
         self._rwlock = rwlock.RWLockFairD()
         self._consumer_queue = None
@@ -207,6 +212,10 @@ class Table:
     @property
     def capacity(self):
         return self._capacity
+    
+    @property
+    def name(self):
+        return self._name
 
     def build_buffer_from_samples(self, sample: Dict):
         self._buffer = BufferDict()
@@ -227,17 +236,17 @@ class Table:
 
     def get_producer_index(self, buffer_size: int) -> Union[List[int], None]:
         buffer_size = min(self._producer_queue.qsize(), buffer_size)
-        if buffer_size == 0:
+        if buffer_size <= 0:
             return None
         else:
-            return self._producer_queue.get_nowait_batch(buffer_size)
+            return self._producer_queue.get_nowait_batch(int(buffer_size))
 
     def get_consumer_index(self, buffer_size: int) -> Union[List[int], None]:
         buffer_size = min(self._consumer_queue.qsize(), buffer_size)
-        if buffer_size == 0:
+        if buffer_size <= 0:
             return None
         else:
-            return self._consumer_queue.get_nowait_batch(buffer_size)
+            return self._consumer_queue.get_nowait_batch(int(buffer_size))
 
     def free_consumer_index(self, indices: List[int]):
         self._producer_queue.put_nowait_batch(indices)
@@ -315,56 +324,63 @@ class Table:
             name = self._name
         with self._threading_lock:
             serial_dict = {
-                "keys": self._keys,
-                "data": self._buffer,
-                "multi_agent": self._is_multi_agent,
+                "fragment_length": self._fragment_length,
+                "multi_agent": self.is_multi_agent,
                 "sample_start_size": self._sample_start_size,
                 "data_shapes": self._data_shapes,
+                "data": self._buffer,
+                "name": self._name
             }
             self._save_helper_func(serial_dict, fp, name)
 
     @classmethod
-    def load(cls, fp):
+    def load(cls, fp, event_loop=None):
         with open(fp, "rb") as f:
             serial_dict = pkl.load(f)
 
+        buffer = serial_dict["data"]
+        dtypes = {}
+        for agent, agent_data in buffer.items():
+            agent_dtypes = {}
+            for cname, cdata in agent_data.items():
+                agent_dtypes[cname] = cdata.dtype
+            dtypes[agent] = agent_dtypes
+
         table = Table(
-            capacity=serial_dict["capacity"],
+            capacity=buffer.capacity,
+            fragment_length=serial_dict["fragment_length"],
             data_shapes=serial_dict["data_shapes"],
+            data_dtypes=dtypes,
             sample_start_size=serial_dict["sample_start_size"],
+            event_loop=event_loop,
+            name=serial_dict.get("name", "")
         )
-        table._buffer = serial_dict["data"]
-        table._capacity = table.buffer.capacity
+        table._buffer = buffer
         return table
 
     def to_csv(self, fp):
-        def _dump_episode(fname, episode):
-            class _InternelColumnGenerator:
+        def _dump_episode(fname, episode: BufferDict):
+            class _InternalColumnGenerator:
                 def __init__(self, column_data_dict):
                     self.idx = 0
                     self.data = column_data_dict
-                    self.columns = list(column_data_dict.keys())
-                    self.length = len(next(iter(column_data_dict.values)))
+                    self.columns = column_data_dict.keys()
+                    self.length = len(next(iter(column_data_dict.values())))
 
-                def getline(self):
-                    column_info = ",".join(self.columns)
+                def getlines(self):
+                    column_info = "/".join([str(col) for col in self.columns]) + "\n"
                     yield column_info
                     while self.idx < self.length:
                         line = []
                         for c in self.columns:
-                            line.append(str(self.data[c][self.idx]))
-                        line = ",".join(line)
+                            line.append(str(self.data[c][self.idx].tolist()))
+                        line = "/".join(line) + "\n"
                         self.idx += 1
                         yield line
 
-            wg = _InternelColumnGenerator(episode.data)
+            lines = _InternalColumnGenerator(episode).getlines()
             with open(fname, "w") as f:
-                while True:
-                    line = wg.getline()
-                    if line:
-                        f.write(line)
-                    else:
-                        break
+                f.writelines(lines)
 
         with self._threading_lock:
             try:
@@ -372,12 +388,11 @@ class Table:
             except:
                 pass
 
-            if self.multi_agent:
-                for aid in self._data.keys():
-                    episode = self._episode[aid]
-                    _dump_episode(os.path.join(fp, aid), episode)
-            else:
-                _dump_episode(fp, self._episode)
+            assert (self.is_multi_agent)
+            for aid in self._buffer.keys():
+                episode = self._buffer[aid]
+                _dump_episode(os.path.join(fp, str(aid)), episode)
+
 
 
 @ray.remote
@@ -407,25 +422,25 @@ class OfflineDataset:
             if path:
                 self.load(path)
 
-        # Read-only proxies for external offline dataset
-        external_resource_config = dataset_config.get("extern")
-        self.external_proxy: List[ExternalDataset] = []
-        if external_resource_config:
-            for external_config, sample_rate in zip(
-                external_resource_config["links"],
-                external_resource_config["sample_rates"],
-            ):
-                if not external_config["write"]:
-                    dataset = ExternalReadOnlyDataset(
-                        name=external_config["name"],
-                        path=external_config["path"],
-                        sample_rate=sample_rate,
-                    )
-                    self.external_proxy.append(dataset)
-                else:
-                    raise NotImplementedError(
-                        "External writable dataset is not supported"
-                    )
+        # # Read-only proxies for external offline dataset
+        # external_resource_config = dataset_config.get("extern")
+        # self.external_proxy: List[ExternalDataset] = []
+        # if external_resource_config:
+        #     for external_config, sample_rate in zip(
+        #         external_resource_config["links"],
+        #         external_resource_config["sample_rates"],
+        #     ):
+        #         if not external_config["write"]:
+        #             dataset = ExternalReadOnlyDataset(
+        #                 name=external_config["name"],
+        #                 path=external_config["path"],
+        #                 sample_rate=sample_rate,
+        #             )
+        #             self.external_proxy.append(dataset)
+        #         else:
+        #             raise NotImplementedError(
+        #                 "External writable dataset is not supported"
+        #             )
 
         # quitting job
         quit_job_config = dataset_config.get("quit_job", {})
@@ -448,10 +463,14 @@ class OfflineDataset:
             pid=[desc[aid].policy_id for aid in main_ids],
         )
         # check it is multi-agent or not
-        self.check_table(table_name, None, is_multi_agent=len(main_ids) > 1)
-        table = self._tables[table_name]
-        status = table.lock_push_pull(lock_type)
-        return status
+        # self.check_table(table_name, None, is_multi_agent=len(main_ids) > 1)
+        # table = self._tables[table_name]
+        # status = table.lock_push_pull(lock_type)
+        # return status
+        if table_name in self._tables:
+            return Status.SUCCESS
+        else:
+            return Status.FAILED
 
     def unlock(self, lock_type: str, desc: Dict[AgentID, BufferDescription]):
         env_id = list(desc.values())[0].env_id
@@ -461,10 +480,14 @@ class OfflineDataset:
             main_id=main_ids,
             pid=[desc[aid].policy_id for aid in main_ids],
         )
-        self.check_table(table_name, None, is_multi_agent=len(main_ids) > 1)
-        table = self._tables[table_name]
-        status = table.unlock_push_pull(lock_type)
-        return status
+        # self.check_table(table_name, None, is_multi_agent=len(main_ids) > 1)
+        # table = self._tables[table_name]
+        # status = table.unlock_push_pull(lock_type)
+        # return status
+        if table_name in self._tables:
+            return Status.SUCCESS
+        else:
+            return Status.FAILED
 
     def create_table(self, buffer_desc: BufferDescription):
         name = Table.gen_table_name(
@@ -483,6 +506,7 @@ class OfflineDataset:
                 # buffer_desc.data_shapes,
                 sample_start_size=self._learning_start,
                 event_loop=self.event_loop,
+                name=name
             )
             Logger.info("created data table: {}".format(name))
 
@@ -579,18 +603,17 @@ class OfflineDataset:
                     table = Table.load(os.path.join(path, fn))
                     victim_table = None
 
-                    if table.name in self._tables.keys() and mode.lower().equal(
-                        "replace"
-                    ):
-                        victim_table = self.tables[table.name]
+                    if table.name in self._tables.keys() \
+                        and mode.lower() == "replace":
+                        victim_table = self._tables[table.name]
                         Logger.debug(
                             f"Conflicts in loading table {table.name}, act as replacing"
                         )
-                        try_lock_status = victim_table.lock_push_pull("push")
-                        if try_lock_status != Status.NORMAL:
-                            Logger.error(
-                                f"Try to replace an occupied table {victim_table.name}"
-                            )
+                        # try_lock_status = victim_table.lock_push_pull("push")
+                        # if try_lock_status != Status.NORMAL:
+                        #     Logger.error(
+                        #         f"Try to replace an occupied table {victim_table.name}"
+                        #     )
                         conflict_callback_required = True
 
                     self._tables[table.name] = table
@@ -603,7 +626,9 @@ class OfflineDataset:
                     )
 
                     if conflict_callback_required:
-                        victim_table.unlock_push_pull("push")
+                        # victim_table.unlock_push_pull("push")
+                        victim_table.fix_table()
+                        del victim_table
 
             return table_descs
 
@@ -619,11 +644,13 @@ class OfflineDataset:
             status = dict.fromkeys(table_names, Status.FAILED)
             for tn in table_names:
                 table = self._tables[tn]
-                status[tn] = table.lock_push_pull("push")
+                # status[tn] = table.lock_push_pull("push")
+                status[tn] = Status.SUCCESS
 
             # Check locking status
             f = open("ds.log", "w")
             for tn, lock_status in status.items():
+                print(tn)
                 f.write(f"Table {tn} lock status {lock_status}")
                 if lock_status == Status.FAILED:
                     Logger.info(f"Failed to lock the table {tn}, skip the dumping.")
@@ -632,7 +659,7 @@ class OfflineDataset:
                     self._tables[tn].dump(os.path.join(path, tn))
                 else:
                     self._tables[tn].to_csv(os.path.join(path, tn))
-                self._tables[tn].unlock_push_pull("push")
+                # self._tables[tn].unlock_push_pull("push")
             f.close()
             return status
 
@@ -673,57 +700,57 @@ class OfflineDataset:
         return status
 
 
-class ExternalDataset:
-    def __init__(self, name, path, sample_rate=0.5):
-        self._name = name
-        if os.path.isabs(path):
-            self._path = path
-        else:
-            self._path = os.path.join(settings.BASE_DIR, path)
-        self._sample_rate = sample_rate
+# class ExternalDataset:
+#     def __init__(self, name, path, sample_rate=0.5):
+#         self._name = name
+#         if os.path.isabs(path):
+#             self._path = path
+#         else:
+#             self._path = os.path.join(settings.BASE_DIR, path)
+#         self._sample_rate = sample_rate
 
-    def sample(self):
-        raise NotImplementedError
+#     def sample(self):
+#         raise NotImplementedError
 
-    def save(self):
-        raise NotImplementedError
+#     def save(self):
+#         raise NotImplementedError
 
 
-class ExternalReadOnlyDataset(ExternalDataset):
-    def __init__(
-        self, name, path, sample_rate=0.5, mapping_func=lambda x: x, binary=True
-    ):
-        super().__init__(name, path, sample_rate=sample_rate)
+# class ExternalReadOnlyDataset(ExternalDataset):
+#     def __init__(
+#         self, name, path, sample_rate=0.5, mapping_func=lambda x: x, binary=True
+#     ):
+#         super().__init__(name, path, sample_rate=sample_rate)
 
-        self._tables: Dict[str, Table] = {}
-        for fn in os.listdir(self._path):
-            if fn.endswith(".tpkl"):
-                table = Table.load(os.path.join(self._path, fn))
-                self._tables[table.name] = table
+#         self._tables: Dict[str, Table] = {}
+#         for fn in os.listdir(self._path):
+#             if fn.endswith(".tpkl"):
+#                 table = Table.load(os.path.join(self._path, fn))
+#                 self._tables[table.name] = table
 
-    def sample(self, buffer_desc: BufferDescription):
-        info = f"{self._name}(external, read-only): OK"
-        try:
-            # NOTE(zbzhu): maybe we do not care which policy sampled the (expert) data
-            table_name = Table.gen_table_name(
-                env_id=buffer_desc.env_id,
-                main_id=buffer_desc.agent_id,
-                pid=None,
-                # pid=buffer_desc.policy_id,
-            )
-            table = self._tables[table_name]
-            res = table.sample(size=self._sample_rate * buffer_desc.batch_size)
-        except KeyError as e:
-            info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
-            res = None
-        except OversampleError as e:
-            info = f"No enough data: table_size={table.size} batch_size={buffer_desc.batch_size} table_name={table_name}"
-            res = None
-        except Exception as e:
-            print(traceback.format_exc())
-            res = None
-            info = "others"
-        return res, info
+#     def sample(self, buffer_desc: BufferDescription):
+#         info = f"{self._name}(external, read-only): OK"
+#         try:
+#             # NOTE(zbzhu): maybe we do not care which policy sampled the (expert) data
+#             table_name = Table.gen_table_name(
+#                 env_id=buffer_desc.env_id,
+#                 main_id=buffer_desc.agent_id,
+#                 pid=None,
+#                 # pid=buffer_desc.policy_id,
+#             )
+#             table = self._tables[table_name]
+#             res = table.sample(size=self._sample_rate * buffer_desc.batch_size)
+#         except KeyError as e:
+#             info = f"data table `{table_name}` has not been created {list(self._tables.keys())}"
+#             res = None
+#         except OversampleError as e:
+#             info = f"No enough data: table_size={table.size} batch_size={buffer_desc.batch_size} table_name={table_name}"
+#             res = None
+#         except Exception as e:
+#             print(traceback.format_exc())
+#             res = None
+#             info = "others"
+#         return res, info
 
     # def save(self, agent_episodes: Dict[AgentID, Episode], wait_for_ready: bool = True):
     #     raise NotImplementedError
