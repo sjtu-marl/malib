@@ -5,11 +5,12 @@ import gym.spaces
 from malib.utils.typing import Dict
 from malib.utils.episode import EpisodeKey
 
+from .utils import simple_discrete_agent
+
 
 @pytest.mark.parametrize(
     "module_path,cname,env_id,scenario_configs",
     [
-        ("malib.envs.poker", "PokerParallelEnv", "leduc_poker", {"fixed_player": True}),
         ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
         ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
         ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
@@ -54,9 +55,18 @@ def test_env(module_path, cname, env_id, scenario_configs):
     creator = getattr(importlib.import_module(module_path), cname)
     env = creator(env_id=env_id, scenario_configs=scenario_configs)
 
+    assert not env.is_sequential
+
     possible_agents = env.possible_agents
     obs_spaces = env.observation_spaces
     action_spaces = env.action_spaces
+
+    agents = {
+        aid: simple_discrete_agent(
+            aid, env.observation_spaces[aid], env.action_spaces[aid]
+        )
+        for aid in env.possible_agents
+    }
 
     rets = env.reset()
     assert isinstance(rets, Dict) and EpisodeKey.CUR_OBS in rets, rets
@@ -70,10 +80,7 @@ def test_env(module_path, cname, env_id, scenario_configs):
             obs
         ), "Reset observation: {!r} of agent: {!r} not in space".format(obs, aid)
 
-    if env.is_sequential:
-        acts = {env.agent_selection: action_spaces[env.agent_selection].sample()}
-    else:
-        acts = {aid: act_space.sample() for aid, act_space in action_spaces.items()}
+    acts = {aid: agent(rets) for aid, agent in agents.items()}
 
     rets = env.step(acts)
 
@@ -100,11 +107,7 @@ def test_env(module_path, cname, env_id, scenario_configs):
             aid, r, env
         )
 
-    obs = (
-        rets[EpisodeKey.CUR_OBS]
-        if rets.get(EpisodeKey.NEXT_OBS) is None
-        else rets[EpisodeKey.NEXT_OBS]
-    )
+    obs = rets.get(EpisodeKey.NEXT_OBS)
     assert isinstance(obs, Dict), obs
     for aid, _obs in obs.items():
         assert (
@@ -118,7 +121,6 @@ def test_env(module_path, cname, env_id, scenario_configs):
 @pytest.mark.parametrize(
     "module_path,cname,env_id,scenario_configs",
     [
-        ("malib.envs.poker", "PokerParallelEnv", "leduc_poker", {"fixed_player": True}),
         ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
         ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
         ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
@@ -162,28 +164,20 @@ def test_rollout(module_path, cname, env_id, scenario_configs):
     creator = getattr(importlib.import_module(module_path), cname)
     env = creator(env_id=env_id, scenario_configs=scenario_configs)
 
-    rets = env.reset()[EpisodeKey.CUR_OBS]
+    assert not env.is_sequential
 
+    rets = env.reset()
     agents = {
-        aid: lambda ob: env.action_spaces[aid].sample() for aid in env.possible_agents
+        aid: simple_discrete_agent(
+            aid, env.observation_spaces[aid], env.action_spaces[aid]
+        )
+        for aid in env.possible_agents
     }
     for _ in range(10):
-        if env.is_sequential:
-            acts = {
-                env.agent_selection: agents[env.agent_selection](
-                    rets[env.agent_selection]
-                )
-            }
-        else:
-            acts = {aid: agent_step(rets[aid]) for aid, agent_step in agents.items()}
+        acts = {aid: agent_step(rets) for aid, agent_step in agents.items()}
         rets = env.step(acts)
         done = rets[EpisodeKey.DONE]
         done = any(done.values())
         if done:
             break
-        rets = (
-            rets[EpisodeKey.CUR_OBS]
-            if rets.get(EpisodeKey.NEXT_OBS) is None
-            else rets[EpisodeKey.NEXT_OBS]
-        )
     env.close()

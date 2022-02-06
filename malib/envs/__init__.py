@@ -5,7 +5,7 @@ from .poker import PokerParallelEnv, env_desc_gen as poker_desc_gen
 from .gym import GymEnv, env_desc_gen as gym_desc_gen
 
 # FIXME(ming): check environment installation here
-from .star_craft2 import SC2Env, StatedSC2
+from .star_craft2 import SC2Env
 
 # from .smarts.env import SMARTS
 

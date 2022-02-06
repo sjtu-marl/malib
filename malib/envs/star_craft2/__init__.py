@@ -1,6 +1,6 @@
 from malib.utils.typing import Dict
 
-from .star_craft_env import SC2Env, StatedSC2
+from .star_craft_env import SC2Env
 
 
 def env_desc_gen(env_id: str, scenario_configs: Dict = None):

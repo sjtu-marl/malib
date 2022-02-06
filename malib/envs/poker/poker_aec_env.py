@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-from collections import defaultdict
 import random
 import numpy as np
 import gym
@@ -14,7 +12,6 @@ from pettingzoo.utils.env import AECEnv
 from open_spiel.python.rl_environment import Environment as OPEN_SPIEL_ENV, TimeStep
 
 from malib.utils.typing import Dict, AgentID, Any, Union
-from malib.utils.logger import Logger
 from malib.utils.episode import EpisodeKey
 from malib.envs.env import Environment
 

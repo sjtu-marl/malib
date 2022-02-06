@@ -168,10 +168,10 @@ class SC2Env(Environment):
                     spaces.Dict(
                         {
                             "observation": spaces.Box(
-                                low=0.0, high=1.0, shape=(n_obs,), dtype=np.int8
+                                low=-1.0, high=1.0, shape=(n_obs,), dtype=np.float32
                             ),
                             "action_mask": spaces.Box(
-                                low=0, high=1, shape=(num_actions,), dtype=np.int8
+                                low=0, high=1, shape=(num_actions,), dtype=int
                             ),
                         }
                     )
@@ -262,31 +262,31 @@ class SC2Env(Environment):
         self._env.close()
 
 
-def StatedSC2(**config):
+# def StatedSC2(**config):
 
-    env = SC2Env(**config)
+#     env = SC2Env(**config)
 
-    class Wrapped(GroupWrapper):
-        def __init__(self, env: Environment):
-            super(Wrapped).__init__(env)
+#     class Wrapped(GroupWrapper):
+#         def __init__(self, env: Environment):
+#             super(Wrapped).__init__(env)
 
-        def build_state_spaces(self) -> Dict[AgentID, gym.Space]:
-            return {
-                agent: spaces.Box(
-                    low=-np.inf,
-                    high=+np.inf,
-                    shape=(self.env.env_info["state_shape"]),
-                )
-                for agent in self.possible_agents
-            }
+#         def build_state_spaces(self) -> Dict[AgentID, gym.Space]:
+#             return {
+#                 agent: spaces.Box(
+#                     low=-np.inf,
+#                     high=+np.inf,
+#                     shape=(self.env.env_info["state_shape"]),
+#                 )
+#                 for agent in self.possible_agents
+#             }
 
-        def build_state_from_observation(
-            self, agent_observation: Dict[AgentID, Any]
-        ) -> Dict[AgentID, Any]:
-            state = self.env.get_state()
-            return dict.fromkeys(self.possible_agents, state)
+#         def build_state_from_observation(
+#             self, agent_observation: Dict[AgentID, Any]
+#         ) -> Dict[AgentID, Any]:
+#             state = self.env.get_state()
+#             return dict.fromkeys(self.possible_agents, state)
 
-        def group_rule(self, agent_id: AgentID) -> str:
-            raise NotImplementedError
+#         def group_rule(self, agent_id: AgentID) -> str:
+#             raise NotImplementedError
 
-    return Wrapped(env)
+#     return Wrapped(env)
