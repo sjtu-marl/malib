@@ -8,7 +8,6 @@ import hashlib
 import os
 import time
 
-import psutil
 import ray
 import logging
 
@@ -23,7 +22,7 @@ from malib.utils.typing import (
     Dict,
     Any,
 )
-from malib.utils.logger import get_logger, Logger
+from malib.utils.logger import Logger
 
 
 def _get_worker_hash_idx(idx):
@@ -73,8 +72,9 @@ class RolloutWorkerManager:
                 remote=True,
                 save=rollout_config.get("save_model", False),
                 # parallel_num: the size of actor pool for rollout and simulation
-                parallel_num=rollout_config["num_episodes"]
+                num_rollout_actors=rollout_config["num_episodes"]
                 // rollout_config["num_env_per_worker"],
+                num_eval_actors=1,
                 use_subproc_env=rollout_config.get("use_subproc_env", False),
                 exp_cfg=exp_cfg,
                 batch_mode=rollout_config.get("batch_mode", "time_step"),

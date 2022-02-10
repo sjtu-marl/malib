@@ -27,7 +27,6 @@ class RolloutWorker(BaseRolloutWorker):
         worker_index: Any,
         env_desc: Dict[str, Any],
         metric_type: str,
-        remote: bool = False,
         save: bool = False,
         **kwargs,
     ):
@@ -41,11 +40,12 @@ class RolloutWorker(BaseRolloutWorker):
         """
 
         BaseRolloutWorker.__init__(
-            self, worker_index, env_desc, metric_type, remote, save, **kwargs
+            self, worker_index, env_desc, metric_type, save, **kwargs
         )
 
-        self._parallel_num = kwargs.get("parallel_num", 1)
-        self._evaluation_worker_num = kwargs.get("evaluation_worker_num", 1)
+        self._num_rollout_actors = kwargs.get("num_rollout_actors", 1)
+        self._num_eval_actors = kwargs.get("num_eval_actors", 1)
+        # XXX(ming): computing resources for rollout / evaluation
         self._resources = kwargs.get(
             "resources",
             {
@@ -57,75 +57,37 @@ class RolloutWorker(BaseRolloutWorker):
             },
         )
 
-        self.actor_pool = None
-        if remote:
-            assert (
-                self._parallel_num > 0
-            ), f"parallel_num should be positive, while parallel_num={self._parallel_num}"
+        assert (
+            self._num_rollout_actors > 0
+        ), f"num_rollout_actors should be positive, but got `{self._num_rollout_actors}`"
 
-            Stepping = rollout_func.Stepping.as_remote(**self._resources)
-            self.actors = [
+        Stepping = rollout_func.Stepping.as_remote(**self._resources)
+        self.actors = [
+            Stepping.remote(
+                kwargs["exp_cfg"],
+                env_desc,
+                self._offline_dataset,
+                use_subproc_env=kwargs["use_subproc_env"],
+                batch_mode=kwargs["batch_mode"],
+                postprocessor_types=kwargs["postprocessor_types"],
+            )
+            for _ in range(self._num_rollout_actors)
+        ]
+        self.rollout_actor_pool = ActorPool(self.actors[: self._num_rollout_actors])
+        self.actors.extend(
+            [
                 Stepping.remote(
                     kwargs["exp_cfg"],
                     env_desc,
-                    self._offline_dataset,
+                    None,
                     use_subproc_env=kwargs["use_subproc_env"],
                     batch_mode=kwargs["batch_mode"],
                     postprocessor_types=kwargs["postprocessor_types"],
                 )
-                for _ in range(self._parallel_num)
+                for _ in range(self._evaluation_worker_num)
             ]
-            self.actors.extend(
-                [
-                    Stepping.remote(
-                        kwargs["exp_cfg"],
-                        env_desc,
-                        None,
-                        use_subproc_env=kwargs["use_subproc_env"],
-                        batch_mode=kwargs["batch_mode"],
-                        postprocessor_types=kwargs["postprocessor_types"],
-                    )
-                    for _ in range(self._evaluation_worker_num)
-                ]
-            )
-            self.actor_pool = ActorPool(self.actors)
-
-    def check_actor_pool_available(self):
-        if self.actor_pool is None:
-            # create actor pool
-            self.logger.warning(
-                "Actor pool has not been created yet, will generate a new one."
-            )
-            assert (
-                self._parallel_num > 0
-            ), f"parallel_num should be positive, while parallel_num={self._parallel_num}"
-
-            Stepping = rollout_func.Stepping.as_remote(**self._resources)
-            self.actors = [
-                Stepping.remote(
-                    self._kwargs["exp_cfg"],
-                    self._env_description,
-                    self._offline_dataset,
-                    use_subproc_env=self._kwargs["use_subproc_env"],
-                    batch_mode=self._kwargs["batch_mode"],
-                    postprocessor_types=self._kwargs["postprocessor_types"],
-                )
-                for _ in range(self._parallel_num)
-            ]
-            self.actors.extend(
-                [
-                    Stepping.remote(
-                        self._kwargs["exp_cfg"],
-                        self._env_description,
-                        None,
-                        use_subproc_env=self._kwargs["use_subproc_env"],
-                        batch_mode=self._kwargs["batch_mode"],
-                        postprocessor_types=self._kwargs["postprocessor_types"],
-                    )
-                    for _ in self._evaluation_worker_num
-                ]
-            )
-            self.actor_pool = ActorPool(self.actors)
+        )
+        self.eval_actor_pool = ActorPool(self.actors[self._num_eval_actors :])
 
     def ready_for_sample(self, policy_distribution=None):
         """Reset policy behavior distribution.
@@ -142,12 +104,10 @@ class RolloutWorker(BaseRolloutWorker):
         fragment_length: int,
         role: str,
         policy_combinations: List,
-        explore: bool = True,
-        threaded: bool = True,
         policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
         buffer_desc: BufferDescription = None,
     ) -> Tuple[Sequence[Dict[str, List]], int]:
-        """Sample function. Support rollout and simulation. Default in threaded mode."""
+        """Sample function, handling rollout or simulation tasks."""
 
         if role == "simulation":
             tasks = [
@@ -158,6 +118,7 @@ class RolloutWorker(BaseRolloutWorker):
                 }
                 for comb in policy_combinations
             ]
+            actor_pool = self.rollout_actor_pool
         elif role == "rollout":
             seg_num = self._parallel_num
             x = num_episodes // seg_num
@@ -183,14 +144,15 @@ class RolloutWorker(BaseRolloutWorker):
                         "behavior_policies": policy_combinations[0],
                         "policy_distribution": policy_distribution,
                     }
-                    for _ in range(self._evaluation_worker_num)
+                    for _ in range(self._num_eval_actors)
                 ]
             )
+            actor_pool = self.eval_actor_pool
         else:
             raise TypeError(f"Unkown role: {role}")
 
-        self.check_actor_pool_available()
-        rets = self.actor_pool.map(
+        # self.check_actor_pool_available()
+        rets = actor_pool.map(
             lambda a, task: a.run.remote(
                 agent_interfaces=self._agent_interfaces,
                 fragment_length=fragment_length,

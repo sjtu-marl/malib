@@ -60,7 +60,6 @@ class BaseRolloutWorker:
         worker_index: Any,
         env_desc: Dict[str, Any],
         metric_type: str,
-        remote: bool = False,
         save: bool = False,
         **kwargs,
     ):
@@ -86,8 +85,7 @@ class BaseRolloutWorker:
         self._agents = env_desc["possible_agents"]
         self._kwargs = kwargs
 
-        if remote:
-            self.init()
+        self.init()
 
         # interact with environment
         self._agent_interfaces = {
@@ -100,7 +98,6 @@ class BaseRolloutWorker:
             for aid in self._agents
         }
         self._metric_type = metric_type
-        self._remote = remote
 
         self.logger = get_logger(
             log_level=settings.LOG_LEVEL,
@@ -504,8 +501,6 @@ class BaseRolloutWorker:
         fragment_length: int,
         role: str,
         policy_combinations: List,
-        explore: bool = True,
-        threaded: bool = True,
         policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
         buffer_desc: BufferDescription = None,
     ) -> Tuple[Sequence[Dict[str, List]], int]:
