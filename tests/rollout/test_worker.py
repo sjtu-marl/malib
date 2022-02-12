@@ -53,6 +53,7 @@ def simple_env_desc():
             },
         )
     ],
+    scope="class",
 )
 class TestRolloutWorker(ServerMixin):
     @pytest.fixture(autouse=True)
