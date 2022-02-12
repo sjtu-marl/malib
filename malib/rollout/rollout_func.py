@@ -16,12 +16,11 @@ you wanna save by specifying extra columns when Episode initialization.
 """
 
 import collections
-from typing import Iterator, ValuesView
+from typing import Iterator
 import ray
 import numpy as np
 
 from malib import settings
-from malib.envs.env import Environment
 from malib.utils.general import iter_many_dicts_recursively
 from malib.utils.typing import (
     AgentID,

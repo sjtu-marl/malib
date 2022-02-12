@@ -59,7 +59,6 @@ class BaseRolloutWorker:
         self,
         worker_index: Any,
         env_desc: Dict[str, Any],
-        metric_type: str,
         save: bool = False,
         **kwargs,
     ):
@@ -67,7 +66,6 @@ class BaseRolloutWorker:
 
         :param Any worker_index: Indicate rollout worker.
         :param Dict[str,Any] env_desc: The environment description.
-        :param str metric_type: Name of registered metric handler.
         :param int parallel_num: Number of parallel.
         :param bool remote: Tell this rollout worker work in remote mode or not, default by False.
         :param int save: Whether or not to save the policy models.
@@ -97,7 +95,6 @@ class BaseRolloutWorker:
             )
             for aid in self._agents
         }
-        self._metric_type = metric_type
 
         self.logger = get_logger(
             log_level=settings.LOG_LEVEL,

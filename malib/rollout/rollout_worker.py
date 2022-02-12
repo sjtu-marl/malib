@@ -26,7 +26,6 @@ class RolloutWorker(BaseRolloutWorker):
         self,
         worker_index: Any,
         env_desc: Dict[str, Any],
-        metric_type: str,
         save: bool = False,
         **kwargs,
     ):
@@ -35,13 +34,10 @@ class RolloutWorker(BaseRolloutWorker):
 
         :param Any worker_index: Indicates rollout worker
         :param Dict[str,Any] env_desc: The environment description
-        :param str metric_type: Name of registered metric handler
         :param bool remote: Indicates this rollout worker work in remote mode or not, default by False
         """
 
-        BaseRolloutWorker.__init__(
-            self, worker_index, env_desc, metric_type, save, **kwargs
-        )
+        BaseRolloutWorker.__init__(self, worker_index, env_desc, save, **kwargs)
 
         self._num_rollout_actors = kwargs.get("num_rollout_actors", 1)
         self._num_eval_actors = kwargs.get("num_eval_actors", 1)
@@ -84,7 +80,7 @@ class RolloutWorker(BaseRolloutWorker):
                     batch_mode=kwargs["batch_mode"],
                     postprocessor_types=kwargs["postprocessor_types"],
                 )
-                for _ in range(self._evaluation_worker_num)
+                for _ in range(self._num_eval_actors)
             ]
         )
         self.eval_actor_pool = ActorPool(self.actors[self._num_eval_actors :])
