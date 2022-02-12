@@ -138,6 +138,16 @@ class ParameterDescription:
     parallel_num: int = 1
     version: int = -1
 
+    @classmethod
+    def gen_template(cls, **kwargs):
+        return cls(
+            time_stamp=time.time(),
+            identify=None,
+            id=kwargs["id"],
+            lock=True,
+            env_id="test",
+        )
+
 
 @dataclass
 class MetaParameterDescription:
@@ -148,6 +158,15 @@ class MetaParameterDescription:
 
     def __post_init__(self):
         self.identify = f"{self.identify}_mpid_{self.meta_pid}_{self.timestamp}"
+
+    @classmethod
+    def gen_template(cls, **kwargs):
+        return cls(
+            meta_pid=kwargs["meta_pid"],
+            parameter_desc_dict={
+                k: ParameterDescription.gen_template(id=k) for k in kwargs["pids"]
+            },
+        )
 
 
 @dataclass
@@ -208,9 +227,12 @@ class AgentInvolveInfo:
         return cls(
             training_handler="test",
             trainable_pairs=dict.fromkeys(agent_ids, example_ptup),
-            populations=None,
+            populations=dict.fromkeys(agent_ids, [example_ptup]),
             env_id="test",
-            meta_parameter_desc_dict=None,
+            meta_parameter_desc_dict=dict.fromkeys(
+                agent_ids,
+                MetaParameterDescription.gen_template(meta_pid=None, pids=["policy_0"]),
+            ),
         )
 
 
@@ -252,6 +274,9 @@ class RolloutDescription:
             agent_involve_info=AgentInvolveInfo.gen_template(
                 **agent_involve_info_kwargs
             ),
+            policy_distribution=dict.fromkeys(
+                agent_involve_info_kwargs["agent_ids"], {"policy_0": 1.0}
+            ),
             **template_attr_kwargs,
         )
         template_attr_kwargs["agent_involve_info"] = agent_involve_info_kwargs
@@ -269,7 +294,15 @@ class SimulationDescription:
 
     @classmethod
     def gen_template(cls, **kwargs):
-        raise NotImplementedError
+        agent_involve_template_attrs = kwargs.pop("agent_involve_info")
+        instance = cls(
+            agent_involve_info=AgentInvolveInfo.gen_template(
+                **agent_involve_template_attrs
+            ),
+            **kwargs,
+        )
+        kwargs["agent_involve_info"] = agent_involve_template_attrs
+        return instance
 
 
 @dataclass

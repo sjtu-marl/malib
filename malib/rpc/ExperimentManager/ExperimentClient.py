@@ -21,6 +21,7 @@ class ExprManagerClient:
         self._config = CONFIG.copy()
         self._config["nid"] = nid
         self._config["log_level"] = log_level
+        self.is_remote = True
 
     @staticmethod
     def _chunk_generator_wrapper(

@@ -116,7 +116,7 @@ class RolloutWorker(BaseRolloutWorker):
             ]
             actor_pool = self.rollout_actor_pool
         elif role == "rollout":
-            seg_num = self._parallel_num
+            seg_num = self._num_rollout_actors
             x = num_episodes // seg_num
             y = num_episodes - seg_num * x
             episode_segs = [x] * seg_num + ([y] if y else [])

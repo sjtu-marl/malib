@@ -259,6 +259,7 @@ def get_logger(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
         logger = logging.getLogger(name)
+        logger.is_remote = False
         if logger.hasHandlers():
             return logger
         logger.setLevel(log_level)

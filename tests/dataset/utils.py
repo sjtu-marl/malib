@@ -32,6 +32,9 @@ class FakeDataServer:
         info = 200
         return Batch(identity=buffer_desc.agent_id, data=res), info
 
+    def create_table(self, buffer_desc: BufferDescription):
+        pass
+
     def lock(self, lock_type: str, desc: Dict[AgentID, BufferDescription]) -> str:
         """Lock table ready to push or pull and return the table status."""
 

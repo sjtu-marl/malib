@@ -346,7 +346,7 @@ class BaseRolloutWorker:
                 callback=task_desc.content.callback,
                 num_episodes=task_desc.content.num_episodes,
                 policy_combinations=[trainable_behavior_policies],
-                explore=True,
+                # explore=True,
                 fragment_length=task_desc.content.fragment_length,
                 role="rollout",
                 policy_distribution=task_desc.content.policy_distribution,
@@ -362,15 +362,16 @@ class BaseRolloutWorker:
             # log to tensorboard
             if (epoch + 1) % print_every == 0:
                 Logger.info("\tepoch: %s (evaluation) %s", epoch, holder)
-            for k, v in holder.items():
+            if self.logger.is_remote:
+                for k, v in holder.items():
+                    self.logger.send_scalar(
+                        tag=f"Evaluation/{k}", content=v, global_step=epoch
+                    )
                 self.logger.send_scalar(
-                    tag=f"Evaluation/{k}", content=v, global_step=epoch
+                    tag="Performance/RFPS/{}".format(os.getpid()),
+                    content=total_num_frames / time_consump,
+                    global_step=epoch,
                 )
-            self.logger.send_scalar(
-                tag="Performance/RFPS/{}".format(os.getpid()),
-                content=total_num_frames / time_consump,
-                global_step=epoch,
-            )
             epoch += 1
 
         if self._save:
