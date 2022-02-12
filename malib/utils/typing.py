@@ -10,7 +10,7 @@ import numpy as np
 from malib.utils.notations import deprecated
 
 """ Rename and definition of basic data types which are correspond to the inputs (args, kwargs) """
-PolicyConfig = Tuple[str, Dict[str, Any]]
+PolicyConfig = Dict[str, Any]
 MetaPolicyConfig = Tuple[gym.spaces.Space, gym.spaces.Space, Sequence[PolicyConfig]]
 EnvConfig = Dict[str, Any]
 RolloutConfig = Dict[str, Any]
@@ -188,6 +188,31 @@ class AgentInvolveInfo:
     meta_parameter_desc_dict: Dict[AgentID, MetaParameterDescription] = None
     """ meta parameter description """
 
+    @classmethod
+    def gen_template(
+        cls,
+        agent_ids: List[AgentID],
+        observation_space: gym.Space,
+        action_space: gym.Space,
+    ):
+        example_ptup = (
+            "policy_0",
+            {
+                "registered_name": "test",
+                "observation_space": observation_space,
+                "action_space": action_space,
+                "mode_config": None,
+                "custom_config": None,
+            },
+        )
+        return cls(
+            training_handler="test",
+            trainable_pairs=dict.fromkeys(agent_ids, example_ptup),
+            populations=None,
+            env_id="test",
+            meta_parameter_desc_dict=None,
+        )
+
 
 @dataclass
 class TrainingDescription:
@@ -199,6 +224,10 @@ class TrainingDescription:
     batch_size: int = 64
     mode: str = "step"
     time_stamp: float = time.time()
+
+    @classmethod
+    def gen_template(cls, **template_attr_kwargs):
+        raise NotImplementedError
 
 
 @dataclass
@@ -216,6 +245,18 @@ class RolloutDescription:
     policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None
     time_stamp: float = time.time()
 
+    @classmethod
+    def gen_template(cls, **template_attr_kwargs):
+        agent_involve_info_kwargs = template_attr_kwargs.pop("agent_involve_info")
+        instance = cls(
+            agent_involve_info=AgentInvolveInfo.gen_template(
+                **agent_involve_info_kwargs
+            ),
+            **template_attr_kwargs,
+        )
+        template_attr_kwargs["agent_involve_info"] = agent_involve_info_kwargs
+        return instance
+
 
 @dataclass
 class SimulationDescription:
@@ -225,6 +266,10 @@ class SimulationDescription:
     callback: Union[str, Callable] = "sequential"
     max_episode_length: int = None
     time_stamp: float = time.time()
+
+    @classmethod
+    def gen_template(cls, **kwargs):
+        raise NotImplementedError
 
 
 @dataclass
@@ -295,6 +340,25 @@ class TaskDescription:
             prefix = "UnknowDescription"
 
         self.identify = f"{prefix}_{timestamp}"
+
+    @classmethod
+    def gen_template(cls, **template_attr_kwargs):
+        task_type = template_attr_kwargs["task_type"]
+        if task_type == TaskType.OPTIMIZE:
+            desc_cls = TrainingDescription
+        elif task_type == TaskType.ROLLOUT:
+            desc_cls = RolloutDescription
+        elif task_type == TaskType.SIMULATION:
+            desc_cls = SimulationDescription
+        else:
+            raise ValueError("Unknow task type: {}".format(task_type))
+        content_template_attr_kwargs = template_attr_kwargs.pop("content")
+        instance = cls(
+            content=desc_cls.gen_template(**content_template_attr_kwargs),
+            **template_attr_kwargs,
+        )
+        template_attr_kwargs["content"] = content_template_attr_kwargs
+        return instance
 
 
 @dataclass
