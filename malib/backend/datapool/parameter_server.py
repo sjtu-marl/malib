@@ -1,4 +1,3 @@
-import logging
 import os
 import threading
 
@@ -10,7 +9,6 @@ import ray
 
 from malib import settings
 from malib.utils.logger import Logger
-from malib.utils import errors
 from malib.algorithm.common.misc import GradientOps
 from malib.utils.typing import (
     Status,
