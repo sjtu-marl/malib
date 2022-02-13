@@ -10,17 +10,18 @@ from malib.evaluator.utils.payoff_manager import PayoffManager
         # two players with FSP
         ([f"agent_{i}".format(i) for i in range(2)], "fictitious_play"),
         # two players with alpha-rank
-        ([f"agent_{i}".format(i) for i in range(2)], "alpha_rank"),
+        ([f"agent_{i}".format(i) for i in range(2)], "alpharank"),
         # multiplayers with alpha-rank
-        ([f"agent_{i}".format(i) for i in range(3)], "alpha_rank"),
+        ([f"agent_{i}".format(i) for i in range(3)], "alpharank"),
     ],
 )
-def test_payoff_manager(agents, solve_method):
+@pytest.mark.parametrize("policy_num", [1, 3])
+def test_payoff_manager(agents, solve_method, policy_num):
     manager = PayoffManager(agent_names=agents, exp_cfg={}, solve_method=solve_method)
 
     # add new results
     policy_pool = {}
-    policy_ids = [f"policy_{i}" for i in range(1)]
+    policy_ids = [f"policy_{i}" for i in range(policy_num)]
     matchups = []
     for agent in agents:
         policy_pool[agent] = policy_ids
@@ -45,4 +46,7 @@ def test_payoff_manager(agents, solve_method):
     eq = manager.compute_equilibrium(policy_pool)
     manager.update_equilibrium(policy_pool, eq)
     eq = manager.get_equilibrium(policy_pool)
-    print(eq)
+
+    # try to do aggregation
+    for brs in [None, dict.fromkeys(agents, f"policy_{policy_num}")]:
+        manager.aggregate(eq, brs)

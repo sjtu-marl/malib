@@ -289,32 +289,22 @@ class PayoffManager:
             f"\tcurrent payoff table: {self._payoff_tables}\n"
         )
 
-        # update_entries = {
-        #     "Agents-Reward": [
-        #         (agent, content.statistics[agent][MetricType.REWARD])
-        #         for agent in self.agents
-        #     ],
-        #     "Population": population_combination,
-        # }
-        # if hasattr(self.logger, "send_obj"):
-        #     self.logger.send_obj(tag="__Payoff__", obj=update_entries)
+    # @deprecated
+    # def _add_matchup_result(
+    #     self,
+    #     policy_combination: List[Tuple[PolicyID, PolicyConfig]],
+    #     payoffs: Union[List, np.ndarray],
+    # ):
+    #     """
+    #     add payoffs to each table, call it only after self._expand_table
+    #     """
+    #     policy_mapping: List[PolicyID] = [p_tuple[0] for p_tuple in policy_combination]
+    #     idx2add = self._get_combination_index(policy_mapping)
+    #     # self.[idx2add] = 1
 
-    @deprecated
-    def _add_matchup_result(
-        self,
-        policy_combination: List[Tuple[PolicyID, PolicyConfig]],
-        payoffs: Union[List, np.ndarray],
-    ):
-        """
-        add payoffs to each table, call it only after self._expand_table
-        """
-        policy_mapping: List[PolicyID] = [p_tuple[0] for p_tuple in policy_combination]
-        idx2add = self._get_combination_index(policy_mapping)
-        # self.[idx2add] = 1
-
-        for i, a_name in enumerate(self.agents):
-            # self._payoff_tables[a_name][idx2add] = payoffs[i]
-            self._payoff_tables[a_name][policy_combination] = payoffs[i]
+    #     for i, a_name in enumerate(self.agents):
+    #         # self._payoff_tables[a_name][idx2add] = payoffs[i]
+    #         self._payoff_tables[a_name][policy_combination] = payoffs[i]
 
     def compute_equilibrium(
         self, population_mapping: Dict[PolicyID, Sequence[PolicyID]]
@@ -369,11 +359,11 @@ class PayoffManager:
         >>> self.get_equilibrium(population_mapping)
         ... {"player_0": {"policy_0": 1.0, "policy_1": 0.0}, "player_1": {"policy_0": 0.3, "policy_1": 0.7}}
         """
-        if len(population_mapping) == 1:
-            res = {}
-            for aid, pids in population_mapping.items():
-                res[aid] = dict.fromkeys(pids, 1.0)
-            return res
+        # if len(population_mapping) == 1:
+        #     res = {}
+        #     for aid, pids in population_mapping.items():
+        #         res[aid] = dict.fromkeys(pids, 1.0)
+        #     return res
         hash_key = self._hash_population_mapping(population_mapping)
         agent = list(population_mapping.keys())[0]
         assert hash_key in self._equilibrium, (
@@ -401,73 +391,6 @@ class PayoffManager:
                 ans += pid + ","
             ans += ";"
         return ans
-
-    # @deprecated
-    # def get_selected_table(
-    #     self,
-    #     population_mapping: Dict[PolicyID, Sequence[PolicyID]],
-    # ) -> Dict:
-    #     """Return a payoff sub-matrix with given population mapping"""
-    #     # TODO(ziyu): check all agents have at least one policy
-    #     all_done = True
-    #     self.logger.debug(
-    #         f"get selected table with population mapping:\n{population_mapping}\n"
-    #     )
-    #     population_mapping_list = [population_mapping[an] for an in self.agents]
-    #     shape = list(map(lambda x: len(x), population_mapping_list))
-    #     # XXX(ziyu): a very ugly version and very slow
-    #     ans_dict = {an: np.zeros(shape) for an in self.agents}
-
-    #     shape_range_list = [range(_len) for _len in shape]
-    #     for idx_comb in itertools.product(*shape_range_list):
-    #         policy_comb = [
-    #             population_mapping_list[i][ic] for i, ic in enumerate(idx_comb)
-    #         ]
-    #         # print("\tPOLICY COMBINATION:", policy_comb)
-    #         policy_comb_idx = self._get_combination_index(policy_comb)
-    #         # if self._done_table[policy_comb_idx] == 0:
-    #         #     all_done = False
-    #         #     break
-    #         # else:
-    #         for an in self.agents:
-    #             ans_dict[an][idx_comb] = self.payoffs[an][policy_comb_idx]
-
-    #     self.logger.debug(
-    #         f"get selected table: {population_mapping}" f"done: {all_done}\n"
-    #     )
-
-    #     return ans_dict
-
-    # @deprecated
-    # def _get_combination_index(self, policy_combination):
-    #     assert self.num_player == len(policy_combination)
-    #     # print("PRINT POLICY COMBINATION", policy_combination)
-    #     return tuple(
-    #         self._policy_idx[an][policy_combination[i]]
-    #         for i, an in enumerate(self.agents)
-    #     )
-
-    # @deprecated
-    # def _expand_table(self, agent_name, policy_id, policy_config):
-    #     """
-    #     add policy to a specific agent
-    #     """
-    #     assert agent_name in self.agents, f"unregistered agent name {agent_name}"
-
-    #     agent_idx = self.agents.index(agent_name)
-
-    #     pad_info = [(0, 0)] * self.num_player
-    #     pad_info[agent_idx] = (0, 1)
-
-    #     # self._done_table = np.pad(self._done_table, pad_info)
-    #     for k, v in self._payoff_tables.items():
-    #         # pad one more "row" with zeros
-    #         self._payoff_tables[k] = np.pad(v, pad_info)
-
-    #     # May have some problems for concurrent version, but we have no demand for a concurrent payoff table ...
-    #     self._policy_idx[agent_name][policy_id] = len(self._policy[agent_name])
-    #     self._policy[agent_name].append(policy_id)
-    #     self._policy_config[agent_name].append(policy_config)
 
     def _get_pending_matchups(
         self, agent_name: AgentID, policy_id: PolicyID, policy_config: Dict[str, Any]
