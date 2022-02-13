@@ -142,10 +142,22 @@ class ParameterDescription:
     def gen_template(cls, **kwargs):
         return cls(
             time_stamp=time.time(),
-            identify=None,
+            identify=kwargs.get("identify", None),
             id=kwargs["id"],
-            lock=True,
-            env_id="test",
+            lock=kwargs.get("lock", True),
+            env_id=kwargs.get("env_id", "test"),
+            type=kwargs.get("type", cls.Type.PARAMETER),
+            data=kwargs.get("data", None),
+            description=kwargs.get(
+                "description",
+                {
+                    "registered_name": "test",
+                    "observation_space": None,
+                    "action_space": None,
+                    "model_config": {},
+                    "custom_config": {},
+                },
+            ),
         )
 
 

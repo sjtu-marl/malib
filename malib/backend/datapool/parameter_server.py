@@ -24,7 +24,7 @@ from malib.utils.typing import (
 PARAMETER_TABLE_NAME_GEN = (
     lambda env_id, agent_id, pid, policy_type: f"{env_id}_{agent_id}_{pid}_{policy_type}"
 )
-DEFAULT_TABLE_SIZE = 2
+
 TableStatus = namedtuple("TableStatus", "locked, gradient_status")
 
 TableStatus.__doc__ = """\
@@ -70,7 +70,7 @@ class Table:
     gradients: List = None
     """A list of stacked gradients, for update parameters."""
 
-    parallel_num: int = 1
+    parallel_num: int = 1  # XXX(ming): consider to use num_copy, not parallel_num
     """Indicates how many copies/parameter learners share this table."""
 
     locked: bool = False
@@ -133,9 +133,9 @@ class Table:
         )
 
     def _aggregate(self, parameter_desc: ParameterDescription):
-        """Aggregate gradients for policy parameters.
+        """Aggregate gradients.
 
-        :param ParameterDescription parameter_desc: An parameter description entity
+        :param ParameterDescription parameter_desc: A parameter description entity
         """
 
         if len(self.gradients) == self.parallel_num:
@@ -200,10 +200,9 @@ class Table:
                 if len(self.gradients) < self.parallel_num:
                     self.gradient_status = Status.WAITING
                     self.gradients.append(parameter_desc.data)
-                    # try to do aggregation
-                    self._aggregate(parameter_desc)
                 else:
                     raise IndexError("reached maximum")
+                self._aggregate(parameter_desc)
 
     @staticmethod
     def _save_helper_func(obj, fp, candidate_name=""):
@@ -246,11 +245,10 @@ class Table:
             return table
 
 
-@ray.remote
 class ParameterServer:
     """Parameter lib can be initialized with existing database or create a new one"""
 
-    def __init__(self, test_mode=False, **kwargs):
+    def __init__(self, **kwargs):
         self._table: Dict[str, Table] = dict()
         self._table_status: Dict[str, Status] = dict()
 
@@ -264,7 +262,26 @@ class ParameterServer:
         self.dump_when_closed = quit_job_config.get("dump_when_closed")
         self.dump_path = quit_job_config.get("path")
 
+    @classmethod
+    def as_remote(
+        cls,
+        num_cpus: int = None,
+        num_gpus: int = None,
+        memory: int = None,
+        object_store_memory: int = None,
+        resources: dict = None,
+    ) -> type:
+        return ray.remote(
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            object_store_memory=object_store_memory,
+            resources=resources,
+        )(cls)
+
     def check_ready(self, parameter_desc):
+        """Check whether current parameter has been updated with stacked gradients"""
+
         table_name = PARAMETER_TABLE_NAME_GEN(
             env_id=parameter_desc.env_id,
             agent_id=parameter_desc.identify,
@@ -298,7 +315,7 @@ class ParameterServer:
             self._table.get(table_name, None) is not None
         ), f"No such a table named={table_name}, {list(self._table.keys())}"
         if self._table[table_name].parallel_num != parameter_desc.parallel_num:
-            # (hanjing): Fix the possible conflicts when recovering from dumped files
+            # XXX(hanjing): Fix the possible conflicts when recovering from dumped files
             Logger.info("Inconsistence found in parallel num, reassigned")
             self._table[table_name].parallel_num = parameter_desc.parallel_num
 
@@ -336,7 +353,7 @@ class ParameterServer:
                     parallel_num=parameter_desc.parallel_num,
                 )
         else:
-            # (hanjing): Check for consistence
+            # XXX(hanjing): Check for consistence
             assert table.parallel_num == parameter_desc.parallel_num
         self._table[table_name].insert(parameter_desc)
         status = self._table[table_name].status

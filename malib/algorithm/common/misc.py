@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from torch.autograd import Variable
 
-from malib.utils.typing import Dict, List, DataTransferType
+from malib.utils.typing import Dict, List, DataTransferType, Any
 
 
 def soft_update(target, source, tau):
@@ -135,15 +135,41 @@ def masked_softmax(logits: torch.Tensor, mask: torch.Tensor):
 
 class GradientOps:
     @staticmethod
-    def add(source: Dict, delta: Dict):
-        for k, v in delta.items():
-            if isinstance(v, Dict):
-                source[k] = GradientOps.add(source[k], v)
-            else:  # if isinstance(v, DataTransferType):
-                assert source[k].data.shape == v.shape, (source[k].data.shape, v.shape)
-                source[k].data = source[k].data + v  # v
-            # else:
-            #     raise errors.UnexpectedType(f"unexpected gradient type: {type(v)}")
+    def add(source: Any, delta: Any):
+        """Apply gradients (delta) to parameters (source)"""
+
+        if isinstance(source, Dict) and isinstance(delta, Dict):
+            for k, v in delta.items():
+                if isinstance(v, Dict):
+                    source[k] = GradientOps.add(source[k], v)
+                else:  # if isinstance(v, DataTransferType):
+                    assert source[k].data.shape == v.shape, (
+                        source[k].data.shape,
+                        v.shape,
+                    )
+                    if isinstance(v, np.ndarray):
+                        source[k].data.copy_(source[k].data + v)
+                    elif isinstance(v, torch.Tensor):
+                        source[k].data.copy_(source[k].data + v.data)
+                    else:
+                        raise TypeError(
+                            "Inner type of delta should be numpy.ndarray or torch.Tensor, but `{}` detected".format(
+                                type(v)
+                            )
+                        )
+        elif isinstance(source, torch.Tensor):
+            if isinstance(delta, torch.Tensor):
+                source.data.copy_(source.data + delta.data)
+            elif isinstance(delta, np.ndarray):
+                source.data.copy_(source.data + delta)
+            else:
+                raise TypeError("Unexpected delta type: {}".format(type(delta)))
+        else:
+            raise TypeError(
+                "Source data must be a dict or torch tensor but got: {}".format(
+                    type(source)
+                )
+            )
         return source
 
     @staticmethod
@@ -156,9 +182,15 @@ class GradientOps:
             for k in keys:
                 res[k] = GradientOps.mean([grad[k] for grad in gradients])
             return res
-        else:
+        elif isinstance(gradients[0], np.ndarray):
             res = np.mean(gradients, axis=0)
             return res
+        elif isinstance(gradients[0], torch.Tensor):
+            raise NotImplementedError(
+                "Do not support tensor-based gradients aggragation yet."
+            )
+        else:
+            raise TypeError("Illegal data type: {}".format(type(gradients[0])))
 
     @staticmethod
     def sum(gradients: List):
@@ -177,9 +209,17 @@ class GradientOps:
             for k in keys:
                 res[k] = GradientOps.sum([grad[k] for grad in gradients])
             return res
-        else:  # if isinstance(gradients[0], DataTransferType):
+        elif isinstance(
+            gradients[0], np.ndarray
+        ):  # if isinstance(gradients[0], DataTransferType):
             res = np.sum(gradients, axis=0)
             return res
+        elif isinstance(gradients[0], torch.Tensor):
+            raise NotImplementedError(
+                "Do not support tensor-based gradients aggragation yet."
+            )
+        else:
+            raise TypeError("Illegal data type: {}".format(type(gradients[0])))
 
 
 class OUNoise:

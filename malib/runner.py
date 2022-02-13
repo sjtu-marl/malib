@@ -62,13 +62,14 @@ def run(**kwargs):
         )
 
         CoordinatorServer = CoordinatorServer.as_remote()
+        ParameterServer = ParameterServer.as_remote()
 
         offline_dataset = OfflineDataset.options(
             name=settings.OFFLINE_DATASET_ACTOR, max_concurrency=1000
         ).remote(global_configs["dataset_config"], exp_cfg)
         parameter_server = ParameterServer.options(
             name=settings.PARAMETER_SERVER_ACTOR, max_concurrency=1000
-        ).remote(exp_cfg=exp_cfg, **global_configs["parameter_server"])
+        ).remote(**global_configs["parameter_server"])
         coordinator_server = CoordinatorServer.options(
             name=settings.COORDINATOR_SERVER_ACTOR, max_concurrency=100
         ).remote(exp_cfg=exp_cfg, **global_configs)
