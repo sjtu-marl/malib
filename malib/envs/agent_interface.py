@@ -211,6 +211,7 @@ class AgentInterface:
             env_agent_id=env_aid,
         )
         self.policies[policy_id] = policy
+        assert parameter_desc.env_id is not None, parameter_desc.id
         self.parameter_desc_dict[policy_id] = ParameterDescription(
             time_stamp=parameter_desc.time_stamp,
             identify=parameter_desc.identify,

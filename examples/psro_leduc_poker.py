@@ -27,6 +27,7 @@ parser.add_argument("--episode_seg", type=int, default=1)
 args = parser.parse_args()
 
 if __name__ == "__main__":
+
     env_description = {
         "creator": PokerParallelEnv,
         "config": {
@@ -34,13 +35,18 @@ if __name__ == "__main__":
             "env_id": "leduc_poker",
         },
     }
-
     env = PokerParallelEnv(**env_description["config"])
     possible_agents = env.possible_agents
     observation_spaces = env.observation_spaces
     action_spaces = env.action_spaces
 
     env_description["possible_agents"] = possible_agents
+    env_description.update(
+        {
+            "action_spaces": env.action_spaces,
+            "observation_spaces": env.observation_spaces,
+        }
+    )
 
     run(
         group="psro",
@@ -51,6 +57,7 @@ if __name__ == "__main__":
                 "type": "independent",
                 "observation_spaces": observation_spaces,
                 "action_spaces": action_spaces,
+                "use_init_policy_pool": True,
             },
             "config": {
                 "batch_size": args.batch_size,

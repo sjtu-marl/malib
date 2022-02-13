@@ -6,7 +6,7 @@ import ray
 
 from malib import settings
 from malib.utils import logger
-from malib.utils.logger import Logger, get_logger, Log, start
+from malib.utils.logger import Logger, get_logger, Log
 from malib.utils.configs.formatter import DefaultConfigFormatter
 from malib.utils.general import update_configs
 

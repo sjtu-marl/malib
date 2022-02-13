@@ -334,7 +334,7 @@ class RolloutFeedback:
     """agent involve info describes the ..."""
 
     statistics: Dict[str, Any]
-    policy_combination: Dict[PolicyID, Tuple[PolicyID, PolicyConfig]] = None
+    policy_combination: Dict[PolicyID, PolicyID] = None
 
     def __post_init__(self):
         pass
@@ -421,6 +421,8 @@ class TaskRequest:
     timestamp: float = None  # time.time()
 
     identify: str = None
+
+    computing_mode: str = "bulk_sync"  # bulk_sync, async
 
     def __post_init__(self):
         assert self.state_id, "State id cannot be None"

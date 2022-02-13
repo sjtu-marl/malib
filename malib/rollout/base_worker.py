@@ -445,7 +445,6 @@ class BaseRolloutWorker:
             policy_combinations=[
                 {k: p for k, (p, _) in comb.items()} for comb in combinations
             ],
-            explore=False,
             role="simulation",
         )
         for statistics, combination in zip(raw_statistics, combinations):
@@ -454,7 +453,7 @@ class BaseRolloutWorker:
                 worker_idx=self._worker_index,
                 agent_involve_info=agent_involve_info,
                 statistics=holder,
-                policy_combination=combination,
+                policy_combination={k: p for k, (p, _) in combination.items()},
             )
             task_req = TaskRequest.from_task_desc(
                 task_desc=task_desc,

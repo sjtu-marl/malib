@@ -38,6 +38,7 @@ setup(
         "colorlog==6.6.0",
         "mujoco_py",
         "hiredis==2.0.0",
+        "frozendict==2.3.0",
     ],
     extras_require={
         "dev": [

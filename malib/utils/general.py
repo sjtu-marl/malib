@@ -5,7 +5,7 @@ import numpy as np
 import copy
 
 from malib import settings
-from malib.utils.typing import Dict, Callable
+from malib.utils.typing import Dict, Callable, List, Tuple
 
 
 def update_configs(update_dict, ori_dict=None):
@@ -173,3 +173,17 @@ def tensor_cast(
         return wrap
 
     return decorator
+
+
+def frozen_data(data):
+    _hash = 0
+    if isinstance(data, Dict):
+        for k, v in data.items():
+            _v = frozen_data(v)
+            _hash ^= hash((k, _v))
+    elif isinstance(data, (List, Tuple)):
+        for e in data:
+            _hash ^= hash(e)
+    else:
+        return hash(data)
+    return _hash

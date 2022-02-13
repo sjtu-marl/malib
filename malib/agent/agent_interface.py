@@ -37,7 +37,7 @@ from malib.utils import errors
 from malib.utils.logger import Logger, get_logger, Log
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.trainer import Trainer
-from malib.backend.datapool.offline_dataset_server import BufferDict, Table
+from malib.backend.datapool.offline_dataset_server import Table
 
 
 AgentFeedback = namedtuple("AgentFeedback", "id, trainable_pairs, statistics")
@@ -273,6 +273,7 @@ class AgentInterface(metaclass=ABCMeta):
 
     def get_stationary_state(self) -> AgentTaggedFeedback:
         """Return stationary policy descriptions."""
+
         res = {}
         for env_aid in self._group:
             # wait

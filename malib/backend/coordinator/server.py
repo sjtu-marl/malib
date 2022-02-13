@@ -12,7 +12,6 @@ from typing import List, Dict
 import ray
 
 from malib import settings
-from malib.utils.formatter import pretty_print as pp
 from malib.utils.typing import (
     AgentID,
     TaskDescription,
@@ -60,7 +59,7 @@ class CoordinatorServer(BaseCoordinator):
         )
         self._rollout_manager.simulate(task_desc)
 
-    def gen_add_policy_task(self, aid: str, state_id):
+    def gen_add_policy_task(self, aid: str, task_request: TaskRequest):
         """Generate policy adding task then dispatch to one agent interface.
 
         :param str aid: Agent interface id.
@@ -69,7 +68,7 @@ class CoordinatorServer(BaseCoordinator):
 
         # tag current task with state_id
         task_desc = TaskDescription(
-            task_type=TaskType.ADD_POLICY, content=None, state_id=state_id
+            task_type=TaskType.ADD_POLICY, content=None, state_id=task_request.state_id
         )
         self._training_manager.add_policy(aid, task_desc)
 
@@ -106,6 +105,8 @@ class CoordinatorServer(BaseCoordinator):
         self._exp_cfg = kwargs["exp_cfg"]
 
         self.task_mode = kwargs["task_mode"]
+
+        self.request_lock = threading.Lock()
 
     @property
     def hyper_evaluator(self) -> Evaluator:
@@ -146,17 +147,20 @@ class CoordinatorServer(BaseCoordinator):
         """Handling task request"""
 
         # call request by name
-        Logger.info("request: {}".format(task_request.task_type))
-        generic_task_handler = getattr(
-            CoordinatorServer, "_request_{}".format(task_request.task_type.value), None
-        )
-
-        if generic_task_handler:
-            generic_task_handler(self, task_request)
-        else:
-            raise AttributeError(
-                f"Missing handler for task type {task_request.task_type.value}"
+        with self.request_lock:
+            # Logger.debug("request: {}".format(task_request.task_type))
+            generic_task_handler = getattr(
+                CoordinatorServer,
+                "_request_{}".format(task_request.task_type.value),
+                None,
             )
+
+            if generic_task_handler:
+                generic_task_handler(self, task_request)
+            else:
+                raise AttributeError(
+                    f"Missing handler for task type {task_request.task_type.value}"
+                )
 
     def is_terminate(self):
         return self._terminate

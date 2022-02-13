@@ -5,7 +5,7 @@ from .poker import PokerParallelEnv, env_desc_gen as poker_desc_gen
 from .gym import GymEnv, env_desc_gen as gym_desc_gen
 
 # FIXME(ming): check environment installation here
-from .star_craft2 import SC2Env
+from .star_craft2 import SC2Env, env_desc_gen as sc_desc_gen
 
 # from .smarts.env import SMARTS
 
@@ -51,4 +51,6 @@ def gen_env_desc(name: str):
         return gym_desc_gen
 
     if name == "SC2":
-        return
+        return sc_desc_gen
+
+    raise ValueError("environment {} cannot be found".format(name))

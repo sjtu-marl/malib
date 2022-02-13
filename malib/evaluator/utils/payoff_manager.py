@@ -9,13 +9,11 @@ import nashpy as nash
 import numpy as np
 
 from malib.evaluator.utils.payoff_table import PayoffTable
-from malib.utils.logger import Logger
 from malib.utils.notations import deprecated
 from malib.utils.typing import (
     AgentID,
     RolloutFeedback,
     PolicyID,
-    PolicyConfig,
 )
 
 try:
@@ -60,7 +58,6 @@ class DefaultSolver:
             if len(probs[probs < 0]) > 0:  # pylint: disable=g-explicit-length-test
                 # Ensures these negative probabilities aren't large in magnitude, as that is
                 # unexpected and likely not due to numerical precision issues
-                print("Probabilities received were: {}".format(probs[probs < 0]))
                 assert np.alltrue(
                     np.min(probs[probs < 0]) > -1.0 * epsilon
                 ), "Negative Probabilities received were: {}".format(probs[probs < 0])
@@ -271,9 +268,7 @@ class PayoffManager:
          and statistics which stores the value to update
         """
 
-        population_combination = {
-            agent: pid for agent, (pid, _) in content.policy_combination.items()
-        }
+        population_combination = content.policy_combination
         # for agent in self.agents:
         for k, v in content.statistics.items():
             # Logger.debug("get kd: {} {}".format(k, v))
@@ -284,10 +279,10 @@ class PayoffManager:
                 self._payoff_tables[agent].set_simulation_done(population_combination)
             # self._done_table[agent][population_combination] = True
 
-        Logger.debug(
-            f"Updated Payoff for {population_combination}\n"
-            f"\tcurrent payoff table: {self._payoff_tables}\n"
-        )
+        # Logger.debug(
+        #     f"Updated Payoff for {population_combination} with result: {content.statistics}"
+        #     f"current payoff table: {self._payoff_tables}\n"
+        # )
 
     # @deprecated
     # def _add_matchup_result(

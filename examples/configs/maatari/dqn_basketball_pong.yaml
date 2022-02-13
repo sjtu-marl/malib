@@ -39,6 +39,11 @@ env_description:
 algorithms:
   DQN:
     name: "DQN"
+    custom_config:
+      gamma: 0.98
+      eps_max: 1.0
+      eps_min: 0.1
+      eps_anneal_time: 10000
 
 rollout:
   type: "async"
