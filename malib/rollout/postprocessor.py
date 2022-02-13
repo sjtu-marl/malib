@@ -24,20 +24,22 @@ def compute_acc_reward(
 ) -> Dict[str, Dict[AgentID, np.ndarray]]:
     # create new placeholder
     for episode in episodes:
-        episode[EpisodeKey.ACC_REWARD] = {}
+        # episode[EpisodeKey.ACC_REWARD] = {}
 
-        for aid, data in episode[EpisodeKey.REWARD].items():
+        for aid, data in episode.items():
             gamma = policy_dict[aid].custom_config["gamma"]
             assert isinstance(
-                data, np.ndarray
-            ), "Reward must be an numpy array: {}".format(data)
+                data[EpisodeKey.REWARD], np.ndarray
+            ), "Reward must be an numpy array: {}".format(data[EpisodeKey.REWARD])
             assert (
-                len(data.shape) == 1
-            ), "Reward should be a scalar at eatch time step: {}".format(data)
+                len(data[EpisodeKey.REWARD].shape) == 1
+            ), "Reward should be a scalar at eatch time step: {}".format(
+                data[EpisodeKey.REWARD]
+            )
             acc_reward = scipy.signal.lfilter(
-                [1], [1, float(-gamma)], data[::-1], axis=0
+                [1], [1, float(-gamma)], data[EpisodeKey.REWARD][::-1], axis=0
             )[::-1]
-            episode[EpisodeKey.ACC_REWARD][aid] = acc_reward
+            data[EpisodeKey.ACC_REWARD] = acc_reward
 
     return episodes
 
@@ -49,9 +51,9 @@ def compute_advantage(
     use_gae: bool = False,
 ) -> Dict[str, Dict[AgentID, np.ndarray]]:
     episodes = compute_acc_reward(episodes, policy_dict)
-    for episode in episodes:
-        episode[EpisodeKey.ADVANTAGE] = {}
+    for agent_episode in episodes:
         for aid, policy in policy_dict.items():
+            episode = agent_episode[aid]
             use_gae = policy.custom_config.get("use_gae", False)
             use_critic = policy.custom_config.get("use_critic", False)
 
@@ -61,31 +63,28 @@ def compute_advantage(
                     [episode[EpisodeKey.STATE_VALUE], np.array([last_r[aid]])]
                 )
                 delta_t = episode[EpisodeKey.REWARD] + gamma * v[1:] - v[:-1]
-                episode[EpisodeKey.ADVANTAGE][aid] = scipy.signal.lfilter(
+                episode[EpisodeKey.ADVANTAGE] = scipy.signal.lfilter(
                     [1], [1, float(-gamma)], delta_t[::-1], axis=0
                 )[::-1]
-                episode[EpisodeKey.STATE_VALUE_TARGET][aid] = (
-                    episode[EpisodeKey.ADVANTAGE][aid]
-                    + episode[EpisodeKey.STATE_VALUE][aid]
+                episode[EpisodeKey.STATE_VALUE_TARGET] = (
+                    episode[EpisodeKey.ADVANTAGE] + episode[EpisodeKey.STATE_VALUE]
                 )
             else:
                 v = np.concatenate(
-                    [episode[EpisodeKey.REWARD][aid], np.array([last_r[aid]])]
+                    [episode[EpisodeKey.REWARD], np.array([last_r[aid]])]
                 )
-                acc_r = episode[EpisodeKey.ACC_REWARD][aid]
+                acc_r = episode[EpisodeKey.ACC_REWARD]
                 if use_critic:
-                    episode[EpisodeKey.ADVANTAGE][aid] = (
-                        acc_r - episode[EpisodeKey.STATE_VALUE][aid]
+                    episode[EpisodeKey.ADVANTAGE] = (
+                        acc_r - episode[EpisodeKey.STATE_VALUE]
                     )
-                    episode[EpisodeKey.STATE_VALUE_TARGET][aid] = episode[
+                    episode[EpisodeKey.STATE_VALUE_TARGET] = episode[
                         EpisodeKey.ACC_REWARD
-                    ][aid].copy()
+                    ].copy()
                 else:
-                    episode[EpisodeKey.ADVANTAGE][aid] = episode[EpisodeKey.ACC_REWARD][
-                        aid
-                    ]
-                    episode[EpisodeKey.STATE_VALUE_TARGET][aid] = np.zeros_like(
-                        episode[EpisodeKey.ADVANTAGE][aid]
+                    episode[EpisodeKey.ADVANTAGE] = episode[EpisodeKey.ACC_REWARD]
+                    episode[EpisodeKey.STATE_VALUE_TARGET] = np.zeros_like(
+                        episode[EpisodeKey.ADVANTAGE]
                     )
     return episodes
 
@@ -95,16 +94,17 @@ def compute_gae(
     policy_dict: Dict[AgentID, Policy],
 ) -> Dict[str, Dict[AgentID, np.ndarray]]:
     last_r = {}
-    for episode in episodes:
-        for aid, dones in episode[EpisodeKey.DONE].items():
+    for agent_episode in episodes:
+        for aid, episode in agent_episode.items():
+            dones = episode[EpisodeKey.DONE]
             if dones[-1]:
                 last_r[aid] = 0.0
             else:
                 # compute value as last r
                 assert hasattr(policy_dict[aid], "value_functon")
-                last_r[aid] = policy_dict[aid].value_function(episodes, agent_key=aid)
-
-    episode = compute_advantage(episodes, policy_dict, last_r=last_r, use_gae=True)
+                last_r[aid] = policy_dict[aid].value_function(episode, agent_key=aid)
+    episodes = compute_value(episodes, policy_dict)
+    episodes = compute_advantage(episodes, policy_dict, last_r=last_r, use_gae=True)
     return episode
 
 
