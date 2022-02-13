@@ -61,9 +61,6 @@ class TaskCache:
         with self.mlock:
             self.matches = []
 
-    # def reach_max_training(self, flag):
-    #     return self.pending_training[flag] == self.queue_size
-
     def update_population_mapping(self, v):
         with self.plock:
             for k, _v in v.items():
@@ -116,7 +113,6 @@ def _request_simulation(coordinator: CoordinatorServer, task_request: TaskReques
 
     Logger.debug("request for simulation")
     # fill message for this request
-    # with threading.Lock():
     task_request = coordinator.training_manager.retrieve_information(task_request)
 
     # generate pending matches
@@ -125,7 +121,6 @@ def _request_simulation(coordinator: CoordinatorServer, task_request: TaskReques
     pending_population = {}
 
     # cache task related information
-    # with threading.Lock():
     for (
         env_aid,
         p_tup,
@@ -174,7 +169,6 @@ def _request_evaluation(coordinator: CoordinatorServer, task_request: TaskReques
     else:
         coordinator.gen_simulation_task(task_request, pending_matches)
 
-    # with threading.Lock():
     if coordinator.task_cache.get(task_request.state_id) is None:
         coordinator.task_cache[task_request.state_id] = TaskCache(
             mode=task_request.computing_mode,
@@ -197,9 +191,7 @@ def _request_update_payoff_table(
     """
 
     rollout_feedback = task_request.content
-    # Logger.debug("my info: {} {}".format({k: [e[0] for e in v] for k, v in task_request.content.agent_involve_info.populations.items()}, rollout_feedback.policy_combination))
     task_cache = coordinator.task_cache[task_request.state_id]
-    # with threading.Lock():
     coordinator.payoff_manager.update_payoff(rollout_feedback)
     if not task_cache.all_training_done():
         return
@@ -265,7 +257,6 @@ def _request_rollout(coordinator: CoordinatorServer, task_request: TaskRequest):
     populations = task_request.content.agent_involve_info.populations
     trainable_pairs = task_request.content.agent_involve_info.trainable_pairs
     # then udpate task cache
-    # with threading.Lock():
     if coordinator.task_cache.get(task_request.state_id) is None:
         coordinator.task_cache[task_request.state_id] = TaskCache()
         Logger.debug(

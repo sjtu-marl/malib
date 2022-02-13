@@ -97,15 +97,16 @@ class TestServer(ServerTestMixin):
         self.server._training_manager = mocked_training_manager()
         self.server._rollout_manager = mocked_rollout_manager()
 
-        self.server.gen_add_policy_task(None, str(time.time()))
-        self.server.gen_simulation_task(
-            TaskRequest(
-                task_type=TaskType.SIMULATION,
-                content=SimulationDescription(
-                    agent_involve_info=None, policy_combinations=None, num_episodes=1
-                ),
-                state_id=str(time.time()),
+        task_request = TaskRequest(
+            task_type=TaskType.SIMULATION,
+            content=SimulationDescription(
+                agent_involve_info=None, policy_combinations=None, num_episodes=1
             ),
+            state_id=str(time.time()),
+        )
+        self.server.gen_add_policy_task(None, task_request)
+        self.server.gen_simulation_task(
+            task_request,
             matches=[],
         )
 

@@ -36,7 +36,9 @@ def test_payoff_manager(agents, solve_method, policy_num):
         tmp = {}
         for aid, (pid, _) in comb.items():
             tmp["agent_reward/{}_mean".format(aid)] = 0.1
-        feedback = RolloutFeedback("test", None, tmp, comb)
+        feedback = RolloutFeedback(
+            "test", None, tmp, {k: pid for k, (pid, _) in comb.items()}
+        )
         manager.update_payoff(feedback)
 
     # generate equilibrium
