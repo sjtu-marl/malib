@@ -199,6 +199,11 @@ class BufferDescription:
         if self.identify is None:
             self.identify = "_".join(sorted(self.agent_id))
 
+    def __str__(self):
+        return "<BufferDescription: agent_id={} policy_id={}".format(
+            self.agent_id, self.policy_id
+        )
+
 
 @dataclass
 class AgentInvolveInfo:

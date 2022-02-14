@@ -343,10 +343,8 @@ class BaseRolloutWorker:
             }
             # get behavior policies of other fixed agent
             raw_statistics, num_frames = self.sample(
-                callback=task_desc.content.callback,
                 num_episodes=task_desc.content.num_episodes,
                 policy_combinations=[trainable_behavior_policies],
-                # explore=True,
                 fragment_length=task_desc.content.fragment_length,
                 role="rollout",
                 policy_distribution=task_desc.content.policy_distribution,
@@ -439,7 +437,6 @@ class BaseRolloutWorker:
         agent_involve_info = task_desc.content.agent_involve_info
         # print(f"simulation for {task_desc.content.num_episodes}")
         raw_statistics, num_frames = self.sample(
-            callback=callback,
             num_episodes=task_desc.content.num_episodes,
             fragment_length=task_desc.content.max_episode_length,
             policy_combinations=[
@@ -493,7 +490,6 @@ class BaseRolloutWorker:
 
     def sample(
         self,
-        callback: type,
         num_episodes: int,
         fragment_length: int,
         role: str,

@@ -335,7 +335,6 @@ class AgentInterface(metaclass=ABCMeta):
         # returned batch.data is a dict of agent batch if it is not None.
         if isinstance(buffer_desc, Dict):
             # multiple tasks
-            buffer_keys = list(buffer_desc.keys())
             tasks = [
                 self._offline_dataset.get_consumer_index.remote(v)
                 for v in buffer_desc.values()
@@ -646,13 +645,11 @@ class AgentInterface(metaclass=ABCMeta):
                 statistics={},
             ),
         )
-        Logger.debug(f"Learner={self._id} send a request={task_request.task_type}")
         self._coordinator.request.remote(task_request)
 
         if trainable:
             # also request for optimization task
             task_request.task_type = TaskType.OPTIMIZE
-            Logger.debug(f"Learner={self._id} send a request={task_request.task_type}")
             self._coordinator.request.remote(task_request)
 
         return task_request

@@ -95,7 +95,6 @@ class RolloutWorker(BaseRolloutWorker):
 
     def sample(
         self,
-        callback: type,
         num_episodes: int,
         fragment_length: int,
         role: str,
@@ -114,7 +113,7 @@ class RolloutWorker(BaseRolloutWorker):
                 }
                 for comb in policy_combinations
             ]
-            actor_pool = self.rollout_actor_pool
+            actor_pool = self.eval_actor_pool
         elif role == "rollout":
             seg_num = self._num_rollout_actors
             x = num_episodes // seg_num
@@ -143,7 +142,7 @@ class RolloutWorker(BaseRolloutWorker):
                     for _ in range(self._num_eval_actors)
                 ]
             )
-            actor_pool = self.eval_actor_pool
+            actor_pool = self.rollout_actor_pool
         else:
             raise TypeError(f"Unkown role: {role}")
 
@@ -153,7 +152,6 @@ class RolloutWorker(BaseRolloutWorker):
                 agent_interfaces=self._agent_interfaces,
                 fragment_length=fragment_length,
                 desc=task,
-                callback=callback,
                 buffer_desc=buffer_desc,
             ),
             tasks,

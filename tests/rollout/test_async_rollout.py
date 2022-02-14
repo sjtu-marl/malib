@@ -86,7 +86,6 @@ class TestRollout:
                 "num_episodes": 2,
                 "max_step": 25,
             },
-            callback=None,
             buffer_desc=None,
         )
 

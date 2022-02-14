@@ -9,15 +9,11 @@ import gym
 from malib.utils.typing import (
     AgentID,
     PolicyID,
-    MetricEntry,
 )
 
 from malib.agent.agent_interface import AgentInterface
 from malib.algorithm.common.policy import Policy
 from malib.algorithm import get_algorithm_space
-from malib.utils import metrics
-
-import pickle as pkl
 
 
 class IndependentAgent(AgentInterface):
@@ -96,9 +92,6 @@ class IndependentAgent(AgentInterface):
                     map(lambda kv: (f"{env_aid}/{kv[0]}", kv[1]), training_info.items())
                 )
             )
-            # res[env_aid] = metrics.to_metric_entry(
-            # trainer.optimize(batch[env_aid]), prefix=pid
-            # )
         return res
 
     def add_policy_for_agent(

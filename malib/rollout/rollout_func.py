@@ -392,7 +392,6 @@ class Stepping:
         agent_interfaces: Dict[AgentID, AgentInterface],
         fragment_length: int,
         desc: Dict[str, Any],
-        callback: type,  # TODO(ming): deprecated
         buffer_desc: BufferDescription = None,
     ) -> Tuple[str, Dict[str, List]]:
         """Environment stepping, rollout/simulate with environment vectorization if it is feasible.
@@ -440,7 +439,6 @@ class Stepping:
                 "fragment_length": fragment_length,
                 "num_envs": num_episodes,
                 "behavior_policies": behavior_policies,
-                # FIXME(ming): custom reset config is closed here
                 "custom_reset_config": None,
                 "batch_mode": self.batch_mode,
                 "trainable_mapping": desc["behavior_policies"]
