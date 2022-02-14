@@ -2,7 +2,6 @@
 Share an agent interface
 """
 import argparse
-
 import yaml
 import os
 

@@ -7,6 +7,7 @@ from malib.envs import Environment, vector_env
 from malib.utils.episode import EpisodeKey
 
 
+# FIXME(ming): use configs, not env_id and scenario_configs
 @pytest.mark.parametrize(
     "module_path,cname,env_id,scenario_configs",
     [

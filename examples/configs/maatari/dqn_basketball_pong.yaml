@@ -18,22 +18,22 @@ env_description:
     scenario_configs:
       obs_type: "grayscale_image"
       num_players: 2
-      wrappers:
-        # resize_v0: downscale observation for faster processing
-        # max_observation_v0: as per openai baseline's MaxAndSKip wrapper, maxes over the last {param} frames
-        #   to deal with frame flickering
-        # sticky_actions_v0: repeat_action_probability is set to {param} to introduce non-determinism to the system
-        - name: "resize_v0"
-          params:
-            - 84
-            - 84
-        - name: "dtype_v0"
-          params:
-            - "float32"
-        - name: "normalize_obs_v0"
-          params:
-            env_min: 0.
-            env_max: 1.
+    wrappers:
+      # resize_v0: downscale observation for faster processing
+      # max_observation_v0: as per openai baseline's MaxAndSKip wrapper, maxes over the last {param} frames
+      #   to deal with frame flickering
+      # sticky_actions_v0: repeat_action_probability is set to {param} to introduce non-determinism to the system
+      - name: "resize_v0"
+        params:
+          - 84
+          - 84
+      - name: "dtype_v0"
+        params:
+          - "float32"
+      - name: "normalize_obs_v0"
+        params:
+          env_min: 0.
+          env_max: 1.
       # must be either 2 or 4
 
 algorithms:
@@ -51,7 +51,7 @@ rollout:
   fragment_length: 100
   # read rollout config to assign nested workers
   num_episodes: 200
-  num_env_per_worker: 100
+  num_env_per_worker: 50
   terminate: "any"
   stopper: "simple_rollout"
   stopper_config:

@@ -38,10 +38,7 @@ class MAAtari(Environment):
 
         env_id = self._configs["env_id"]
         scenario_configs = self._configs.get("scenario_configs", {})
-        if "wrappers" in scenario_configs:
-            wrappers = scenario_configs.pop("wrappers")
-        else:
-            wrappers = {}
+        wrappers = self._configs.get("wrappers", {})
         env_module = env_module = importlib.import_module(f"pettingzoo.atari.{env_id}")
         ori_caller = env_module.parallel_env
         wrapped_caller = nested_env_creator(ori_caller, wrappers)
@@ -50,9 +47,6 @@ class MAAtari(Environment):
         self.max_step = 1000
 
         self._env = wrapped_caller(**scenario_configs)
-        # we need to recover scenario configs
-        if len(wrappers) > 0:
-            scenario_configs["wrappers"] = wrappers
         self._trainable_agents = self._env.possible_agents
         self._observation_spaces = {
             aid: self._env.observation_space(aid) for aid in self.possible_agents
