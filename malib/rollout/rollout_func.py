@@ -400,7 +400,6 @@ class Stepping:
         :param Union[str,type] metric_type: Metric type or handler.
         :param int fragment_length: The maximum length of an episode.
         :param Dict[str,Any] desc: The description of task.
-        :param type callback: Customized/registered rollout function.
         :param str role: Indicator of stepping type. Values in `rollout` or `simulation`.
         :returns: A tuple of a dict of MetricEntry and the caculation of total frames.
         """

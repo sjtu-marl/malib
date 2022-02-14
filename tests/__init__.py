@@ -318,7 +318,6 @@ class FakeStepping:
         agent_interfaces,
         fragment_length,
         desc,
-        callback,
         buffer_desc=None,
     ):
         task_type = desc["flag"]

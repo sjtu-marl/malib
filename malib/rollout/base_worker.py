@@ -325,7 +325,6 @@ class BaseRolloutWorker:
             agent_id=list(trainable_pairs.keys()),
             policy_id=[pid for pid, _ in trainable_pairs.values()],
             capacity=None,
-            # data_shapes=self._env_description["data_shapes"],
             sample_start_size=None,
         )
         ray.get(self._offline_dataset.create_table.remote(buffer_desc))
@@ -433,7 +432,6 @@ class BaseRolloutWorker:
         # set state here
         self.set_state(task_desc)
         combinations = task_desc.content.policy_combinations
-        callback = task_desc.content.callback
         agent_involve_info = task_desc.content.agent_involve_info
         # print(f"simulation for {task_desc.content.num_episodes}")
         raw_statistics, num_frames = self.sample(
