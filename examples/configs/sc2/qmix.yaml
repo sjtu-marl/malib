@@ -23,6 +23,7 @@ rollout:
   num_episodes: 4
   episode_seg: 1
   terminate: "any"
+  num_env_per_worker: 1
 
 env_description:
   #  scenario_name: "simple_spread"

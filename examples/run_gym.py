@@ -29,7 +29,7 @@ if __name__ == "__main__":
         config = yaml.safe_load(f)
 
     # read environment description
-    env_desc = custom_gym.env_desc_gen(config["env_description"]["config"]["env_id"])
+    env_desc = custom_gym.env_desc_gen(**config["env_description"]["config"])
     obs_space_template = list(env_desc["observation_spaces"].values())[0]
     training_config = config["training"]
     rollout_config = config["rollout"]

@@ -33,7 +33,7 @@ rollout:
 env_description:
   creator: "Gym"
   config:
-    env_id: "Pendulum-v0"
+    env_id: "Pendulum-v1"
 
 algorithms:
   DDPG:

@@ -5,7 +5,7 @@ from .poker import PokerParallelEnv, env_desc_gen as poker_desc_gen
 from .gym import GymEnv, env_desc_gen as gym_desc_gen
 
 # FIXME(ming): check environment installation here
-from .star_craft2 import SC2Env, env_desc_gen as sc_desc_gen
+from .star_craft2 import StatedSC2, env_desc_gen as sc_desc_gen
 
 # from .smarts.env import SMARTS
 
@@ -32,7 +32,7 @@ def get_env_cls(name: str):
         return GymEnv
 
     if name == "SC2":
-        return SC2Env
+        return StatedSC2
 
     return ValueError("Unregistered environment: {}".format(name))
 

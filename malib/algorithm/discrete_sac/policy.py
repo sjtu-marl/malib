@@ -21,6 +21,7 @@ class DiscreteSAC(Policy):
         action_space: gym.spaces.Space,
         model_config: Dict[str, Any] = None,
         custom_config: Dict[str, Any] = None,
+        **kwargs
     ):
         super(DiscreteSAC, self).__init__(
             registered_name=registered_name,

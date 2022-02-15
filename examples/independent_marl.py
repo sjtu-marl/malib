@@ -1,5 +1,8 @@
 """
 Implementation of independent learning applied to MARL cases.
+Not fine tune.
+
+@status: TEST PASSED
 """
 
 import argparse
@@ -34,6 +37,8 @@ if __name__ == "__main__":
     }
     env = MPE(**env_description["config"])
     env_description["possible_agents"] = env.possible_agents
+    env_description["observation_spaces"] = env.observation_spaces
+    env_description["action_spaces"] = env.action_spaces
 
     run(
         env_description=env_description,
@@ -59,6 +64,7 @@ if __name__ == "__main__":
             "metric_type": "simple",
             "fragment_length": 75,
             "num_episodes": 100,
+            "num_env_per_worker": 10,
         },
         global_evaluator={
             "name": "generic",

@@ -1,4 +1,6 @@
-# -*- coding: utf-8 -*-
+"""
+@status: TEST PASSED
+"""
 import argparse
 import datetime
 import os

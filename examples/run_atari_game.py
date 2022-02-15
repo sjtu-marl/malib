@@ -1,5 +1,7 @@
 """
 Share an agent interface
+
+@status: TEST PASSED
 """
 import argparse
 import yaml

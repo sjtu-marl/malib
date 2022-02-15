@@ -37,6 +37,8 @@ if __name__ == "__main__":
 
     env_desc["possible_agents"] = env.possible_agents
     env.close()
+    env_desc["observation_spaces"] = env.observation_spaces
+    env_desc["action_spaces"] = env.action_spaces
 
     training_config = config["training"]
     rollout_config = config["rollout"]
