@@ -27,7 +27,7 @@ rm-pycache:
 
 .PHONY: test
 test:
-	pytest -v --cov-config=.coveragerc --cov=malib --cov-report html --doctest-modules tests
+	pytest --cov-config=.coveragerc --cov=malib --cov-report html --doctest-modules tests
 	rm -f .coverage.*
 
 .PHONY: test-dataset
