@@ -273,7 +273,7 @@ class PayoffManager:
         for k, v in content.statistics.items():
             # Logger.debug("get kd: {} {}".format(k, v))
             ks = k.split("/")
-            if "agent_reward" == ks[-2] and "mean" in ks[-1]:
+            if "reward" == ks[-2] and "mean" in ks[-1]:
                 agent = ks[-1][:-5]
                 self._payoff_tables[agent][population_combination] = v
                 self._payoff_tables[agent].set_simulation_done(population_combination)

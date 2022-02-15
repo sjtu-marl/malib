@@ -19,7 +19,7 @@ class Environment:
     def __init__(self, **configs):
         self.is_sequential = False
 
-        self.episode_metrics = {"env_step": 0, "agent_reward": {}, "agent_step": {}}
+        self.episode_metrics = {"env_step": 0, "reward": {}, "agent_step": {}}
         self.runtime_id = uuid.uuid4().hex
         # -1 means no horizon limitation
         self.max_step = -1
@@ -36,7 +36,7 @@ class Environment:
         self._configs = configs
 
     def record_episode_info_step(self, rets):
-        reward_ph = self.episode_metrics["agent_reward"]
+        reward_ph = self.episode_metrics["reward"]
         step_ph = self.episode_metrics["agent_step"]
         for aid, r in rets[EpisodeKey.REWARD].items():
             if aid not in reward_ph:
@@ -81,7 +81,7 @@ class Environment:
         self.custom_reset_config = custom_reset_config or self.custom_reset_config
         self.episode_metrics = {
             "env_step": 0,
-            "agent_reward": {k: [] for k in self.possible_agents},
+            "reward": {k: [] for k in self.possible_agents},
             "agent_step": {k: 0.0 for k in self.possible_agents},
         }
         self.episode_meta_info.update(
