@@ -33,11 +33,11 @@ env_description:
     env_id: simple_spread_v2
     scenario_configs:
       max_cycles: 25
-      teams:
-        default:
-          - agent_0
-          - agent_1
-          - agent_2
+    teams:
+      default:
+        - agent_0
+        - agent_1
+        - agent_2
 
 algorithms:
   QMIX:

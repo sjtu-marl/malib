@@ -9,33 +9,47 @@ from malib.utils.episode import EpisodeKey
 
 # FIXME(ming): use configs, not env_id and scenario_configs
 @pytest.mark.parametrize(
-    "module_path,cname,env_id,scenario_configs",
+    "module_path,cname,config",
     [
-        ("malib.envs.poker", "PokerParallelEnv", "leduc_poker", {"fixed_player": True}),
-        ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
-        ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
-        ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
+        (
+            "malib.envs.poker",
+            "PokerParallelEnv",
+            {"env_id": "leduc_poker", "scenario_configs": {"fixed_player": True}},
+        ),
+        ("malib.envs.gym", "GymEnv", {"env_id": "CartPole-v0", "scenario_configs": {}}),
+        (
+            "malib.envs.mpe",
+            "MPE",
+            {"env_id": "simple_push_v2", "scenario_configs": {"max_cycles": 25}},
+        ),
+        (
+            "malib.envs.mpe",
+            "MPE",
+            {"env_id": "simple_spread_v2", "scenario_configs": {"max_cycles": 25}},
+        ),
         (
             "malib.envs.gr_football",
             "BaseGFootBall",
-            "Gfootball",
             {
-                "env_name": "academy_run_pass_and_shoot_with_keeper",
-                "number_of_left_players_agent_controls": 2,
-                "number_of_right_players_agent_controls": 1,
-                "representation": "raw",
-                "logdir": "",
-                "write_goal_dumps": False,
-                "write_full_episode_dumps": False,
-                "render": False,
-                "stacked": False,
+                "env_id": "Gfootball",
+                "scenario_configs": {
+                    "env_name": "academy_run_pass_and_shoot_with_keeper",
+                    "number_of_left_players_agent_controls": 2,
+                    "number_of_right_players_agent_controls": 1,
+                    "representation": "raw",
+                    "logdir": "",
+                    "write_goal_dumps": False,
+                    "write_full_episode_dumps": False,
+                    "render": False,
+                    "stacked": False,
+                },
             },
         ),
         (
             "malib.envs.maatari",
             "MAAtari",
-            "basketball_pong_v2",
             {
+                "env_id": "basketball_pong_v2",
                 "wrappers": [
                     {"name": "resize_v0", "params": [84, 84]},
                     {"name": "dtype_v0", "params": ["float32"]},
@@ -44,8 +58,10 @@ from malib.utils.episode import EpisodeKey
                         "params": {"env_min": 0.0, "env_max": 1.0},
                     },
                 ],
-                "obs_type": "grayscale_image",
-                "num_players": 2,
+                "scenario_configs": {
+                    "obs_type": "grayscale_image",
+                    "num_players": 2,
+                },
             },
         ),
     ],
@@ -53,34 +69,31 @@ from malib.utils.episode import EpisodeKey
 )
 class TestVecEnv:
     @pytest.fixture(autouse=True)
-    def _create_cur_instance(self, module_path, cname, env_id, scenario_configs):
+    def _create_cur_instance(self, module_path, cname, config):
         creator = getattr(importlib.import_module(module_path), cname)
-        env: Environment = creator(env_id=env_id, scenario_configs=scenario_configs)
+        env: Environment = creator(**config)
 
         observation_spaces = env.observation_spaces
         action_spaces = env.action_spaces
 
         self.creator = creator
-        self.config = {"env_id": env_id, "scenario_configs": scenario_configs}
         self.vec_env = vector_env.VectorEnv(
             observation_spaces,
             action_spaces,
             creator,
-            configs={"scenario_configs": scenario_configs, "env_id": env_id},
+            configs=config,
         )
 
-    def test_add_envs(self, env_id, scenario_configs):
-        envs = [self.creator(env_id=env_id, scenario_configs=scenario_configs)]
+    def test_add_envs(self, config):
+        envs = [self.creator(**config)]
         self.vec_env.add_envs(num=2)
         assert self.vec_env.num_envs == 2
         self.vec_env.add_envs(envs)
         assert self.vec_env.num_envs == 3
 
-    def test_from_envs(self, env_id, scenario_configs):
-        envs: List[Environment] = [
-            self.creator(env_id=env_id, scenario_configs=scenario_configs)
-        ]
-        vec_env = vector_env.VectorEnv.from_envs(envs, scenario_configs)
+    def test_from_envs(self, config):
+        envs: List[Environment] = [self.creator(**config)]
+        vec_env = vector_env.VectorEnv.from_envs(envs, config)
 
     def test_env_reset(self):
         self.vec_env.add_envs(num=4)
@@ -122,33 +135,43 @@ class TestVecEnv:
 
 
 @pytest.mark.parametrize(
-    "module_path,cname,env_id,scenario_configs",
+    "module_path,cname,config",
     [
         # ("malib.envs.poker", "PokerParallelEnv", "leduc_poker", {"fixed_player": True}),
-        ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
-        ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
-        ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
+        ("malib.envs.gym", "GymEnv", {"env_id": "CartPole-v0", "scenario_configs": {}}),
+        (
+            "malib.envs.mpe",
+            "MPE",
+            {"env_id": "simple_push_v2", "scenario_configs": {"max_cycles": 25}},
+        ),
+        (
+            "malib.envs.mpe",
+            "MPE",
+            {"env_id": "simple_spread_v2", "scenario_configs": {"max_cycles": 25}},
+        ),
         (
             "malib.envs.gr_football",
             "BaseGFootBall",
-            "Gfootball",
             {
-                "env_name": "academy_run_pass_and_shoot_with_keeper",
-                "number_of_left_players_agent_controls": 2,
-                "number_of_right_players_agent_controls": 1,
-                "representation": "raw",
-                "logdir": "",
-                "write_goal_dumps": False,
-                "write_full_episode_dumps": False,
-                "render": False,
-                "stacked": False,
+                "env_id": "Gfootball",
+                "scenario_configs": {
+                    "env_name": "academy_run_pass_and_shoot_with_keeper",
+                    "number_of_left_players_agent_controls": 2,
+                    "number_of_right_players_agent_controls": 1,
+                    "representation": "raw",
+                    "logdir": "",
+                    "write_goal_dumps": False,
+                    "write_full_episode_dumps": False,
+                    "render": False,
+                    "stacked": False,
+                },
             },
         ),
         (
             "malib.envs.maatari",
             "MAAtari",
-            "basketball_pong_v2",
             {
+                "env_id": "basketball_pong_v2",
                 "wrappers": [
                     {"name": "resize_v0", "params": [84, 84]},
                     {"name": "dtype_v0", "params": ["float32"]},
@@ -157,28 +180,29 @@ class TestVecEnv:
                         "params": {"env_min": 0.0, "env_max": 1.0},
                     },
                 ],
-                "obs_type": "grayscale_image",
-                "num_players": 2,
+                "scenario_configs": {
+                    "obs_type": "grayscale_image",
+                    "num_players": 2,
+                },
             },
         ),
     ],
 )
 class TestSubprocVecEnv:
     @pytest.fixture(autouse=True)
-    def _create_cur_instance(self, module_path, cname, env_id, scenario_configs):
+    def _create_cur_instance(self, module_path, cname, config):
         creator = getattr(importlib.import_module(module_path), cname)
-        env: Environment = creator(env_id=env_id, scenario_configs=scenario_configs)
+        env: Environment = creator(**config)
 
         observation_spaces = env.observation_spaces
         action_spaces = env.action_spaces
 
         self.creator = creator
-        self.config = {"env_id": env_id, "scenario_configs": scenario_configs}
         self.vec_env = vector_env.SubprocVecEnv(
             observation_spaces,
             action_spaces,
             creator,
-            configs={"scenario_configs": scenario_configs, "env_id": env_id},
+            configs=config,
             max_num_envs=4,
         )
 

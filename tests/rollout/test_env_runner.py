@@ -18,40 +18,56 @@ from tests.dataset.utils import FakeDataServer
 
 
 @pytest.mark.parametrize(
-    "module_path,cname,env_id,scenario_configs,batch_mode",
+    "module_path,cname,config,batch_mode",
     [
         (
             "malib.envs.poker",
             "PokerParallelEnv",
-            "leduc_poker",
-            {"fixed_player": True},
+            {"env_id": "leduc_poker", "scenario_configs": {"fixed_player": True}},
             "time_step",
         ),
-        ("malib.envs.gym", "GymEnv", "CartPole-v0", {}, "time_step"),
-        ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}, "time_step"),
-        ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}, "time_step"),
+        (
+            "malib.envs.gym",
+            "GymEnv",
+            {"env_id": "CartPole-v0", "scenario_configs": {}},
+            "time_step",
+        ),
+        (
+            "malib.envs.mpe",
+            "MPE",
+            {"env_id": "simple_push_v2", "scenario_configs": {"max_cycles": 25}},
+            "time_step",
+        ),
+        (
+            "malib.envs.mpe",
+            "MPE",
+            {"env_id": "simple_spread_v2", "scenario_configs": {"max_cycles": 25}},
+            "time_step",
+        ),
         (
             "malib.envs.gr_football",
             "creator",
-            "Gfootball",
             {
-                "env_name": "5_vs_5",
-                "number_of_left_players_agent_controls": 4,
-                "number_of_right_players_agent_controls": 4,
-                "representation": "raw",
-                "logdir": "",
-                "write_goal_dumps": False,
-                "write_full_episode_dumps": False,
-                "render": False,
-                "stacked": False,
+                "env_id": "Gfootball",
+                "scenario_configs": {
+                    "env_name": "5_vs_5",
+                    "number_of_left_players_agent_controls": 4,
+                    "number_of_right_players_agent_controls": 4,
+                    "representation": "raw",
+                    "logdir": "",
+                    "write_goal_dumps": False,
+                    "write_full_episode_dumps": False,
+                    "render": False,
+                    "stacked": False,
+                },
             },
             "episode",
         ),
         (
             "malib.envs.maatari",
             "MAAtari",
-            "basketball_pong_v2",
             {
+                "env_id": "basketball_pong_v2",
                 "wrappers": [
                     {"name": "resize_v0", "params": [84, 84]},
                     {"name": "dtype_v0", "params": ["float32"]},
@@ -60,8 +76,10 @@ from tests.dataset.utils import FakeDataServer
                         "params": {"env_min": 0.0, "env_max": 1.0},
                     },
                 ],
-                "obs_type": "grayscale_image",
-                "num_players": 2,
+                "scenario_configs": {
+                    "obs_type": "grayscale_image",
+                    "num_players": 2,
+                },
             },
             "time_step",
         ),
@@ -70,11 +88,11 @@ from tests.dataset.utils import FakeDataServer
 )
 class TestEnvRunner:
     @pytest.fixture(autouse=True)
-    def _init(self, module_path, cname, env_id, scenario_configs, batch_mode):
+    def _init(self, module_path, cname, config, batch_mode):
         if not ray.is_initialized():
             ray.init(local_mode=True)
         creator = getattr(importlib.import_module(module_path), cname)
-        env: Environment = creator(env_id=env_id, scenario_configs=scenario_configs)
+        env: Environment = creator(**config)
 
         observation_spaces = env.observation_spaces
         action_spaces = env.action_spaces
@@ -83,7 +101,7 @@ class TestEnvRunner:
             observation_spaces,
             action_spaces,
             creator,
-            configs={"scenario_configs": scenario_configs, "env_id": env_id},
+            configs=config,
         )
 
         agent_interfaces = build_dummy_agent_interfaces(

@@ -9,32 +9,42 @@ from .utils import simple_discrete_agent
 
 
 @pytest.mark.parametrize(
-    "module_path,cname,env_id,scenario_configs",
+    "module_path,cname,config",
     [
-        ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
-        ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
-        ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
+        ("malib.envs.gym", "GymEnv", {"env_id": "CartPole-v0", "scenario_configs": {}}),
+        (
+            "malib.envs.mpe",
+            "MPE",
+            {"env_id": "simple_push_v2", "scenario_configs": {"max_cycles": 25}},
+        ),
+        (
+            "malib.envs.mpe",
+            "MPE",
+            {"env_id": "simple_spread_v2", "scenario_configs": {"max_cycles": 25}},
+        ),
         (
             "malib.envs.gr_football",
             "BaseGFootBall",
-            "Gfootball",
             {
-                "env_name": "academy_run_pass_and_shoot_with_keeper",
-                "number_of_left_players_agent_controls": 2,
-                "number_of_right_players_agent_controls": 1,
-                "representation": "raw",
-                "logdir": "",
-                "write_goal_dumps": False,
-                "write_full_episode_dumps": False,
-                "render": False,
-                "stacked": False,
+                "env_id": "Gfootball",
+                "scenario_configs": {
+                    "env_name": "academy_run_pass_and_shoot_with_keeper",
+                    "number_of_left_players_agent_controls": 2,
+                    "number_of_right_players_agent_controls": 1,
+                    "representation": "raw",
+                    "logdir": "",
+                    "write_goal_dumps": False,
+                    "write_full_episode_dumps": False,
+                    "render": False,
+                    "stacked": False,
+                },
             },
         ),
         (
             "malib.envs.maatari",
             "MAAtari",
-            "basketball_pong_v2",
             {
+                "env_id": "basketball_pong_v2",
                 "wrappers": [
                     {"name": "resize_v0", "params": [84, 84]},
                     {"name": "dtype_v0", "params": ["float32"]},
@@ -43,17 +53,23 @@ from .utils import simple_discrete_agent
                         "params": {"env_min": 0.0, "env_max": 1.0},
                     },
                 ],
-                "obs_type": "grayscale_image",
-                "num_players": 2,
+                "scenario_configs": {
+                    "obs_type": "grayscale_image",
+                    "num_players": 2,
+                },
             },
         ),
-        ("malib.envs.star_craft2", "SC2Env", "3m", {"map_name": "3m"}),
+        (
+            "malib.envs.star_craft2",
+            "SC2Env",
+            {"env_id": "3m", "scenario_configs": {"map_name": "3m"}},
+        ),
     ],
     scope="class",
 )
-def test_env(module_path, cname, env_id, scenario_configs):
+def test_env(module_path, cname, config):
     creator = getattr(importlib.import_module(module_path), cname)
-    env = creator(env_id=env_id, scenario_configs=scenario_configs)
+    env = creator(**config)
 
     assert not env.is_sequential
 
@@ -119,32 +135,42 @@ def test_env(module_path, cname, env_id, scenario_configs):
 
 
 @pytest.mark.parametrize(
-    "module_path,cname,env_id,scenario_configs",
+    "module_path,cname,config",
     [
-        ("malib.envs.gym", "GymEnv", "CartPole-v0", {}),
-        ("malib.envs.mpe", "MPE", "simple_push_v2", {"max_cycles": 25}),
-        ("malib.envs.mpe", "MPE", "simple_spread_v2", {"max_cycles": 25}),
+        ("malib.envs.gym", "GymEnv", {"env_id": "CartPole-v0", "scenario_configs": {}}),
+        (
+            "malib.envs.mpe",
+            "MPE",
+            {"env_id": "simple_push_v2", "scenario_configs": {"max_cycles": 25}},
+        ),
+        (
+            "malib.envs.mpe",
+            "MPE",
+            {"env_id": "simple_spread_v2", "scenario_configs": {"max_cycles": 25}},
+        ),
         (
             "malib.envs.gr_football",
             "BaseGFootBall",
-            "Gfootball",
             {
-                "env_name": "academy_run_pass_and_shoot_with_keeper",
-                "number_of_left_players_agent_controls": 2,
-                "number_of_right_players_agent_controls": 1,
-                "representation": "raw",
-                "logdir": "",
-                "write_goal_dumps": False,
-                "write_full_episode_dumps": False,
-                "render": False,
-                "stacked": False,
+                "env_id": "Gfootball",
+                "scenario_configs": {
+                    "env_name": "academy_run_pass_and_shoot_with_keeper",
+                    "number_of_left_players_agent_controls": 2,
+                    "number_of_right_players_agent_controls": 1,
+                    "representation": "raw",
+                    "logdir": "",
+                    "write_goal_dumps": False,
+                    "write_full_episode_dumps": False,
+                    "render": False,
+                    "stacked": False,
+                },
             },
         ),
         (
             "malib.envs.maatari",
             "MAAtari",
-            "basketball_pong_v2",
             {
+                "env_id": "basketball_pong_v2",
                 "wrappers": [
                     {"name": "resize_v0", "params": [84, 84]},
                     {"name": "dtype_v0", "params": ["float32"]},
@@ -153,16 +179,22 @@ def test_env(module_path, cname, env_id, scenario_configs):
                         "params": {"env_min": 0.0, "env_max": 1.0},
                     },
                 ],
-                "obs_type": "grayscale_image",
-                "num_players": 2,
+                "scenario_configs": {
+                    "obs_type": "grayscale_image",
+                    "num_players": 2,
+                },
             },
         ),
-        ("malib.envs.star_craft2", "SC2Env", "3m", {"map_name": "3m"}),
+        (
+            "malib.envs.star_craft2",
+            "SC2Env",
+            {"env_id": "3m", "scenario_configs": {"map_name": "3m"}},
+        ),
     ],
 )
-def test_rollout(module_path, cname, env_id, scenario_configs):
+def test_rollout(module_path, cname, config):
     creator = getattr(importlib.import_module(module_path), cname)
-    env = creator(env_id=env_id, scenario_configs=scenario_configs)
+    env = creator(**config)
 
     assert not env.is_sequential
 
