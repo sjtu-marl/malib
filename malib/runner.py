@@ -1,13 +1,12 @@
 import threading
 import time
-from typing import Counter, Dict, Any, List
 
 import ray
 
 from malib import settings
+from malib.utils.typing import Dict, Any, List
 from malib.utils import logger
-from malib.utils.logger import Logger, get_logger, Log
-from malib.utils.configs.formatter import DefaultConfigFormatter
+from malib.utils.logger import Logger
 from malib.utils.general import update_configs
 
 
@@ -37,10 +36,7 @@ def run(**kwargs):
             "resources": None,
         }
 
-    infos = DefaultConfigFormatter.parse(global_configs)
-
     try:
-        # XXX(ming): too ugly an import
         from malib.backend.coordinator.task import CoordinatorServer
         from malib.backend.datapool.offline_dataset_server import OfflineDataset
         from malib.backend.datapool.parameter_server import ParameterServer
@@ -76,25 +72,13 @@ def run(**kwargs):
 
         _ = ray.get(coordinator_server.start.remote())
 
-        performance_logger = get_logger(
-            name="performance",
-            remote=settings.USE_REMOTE_LOGGER,
-            mongo=settings.USE_MONGO_LOGGER,
-            info=infos,
-            **exp_cfg,
-        )
-
-        with Log.timer(
-            log=settings.PROFILING,
-            logger=performance_logger,
-        ):
-            while True:
-                terminate = ray.get(coordinator_server.is_terminate.remote())
-                if terminate:
-                    print("ALL task done")
-                    break
-                else:
-                    time.sleep(1)
+        while True:
+            terminate = ray.get(coordinator_server.is_terminate.remote())
+            if terminate:
+                print("ALL task done")
+                break
+            else:
+                time.sleep(1)
 
         tasks = [offline_dataset.shutdown.remote(), parameter_server.shutdown.remote()]
         while len(tasks) > 0:

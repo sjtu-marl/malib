@@ -221,13 +221,22 @@ def get_logger(
     name=None,
     expr_group=None,
     expr_name=None,
-    port="localhost:12333",
+    server_addr="localhost:12333",
     remote=False,
     mongo=False,
     file_stream=True,
     *args,
     **kwargs,
 ):
+    """Get a logger instance.
+
+    :param int log_level: Logging level
+    :param str log_dir: Speficy the directory for saving logs
+    :param str name: The name for generating a logging file if `file_stream` is True. Defaults to None
+    :param str expr_group: ...
+    :param str expr_name: ...
+    :param str port:
+    """
     if remote:
         assert expr_group is not None
         assert expr_name is not None
@@ -244,7 +253,7 @@ def get_logger(
             print(e)
         return logger
     elif remote:
-        logger = ExprManagerClient(port, nid=name, log_level=log_level)
+        logger = ExprManagerClient(server_addr, nid=name, log_level=log_level)
         create_table_future = logger.create_table(
             primary=expr_group, secondary=expr_name
         )
@@ -290,7 +299,7 @@ def start(group: str, name: str, host="localhost", port=12333) -> Dict[str, Any]
     WAIT_FOR_READY_THRESHOLD = 10
     endpoint = f"{host}:{port}"
 
-    general_expr_cfg = {"expr_group": group, "expr_name": name, "port": endpoint}
+    general_expr_cfg = {"expr_group": group, "expr_name": name, "server_addr": endpoint}
     if logger_server is None:
         logger_server = ExperimentServer.start_logging_server(
             port=endpoint, logdir=settings.LOG_DIR
@@ -304,11 +313,10 @@ def start(group: str, name: str, host="localhost", port=12333) -> Dict[str, Any]
         while True:
             try:
                 instance = get_logger(
-                    name="test",
                     log_dir=settings.LOG_DIR,
                     expr_group=general_expr_cfg["expr_group"],
                     expr_name=general_expr_cfg["expr_name"],
-                    port=endpoint,
+                    server_addr=endpoint,
                     remote=True,
                     mongo=settings.USE_MONGO_LOGGER,
                     file_stream=False,

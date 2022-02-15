@@ -99,7 +99,7 @@ class BaseRolloutWorker:
         self.logger = get_logger(
             log_level=settings.LOG_LEVEL,
             log_dir=settings.LOG_DIR,
-            name=f"rollout_worker_{worker_index}",
+            name="rollout_worker_{}".format(os.getpid()),
             remote=settings.USE_REMOTE_LOGGER,
             mongo=settings.USE_MONGO_LOGGER,
             **kwargs["exp_cfg"],
@@ -301,7 +301,7 @@ class BaseRolloutWorker:
         self.global_step += 1
         return status
 
-    @Log.method_timer(enable=settings.PROFILING)
+    # @Log.method_timer(enable=settings.PROFILING)
     def rollout(self, task_desc: TaskDescription):
         """Collect training data asynchronously and stop it until the evaluation results meet the stopping conditions"""
 
@@ -328,6 +328,7 @@ class BaseRolloutWorker:
             sample_start_size=None,
         )
         ray.get(self._offline_dataset.create_table.remote(buffer_desc))
+
         while not stopper(merged_statics, global_step=epoch):
             status = self.update_state(task_desc, waiting=False)
             if status == Status.LOCKED:
@@ -362,15 +363,18 @@ class BaseRolloutWorker:
             if self.logger.is_remote:
                 for k, v in holder.items():
                     self.logger.send_scalar(
-                        tag=f"Evaluation/{k}", content=v, global_step=epoch
+                        tag="Evaluation/{}".format(k),
+                        content=v,
+                        global_step=epoch,
                     )
                 self.logger.send_scalar(
-                    tag="Performance/RFPS/{}".format(os.getpid()),
+                    tag="Performance/rollout_FPS",
                     content=total_num_frames / time_consump,
                     global_step=epoch,
                 )
             epoch += 1
 
+        # XXX(ming): model saving should be determined by developer, not users.
         if self._save:
             self.save_model()
 

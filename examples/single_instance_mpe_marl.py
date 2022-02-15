@@ -66,7 +66,6 @@ if __name__ == "__main__":
 
     _logger = logger.get_logger(
         log_level=settings.LOG_LEVEL,
-        name="single_instance_marl",
         remote=settings.USE_REMOTE_LOGGER,
         mongo=settings.USE_MONGO_LOGGER,
         **exp_cfg,

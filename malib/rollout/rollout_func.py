@@ -30,7 +30,6 @@ from malib.utils.typing import (
     Tuple,
     List,
     BehaviorMode,
-    DataTransferType,
     EnvID,
     Callable,
     Union,

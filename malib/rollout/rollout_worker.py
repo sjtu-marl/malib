@@ -159,15 +159,15 @@ class RolloutWorker(BaseRolloutWorker):
 
         num_frames, stats_list = 0, []
         for ret in rets:
-            # we save only evaluation ret[0] from evaluation workers
+            # we retrieve only results from evaluation/simulation actors.
             if ret[0] in ["evaluation", "simulation"]:
                 stats_list.append(ret[1]["eval_info"])
+            # and total fragment length tracking from rollout actors
             if ret[0] == "rollout":
                 num_frames += ret[1]["total_fragment_length"]
 
         return stats_list, num_frames
 
-    # @Log.method_timer(enable=False)
     def update_population(self, agent, policy_id, policy):
         """Update population with an existing policy instance"""
 

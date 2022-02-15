@@ -10,14 +10,12 @@ import os
 import threading
 import time
 
-from dataclasses import dataclass
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 from typing import Dict, Any, Tuple, Callable, Union, Sequence
 
 import gym
 import ray
-from six import b
 
 from malib import settings
 from malib.utils.stoppers import get_stopper
@@ -133,7 +131,7 @@ class AgentInterface(metaclass=ABCMeta):
         self.logger = get_logger(
             log_level=settings.LOG_LEVEL,
             log_dir=settings.LOG_DIR,
-            name=f"training_agent_interface_{self._id}",
+            name=f"training_agent_{self._id}",
             remote=settings.USE_REMOTE_LOGGER,
             mongo=settings.USE_MONGO_LOGGER,
             **exp_cfg,
@@ -258,10 +256,10 @@ class AgentInterface(metaclass=ABCMeta):
                     self._offline_dataset = ray.get_actor(
                         settings.OFFLINE_DATASET_ACTOR
                     )
-                self.logger.debug(f"agent={self._id} got coordinator handler")
+                Logger.debug(f"agent={self._id} got coordinator handler")
                 break
             except Exception as e:
-                self.logger.debug(f"Waiting for coordinator server... {e}")
+                Logger.debug(f"Waiting for coordinator server... {e}")
                 time.sleep(1)
                 continue
 
@@ -460,7 +458,7 @@ class AgentInterface(metaclass=ABCMeta):
             for env_aid, (pid, _) in agent_involve_info.trainable_pairs.items()
         }
 
-        self.logger.info(
+        Logger.info(
             f"Start training task for interface={self._id} with policy mapping:\n\t{policy_id_mapping} -----"
         )
         # register sub tasks
@@ -486,7 +484,7 @@ class AgentInterface(metaclass=ABCMeta):
             total_size += size
 
             self.logger.send_scalar(
-                tag="Performance/TFPS/{}".format(os.getpid()),
+                tag="Performance/TFPS",
                 content=total_size / time_consump,
                 global_step=epoch,
             )
