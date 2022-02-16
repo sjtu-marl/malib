@@ -80,27 +80,32 @@ class TestQMIX(AlgorithmTestMixin):
                 ),
                 EpisodeKey.DONE: np.zeros((batch_size, 1)),
                 EpisodeKey.REWARD: np.zeros((batch_size, 1)),
-                EpisodeKey.ACTION: np.zeros((batch_size, 1)),
-                "next_action_mask": next_action_mask,
+                EpisodeKey.ACTION: np.zeros((batch_size,)),
+                EpisodeKey.NEXT_ACTION_MASK: next_action_mask,
             },
         }
 
     def test_trainer_preprocess(self):
         self.trainer.preprocess(self.build_train_inputs, other_policies={})
 
+
+    # Ugly but runnable modification.
+
     def test_trainer_reset(self):
         self.trainer.agents = ["agent_0"]
         self.trainer.main_id = "agent_0"
-        return super().test_trainer_reset()
+        self.trainer.reset({"agent_0": self.algorithm}, self._trainer_config)
 
     def test_loss_reset(self):
         self.trainer.agents = ["agent_0"]
         self.trainer.main_id = "agent_0"
         self.trainer._loss = self.loss
-        self.trainer.reset(self.algorithm, self._trainer_config)
+        self.trainer.reset({"agent_0": self.algorithm}, self._trainer_config)
         return super().test_loss_reset()
 
     def test_trainer_optimize(self):
         self.trainer.agents = ["agent_0"]
         self.trainer.main_id = "agent_0"
-        return super().test_trainer_optimize()
+        self.trainer._loss = self.loss
+        self.trainer.reset({"agent_0": self.algorithm}, self._trainer_config)
+        result_log = self.trainer.optimize(self.build_train_inputs())
