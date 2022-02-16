@@ -14,11 +14,12 @@ omit =
 	malib/algorithm/common/reward.py
 	# ignore random policy, just for test
 	malib/algorithm/random/*
-	# require test, URGENT!
 	malib/utils/*
 	malib/rpc/*
 	# ignore cli
 	malib/runner.py
+	# no usage
+	malib/rollout/sync_rollout_worker.py
 
 
 [report]
@@ -29,9 +30,9 @@ omit =
 	malib/settings.py
 	malib/registration.py
 	malib/backend/coordinator/light_server.py
+	# deprecated
 	malib/backend/datapool/data_array.py
 	malib/algorithm/common/reward.py
-	# require test, URGENT!
 	malib/utils/*
 	malib/rpc/*
 
