@@ -258,7 +258,7 @@ class SC2Env(Environment):
             },
             EpisodeKey.REWARD: rew_dict,
             EpisodeKey.DONE: done_dict,
-            EpisodeKey.INFO: info_dict,
+            # EpisodeKey.INFO: info_dict,
         }
 
     def close(self):
