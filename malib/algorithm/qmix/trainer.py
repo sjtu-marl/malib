@@ -9,7 +9,7 @@ from malib.algorithm.qmix.loss import QMIXLoss
 from malib.utils.preprocessor import Preprocessor, get_preprocessor
 
 from malib.utils.typing import AgentID, Dict
-
+from malib.utils.logger import Logger
 
 class QMIXTrainer(Trainer):
     def __init__(self, tid):
@@ -24,8 +24,11 @@ class QMIXTrainer(Trainer):
         _ = self.loss.step()
         return loss_stat
 
-    def reset(self, policy, training_config):
-        global_state_space = policy.custom_config["global_state_space"]
+    def reset(self, policies: Dict[AgentID, Policy], training_config):
+        policy = list(policies.values())[0]
+        global_state_space = policy.custom_config[
+            "global_state_space"
+        ]
         if self.loss.mixer is None:
             self.global_state_preprocessor = get_preprocessor(global_state_space)(
                 global_state_space

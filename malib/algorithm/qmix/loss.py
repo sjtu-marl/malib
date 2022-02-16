@@ -70,7 +70,7 @@ class QMIXLoss(LossFunc):
         next_state = list(batch.values())[0][EpisodeKey.NEXT_STATE]
         rewards = list(batch.values())[0][EpisodeKey.REWARD].view(-1, 1)
         dones = list(batch.values())[0][EpisodeKey.DONE].view(-1, 1)
-
+        print({k: v.shape for k, v in list(batch.values())[0].items()})
         # ================= handle for each agent ====================================
         q_vals, next_max_q_vals = [], []
         for env_agent_id in self.agents:
@@ -78,9 +78,15 @@ class QMIXLoss(LossFunc):
             obs = _batch[EpisodeKey.CUR_OBS]
             next_obs = _batch[EpisodeKey.NEXT_OBS]
             act = _batch[EpisodeKey.ACTION].long()
-            next_action_mask = _batch["next_action_mask"]
+            if "next_action_mask" in _batch:
+                next_action_mask = _batch["next_action_mask"]
+            else:
+                raise RuntimeError("GGGG")
+                action_mask = _batch['action_mask']
+                next_action_mask = torch.ones_like(action_mask)
+                next_action_mask[:-1] = action_mask[1:]
             policy: DQN = self.policy
-            q = policy.critic(obs).gather(-1, act).squeeze()
+            q = policy.critic(obs).gather(-1, act.unsqueeze(-1)).squeeze()
             q_vals.append(q)
             next_q = policy.target_critic(next_obs)
             next_q[next_action_mask == 0] = -9999999
@@ -90,7 +96,6 @@ class QMIXLoss(LossFunc):
         q_vals = torch.stack(q_vals, dim=-1)
         next_max_q_vals = torch.stack(next_max_q_vals, dim=-1)
         q_tot = self.mixer(q_vals, state)
-
         next_max_q_tot = self.mixer_target(next_max_q_vals, next_state)
         targets = (
             rewards + self._params["gamma"] * (1.0 - dones) * next_max_q_tot.detach()
@@ -99,7 +104,7 @@ class QMIXLoss(LossFunc):
         self.loss.append(loss)
 
         return {
-            "mixer_loss": loss.detach().numpy(),
-            "value": q_tot.mean().detach().numpy(),
-            "target_value": targets.mean().detach().numpy(),
+            "mixer_loss": loss.detach().item(),
+            "value": q_tot.mean().detach().item(),
+            "target_value": targets.mean().detach().item(),
         }

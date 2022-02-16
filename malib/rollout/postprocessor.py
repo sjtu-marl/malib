@@ -129,6 +129,12 @@ def copy_next_frame(
             agent_episode[EpisodeKey.NEXT_OBS] = agent_episode[
                 EpisodeKey.CUR_OBS
             ].copy()
+
+            if EpisodeKey.ACTION_MASK in agent_episode:
+                agent_episode[EpisodeKey.NEXT_ACTION_MASK] = agent_episode[
+                    EpisodeKey.ACTION_MASK
+                ].copy()
+
             if EpisodeKey.CUR_STATE in agent_episode:
                 agent_episode[EpisodeKey.NEXT_STATE] = agent_episode[
                     EpisodeKey.CUR_STATE

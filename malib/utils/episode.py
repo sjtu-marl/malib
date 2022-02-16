@@ -13,6 +13,7 @@ class EpisodeKey:
     NEXT_OBS = "next_observation"
     ACTION = "action"
     ACTION_MASK = "action_mask"
+    NEXT_ACTION_MASK = 'next_action_mask'
     REWARD = "reward"
     DONE = "done"
     # XXX(ziyu): Change to 'logits' for numerical issues.
