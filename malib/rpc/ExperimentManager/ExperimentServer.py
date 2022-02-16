@@ -107,8 +107,11 @@ class ExperimentManagerRPCServicer(exprmanager_pb2_grpc.ExperimentManagerRPCServ
             if not os.path.exists(rec_path):
                 os.makedirs(rec_path)
             idx = self.table.put(rec_path)
-        except Exception as e:
-            traceback.print_exc()
+        except EOFError as e:
+            print("logger server terminated with other erors: {}".format(e))
+            # traceback.print_exc()
+        except KeyboardInterrupt:
+            print("terminating logger server with `KeyboardInterupt detected")
         return exprmanager_pb2.TableKey(key=idx, time=time.time())
 
     def SendText(self, text: str, context) -> exprmanager_pb2.SendReply:
@@ -315,7 +318,10 @@ class ExprManagerServer:
         self.server.start()
 
     def wait(self):
-        self.server.wait_for_termination()
+        try:
+            self.server.wait_for_termination()
+        except KeyboardInterrupt:
+            print("wait for termination interrupted by keyboard interput")
 
     def stop(self):
         self.server.stop(grace=self.grace)

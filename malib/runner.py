@@ -94,7 +94,7 @@ def run(**kwargs):
         )
 
     except KeyboardInterrupt as e:
-        print(
+        Logger.info(
             "Detected KeyboardInterrupt event, start background resources recycling threads ..."
         )
         _terminate(

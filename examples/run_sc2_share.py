@@ -3,11 +3,14 @@ agent mapping func = lambda agent: share
 """
 
 import argparse
+import traceback
 
 import yaml
 import os
+import time
 
 from malib.runner import run
+from malib.utils.logger import Logger
 from malib.envs import sc_desc_gen
 
 
@@ -55,3 +58,9 @@ if __name__ == "__main__":
         dataset_config=config.get("dataset_config", {}),
         parameter_server=config.get("parameter_server", {}),
     )
+
+    code = 0
+    while code == 0:
+        code = os.system("kill -9 $(ps -ef | grep SC2 | grep -v grep|awk '{print $2}')")
+        time.sleep(1)
+    Logger.info("All SC2 processes have been terminated with code={}".format(code))

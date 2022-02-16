@@ -88,7 +88,6 @@ class TestQMIX(AlgorithmTestMixin):
     def test_trainer_preprocess(self):
         self.trainer.preprocess(self.build_train_inputs, other_policies={})
 
-
     # Ugly but runnable modification.
 
     def test_trainer_reset(self):

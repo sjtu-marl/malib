@@ -61,7 +61,7 @@ from .utils import simple_discrete_agent
         ),
         (
             "malib.envs.star_craft2",
-            "SC2Env",
+            "StatedSC2",
             {"env_id": "3m", "scenario_configs": {"map_name": "3m"}},
         ),
     ],
@@ -187,7 +187,7 @@ def test_env(module_path, cname, config):
         ),
         (
             "malib.envs.star_craft2",
-            "SC2Env",
+            "StatedSC2",
             {"env_id": "3m", "scenario_configs": {"map_name": "3m"}},
         ),
     ],

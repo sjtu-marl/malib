@@ -70,7 +70,7 @@ class QMIXLoss(LossFunc):
         next_state = list(batch.values())[0][EpisodeKey.NEXT_STATE]
         rewards = list(batch.values())[0][EpisodeKey.REWARD].view(-1, 1)
         dones = list(batch.values())[0][EpisodeKey.DONE].view(-1, 1)
-        print({k: v.shape for k, v in list(batch.values())[0].items()})
+        # print({k: v.shape for k, v in list(batch.values())[0].items()})
         # ================= handle for each agent ====================================
         q_vals, next_max_q_vals = [], []
         for env_agent_id in self.agents:
@@ -82,7 +82,7 @@ class QMIXLoss(LossFunc):
                 next_action_mask = _batch["next_action_mask"]
             else:
                 raise RuntimeError("GGGG")
-                action_mask = _batch['action_mask']
+                action_mask = _batch["action_mask"]
                 next_action_mask = torch.ones_like(action_mask)
                 next_action_mask[:-1] = action_mask[1:]
             policy: DQN = self.policy
