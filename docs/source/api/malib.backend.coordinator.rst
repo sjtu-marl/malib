@@ -13,4 +13,6 @@ Submodules
    :maxdepth: 2
 
    malib.backend.coordinator.base_coordinator
+   malib.backend.coordinator.light_server
    malib.backend.coordinator.server
+   malib.backend.coordinator.task

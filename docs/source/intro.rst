@@ -1,7 +1,7 @@
 Introduction
 ============
 
-MALib is a parallel framework of population-based learning nested with (multi-agent) reinforcement learning (RL) methods, such as Policy Space Response Oracle, Self-Play and Neural Fictitous Self-Play. MALib provides higher-level abstractions of MARL training paradigms, which enables efficient code reuse and flexible deployments on different distributed computing paradigms. The design of MALib also strives to promto the research of other multi-agent learning research, including multi-agent imitation learning and model-based RL.
+MALib is a parallel framework of population-based learning nested with (multi-agent) reinforcement learning (RL) methods, such as Policy Space Response Oracle, Self-Play, and Neural Fictitious Self-Play. MALib provides higher-level abstractions of MARL training paradigms, which enables efficient code reuse and flexible deployments on different distributed computing paradigms. The design of MALib also strives to promote the research of other multi-agent learning research, including multi-agent imitation learning and model-based RL.
 
 .. figure:: ../imgs/Architecture.png
     :align: center
@@ -28,7 +28,7 @@ The key features of MALib include:
 * **Provide comprehensive multi-agent RL training interfaces**: MALib implemented abstractions of several popular MARL training paradigms, aims to accelerate the development of algorithms on, and make users focus on the development of core algorithms, not training flow customization. 
 
 
-To get started, take a look over the :ref:`quick-start` and :ref:`api-doc`.
+Before getting start, please make sure you've installed MALib by following the :ref:`installation`. :ref:`quick-start` gives some basic examples. As for the API documentation, users can refer to :ref:`api-doc`.
 
 Citing MALib
 ^^^^^^^^^^^^

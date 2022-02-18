@@ -24,12 +24,15 @@ Submodules
 
    malib.utils.aggregators
    malib.utils.convert
+   malib.utils.episode
    malib.utils.errors
    malib.utils.formatter
+   malib.utils.general
    malib.utils.metrics
    malib.utils.model_utils
    malib.utils.notations
    malib.utils.preprocessor
    malib.utils.stoppers
+   malib.utils.tasks_register
    malib.utils.typing
    malib.utils.visualizer_shortcut

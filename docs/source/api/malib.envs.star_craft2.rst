@@ -12,4 +12,4 @@ Submodules
 .. toctree::
    :maxdepth: 2
 
-   malib.envs.star_craft2.start_craft_env
+   malib.envs.star_craft2.star_craft_env
