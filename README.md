@@ -27,9 +27,7 @@ conda activate malib
 pip install -e .
 ```
 
-External environments are integrated in MALib, such as StarCraftII and vizdoom, you can install them via `pip install -e .[envs]`. For users who wanna contribute to our repository, run `pip install -e .[dev]` to complete the development dependencies.
-
-**NOTE**: if you wanna use alpha-rank (default solver for meta game) to solve meta-game, install open-spiel with its [installation guides](https://github.com/deepmind/open_spiel)
+External environments are integrated in MALib, such as [StarCraftII](https://github.com/oxwhirl/smac) and [Mujoco](https://mujoco.org/). You can intall them by following the official guides on their project homepage.
 
 ## Quick Start
 
