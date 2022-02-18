@@ -49,6 +49,8 @@ if __name__ == "__main__":
             "creator": MPE,
             "config": env_config,
             "possible_agents": possible_agents,
+            "observation_spaces": env.observation_spaces,
+            "action_spaces": env.action_spaces,
         },
         agent_mapping_func=lambda agent: [
             f"{agent}_async_{i}" for i in range(args.num_learner)
@@ -69,7 +71,15 @@ if __name__ == "__main__":
             },
         },
         algorithms={
-            "Async": {"name": args.algorithm},
+            "Async": {
+                "name": args.algorithm,
+                "custom_config": {
+                    "gamma": 0.98,
+                    "eps_max": 1.0,
+                    "eps_min": 0.1,
+                    "eps_anneal_time": 10000,
+                },
+            },
         },
         rollout={
             "type": "async",
@@ -78,6 +88,7 @@ if __name__ == "__main__":
             "fragment_length": env_config["scenario_configs"]["max_cycles"],
             "num_episodes": 100,  # episode for each evaluation/training epoch
             "terminate": "any",
+            "num_env_per_worker": 10,
         },
         global_evaluator={
             "name": "generic",
