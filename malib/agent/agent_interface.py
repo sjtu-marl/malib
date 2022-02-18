@@ -582,7 +582,7 @@ class AgentInterface(metaclass=ABCMeta):
                 f"No more space to create {len(self._group)} policies"
             )
 
-    def add_policy(self, task_desc: TaskDescription):
+    def add_policy(self, task_desc: TaskDescription, trainable: bool = True):
         """Handling policy adding task with a given task description. This method will parse the transferred task
         description to create new policies for all environment agents registered in this interface (one agent one policy
         ). And then local parameters will be sent to remote parameter server, two task requests will be sent to the
