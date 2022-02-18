@@ -41,38 +41,77 @@ from malib.runner import run
 from malib.rollout import rollout_func
 
 
-env = leduc_holdem.env(scenario_configs={"fixed_player": True})
+env_description = {
+    "creator": PokerParallelEnv,
+    "config": {
+        "scenario_configs": {"fixed_player": True},
+        "env_id": "leduc_poker",
+    },
+}
+env = PokerParallelEnv(**env_description["config"])
+possible_agents = env.possible_agents
+observation_spaces = env.observation_spaces
+action_spaces = env.action_spaces
+
+env_description["possible_agents"] = possible_agents
+env_description.update(
+    {
+        "action_spaces": env.action_spaces,
+        "observation_spaces": env.observation_spaces,
+    }
+)
 
 run(
-    agent_mapping_func=lambda agent_id: agent_id,
-    env_description={
-        "creator": leduc_holdem.env,
-        "config": {"scenario_configs": {"fixed_player": True}, "env_id": "leduc_holdem"}
-        "possible_agents": env.possible_agents,
-    },
+    group="psro",
+    name="leduc_poker",
+    env_description=env_description,
     training={
         "interface": {
             "type": "independent",
-            "observation_spaces": env.observation_spaces,
-            "action_spaces": env.action_spaces
+            "observation_spaces": observation_spaces,
+            "action_spaces": action_spaces,
+            "use_init_policy_pool": True,
+        },
+        "config": {
+            "batch_size": args.batch_size,
+            "update_interval": args.num_epoch,
         },
     },
     algorithms={
-        "PSRO_PPO": {
-            "name": "PPO",
+        args.algorithm: {
+            "name": args.algorithm,
             "custom_config": {
                 "gamma": 1.0,
                 "eps_min": 0,
                 "eps_max": 1.0,
-                "eps_decay": 100,
+                "eps_anneal_time": 100,
+                "lr": 1e-2,
             },
         }
     },
     rollout={
         "type": "async",
         "stopper": "simple_rollout",
-        "callback": rollout_func.sequential
-    }
+        "stopper_config": {"max_step": 1000},
+        "metric_type": "simple",
+        "fragment_length": 100,
+        "num_episodes": 1,
+        "num_env_per_worker": 1,
+        "max_step": 10,
+        "postprocessor_types": ["copy_next_frame"],
+    },
+    evaluation={
+        "max_episode_length": 100,
+        "num_episode": 100,
+    },
+    global_evaluator={
+        "name": "psro",
+        "config": {
+            "stop_metrics": {"max_iteration": 1000, "loss_threshold": 2.0},
+        },
+    },
+    dataset_config={"episode_capacity": 200000},
+    task_mode="gt",
 )
 ```
 
