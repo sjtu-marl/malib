@@ -12,5 +12,6 @@ Submodules
 .. toctree::
    :maxdepth: 2
 
+   malib.algorithm.sac.loss
    malib.algorithm.sac.policy
-   malib.algorithm.sac.sac_trainer
+   malib.algorithm.sac.trainer

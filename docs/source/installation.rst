@@ -1,7 +1,7 @@
 .. _installation:
 
-Installation Guide
-==================
+Installation Guides
+===================
 
 The installation of MALib is very easy. We've tested MALib on Python 3.6 and 3.7. This guide is based on ubuntu 18.04 or above.
 
@@ -17,18 +17,22 @@ We strongly recommend using `conda <https://docs.conda.io/en/latest/miniconda.ht
     conda activate malib
 
     # install dependencies
-    ./install_deps.sh
+    cmake --version # must be >=3.12
+    clang++ --version   # must be >=7.0.0
+    sudo apt-get install graphviz cmake clang
 
     # install malib
     pip install -e .
 
 
-External environments are integrated in MALib, such as StarCraftII and vizdoom, you can install them via ``pip install -e .[envs]``. For users who wanna contribute to our repository, run ``pip install -e .[dev]`` to complete the development dependencies, also refer the contributing guide.
+External Environments
+---------------------
+
+External environments are integrated in MALib, such as `StarCraftII <https://github.com/oxwhirl/smac>`_ and `Mujoco <https://mujoco.org/>`_. You can intall them by following the official guides on their project homepage.
 
 
-Docker
-------
+Development requirements
+------------------------
 
-We also provide a dockered environment to support cross-platform tasting, some docker files are provided in the `Docker Examples`_
+For users who wanna contribute to our repository, run ``pip install -e .[dev]`` to complete the development dependencies, also refer the contributing guide.
 
-**Optional**: if you wanna use `alpha-rank <https://arxiv.org/abs/1903.01373>`_ to solve meta-game, install open-spiel with its `installation guides <https://github.com/deepmind/open_spiel>`_.

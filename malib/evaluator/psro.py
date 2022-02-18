@@ -5,7 +5,6 @@ exploitablility between weighted payoff and an oracle payoff.
 
 
 from malib.evaluator.base_evaluator import BaseEvaluator
-from malib.utils.formatter import pretty_print
 from malib.utils.typing import RolloutFeedback, EvaluateResult, TrainingFeedback, Union
 
 
@@ -37,8 +36,8 @@ class PSROEvaluator(BaseEvaluator):
     def evaluate(
         self,
         content: Union[RolloutFeedback, TrainingFeedback],
-        weighted_payoffs,
-        oracle_payoffs,
+        weighted_payoffs=None,
+        oracle_payoffs=None,
         trainable_mapping=None,
     ):
         """Evaluate global convergence by comparing the margin between Nash and best response.
@@ -47,18 +46,19 @@ class PSROEvaluator(BaseEvaluator):
 
         res = EvaluateResult.default_result()
 
-        res[EvaluateResult.AVE_REWARD] = {
-            aid: weighted_payoffs[aid] for aid in trainable_mapping
-        }
+        # res[EvaluateResult.AVE_REWARD] = {
+        #     aid: weighted_payoffs[aid] for aid in trainable_mapping
+        # }
 
-        nash_cov = 0.0
-        for aid, weighted_payoff in weighted_payoffs.items():
-            nash_cov += abs(weighted_payoff - oracle_payoffs[aid])
-        nash_cov /= 2.0
+        # nash_cov = 0.0
+        # for aid, weighted_payoff in weighted_payoffs.items():
+        #     nash_cov += abs(weighted_payoff - oracle_payoffs[aid])
+        # nash_cov /= 2.0
 
-        res["exploitability"] = nash_cov
+        # res["exploitability"] = nash_cov
 
         # default by no limitation on iteration
+        self._iteration += 1
         res[
             EvaluateResult.REACHED_MAX_ITERATION
         ] = self._iteration == self._metrics.get(
@@ -68,5 +68,4 @@ class PSROEvaluator(BaseEvaluator):
         if res[EvaluateResult.REACHED_MAX_ITERATION]:
             res[EvaluateResult.CONVERGED] = True
 
-        self._iteration += 1
         return res

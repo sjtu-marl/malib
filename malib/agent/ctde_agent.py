@@ -12,7 +12,6 @@ Example:
     >>> learner = CTDEAgent("agent_0", ..., algorithm_candidates)
 """
 
-import copy
 import gym
 
 from malib.utils.typing import (
@@ -28,7 +27,6 @@ from malib.utils.typing import (
 from malib.agent.agent_interface import AgentInterface
 from malib.algorithm.common.policy import Policy
 from malib.algorithm import get_algorithm_space
-from malib.utils import metrics
 
 
 class CTDEAgent(AgentInterface):
@@ -47,8 +45,10 @@ class CTDEAgent(AgentInterface):
         observation_spaces: Dict[AgentID, gym.spaces.Space],
         action_spaces: Dict[AgentID, gym.spaces.Space],
         exp_cfg: Dict[str, Any],
+        use_init_policy_pool: bool,
         population_size: int = -1,
         algorithm_mapping: Callable = None,
+        local_buffer_config: Dict = None,
     ):
         """Create a centralized agent interface instance.
 
@@ -77,8 +77,10 @@ class CTDEAgent(AgentInterface):
             observation_spaces=observation_spaces,
             action_spaces=action_spaces,
             exp_cfg=exp_cfg,
+            use_init_policy_pool=use_init_policy_pool,
             population_size=population_size,
             algorithm_mapping=algorithm_mapping,
+            local_buffer_config=local_buffer_config,
         )
 
     def gen_buffer_description(
@@ -88,9 +90,9 @@ class CTDEAgent(AgentInterface):
         sample_mode: str,
     ):
         """Generate a buffer description which description in a batch of agents"""
-        agent_policy_mapping = {
-            aid: pid for aid, (pid, _) in agent_policy_mapping.items()
-        }
+        # agent_policy_mapping = {
+        #     aid: pid for aid, pid in agent_policy_mapping.items()
+        # }
         return BufferDescription(
             env_id=self._env_desc["config"]["env_id"],
             agent_id=list(agent_policy_mapping.keys()),
@@ -123,13 +125,10 @@ class CTDEAgent(AgentInterface):
 
         for env_agent_id, trainer in self._trainers.items():
             trainer.reset(t_policies[env_agent_id], training_config)
-            agent_batch = trainer.preprocess(
-                batch[env_agent_id], other_policies=t_policies
-            )
-            res[env_agent_id] = metrics.to_metric_entry(
-                trainer.optimize(agent_batch.copy()),
-                prefix=policy_ids[env_agent_id],
-            )
+            agent_batch = trainer.preprocess(batch, other_policies=t_policies)
+            prefix = f"{env_agent_id}/{policy_ids[env_agent_id]}"
+            for k, v in trainer.optimize(agent_batch.copy()).items():
+                res[f"{prefix}/{k}"] = v
 
         return res
 
@@ -182,7 +181,7 @@ class CTDEAgent(AgentInterface):
             return pid, policy
 
     def save(self, model_dir):
-        raise NotImplementedError
+        pass
 
     def load(self, model_dir):
-        raise NotImplementedError
+        pass

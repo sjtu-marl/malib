@@ -16,4 +16,5 @@ Submodules
    malib.algorithm.common.misc
    malib.algorithm.common.model
    malib.algorithm.common.policy
+   malib.algorithm.common.reward
    malib.algorithm.common.trainer

@@ -6,12 +6,18 @@ import os
 import copy
 import time
 import traceback
+import operator
+import numpy as np
 
 import ray
 
+from functools import reduce
+
 from malib import settings
+from malib.utils.general import iter_many_dicts_recursively
 from malib.utils.typing import (
     AgentID,
+    BufferDescription,
     TaskDescription,
     TaskRequest,
     TaskType,
@@ -28,14 +34,24 @@ from malib.utils.typing import (
     List,
 )
 
-from malib.backend.datapool.offline_dataset_server import Episode
 from malib.envs.agent_interface import AgentInterface
 from malib.algorithm.common.policy import Policy
-from malib.utils.logger import get_logger, Log
+from malib.utils.logger import Logger, get_logger, Log
 from malib.utils.stoppers import get_stopper
 
 PARAMETER_GET_TIMEOUT = 3
 MAX_PARAMETER_GET_RETRIES = 10
+
+
+def _parse_rollout_info(raw_statistics: List[Dict[str, Any]]) -> Dict[str, Any]:
+    holder = {}
+    for history, ds, k, vs in iter_many_dicts_recursively(*raw_statistics, history=[]):
+        prefix = "/".join(history)
+        vs = reduce(operator.add, vs)
+        holder[f"{prefix}_mean"] = np.mean(vs)
+        holder[f"{prefix}_max"] = np.max(vs)
+        holder[f"{prefix}_min"] = np.min(vs)
+    return holder
 
 
 class BaseRolloutWorker:
@@ -43,9 +59,6 @@ class BaseRolloutWorker:
         self,
         worker_index: Any,
         env_desc: Dict[str, Any],
-        metric_type: str,
-        test: bool = False,
-        remote: bool = False,
         save: bool = False,
         **kwargs,
     ):
@@ -53,7 +66,6 @@ class BaseRolloutWorker:
 
         :param Any worker_index: Indicate rollout worker.
         :param Dict[str,Any] env_desc: The environment description.
-        :param str metric_type: Name of registered metric handler.
         :param int parallel_num: Number of parallel.
         :param bool remote: Tell this rollout worker work in remote mode or not, default by False.
         :param int save: Whether or not to save the policy models.
@@ -61,7 +73,6 @@ class BaseRolloutWorker:
 
         self._worker_index = worker_index
         self._env_description = env_desc
-        self._test = test
         self._save = save
         self.global_step = 0
 
@@ -69,30 +80,26 @@ class BaseRolloutWorker:
         self._parameter_server = None
         self._offline_dataset = None
 
-        env = env_desc["creator"](**env_desc["config"])
-        self._agents = env.possible_agents
+        self._agents = env_desc["possible_agents"]
         self._kwargs = kwargs
 
-        if remote:
-            self.init()
+        self.init()
 
         # interact with environment
         self._agent_interfaces = {
             aid: AgentInterface(
                 aid,
-                env.observation_spaces[aid],
-                env.action_spaces[aid],
+                env_desc["observation_spaces"][aid],
+                env_desc["action_spaces"][aid],
                 self._parameter_server,
             )
             for aid in self._agents
         }
-        self._metric_type = metric_type
-        self._remote = remote
 
         self.logger = get_logger(
             log_level=settings.LOG_LEVEL,
             log_dir=settings.LOG_DIR,
-            name=f"rollout_worker_{worker_index}",
+            name="rollout_worker_{}".format(os.getpid()),
             remote=settings.USE_REMOTE_LOGGER,
             mongo=settings.USE_MONGO_LOGGER,
             **kwargs["exp_cfg"],
@@ -100,9 +107,6 @@ class BaseRolloutWorker:
 
     def get_status(self):
         return self._status
-
-    def get_test(self):
-        return self._test
 
     def set_status(self, status):
         if status == self._status:
@@ -132,7 +136,7 @@ class BaseRolloutWorker:
         object_store_memory: int = None,
         resources: dict = None,
     ) -> type:
-        """ Return a remote class for Actor initialization """
+        """Return a remote class for Actor initialization"""
 
         return ray.remote(
             num_cpus=num_cpus,
@@ -159,7 +163,7 @@ class BaseRolloutWorker:
                         settings.PARAMETER_SERVER_ACTOR
                     )
 
-                if self._offline_dataset is None and not self._test:
+                if self._offline_dataset is None:
                     self._offline_dataset = ray.get_actor(
                         settings.OFFLINE_DATASET_ACTOR
                     )
@@ -187,11 +191,12 @@ class BaseRolloutWorker:
             for pid, pconfig in config_seq:
                 if pid not in agent.policies:
                     agent.add_policy(
+                        aid,
                         pid,
                         pconfig,
                         parameter_descs[aid].parameter_desc_dict[pid],
                     )
-                agent.reset()
+                # agent.reset()
 
             # add policies which need to be trained, and tag it as trainable
         for aid, (pid, description) in trainable_pairs.items():
@@ -199,16 +204,17 @@ class BaseRolloutWorker:
             try:
                 if pid not in agent.policies:
                     agent.add_policy(
+                        aid,
                         pid,
                         description,
                         parameter_descs[aid].parameter_desc_dict[pid],
                     )
-                agent.reset()
+                # agent.reset()
             except Exception as e:
                 print(e)
                 print(parameter_descs[aid].parameter_desc_dict)
 
-            # check whether there is policy_combinations
+        # check whether there is policy_combinations
         if hasattr(task_desc.content, "policy_combinations"):
             for combination in task_desc.content.policy_combinations:
                 for aid, (pid, description) in combination.items():
@@ -231,7 +237,7 @@ class BaseRolloutWorker:
                             parameter_desc = parameter_descs[aid].parameter_desc_dict[
                                 pid
                             ]
-                        agent.add_policy(pid, description, parameter_desc)
+                        agent.add_policy(aid, pid, description, parameter_desc)
 
     def set_state(self, task_desc: TaskDescription) -> None:
         """Review task description to add new policies and update population distribution.
@@ -295,7 +301,7 @@ class BaseRolloutWorker:
         self.global_step += 1
         return status
 
-    @Log.method_timer(enable=settings.PROFILING)
+    # @Log.method_timer(enable=settings.PROFILING)
     def rollout(self, task_desc: TaskDescription):
         """Collect training data asynchronously and stop it until the evaluation results meet the stopping conditions"""
 
@@ -305,67 +311,91 @@ class BaseRolloutWorker:
         merged_statics = {}
         epoch = 0
         self.set_state(task_desc)
+        start_time = time.time()
+        total_num_frames = 0
+        print_every = 100  # stopper.max_iteration // 3
+
+        # create data table
+        trainable_pairs = task_desc.content.agent_involve_info.trainable_pairs
+        # XXX(ming): shall we authorize learner to determine the buffer description?
+        buffer_desc = BufferDescription(
+            env_id=self._env_description["config"][
+                "env_id"
+            ],  # TODO(ziyu): this should be move outside "config"
+            agent_id=list(trainable_pairs.keys()),
+            policy_id=[pid for pid, _ in trainable_pairs.values()],
+            capacity=None,
+            sample_start_size=None,
+        )
+        ray.get(self._offline_dataset.create_table.remote(buffer_desc))
 
         while not stopper(merged_statics, global_step=epoch):
-            with Log.stat_feedback(
-                log=settings.STATISTIC_FEEDBACK,
-                logger=self.logger,
-                worker_idx=None,
-                global_step=epoch,
-                group="testing" if self._test else "rollout",
-            ) as (
-                statistic_seq,
-                processed_statics,
-            ):
-                # async update parameter
-                start = time.time()
-                status = self.update_state(task_desc, waiting=False)
+            status = self.update_state(task_desc, waiting=False)
+            if status == Status.LOCKED:
+                break
 
-                if status == Status.LOCKED:
-                    break
+            trainable_behavior_policies = {
+                aid: pid
+                for aid, (
+                    pid,
+                    _,
+                ) in task_desc.content.agent_involve_info.trainable_pairs.items()
+            }
+            # get behavior policies of other fixed agent
+            raw_statistics, num_frames = self.sample(
+                num_episodes=task_desc.content.num_episodes,
+                policy_combinations=[trainable_behavior_policies],
+                fragment_length=task_desc.content.fragment_length,
+                role="rollout",
+                policy_distribution=task_desc.content.policy_distribution,
+                buffer_desc=buffer_desc,
+            )
 
-                trainable_behavior_policies = {
-                    aid: pid
-                    for aid, (
-                        pid,
-                        _,
-                    ) in task_desc.content.agent_involve_info.trainable_pairs.items()
-                }
-                # get behavior policies of other fixed agent
-                res, num_frames = self.sample(
-                    callback=task_desc.content.callback,
-                    num_episodes=task_desc.content.num_episodes,
-                    policy_combinations=[trainable_behavior_policies],
-                    explore=False if self._test else True,
-                    fragment_length=task_desc.content.fragment_length,
-                    role="rollout",
-                    policy_distribution=task_desc.content.policy_distribution,
-                )
-                end = time.time()
-                print(
-                    f"epoch {epoch}, "
-                    f"{task_desc.content.agent_involve_info.training_handler} "
-                    f"from worker={self._worker_index} time consump={end - start} seconds"
-                )
-                statistic_seq.extend(res)
-
-            merged_statics = processed_statics[0]
             self.after_rollout(task_desc.content.agent_involve_info.trainable_pairs)
+            total_num_frames += num_frames
+            time_consump = time.time() - start_time
+
+            holder = _parse_rollout_info(raw_statistics)
+
+            # log to tensorboard
+            if (epoch + 1) % print_every == 0:
+                Logger.info("\tepoch: %s (evaluation) %s", epoch, holder)
+            if self.logger.is_remote:
+                for k, v in holder.items():
+                    self.logger.send_scalar(
+                        tag="Evaluation/{}".format(k),
+                        content=v,
+                        global_step=epoch,
+                    )
+                self.logger.send_scalar(
+                    tag="Performance/rollout_FPS",
+                    content=total_num_frames / time_consump,
+                    global_step=epoch,
+                )
             epoch += 1
 
+        # XXX(ming): model saving should be determined by developer, not users.
         if self._save:
             self.save_model()
 
         rollout_feedback = RolloutFeedback(
             worker_idx=self._worker_index,
             agent_involve_info=task_desc.content.agent_involve_info,
-            statistics=merged_statics,
+            statistics=holder,
         )
-        self.callback(status, rollout_feedback, role="rollout", relieve=True)
+        self.callback(status, task_desc, rollout_feedback, role="rollout", relieve=True)
 
-    def callback(self, status: Status, content: Any, role: str, relieve: bool):
+    def callback(
+        self,
+        status: Status,
+        task_desc: TaskDescription,
+        content: Any,
+        role: str,
+        relieve: bool,
+    ):
         if role == "simulation":
-            task_req = TaskRequest(
+            task_req = TaskRequest.from_task_desc(
+                task_desc=task_desc,
                 task_type=TaskType.UPDATE_PAYOFFTABLE,
                 content=content,
             )
@@ -389,7 +419,8 @@ class BaseRolloutWorker:
                     )
                     _ = ray.get(self._parameter_server.push.remote(parameter_desc))
                 self._coordinator.request.remote(
-                    TaskRequest(
+                    TaskRequest.from_task_desc(
+                        task_desc=task_desc,
                         task_type=TaskType.EVALUATE,
                         content=content,
                     )
@@ -399,41 +430,32 @@ class BaseRolloutWorker:
             self.set_status(Status.IDLE)
 
     @Log.method_timer(enable=settings.PROFILING)
-    def simulation(self, task_desc):
+    def simulation(self, task_desc: TaskDescription):
         """Handling simulation task."""
 
         # set state here
         self.set_state(task_desc)
         combinations = task_desc.content.policy_combinations
-        callback = task_desc.content.callback
         agent_involve_info = task_desc.content.agent_involve_info
-        print(f"simulation for {task_desc.content.num_episodes}")
-        statis_list, _ = self.sample(
-            callback=callback,
+        # print(f"simulation for {task_desc.content.num_episodes}")
+        raw_statistics, num_frames = self.sample(
             num_episodes=task_desc.content.num_episodes,
             fragment_length=task_desc.content.max_episode_length,
             policy_combinations=[
                 {k: p for k, (p, _) in comb.items()} for comb in combinations
             ],
-            explore=False,
             role="simulation",
         )
-        for statistics, combination in zip(statis_list, combinations):
-            with Log.stat_feedback(
-                log=False, logger=self.logger, group="simulation"
-            ) as (
-                statistic_seq,
-                merged_statistics,
-            ):
-                statistic_seq.append(statistics)
-            merged_statistics = merged_statistics[0]
+        for statistics, combination in zip(raw_statistics, combinations):
+            holder = _parse_rollout_info([statistics])
             rollout_feedback = RolloutFeedback(
                 worker_idx=self._worker_index,
                 agent_involve_info=agent_involve_info,
-                statistics=merged_statistics,
-                policy_combination=combination,
+                statistics=holder,
+                policy_combination={k: p for k, (p, _) in combination.items()},
             )
-            task_req = TaskRequest(
+            task_req = TaskRequest.from_task_desc(
+                task_desc=task_desc,
                 task_type=TaskType.UPDATE_PAYOFFTABLE,
                 content=rollout_feedback,
             )
@@ -454,10 +476,9 @@ class BaseRolloutWorker:
                 pass
             else:
                 interface.set_behavior_dist(policy_distribution[aid])
-            interface.reset()
 
     def save_model(self):
-        """ Save policy model to log directory. """
+        """Save policy model to log directory."""
 
         save_dir = os.path.join(
             settings.LOG_DIR,
@@ -471,22 +492,19 @@ class BaseRolloutWorker:
 
     def sample(
         self,
-        callback: type,
         num_episodes: int,
         fragment_length: int,
         role: str,
         policy_combinations: List,
-        explore: bool = True,
-        threaded: bool = True,
         policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
-        episodes: Dict[AgentID, Episode] = None,
-    ) -> Tuple[Sequence[Dict], int]:
+        buffer_desc: BufferDescription = None,
+    ) -> Tuple[Sequence[Dict[str, List]], int]:
         """Implement your sample logic here, return the collected data and statistics"""
 
         raise NotImplementedError
 
     def close(self):
-        """ Terminate worker """
+        """Terminate worker"""
 
         # TODO(ming): store worker's state
         self.logger.info(f"Worker: {self._worker_index} has been terminated.")

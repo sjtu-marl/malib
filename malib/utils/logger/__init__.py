@@ -16,6 +16,36 @@ from malib.utils.typing import Any, EventReportStatus, Dict
 from malib.utils.aggregators import Aggregator
 
 
+from colorlog import ColoredFormatter
+
+# from sample-factory: ....
+Logger = logging.getLogger("MALib")
+Logger.setLevel(settings.LOG_LEVEL)
+Logger.handlers = []  # No duplicated handlers
+Logger.propagate = False  # workaround for duplicated logs in ipython
+
+stream_handler = logging.StreamHandler()
+stream_handler.setLevel(settings.LOG_LEVEL)
+
+stream_formatter = ColoredFormatter(
+    "%(log_color)s[%(asctime)s][%(levelname)s] %(message)s",
+    datefmt=None,
+    reset=True,
+    log_colors={
+        "DEBUG": "cyan",
+        "INFO": "white,bold",
+        "INFOV": "cyan,bold",
+        "WARNING": "yellow",
+        "ERROR": "red,bold",
+        "CRITICAL": "red,bg_white",
+    },
+    secondary_log_colors={},
+    style="%",
+)
+stream_handler.setFormatter(stream_formatter)
+Logger.addHandler(stream_handler)
+
+
 class Log:
     init = False
 
@@ -191,13 +221,22 @@ def get_logger(
     name=None,
     expr_group=None,
     expr_name=None,
-    port="localhost:12333",
+    server_addr="localhost:12333",
     remote=False,
     mongo=False,
     file_stream=True,
     *args,
     **kwargs,
 ):
+    """Get a logger instance.
+
+    :param int log_level: Logging level
+    :param str log_dir: Speficy the directory for saving logs
+    :param str name: The name for generating a logging file if `file_stream` is True. Defaults to None
+    :param str expr_group: ...
+    :param str expr_name: ...
+    :param str port:
+    """
     if remote:
         assert expr_group is not None
         assert expr_name is not None
@@ -214,7 +253,7 @@ def get_logger(
             print(e)
         return logger
     elif remote:
-        logger = ExprManagerClient(port, nid=name, log_level=log_level)
+        logger = ExprManagerClient(server_addr, nid=name, log_level=log_level)
         create_table_future = logger.create_table(
             primary=expr_group, secondary=expr_name
         )
@@ -229,6 +268,7 @@ def get_logger(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
         logger = logging.getLogger(name)
+        logger.is_remote = False
         if logger.hasHandlers():
             return logger
         logger.setLevel(log_level)
@@ -259,41 +299,42 @@ def start(group: str, name: str, host="localhost", port=12333) -> Dict[str, Any]
     WAIT_FOR_READY_THRESHOLD = 10
     endpoint = f"{host}:{port}"
 
-    logger_server = ExperimentServer.start_logging_server(
-        port=endpoint, logdir=settings.LOG_DIR
-    )
+    general_expr_cfg = {"expr_group": group, "expr_name": name, "server_addr": endpoint}
+    if logger_server is None:
+        logger_server = ExperimentServer.start_logging_server(
+            port=endpoint, logdir=settings.LOG_DIR
+        )
 
-    logger_server.start()
+        logger_server.start()
 
-    # create a logger instance to test
-    _wait_for_ready_start_time = time.time()
+        # create a logger instance to test
+        _wait_for_ready_start_time = time.time()
 
-    general_expr_cfg = {"expr_group": group, "expr_name": name}
-
-    while True:
-        try:
-            instance = get_logger(
-                name="test",
-                log_dir=settings.LOG_DIR,
-                expr_group=general_expr_cfg["expr_group"],
-                expr_name=general_expr_cfg["expr_name"],
-                port=endpoint,
-                remote=True,
-                mongo=settings.USE_MONGO_LOGGER,
-                file_stream=False,
-            )
-            instance.info("wait for server ready")
-            del instance
-            break
-        except Exception as e:
-            if time.time() - _wait_for_ready_start_time > WAIT_FOR_READY_THRESHOLD:
-                raise RuntimeError(
-                    "Wait time exceed threshold, "
-                    "task cancelled, "
-                    "cannot connect to logging server, "
-                    "please check the network availability!"
+        while True:
+            try:
+                instance = get_logger(
+                    log_dir=settings.LOG_DIR,
+                    expr_group=general_expr_cfg["expr_group"],
+                    expr_name=general_expr_cfg["expr_name"],
+                    server_addr=endpoint,
+                    remote=True,
+                    mongo=settings.USE_MONGO_LOGGER,
+                    file_stream=False,
                 )
-            time.sleep(1)
+                instance.info("wait for server ready")
+                del instance
+                break
+            except Exception as e:
+                if time.time() - _wait_for_ready_start_time > WAIT_FOR_READY_THRESHOLD:
+                    raise RuntimeError(
+                        "Wait time exceed threshold, "
+                        "task cancelled, "
+                        "cannot connect to logging server, "
+                        "please check the network availability!"
+                    )
+                time.sleep(1)
+    else:
+        Logger.warning("Logger server has been started at: {}".format(endpoint))
 
     return general_expr_cfg
 
@@ -302,3 +343,4 @@ def terminate():
     """Terminate logging server"""
     global logger_server
     logger_server.terminate()
+    logger_server = None

@@ -3,6 +3,7 @@ Environment agent interface is designed for rollout and simulation.
 """
 
 import os
+from typing import Iterator, Tuple
 import gym
 import ray
 import numpy as np
@@ -14,7 +15,10 @@ from concurrent.futures import ThreadPoolExecutor
 from malib import settings
 from malib.algorithm.common.policy import Policy
 from malib.algorithm import get_algorithm_space
+from malib.utils.episode import EpisodeKey
+from malib.utils.logger import Logger
 from malib.utils.typing import (
+    DataTransferType,
     Status,
     Dict,
     Any,
@@ -23,6 +27,7 @@ from malib.utils.typing import (
     PolicyID,
     ParameterDescription,
     BehaviorMode,
+    List,
 )
 
 import pickle as pkl
@@ -135,8 +140,9 @@ class AgentInterface:
         for pid in distribution:
             assert pid in self.policies, (pid, list(self.policies.keys()))
 
-        self.sample_dist = dict.fromkeys(self.policies, 1.0 / len(self.policies))
+        self.sample_dist = {}  # dict.fromkeys(self.policies, 1.0 / len(self.policies))
         self.sample_dist.update(distribution)
+        Logger.debug("updated sample dist is: {}".format(self.sample_dist))
 
     def set_behavior_mode(
         self,
@@ -149,21 +155,48 @@ class AgentInterface:
 
         self.behavior_mode = behavior_mode
 
-    def reset(self, sample_dist=None) -> None:
-        """Reset agent interface."""
-        # clear sample distribution
-        self.sample_dist = sample_dist or dict.fromkeys(
-            self.policies, 1.0 / len(self.policies)
-        )
-        self._behavior_policy = self._random_select_policy()
+    def reset(self, policy_id=None, sample_dist: Dict[PolicyID, float] = None) -> None:
+        """Reset agent interface.
+
+        Sample dist will be reset with a no-none given `sample_dist`.
+        If `self.sample_dist` is None or `self.policies` has changed length.
+        Then `self.sample_dist` will be reset as an uniform.
+
+        The, the behavior policy will be reset. If the given `policy_id` is not None, the agent
+        will select policy identified with `policy_id` as its behavior_policy. Or, random select one
+        with its behavior distribution.
+        """
+
+        if sample_dist is not None:
+            assert isinstance(sample_dist, dict)
+            self.sample_dist = sample_dist
+
+        # len(sample_dist) != len(self.policies) means that some new policies were added,
+        # and the sample dist has not beeen reset yet.
+        if self.sample_dist is None or len(self.sample_dist) != len(self.policies):
+            self.sample_dist = dict.fromkeys(self.policies, 1.0 / len(self.policies))
+
+        if policy_id is not None:
+            assert policy_id in self.policies
+            self._behavior_policy = policy_id
+        else:
+            self._behavior_policy = self._random_select_policy()
+
+        # then reset sampled behavior_policy
+        policy = self.policies[self._behavior_policy]
+        # reset intermediate states, e.g. rnn states
+        policy.reset()
 
     def add_policy(
         self,
+        env_aid,
         policy_id: PolicyID,
         policy_description: Dict[str, Any],
         parameter_desc: ParameterDescription,
     ) -> None:
         """Add new policy to policy set, if policy id existed, will return a existing policy.
+
+        Note: users must to call `reset` to ensure the consistency between `sample_dist` and `policies` before using.
 
         :param PolicyID policy_id: Policy id.
         :param Dict[str,Any] policy_description: Policy description, used to create policy instance
@@ -174,9 +207,11 @@ class AgentInterface:
         if policy_id in self.policies:
             return
         policy = get_algorithm_space(policy_description["registered_name"]).policy(
-            **policy_description
+            **policy_description,
+            env_agent_id=env_aid,
         )
         self.policies[policy_id] = policy
+        assert parameter_desc.env_id is not None, parameter_desc.id
         self.parameter_desc_dict[policy_id] = ParameterDescription(
             time_stamp=parameter_desc.time_stamp,
             identify=parameter_desc.identify,
@@ -200,26 +235,59 @@ class AgentInterface:
         )
         return res
 
-    def compute_action(self, *args, **kwargs):
-        """Return an action by calling `compute_action` of a policy instance.
+    def compute_action(
+        self, *args, **kwargs
+    ) -> Tuple[
+        Iterator, Iterator, List[Iterator]
+    ]:  # Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
+        """Return a batch of action by calling `compute_action` of a policy instance.
+        Args contains a batch of data.
 
         :param args: list of args
         :param kwargs: dict of args
-        :return: A tuple of action, action_dist, extra_info
+        :return: A tuple of action, action_dist, a list of rnn_state
         """
-        policy_id = kwargs.get("policy_id", None)
-        if policy_id is None:
-            policy_id = self._random_select_policy()
+        policy_id = kwargs.get("policy_id", self.behavior_policy)
+        # by default, we do not allow dynamic policy id in an episode.
+        assert policy_id is not None
+        # if policy_id is None:
+        #     policy_id = self._random_select_policy()
+        #     self._behavior_policy = policy_id
         kwargs.update({"behavior_mode": self.behavior_mode})
-        return self.policies[policy_id].compute_action(*args, **kwargs)
+        kwargs[EpisodeKey.CUR_OBS] = np.stack(kwargs[EpisodeKey.CUR_OBS])
+        if EpisodeKey.ACTION_MASK in kwargs:
+            kwargs[EpisodeKey.ACTION_MASK] = np.stack(kwargs[EpisodeKey.ACTION_MASK])
+        if kwargs.get(EpisodeKey.CUR_STATE) is not None:
+            kwargs[EpisodeKey.CUR_STATE] = np.stack(kwargs[EpisodeKey.CUR_STATE])
+        rnn_states_list = kwargs[EpisodeKey.RNN_STATE]
+        rnn_states_list = list(zip(*rnn_states_list))
+        kwargs[EpisodeKey.RNN_STATE] = [
+            np.stack(_v) for _v in rnn_states_list if len(_v) > 0
+        ]
+        # XXX(ming): how about EpisodeKey.RNN_MASK ?
+        rets = self.policies[policy_id].compute_action(*args, **kwargs)
+
+        # convert rets to iteratable
+        rets = (iter(rets[0]), iter(rets[1]), [iter(v) for v in rets[2]])
+        return rets
 
     def get_policy(self, pid: PolicyID) -> Policy:
         return self.policies[pid]
 
+    def get_initial_state(
+        self, pid=None, batch_size: int = None
+    ) -> List[DataTransferType]:
+        """Return a list of initial rnn states"""
+
+        pid = pid or self.behavior_policy
+        assert pid is not None, "Behavior policy or input pid cannot both be None"
+        res = self.policies[pid].get_initial_state(batch_size)
+        return res
+
     def update_weights(
         self, pids: Sequence = None, waiting: bool = False
     ) -> Dict[PolicyID, Status]:
-        """ Update weight in async mode """
+        """Update weight in async mode"""
 
         pids = pids or list(self.policies.keys())
         status = {}
@@ -240,7 +308,9 @@ class AgentInterface:
             )
         return status
 
-    def transform_observation(self, observation: Any, policy_id: PolicyID = None):
+    def transform_observation(
+        self, observation: Any, state: Any = None, policy_id: PolicyID = None
+    ) -> Dict[str, Any]:
         """Transform environment observation with behavior policy's preprocessor. The preprocessed observation will be
         transferred to policy's `compute_action` as an input.
 
@@ -252,9 +322,12 @@ class AgentInterface:
         policy_id = policy_id or self._random_select_policy()
         policy = self.policies[policy_id]
         if policy.preprocessor is not None:
-            return policy.preprocessor.transform(observation)
+            return {
+                "obs": policy.preprocessor.transform(observation).squeeze(),
+                "state": state,
+            }
         else:
-            return observation
+            return {"obs": observation, "state": state}
 
     def save(self, model_dir: str) -> None:
         """Save policies.

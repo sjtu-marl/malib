@@ -30,8 +30,7 @@ class Trainer(metaclass=ABCMeta):
 
     @abstractmethod
     def optimize(self, batch) -> Dict[str, Any]:
-        """ Execution policy optimization then return a dict of statistics """
-        pass
+        """Execution policy optimization then return a dict of statistics"""
 
     @property
     def policy(self) -> Policy:
@@ -42,7 +41,7 @@ class Trainer(metaclass=ABCMeta):
         return self._loss
 
     def reset(self, policy, training_config):
-        """ Reset policy, called before optimize, and read training configuration """
+        """Reset policy, called before optimize, and read training configuration"""
 
         self._policy = policy
         self._training_config.update(training_config)
@@ -53,5 +52,4 @@ class Trainer(metaclass=ABCMeta):
 
     @abstractmethod
     def preprocess(self, batch, **kwargs) -> Any:
-        """ Preprocess batch if need """
-        pass
+        """Preprocess batch if need"""

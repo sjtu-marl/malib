@@ -4,7 +4,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 LOG_DIR = os.path.join(BASE_DIR, "logs")
-LOG_LEVEL = logging.DEBUG
+LOG_LEVEL = logging.INFO
 STATISTIC_FEEDBACK = True
 DATA_FEEDBACK = False
 USE_REMOTE_LOGGER = True
@@ -50,6 +50,7 @@ DEFAULT_CONFIG = {
             # algorithm mapping could be a mapping function from environment agents algorithm keys
             # if default, then training agent interface will add policy randomly.
             "algorithm_mapping": None,
+            "use_init_policy_pool": False,
         },
         # training config, determine batch size and ...
         "config": {
@@ -120,5 +121,7 @@ DEFAULT_CONFIG = {
     # configuration for dataset server
     "dataset_config": {},  #
     "parameter_server": {},
+    # should be specified
+    "task_mode": None,
 }
 # __sphinx_doc_end__

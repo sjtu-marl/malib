@@ -5,7 +5,7 @@ from typing import Dict, Any
 from torch.distributions import Independent, Normal
 
 from malib.algorithm.common.loss_func import LossFunc
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
 
 
 class SACLoss(LossFunc):
@@ -25,62 +25,43 @@ class SACLoss(LossFunc):
         self.policy.soft_update(self._params["tau"])
 
     def setup_optimizers(self, *args, **kwargs):
-        if self.optimizers is None:
-            optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
-            self.optimizers = {
-                "actor": optim_cls(
-                    self.policy.actor.parameters(), lr=self._params["actor_lr"]
-                ),
-                "critic_1": optim_cls(
-                    self.policy.critic_1.parameters(), lr=self._params["critic_lr"]
-                ),
-                "critic_2": optim_cls(
-                    self.policy.critic_2.parameters(), lr=self._params["critic_lr"]
-                ),
-            }
-        else:
-            self.optimizers["actor"].param_groups = []
-            self.optimizers["actor"].add_param_group(
-                {"params": self.policy.actor.parameters()}
-            )
-            self.optimizers["critic_1"].param_groups = []
-            self.optimizers["critic_1"].add_param_group(
-                {"params": self.policy.critic_1.parameters()}
-            )
-            self.optimizers["critic_2"].param_groups = []
-            self.optimizers["critic_2"].add_param_group(
-                {"params": self.policy.critic_2.parameters()}
-            )
+        # if self.optimizers is None:
+        optim_cls = getattr(torch.optim, self._params.get("optimizer", "Adam"))
+        self.optimizers = {
+            "actor": optim_cls(
+                self.policy.actor.parameters(), lr=self._params["actor_lr"]
+            ),
+            "critic_1": optim_cls(
+                self.policy.critic_1.parameters(), lr=self._params["critic_lr"]
+            ),
+            "critic_2": optim_cls(
+                self.policy.critic_2.parameters(), lr=self._params["critic_lr"]
+            ),
+        }
 
-    def __call__(self, batch) -> Dict[str, Any]:
+    def loss_compute(self, batch) -> Dict[str, Any]:
         self.loss = []
 
-        FloatTensor = (
-            torch.cuda.FloatTensor
-            if self.policy.custom_config["use_cuda"]
-            else torch.FloatTensor
-        )
-        cast_to_tensor = lambda x: FloatTensor(x.copy())
-
         # total loss = policy_gradient_loss - entropy * entropy_coefficient + value_coefficient * value_loss
-        rewards = cast_to_tensor(batch[Episode.REWARD]).view(-1, 1)
-        actions = cast_to_tensor(batch[Episode.ACTION])
-        cur_obs = cast_to_tensor(batch[Episode.CUR_OBS])
-        next_obs = cast_to_tensor(batch[Episode.NEXT_OBS])
-        dones = cast_to_tensor(batch[Episode.DONE]).view(-1, 1)
-        cliprange = self._params["grad_norm_clipping"]
+        rewards = batch[EpisodeKey.REWARD].view(-1, 1)
+        actions = batch[EpisodeKey.ACTION]
+        cur_obs = batch[EpisodeKey.CUR_OBS]
+        next_obs = batch[EpisodeKey.NEXT_OBS]
+        dones = batch[EpisodeKey.DONE].view(-1, 1)
         alpha = self._params["sac_alpha"]
         gamma = self.policy.custom_config["gamma"]
         action_squash = self.policy.action_squash
 
         # critic update
         vf_in = torch.cat([cur_obs, actions], dim=-1)
-        pred_q_1 = self.policy.critic_1(vf_in)
-        pred_q_2 = self.policy.critic_2(vf_in)
+        pred_q_1 = self.policy.critic_1(vf_in).view(-1)
+        pred_q_2 = self.policy.critic_2(vf_in).view(-1)
+
         with torch.no_grad():
-            next_action_logits = self.policy.actor(next_obs)
-            next_action_dist = Independent(Normal(*next_action_logits), 1)
+
+            next_action_dist = Independent(self._policy._distribution(next_obs), 1)
             next_actions = next_action_dist.sample()
+
             next_action_log_prob = next_action_dist.log_prob(next_actions).unsqueeze(-1)
             if action_squash:
                 next_actions = torch.tanh(next_actions)
@@ -91,30 +72,25 @@ class SACLoss(LossFunc):
                 [next_obs, next_actions],
                 dim=-1,
             )
-            next_q = (
-                torch.min(
-                    self.policy.target_critic_1(target_vf_in),
-                    self.policy.target_critic_2(target_vf_in),
-                )
-                - alpha * next_action_log_prob
+            min_target_q = torch.min(
+                self.policy.target_critic_1(target_vf_in),
+                self.policy.target_critic_2(target_vf_in),
             )
+            next_q = min_target_q - alpha * next_action_log_prob
             target_q = rewards + gamma * next_q * (1.0 - dones)
-        critic_loss_1 = (pred_q_1 - target_q).pow(2).mean()
-        critic_loss_2 = (pred_q_2 - target_q).pow(2).mean()
+        critic_loss_1 = (pred_q_1 - target_q.view(-1)).pow(2).mean()
+        critic_loss_2 = (pred_q_2 - target_q.view(-1)).pow(2).mean()
 
         self.optimizers["critic_1"].zero_grad()
         critic_loss_1.backward()
-        torch.nn.utils.clip_grad_norm_(self.policy.critic_1.parameters(), cliprange)
         self.optimizers["critic_1"].step()
 
         self.optimizers["critic_2"].zero_grad()
         critic_loss_2.backward()
-        torch.nn.utils.clip_grad_norm_(self.policy.critic_2.parameters(), cliprange)
         self.optimizers["critic_2"].step()
 
         # actor update
-        policy_action_logits = self.policy.actor(cur_obs)
-        policy_action_dist = Independent(Normal(*policy_action_logits), 1)
+        policy_action_dist = Independent(self._policy._distribution(cur_obs), 1)
         policy_actions = policy_action_dist.rsample()
         policy_action_log_prob = policy_action_dist.log_prob(policy_actions).unsqueeze(
             -1
@@ -122,30 +98,30 @@ class SACLoss(LossFunc):
         if action_squash:
             policy_actions = torch.tanh(policy_actions)
             policy_action_log_prob = policy_action_log_prob - torch.log(
-                1 - policy_actions.pow(2) + self.policy._eps
+                1.0 - policy_actions.pow(2) + self.policy._eps
             ).sum(-1, keepdim=True)
         vf_in = torch.cat([cur_obs, policy_actions], dim=-1)
-        current_q_1 = self.policy.critic_1(vf_in).flatten()
-        current_q_2 = self.policy.critic_2(vf_in).flatten()
+        current_q_1 = self.policy.critic_1(vf_in)
+        current_q_2 = self.policy.critic_2(vf_in)
         actor_loss = (
-            alpha * policy_action_log_prob.flatten()
-            - torch.min(current_q_1, current_q_2)
-        ).mean()
+            (alpha * policy_action_log_prob - torch.min(current_q_1, current_q_2))
+            .view(-1)
+            .mean()
+        )
+
         self.optimizers["actor"].zero_grad()
+        self.optimizers["critic_1"].zero_grad()
+        self.optimizers["critic_2"].zero_grad()
         actor_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.policy.actor.parameters(), cliprange)
         self.optimizers["actor"].step()
 
-        loss_names = [
-            "policy_loss",
-            "value_loss_1",
-            "value_loss_2",
-        ]
+        loss_names = ["policy_loss", "value_loss_1", "value_loss_2", "reward"]
 
         stats_list = [
-            actor_loss.detach().numpy(),
-            critic_loss_1.detach().numpy(),
-            critic_loss_2.detach().numpy(),
+            actor_loss.detach().item(),
+            critic_loss_1.detach().item(),
+            critic_loss_2.detach().item(),
+            rewards.mean().item(),
         ]
 
         return dict(zip(loss_names, stats_list))

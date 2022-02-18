@@ -134,3 +134,4 @@ dmypy.json
 _build
 logs
 demos
+prof/

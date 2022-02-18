@@ -4,7 +4,9 @@ import gym
 import numpy as np
 
 import torch
+from torch import nn
 from torch.distributions import Normal
+import torch.nn.functional as F
 
 from malib.algorithm.common.policy import Policy
 from malib.utils.typing import DataTransferType, Dict, Tuple, BehaviorMode
@@ -20,6 +22,7 @@ class SAC(Policy):
         action_space: gym.spaces.Space,
         model_config: Dict[str, Any] = None,
         custom_config: Dict[str, Any] = None,
+        **kwargs
     ):
         super(SAC, self).__init__(
             registered_name=registered_name,
@@ -33,11 +36,20 @@ class SAC(Policy):
 
         self.action_squash = self.custom_config.get("action_squash", False)
 
-        self.set_actor(
-            get_model(self.model_config.get("actor"))(
-                observation_space, action_space, self.custom_config["use_cuda"]
-            )
+        self.actor_encoder = get_model(self.model_config.get("actor"))(
+            observation_space, None, self.custom_config["use_cuda"]
         )
+
+        last_fc_size = model_config["actor"]["layers"][-1]["units"]
+        self.mu_head = nn.Linear(last_fc_size, action_space.shape[0])
+        self.log_std_head = nn.Linear(last_fc_size, action_space.shape[0])
+
+        self.set_actor(
+            nn.ModuleList([self.actor_encoder, self.mu_head, self.log_std_head])
+        )
+
+        self._min_log_std = custom_config.get("min_log_std", -20)
+        self._max_log_std = custom_config.get("max_log_std", 2)
 
         critic_state_space = gym.spaces.Dict(
             {"obs": observation_space, "act": action_space}
@@ -73,29 +85,41 @@ class SAC(Policy):
     def compute_actions(
         self, observation: DataTransferType, **kwargs
     ) -> DataTransferType:
-        logits = self.actor(observation)
-        m = Normal(*logits)
-        actions = m.sample()
-        if self.custom_config["action_squash"]:
-            actions = torch.tanh(actions)
-        return actions
+        # logits = self.actor(observation)
+        # m = Normal(*logits)
+        # actions = m.sample()
+        # if self.custom_config["action_squash"]:
+        #     actions = torch.tanh(actions)
+        # return actions
+        raise NotImplementedError
+
+    def _distribution(self, x):
+        torso_out = self.actor_encoder(x)
+        mu = self.mu_head(torso_out)
+        log_std = self.log_std_head(torso_out)
+        std = torch.exp(torch.clamp(log_std, self._min_log_std, self._max_log_std))
+        m = Normal(mu, std)
+        return m
 
     def compute_action(
         self, observation: DataTransferType, **kwargs
     ) -> Tuple[Any, Any, Any]:
         behavior = kwargs.get("behavior_mode", BehaviorMode.EXPLORATION)
 
-        logits = self.actor(observation)
-        m = Normal(*logits)
+        m = self._distribution(observation)
+
+        # logits = self.actor(observation)
+        # # FIXME(ming): we need to ensure that the sigma is non-negative here
+        # m = Normal(logits[:, 0], logits[:, 1])
 
         if behavior == BehaviorMode.EXPLORATION:
             actions = m.sample().detach()
         else:
-            actions = logits[0]
+            actions = m.mean
 
         log_probs = m.log_prob(actions).sum(dim=-1, keepdim=True)
 
-        if self.custom_config["action_squash"]:
+        if self.custom_config.get("action_squash", False):
             actions = torch.tanh(actions)
             log_probs = log_probs - torch.log(1 - actions.pow(2) + self._eps).sum(
                 -1, keepdim=True
@@ -103,13 +127,10 @@ class SAC(Policy):
 
         action_probs = torch.exp(log_probs)
 
-        extra_info = {}
-        extra_info["log_probs"] = log_probs.detach().to("cpu").numpy()
-
         return (
             actions.detach().to("cpu").numpy(),
             action_probs.detach().to("cpu").numpy(),
-            extra_info,
+            kwargs["rnn_state"],
         )
 
     def update_target(self):

@@ -2,7 +2,7 @@ import enum
 import time
 from collections import namedtuple
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Union, Tuple, Sequence, Callable
+from typing import List, Dict, Any, Union, Tuple, Sequence, Callable, Optional
 
 import gym
 import numpy as np
@@ -10,7 +10,7 @@ import numpy as np
 from malib.utils.notations import deprecated
 
 """ Rename and definition of basic data types which are correspond to the inputs (args, kwargs) """
-PolicyConfig = Tuple[str, Dict[str, Any]]
+PolicyConfig = Dict[str, Any]
 MetaPolicyConfig = Tuple[gym.spaces.Space, gym.spaces.Space, Sequence[PolicyConfig]]
 EnvConfig = Dict[str, Any]
 RolloutConfig = Dict[str, Any]
@@ -23,8 +23,8 @@ AgentConfig = Dict[str, TrainingConfig]
 AgentID = str
 
 PolicyID = str
-EnvID = int
-EpisodeID = int
+EnvID = str
+EpisodeID = str
 DataBlockID = str
 
 DataTransferType = np.ndarray
@@ -138,6 +138,28 @@ class ParameterDescription:
     parallel_num: int = 1
     version: int = -1
 
+    @classmethod
+    def gen_template(cls, **kwargs):
+        return cls(
+            time_stamp=time.time(),
+            identify=kwargs.get("identify", None),
+            id=kwargs["id"],
+            lock=kwargs.get("lock", True),
+            env_id=kwargs.get("env_id", "test"),
+            type=kwargs.get("type", cls.Type.PARAMETER),
+            data=kwargs.get("data", None),
+            description=kwargs.get(
+                "description",
+                {
+                    "registered_name": "test",
+                    "observation_space": None,
+                    "action_space": None,
+                    "model_config": {},
+                    "custom_config": {},
+                },
+            ),
+        )
+
 
 @dataclass
 class MetaParameterDescription:
@@ -149,14 +171,38 @@ class MetaParameterDescription:
     def __post_init__(self):
         self.identify = f"{self.identify}_mpid_{self.meta_pid}_{self.timestamp}"
 
+    @classmethod
+    def gen_template(cls, **kwargs):
+        return cls(
+            meta_pid=kwargs["meta_pid"],
+            parameter_desc_dict={
+                k: ParameterDescription.gen_template(id=k) for k in kwargs["pids"]
+            },
+        )
+
 
 @dataclass
 class BufferDescription:
     env_id: str
     agent_id: Union[AgentID, List[AgentID]]
-    policy_id: Union[PolicyID, List[AgentID]]
+    policy_id: Union[PolicyID, List[PolicyID]]
     batch_size: int = 0
     sample_mode: str = ""
+    indices: List[int] = None
+    data: Any = None
+    data_shapes: Dict[str, Tuple] = None
+    sample_start_size: int = 0
+    capacity: int = 1000
+    identify: str = None
+
+    def __post_init__(self):
+        if self.identify is None:
+            self.identify = "_".join(sorted(self.agent_id))
+
+    def __str__(self):
+        return "<BufferDescription: agent_id={} policy_id={}".format(
+            self.agent_id, self.policy_id
+        )
 
 
 @dataclass
@@ -178,6 +224,34 @@ class AgentInvolveInfo:
     meta_parameter_desc_dict: Dict[AgentID, MetaParameterDescription] = None
     """ meta parameter description """
 
+    @classmethod
+    def gen_template(
+        cls,
+        agent_ids: List[AgentID],
+        observation_space: gym.Space,
+        action_space: gym.Space,
+    ):
+        example_ptup = (
+            "policy_0",
+            {
+                "registered_name": "test",
+                "observation_space": observation_space,
+                "action_space": action_space,
+                "mode_config": None,
+                "custom_config": None,
+            },
+        )
+        return cls(
+            training_handler="test",
+            trainable_pairs=dict.fromkeys(agent_ids, example_ptup),
+            populations=dict.fromkeys(agent_ids, [example_ptup]),
+            env_id="test",
+            meta_parameter_desc_dict=dict.fromkeys(
+                agent_ids,
+                MetaParameterDescription.gen_template(meta_pid=None, pids=["policy_0"]),
+            ),
+        )
+
 
 @dataclass
 class TrainingDescription:
@@ -189,6 +263,10 @@ class TrainingDescription:
     batch_size: int = 64
     mode: str = "step"
     time_stamp: float = time.time()
+
+    @classmethod
+    def gen_template(cls, **template_attr_kwargs):
+        raise NotImplementedError
 
 
 @dataclass
@@ -206,6 +284,21 @@ class RolloutDescription:
     policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None
     time_stamp: float = time.time()
 
+    @classmethod
+    def gen_template(cls, **template_attr_kwargs):
+        agent_involve_info_kwargs = template_attr_kwargs.pop("agent_involve_info")
+        instance = cls(
+            agent_involve_info=AgentInvolveInfo.gen_template(
+                **agent_involve_info_kwargs
+            ),
+            policy_distribution=dict.fromkeys(
+                agent_involve_info_kwargs["agent_ids"], {"policy_0": 1.0}
+            ),
+            **template_attr_kwargs,
+        )
+        template_attr_kwargs["agent_involve_info"] = agent_involve_info_kwargs
+        return instance
+
 
 @dataclass
 class SimulationDescription:
@@ -215,6 +308,18 @@ class SimulationDescription:
     callback: Union[str, Callable] = "sequential"
     max_episode_length: int = None
     time_stamp: float = time.time()
+
+    @classmethod
+    def gen_template(cls, **kwargs):
+        agent_involve_template_attrs = kwargs.pop("agent_involve_info")
+        instance = cls(
+            agent_involve_info=AgentInvolveInfo.gen_template(
+                **agent_involve_template_attrs
+            ),
+            **kwargs,
+        )
+        kwargs["agent_involve_info"] = agent_involve_template_attrs
+        return instance
 
 
 @dataclass
@@ -233,14 +338,15 @@ class RolloutFeedback:
     agent_involve_info: AgentInvolveInfo
     """agent involve info describes the ..."""
 
-    statistics: Dict[AgentID, Dict[str, Any]]
-    policy_combination: Dict[PolicyID, Tuple[PolicyID, PolicyConfig]] = None
+    statistics: Dict[str, Any]
+    policy_combination: Dict[PolicyID, PolicyID] = None
 
     def __post_init__(self):
-        for res in self.statistics.values():
-            for k, v in res.items():
-                if isinstance(v, MetricEntry):
-                    res[k] = v.value
+        pass
+        # for res in self.statistics.values():
+        # for k, v in res.items():
+        #     if isinstance(v, MetricEntry):
+        #         res[k] = v.value
 
 
 @deprecated
@@ -285,6 +391,25 @@ class TaskDescription:
 
         self.identify = f"{prefix}_{timestamp}"
 
+    @classmethod
+    def gen_template(cls, **template_attr_kwargs):
+        task_type = template_attr_kwargs["task_type"]
+        if task_type == TaskType.OPTIMIZE:
+            desc_cls = TrainingDescription
+        elif task_type == TaskType.ROLLOUT:
+            desc_cls = RolloutDescription
+        elif task_type == TaskType.SIMULATION:
+            desc_cls = SimulationDescription
+        else:
+            raise ValueError("Unknow task type: {}".format(task_type))
+        content_template_attr_kwargs = template_attr_kwargs.pop("content")
+        instance = cls(
+            content=desc_cls.gen_template(**content_template_attr_kwargs),
+            **template_attr_kwargs,
+        )
+        template_attr_kwargs["content"] = content_template_attr_kwargs
+        return instance
+
 
 @dataclass
 class TaskRequest:
@@ -296,14 +421,29 @@ class TaskRequest:
     content: Any
     """content is the feedback of current handler which request for next task"""
 
+    state_id: str
+
     timestamp: float = None  # time.time()
 
     identify: str = None
 
+    computing_mode: str = "bulk_sync"  # bulk_sync, async
+
     def __post_init__(self):
+        assert self.state_id, "State id cannot be None"
         timestamp = time.time()
         self.timestamp = timestamp
         self.identify = f"TaskRequest_{timestamp}"
+
+    @staticmethod
+    def from_task_desc(task_desc: TaskDescription, **kwargs) -> "TaskRequest":
+        return TaskRequest(
+            task_type=kwargs.get("task_type", task_desc.task_type),
+            content=kwargs.get("content", task_desc.content),
+            state_id=kwargs.get("state_id", task_desc.state_id),
+            timestamp=kwargs.get("timestamp", None),
+            identify=kwargs.get("identify", None),
+        )
 
 
 class BColors:

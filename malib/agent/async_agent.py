@@ -38,7 +38,9 @@ class AsyncAgent(IndependentAgent):
         action_spaces: Dict[AgentID, gym.spaces.Space],
         exp_cfg: Dict[str, Any],
         population_size: int,
+        use_init_policy_pool: bool = False,
         algorithm_mapping: Callable = None,
+        local_buffer_config: Dict = None,
     ):
         """Create an independent agent instance works in async mode.
 
@@ -71,7 +73,9 @@ class AsyncAgent(IndependentAgent):
             action_spaces=action_spaces,
             exp_cfg=exp_cfg,
             population_size=population_size,
+            use_init_policy_pool=use_init_policy_pool,
             algorithm_mapping=algorithm_mapping,
+            local_buffer_config=local_buffer_config,
         )
 
         self._cumulative_grads: Dict[PolicyID, List[Dict]] = defaultdict(lambda: [])
@@ -97,7 +101,7 @@ class AsyncAgent(IndependentAgent):
             parallel_num = len(res)
 
         return ParameterDescription(
-            env_id=self._env_desc["id"],
+            env_id=self._env_desc["config"]["env_id"],
             identify=env_aid,
             id=policy_id,
             time_stamp=time.time(),
@@ -178,12 +182,12 @@ class AsyncAgent(IndependentAgent):
         for env_aid, pid in policy_ids.items():
             trainer = self.get_trainer(pid)
             trainer.reset(self.policies[pid], training_config)
-            res[env_aid] = trainer.optimize(batch[env_aid])
+            tmp = trainer.optimize(batch[env_aid])
             assert (
-                res[env_aid].get("gradients") is not None
+                tmp.get("gradients") is not None
             ), f"You must return gradients from optimizer {type(trainer)}"
-            gradients = res[env_aid].pop("gradients")
-            res[env_aid] = metrics.to_metric_entry(res[env_aid])
+            gradients = tmp.pop("gradients")
+            res.update(dict(map(lambda kv: (f"{env_aid}/{kv[0]}", kv[1]), tmp.items())))
             self._cumulative_grads[pid].append(gradients)
 
         return res

@@ -9,15 +9,11 @@ import gym
 from malib.utils.typing import (
     AgentID,
     PolicyID,
-    MetricEntry,
 )
 
 from malib.agent.agent_interface import AgentInterface
 from malib.algorithm.common.policy import Policy
 from malib.algorithm import get_algorithm_space
-from malib.utils import metrics
-
-import pickle as pkl
 
 
 class IndependentAgent(AgentInterface):
@@ -31,7 +27,9 @@ class IndependentAgent(AgentInterface):
         action_spaces: Dict[AgentID, gym.spaces.Space],
         exp_cfg: Dict[str, Any],
         population_size: int = -1,
+        use_init_policy_pool: bool = False,
         algorithm_mapping: Callable = None,
+        local_buffer_config: Dict = None,
     ):
         """Create an independent agent instance work in asynchronous mode.
 
@@ -61,7 +59,9 @@ class IndependentAgent(AgentInterface):
             action_spaces,
             exp_cfg,
             population_size,
+            use_init_policy_pool,
             algorithm_mapping,
+            local_buffer_config,
         )
 
     def optimize(
@@ -69,7 +69,7 @@ class IndependentAgent(AgentInterface):
         policy_ids: Dict[AgentID, PolicyID],
         batch: Dict[AgentID, Any],
         training_config: Dict[str, Any],
-    ) -> Dict[AgentID, Dict[str, MetricEntry]]:
+    ) -> Dict[str, float]:
         """Execute optimization for a group of policies with given batches.
 
         :param policy_ids: Dict[AgentID, PolicyID], Mapping from environment agent ids to policy ids. The agent ids in
@@ -84,19 +84,13 @@ class IndependentAgent(AgentInterface):
         for env_aid, pid in policy_ids.items():
             trainer = self.get_trainer(pid)
             if env_aid not in batch:
-                print(
-                    "[WARNING] No registered agent id detected in batch keys, please check your buffer description"
-                )
                 continue
             trainer.reset(self.policies[pid], training_config)
-            # check whether there are multiple agent keys in batch env_aid
-            res[env_aid] = metrics.to_metric_entry(
-                trainer.optimize(
-                    batch[env_aid][env_aid]
-                    if env_aid in batch[env_aid]
-                    else batch[env_aid]
-                ),
-                prefix=pid,
+            training_info = trainer.optimize(batch[env_aid])
+            res.update(
+                dict(
+                    map(lambda kv: (f"{env_aid}/{kv[0]}", kv[1]), training_info.items())
+                )
             )
         return res
 
@@ -120,10 +114,11 @@ class IndependentAgent(AgentInterface):
             action_space=self._action_spaces[env_agent_id],
             model_config=algorithm_conf.get("model_config", {}),
             custom_config=algorithm_conf.get("custom_config", {}),
+            env_agent_id=env_agent_id,
         )
 
         pid = self.default_policy_id_gen(algorithm_conf)
-        self._policies[pid] = policy
+        self._policies[pid] = policy.to_device(self._device) if trainable else policy
         self._trainers[pid] = algorithm.trainer(env_agent_id)
 
         return pid, policy
@@ -135,7 +130,7 @@ class IndependentAgent(AgentInterface):
         :return: None
         """
 
-        raise NotImplementedError
+        pass
 
     def load(self, model_dir) -> None:
         """Load states and policies from local storage.
@@ -144,21 +139,4 @@ class IndependentAgent(AgentInterface):
         :return: None
         """
 
-        raise NotImplementedError
-
-    def load_single_policy(self, env_agent_id, model_dir) -> None:
-        """Load one policy for one env_agent.
-
-        Temporarily used for single agent imitation learning.
-        """
-
-        assert env_agent_id in self._group, (env_agent_id, self._group)
-        algorithm_conf = self.get_algorithm_config(env_agent_id)
-
-        with open(model_dir, "rb") as f:
-            policy = pkl.load(f)
-
-        pid = self.default_policy_id_gen(algorithm_conf)
-        self._policies[pid] = policy
-
-        return pid, policy
+        pass

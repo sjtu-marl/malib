@@ -2,10 +2,14 @@
 Basic class of agent interface. Users can implement their custom training workflow by inheriting this class.
 """
 
+import torch
+
+import asyncio
 import copy
-from dataclasses import dataclass
+import os
 import threading
 import time
+
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 from typing import Dict, Any, Tuple, Callable, Union, Sequence
@@ -26,15 +30,15 @@ from malib.utils.typing import (
     TrainingFeedback,
     TaskRequest,
     AgentID,
-    MetricEntry,
 )
 from malib.utils import errors
-from malib.utils.logger import get_logger, Log
+from malib.utils.logger import Logger, get_logger, Log
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.trainer import Trainer
+from malib.backend.datapool.offline_dataset_server import Table
 
 
-AgentFeedback = namedtuple("AgentFeedback", "id, trainable_pairs, state_id, statistics")
+AgentFeedback = namedtuple("AgentFeedback", "id, trainable_pairs, statistics")
 AgentTaggedFeedback = namedtuple("AgentTaggedFeedback", "id, content")
 
 AgentFeedback.__doc__ = """\
@@ -43,10 +47,6 @@ Policy adding feedback.
 
 AgentFeedback.id.__doc__ = """\
 Dict[str, Any] - Training agent id.
-"""
-
-AgentFeedback.state_id.__doc__ = """\
-ObjectRef - State id, linked to mutable object.
 """
 
 AgentFeedback.trainable_pairs.__doc__ = """\
@@ -83,7 +83,9 @@ class AgentInterface(metaclass=ABCMeta):
         action_spaces: Dict[AgentID, gym.spaces.Space],
         exp_cfg: Dict[str, Any],
         population_size: int,
+        use_init_policy_pool: bool,
         algorithm_mapping: Callable = None,
+        local_buffer_config: Dict = None,
     ):
         """
         :param str assign_id: Specify the agent interface id.
@@ -96,6 +98,14 @@ class AgentInterface(metaclass=ABCMeta):
         :param Optional[Callable] algorithm_mapping: Mapping registered agents to algorithm candidates, optional
             default is None.
         """
+        Logger.info("\tray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
+        Logger.info(
+            "\tCUDA_VISIBLE_DEVICES: {}".format(
+                os.environ.get("CUDA_VISIBLE_DEVICES", [])
+            )
+        )
+
+        self._device = torch.device("cuda" if ray.get_gpu_ids() else "cpu")
 
         self._id = assign_id
         self._env_desc = env_desc
@@ -115,16 +125,32 @@ class AgentInterface(metaclass=ABCMeta):
         self._training_agent_mapping = training_agent_mapping
         self._group = []
         self._global_step = 0
+        self._use_init_policy_pool = use_init_policy_pool
 
         self._param_desc_lock = threading.Lock()
         self.logger = get_logger(
             log_level=settings.LOG_LEVEL,
             log_dir=settings.LOG_DIR,
-            name=f"training_agent_interface_{self._id}",
+            name=f"training_agent_{self._id}",
             remote=settings.USE_REMOTE_LOGGER,
             mongo=settings.USE_MONGO_LOGGER,
             **exp_cfg,
         )
+
+        local_buffer_config = local_buffer_config or {}
+
+        if len(local_buffer_config) > 0:
+            self.local_buffer = Table(
+                capacity=local_buffer_config["size"],
+                fragment_length=None,
+                data_shapes=None,
+                sample_start_size=0,
+                mode="local",
+            )
+        else:
+            self.local_buffer = None
+
+        self._print_every = 100
 
     def get_policies(self) -> Dict[PolicyID, Policy]:
         """Get a dict of policies.
@@ -230,40 +256,37 @@ class AgentInterface(metaclass=ABCMeta):
                     self._offline_dataset = ray.get_actor(
                         settings.OFFLINE_DATASET_ACTOR
                     )
-                self.logger.debug(f"agent={self._id} got coordinator handler")
+                Logger.debug(f"agent={self._id} got coordinator handler")
                 break
             except Exception as e:
-                self.logger.debug(f"Waiting for coordinator server... {e}")
+                Logger.debug(f"Waiting for coordinator server... {e}")
                 time.sleep(1)
                 continue
 
-    def require_parameter_desc(self, state_id) -> Dict:
-        """Return a meta parameter description.
-
-        :param ObjectRef state_id: Ray object ref
-        """
+    def require_parameter_desc(self) -> Dict:
+        """Return a meta parameter description."""
 
         with self._param_desc_lock:
             return self._meta_parameter_desc
 
-    def get_stationary_state(self, state_id: ray.ObjectID) -> AgentTaggedFeedback:
+    def get_stationary_state(self) -> AgentTaggedFeedback:
         """Return stationary policy descriptions."""
 
-        if state_id:
-            res = {
-                env_aid: [
-                    (pid, self._policies[pid].description) for pid in state_id[env_aid]
-                ]
-                for env_aid in self._group
-            }
-        else:
-            res = {
-                env_aid: [
-                    (pid, self._policies[pid].description)
-                    for pid in self._agent_to_pids[env_aid]
-                ]
-                for env_aid in self._group
-            }
+        res = {}
+        for env_aid in self._group:
+            # wait
+            while len(self._agent_to_pids[env_aid]) == 0:
+                pass
+            tmp = []
+            fixed_or_single_pids = (
+                self._agent_to_pids[env_aid]
+                if len(self._agent_to_pids[env_aid]) < 2
+                else self._agent_to_pids[env_aid][:-1]
+            )
+            for pid in fixed_or_single_pids:
+                tmp.append((pid, self._policies[pid].description))
+            res[env_aid] = tmp
+
         return AgentTaggedFeedback(self._id, content=res)
 
     def push(self, env_aid: AgentID, pid: PolicyID) -> Status:
@@ -305,38 +328,81 @@ class AgentInterface(metaclass=ABCMeta):
         :return: A tuple of agent batches and information.
         """
 
+        res = {}
+        size = 0
+        # returned batch.data is a dict of agent batch if it is not None.
         if isinstance(buffer_desc, Dict):
-            res = {}
             # multiple tasks
             tasks = [
-                self._offline_dataset.sample.remote(v) for v in buffer_desc.values()
+                self._offline_dataset.get_consumer_index.remote(v)
+                for v in buffer_desc.values()
             ]
             while len(tasks) > 0:
                 dones, tasks = ray.wait(tasks)
                 for done in dones:
-                    batch, info = ray.get(done)
+                    batch = ray.get(done)
                     if batch.data is None:
                         # push task
+                        # Logger.warning("index not ready")
                         tasks.append(
-                            self._offline_dataset.sample.remote(
-                                buffer_desc[batch.identity]
+                            self._offline_dataset.get_consumer_index.remote(
+                                buffer_desc[batch.identify]
                             )
                         )
                     else:
-                        res[batch.identity] = batch.data
+                        # request for data
+                        buffer_desc.indices = batch.data
+                        batch, info = ray.get(
+                            self._offline_dataset.sample.remote(
+                                buffer_desc[batch.identify]
+                            )
+                        )
+                        assert batch.data is not None
+                        size += buffer_desc[batch.identify].batch_size
+                        # res.update(batch.data)
+                        # free
+                        buffer_desc.data = None
+                        buffer_desc.indices = None
         else:
-            res = None
             while True:
-                batch, info = ray.get(self._offline_dataset.sample.remote(buffer_desc))
+                batch = ray.get(
+                    self._offline_dataset.get_consumer_index.remote(buffer_desc)
+                )
                 if batch.data is None:
-                    continue
-                else:
-                    if isinstance(batch.identity, list):
-                        res = dict.fromkeys(batch.identity, batch.data)
+                    # means interface can use local buffer for training
+                    if (
+                        self.local_buffer
+                        and self.local_buffer.size >= buffer_desc.batch_size
+                    ):
+                        break
                     else:
-                        res = {batch.identity: batch.data}
+                        continue
+                else:
+                    buffer_desc.indices = batch.data
+                    batch, info = ray.get(
+                        self._offline_dataset.sample.remote(buffer_desc)
+                    )
+                    assert batch.data is not None
+                    size += len(buffer_desc.indices)
+                    if self.local_buffer is not None:
+                        self.local_buffer.insert(
+                            data=[batch.data], size=len(buffer_desc.indices)
+                        )
+                    else:
+                        res = batch.data
+
+                    buffer_desc.data = None
+                    buffer_desc.indices = None
                     break
-        return res, info
+        if self.local_buffer is not None:
+            res = self.local_buffer.sample(size=buffer_desc.batch_size)
+        if (self._global_step + 1) % self._print_every == 0:
+            Logger.debug(
+                "iteration: {} Trainer got {} data".format(
+                    self._global_step, buffer_desc.batch_size
+                )
+            )
+        return res, size
 
     def gen_buffer_description(
         self,
@@ -356,7 +422,7 @@ class AgentInterface(metaclass=ABCMeta):
         return BufferDescription(
             env_id=self._env_desc["config"]["env_id"],
             agent_id=self._group,
-            policy_id=[agent_policy_mapping[aid][0] for aid in self._group],
+            policy_id=[agent_policy_mapping[aid] for aid in self._group],
             batch_size=batch_size,
             sample_mode=sample_mode,
         )
@@ -367,7 +433,7 @@ class AgentInterface(metaclass=ABCMeta):
 
         Note:
             This method could only be called in multi-instance scenarios. Or, `OfflineDataset` and `CoordinatorServer`
-            have been started.
+            have been started.t
 
         :param TaskDescription task_desc: Task description entity, `task_desc.content` must be a `TrainingTask` entity.
         :param Dict[str,Any] training_config: Training configuration. Default to None.
@@ -379,17 +445,20 @@ class AgentInterface(metaclass=ABCMeta):
         # retrieve policy ids required to training
 
         batch_size = training_config.get("batch_size", 64)
+        # XXX(ming): sample mode seems useless?
         sample_mode = training_task.mode
 
         buffer_desc = self.gen_buffer_description(
-            agent_involve_info.trainable_pairs, batch_size, sample_mode
+            {k: v[0] for k, v in agent_involve_info.trainable_pairs.items()},
+            batch_size,
+            sample_mode,
         )
         policy_id_mapping = {
             env_aid: pid
             for env_aid, (pid, _) in agent_involve_info.trainable_pairs.items()
         }
 
-        self.logger.info(
+        Logger.info(
             f"Start training task for interface={self._id} with policy mapping:\n\t{policy_id_mapping} -----"
         )
         # register sub tasks
@@ -406,48 +475,45 @@ class AgentInterface(metaclass=ABCMeta):
             self.pull(env_aid, pid)
 
         old_policy_id_mapping = copy.deepcopy(policy_id_mapping)
-
+        start_time = time.time()
+        total_size = 0
         while not stopper(statistics, global_step=epoch) and not stopper.all():
-            # add timer: key to identify object, tag to log
-            # FIXME(ming): key for logger has been discarded!
-            with Log.timer(
-                log=True,
-                logger=self.logger,
-                tag=f"time/TrainingInterface_{self._id}/data_request",
-                global_step=epoch,
-            ):
-                start = time.time()
-                batch, size = self.request_data(buffer_desc)
 
-            with Log.stat_feedback(
-                log=settings.STATISTIC_FEEDBACK,
-                logger=self.logger,
-                worker_idx=self._id,
+            batch, size = self.request_data(buffer_desc)
+            time_consump = time.time() - start_time
+            total_size += size
+
+            self.logger.send_scalar(
+                tag="Performance/TFPS",
+                content=total_size / time_consump,
                 global_step=epoch,
-                group="training",
-            ) as (statistic_seq, processed_statistics):
-                # a dict of dict of metric entry {agent: {item: MetricEntry}}
-                statistics = self.optimize(policy_id_mapping, batch, training_config)
-                statistic_seq.append(statistics)
-                # NOTE(ming): if it meets the update interval, parameters will be pushed to remote parameter server
-                # the returns `status` code will determine whether we should stop the training or continue it.
-                if (epoch + 1) % training_config["update_interval"] == 0:
-                    for env_aid in self._group:
-                        pid = policy_id_mapping[env_aid]
-                        status = self.push(env_aid, pid)
-                        if status.locked:
-                            # terminate sub task tagged with env_id
-                            stopper.set_terminate(env_aid)
-                            # and remove buffer request description
-                            if isinstance(buffer_desc, Dict):
-                                buffer_desc.pop(env_aid)
-                            # also training poilcy id mapping
-                            policy_id_mapping.pop(env_aid)
-                        else:
-                            self.pull(env_aid, pid)
-                epoch += 1
-                self._global_step += 1
-        print(f"**** training for mapping: {old_policy_id_mapping} finished")
+            )
+
+            statistics = self.optimize(policy_id_mapping, batch, training_config)
+            for k, v in statistics.items():
+                self.logger.send_scalar(
+                    tag=f"training/{k}", content=v, global_step=epoch
+                )
+            # statistic_seq.append(statistics)
+            # NOTE(ming): if it meets the update interval, parameters will be pushed to remote parameter server
+            # the returns `status` code will determine whether we should stop the training or continue it.
+            if (epoch + 1) % training_config["update_interval"] == 0:
+                for env_aid in self._group:
+                    pid = policy_id_mapping[env_aid]
+                    status = self.push(env_aid, pid)
+                    if status.locked:
+                        # terminate sub task tagged with env_id
+                        stopper.set_terminate(env_aid)
+                        # and remove buffer request description
+                        if isinstance(buffer_desc, Dict):
+                            buffer_desc.pop(env_aid)
+                        # also training poilcy id mapping
+                        policy_id_mapping.pop(env_aid)
+                        self._policies[pid] = self._policies[pid].to_device("cpu")
+                    else:
+                        self.pull(env_aid, pid)
+            epoch += 1
+            self._global_step += 1
         if status is not None and not status.locked:
             for aid, pid in old_policy_id_mapping.items():
                 parameter_desc = copy.copy(self._parameter_desc[pid])
@@ -458,7 +524,8 @@ class AgentInterface(metaclass=ABCMeta):
                 assert status.locked, status
 
                 # call evaluation request
-            task_request = TaskRequest(
+            task_request = TaskRequest.from_task_desc(
+                task_desc=task_desc,
                 task_type=TaskType.EVALUATE,
                 content=TrainingFeedback(
                     agent_involve_info=training_task.agent_involve_info,
@@ -506,7 +573,6 @@ class AgentInterface(metaclass=ABCMeta):
         :raise: errors.NoEnoughSpace
         :return: None
         """
-
         if self._population_size < 0:
             return
         if len(self.policies) + len(self._group) < self._population_size:
@@ -527,8 +593,7 @@ class AgentInterface(metaclass=ABCMeta):
             have been started.
         """
 
-        # add policies for agents, the first one policy will be set to non-trainable
-        if len(self.policies) < 1:
+        if self._use_init_policy_pool and len(self.policies) < 1:
             trainable = False
         else:
             trainable = True
@@ -565,7 +630,9 @@ class AgentInterface(metaclass=ABCMeta):
         _ = ray.get(pending_tasks)
 
         # XXX(ming): we only keep the latest parameter desc currently
-        task_request = TaskRequest(
+        task_request = TaskRequest.from_task_desc(
+            task_desc=task_desc,
+            # rewrite task type and content
             task_type=TaskType.ROLLOUT if trainable else TaskType.SIMULATION,
             content=AgentFeedback(
                 id=self._id,
@@ -574,20 +641,16 @@ class AgentInterface(metaclass=ABCMeta):
                     for aid, (pid, policy) in policy_dict.items()
                 },
                 statistics={},
-                state_id=task_desc.state_id,
             ),
-        )
-        self.logger.debug(
-            f"send task: {task_request.task_type} {self._id} {task_request.identify}"
         )
         self._coordinator.request.remote(task_request)
 
         if trainable:
+            # also request for optimization task
             task_request.task_type = TaskType.OPTIMIZE
-            self.logger.debug(
-                f"send task: {task_request.task_type} {self._id} {task_request.identify}"
-            )
             self._coordinator.request.remote(task_request)
+
+        return task_request
 
     def get_trainer(self, pid: PolicyID) -> Trainer:
         """Return a registered trainer with given policy id.
@@ -635,7 +698,7 @@ class AgentInterface(metaclass=ABCMeta):
         policy_ids: Dict[AgentID, PolicyID],
         batch: Dict[AgentID, Any],
         training_config: Dict[str, Any],
-    ) -> Dict[AgentID, Dict[str, MetricEntry]]:
+    ) -> Dict[str, float]:
         """Execute policy optimization.
 
         :param Dict[AgentID,PolicyID] policy_ids: A dict of policies linked to agents registered in `group` required to be optimized
@@ -655,8 +718,6 @@ class AgentInterface(metaclass=ABCMeta):
         :param trainable: bool, tag added policy is trainable or not
         :return: a tuple of policy id and policy
         """
-
-        pass
 
     @abstractmethod
     def save(self, model_dir: str) -> None:

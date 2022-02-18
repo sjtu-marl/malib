@@ -20,7 +20,7 @@ class PayoffTable:
         self.simulation_flag = np.zeros([0] * len(self.agents), dtype=np.bool)
 
     def __getitem__(self, key: Dict[str, Sequence[PolicyID]]) -> np.ndarray:
-        """ Return a sub matrix """
+        """Return a sub matrix"""
         idx = self._get_combination_index(key)
         item = self.table[idx]
         return item
@@ -32,7 +32,7 @@ class PayoffTable:
     def is_simulation_done(
         self, population_mapping: Dict[str, Sequence[PolicyID]]
     ) -> bool:
-        """ Check whether all simulations have been done """
+        """Check whether all simulations have been done"""
 
         idx = self._get_combination_index(population_mapping)
         return np.alltrue(self.simulation_flag[idx])
@@ -42,7 +42,7 @@ class PayoffTable:
         self.simulation_flag[idx] = True
 
     def expand_table(self, pad_info):
-        """ Expand payoff table """
+        """Expand payoff table"""
 
         # head and tail
 
@@ -54,7 +54,7 @@ class PayoffTable:
     def _get_combination_index(
         self, policy_combination: Dict[AgentID, Sequence[PolicyID]]
     ) -> Tuple:
-        """ Return combination index, if doesn't exist, expand it """
+        """Return combination index, if doesn't exist, expand it"""
         res = []
         expand_flag = False
         pad_info = []

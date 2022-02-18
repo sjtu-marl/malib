@@ -11,7 +11,7 @@ training:
     saving_interval: 10
     batch_size: 1024
     optimizer: "Adam"
-    lr: 0.01
+    lr: 0.001
     ppo_epoch: 1
     entropy_coef: 0.02
     grad_norm_clipping: 0.5
@@ -24,7 +24,7 @@ rollout:
   metric_type: "simple"
   fragment_length: 200
   num_episodes: 100
-  episode_seg: 25
+  num_env_per_worker: 25
   terminate: "any"
   callback: "simultaneous"
 

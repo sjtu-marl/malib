@@ -12,9 +12,13 @@ Subpackages
 .. toctree::
    :maxdepth: 2
 
+   malib.envs.gr_football
+   malib.envs.gym
+   malib.envs.maatari
+   malib.envs.mpe
    malib.envs.poker
+   malib.envs.smarts
    malib.envs.star_craft2
-   malib.envs.vizdoom_v1
 
 Submodules
 ----------
@@ -23,3 +27,6 @@ Submodules
    :maxdepth: 2
 
    malib.envs.agent_interface
+   malib.envs.env
+   malib.envs.subproc_vec_env
+   malib.envs.vector_env

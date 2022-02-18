@@ -11,20 +11,36 @@
 
 import enum
 from functools import wraps
-from malib.backend.coordinator.server import CoordinatorServer
+
+from malib.utils.logger import Logger
 from malib.utils.typing import TaskType, Dict
 from malib.utils.errors import RegisterFailure
 
 
-def task_handler_register():
-    print("Registering")
-
+def helper_register(cls):
     def decorator(func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            return func(*args, **kwargs)
+        # @wraps(func)
+        # def wrapper(self, *args, **kwargs):
+        #     return func(*args, **kwargs)
 
-        setattr(CoordinatorServer, func.__name__, func)
+        if not hasattr(cls, func.__name__):
+            setattr(cls, func.__name__, func)
+            Logger.info("registered helper handler={}".format(func.__name__))
+        return func
+
+    return decorator
+
+
+def task_handler_register(cls, link):
+    def decorator(func):
+        # @wraps(func)
+        # def wrapper(self, *args, **kwargs):
+        #     return func(*args, **kwargs)
+
+        name = "_request_{}".format(link)
+        if not hasattr(cls, name):
+            setattr(cls, name, func)
+            Logger.info("registered request handler={}".format(link))
         return func
 
     return decorator

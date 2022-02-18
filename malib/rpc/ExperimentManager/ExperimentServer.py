@@ -8,12 +8,12 @@ from signal import signal, SIGTERM
 from concurrent import futures
 from threading import Lock
 from readerwriterlock import rwlock
-from typing import Any, Dict
 
 import tensorboardX
 
 from malib.rpc.chunk import deserialize, recv_chunks, deserialize_image
 from malib.rpc.proto import exprmanager_pb2, exprmanager_pb2_grpc
+from malib.utils.typing import Dict, Any, Tuple
 from malib.utils.convert import (
     utc_to_str,
     dump_dict,
@@ -28,12 +28,19 @@ class _ConcurrentTable:
         # {name, idx}, {idx, writer}
         self.table = [{}, {}]
 
-    def close(self):
+    def close(self) -> None:
         for idx, (lock, writer) in self.table[1].items():
             with lock:
                 writer.close()
 
-    def put(self, name):
+    def put(self, name: str) -> int:
+        """Retrieve table indix with the identifier `name`. New table will be generated with given name.
+        Note the name here should be actually a legal directory path to initialize a tensorboard summary writer.
+
+        :param str name: Table identifier, also a directory path to initialize a tensorboard summary writer.
+        :return int, a table index.
+        """
+
         idx = -1
         with self.lock.gen_rlock():
             if name in self.table[0]:
@@ -47,7 +54,13 @@ class _ConcurrentTable:
                 self.table[1][idx] = (Lock(), writer)
         return idx
 
-    def get(self, index):
+    def get(self, index: int) -> Tuple[rwlock.RWLockFair, tensorboardX.SummaryWriter]:
+        """Retrieve a tuple of table identified with `index`.
+
+        :param int index: The table index
+        :return A tuple (rwlock, summarywriter)
+        """
+
         with self.lock.gen_rlock():
             wlock, writer = self.table[1][index]
         return wlock, writer
@@ -56,41 +69,54 @@ class _ConcurrentTable:
 class ExperimentManagerRPCServicer(exprmanager_pb2_grpc.ExperimentManagerRPCServicer):
     def __init__(
         self,
-        global_writer_table,
-        logdir="./",
+        logdir: str = "./",
         flush_freq: int = -1,
-        debug=False,
-        verbose=False,
+        global_writer_table: _ConcurrentTable = None,
+        debug: bool = False,
+        verbose: bool = False,
     ):
         super().__init__()
 
         self.root_dir = logdir
-        self.table = global_writer_table
+        self.table = global_writer_table or _ConcurrentTable()
 
         self.debug = debug
         self.verbose = verbose
 
-    def CreateTable(self, table_name, context):
+    def CreateTable(
+        self, table_name: exprmanager_pb2.TableName, context: Any
+    ) -> exprmanager_pb2.TableKey:
+        """Create a experiment table with given table name and context, then return the corresponding table key.
+        Note the `TableName` is used to generate a directory path for logging saving, which is formmated as `root_dir/table_name.primary/table_name.secondary/tablr_name.src (if not '')`.
+
+        :param exprmanager_pb2.TableName table_name: A TableName instance
+        :param Any context: Cannot determine its usage yet
+        :return exprmanager_pb2.TableKey: The corresponding table key
+        """
+
         if self.debug:
             print(
                 "Get CreateTable Request:\n", dump_dict(grpc_struct_to_dict(table_name))
             )
 
-        rec_path = os.path.join(self.root_dir, table_name.primary, table_name.secondary)
-        try:
-            os.makedirs(rec_path)
-        except Exception as e:
-            if self.verbose:
-                print("Error detected in making directory ", e)
-
+        rec_path = os.path.join(
+            self.root_dir, table_name.primary, table_name.secondary, table_name.src
+        )
         idx = -1
         try:
+            if not os.path.exists(rec_path):
+                os.makedirs(rec_path)
             idx = self.table.put(rec_path)
-        except:
-            traceback.print_exc()
+        except EOFError as e:
+            print("logger server terminated with other erors: {}".format(e))
+            # traceback.print_exc()
+        except KeyboardInterrupt:
+            print("terminating logger server with `KeyboardInterupt detected")
         return exprmanager_pb2.TableKey(key=idx, time=time.time())
 
-    def SendText(self, text, context):
+    def SendText(self, text: str, context) -> exprmanager_pb2.SendReply:
+        """Logging text message."""
+
         if self.debug:
             print("Get SendText Request:\n", text.text)
         try:
@@ -270,18 +296,16 @@ class ExperimentManagerRPCServicer(exprmanager_pb2_grpc.ExperimentManagerRPCServ
 
 
 class ExprManagerServer:
-    table = None
-
     def __init__(
         self, port, logdir="./", grace=5, max_workers=10, debug=False, verbose=False
     ):
         self.port = port
         self.grace = grace
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
-        self.table = _ConcurrentTable()
+        self.tables = []
         exprmanager_pb2_grpc.add_ExperimentManagerRPCServicer_to_server(
             ExperimentManagerRPCServicer(
-                global_writer_table=self.table,
+                # global_writer_table=self.table,
                 logdir=logdir,
                 debug=debug,
                 verbose=verbose,
@@ -294,11 +318,14 @@ class ExprManagerServer:
         self.server.start()
 
     def wait(self):
-        self.server.wait_for_termination()
+        try:
+            self.server.wait_for_termination()
+        except KeyboardInterrupt:
+            print("wait for termination interrupted by keyboard interput")
 
     def stop(self):
         self.server.stop(grace=self.grace)
-        self.table.close()
+        _ = [e.close() for e in self.tables]
 
 
 def _create_logging(**kwargs):

@@ -13,5 +13,5 @@ Submodules
    :maxdepth: 2
 
    malib.algorithm.qmix.loss
-   malib.algorithm.qmix.policy
+   malib.algorithm.qmix.q_mixer
    malib.algorithm.qmix.trainer

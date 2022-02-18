@@ -15,6 +15,9 @@ env_description:
     env_id: "basketball_pong_v2"
     # supersuit wrapper
     # see: https://github.com/PettingZoo-Team/SuperSuit
+    scenario_configs:
+      obs_type: "grayscale_image"
+      num_players: 2
     wrappers:
       # resize_v0: downscale observation for faster processing
       # max_observation_v0: as per openai baseline's MaxAndSKip wrapper, maxes over the last {param} frames
@@ -31,14 +34,16 @@ env_description:
         params:
           env_min: 0.
           env_max: 1.
-    scenario_configs:
       # must be either 2 or 4
-      obs_type: "grayscale_image"
-      num_players: 2
 
 algorithms:
   DQN:
     name: "DQN"
+    custom_config:
+      gamma: 0.98
+      eps_max: 1.0
+      eps_min: 0.1
+      eps_anneal_time: 10000
 
 rollout:
   type: "async"
@@ -46,14 +51,12 @@ rollout:
   fragment_length: 100
   # read rollout config to assign nested workers
   num_episodes: 200
-  episode_seg: 100
+  num_env_per_worker: 50
   terminate: "any"
   stopper: "simple_rollout"
   stopper_config:
     stop_num: 1000
   callback: "simultaneous"
-  # share one rollout worker
-  worker_num: 1
 
 global_evaluator:
   name: "generic"

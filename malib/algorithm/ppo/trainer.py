@@ -19,5 +19,5 @@ class PPOTrainer(Trainer):
         self.loss.step()
         return loss_stats
 
-    def preprocess(self, **kwargs) -> Any:
+    def preprocess(self, batch, **kwargs) -> Any:
         pass

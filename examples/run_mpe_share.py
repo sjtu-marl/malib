@@ -23,7 +23,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     with open(os.path.join(BASE_DIR, args.config), "r") as f:
-        config = yaml.load(f)
+        config = yaml.safe_load(f)
 
     env_desc = config["env_description"]
     env_desc["config"] = env_desc.get("config", {})
@@ -37,6 +37,8 @@ if __name__ == "__main__":
 
     env_desc["possible_agents"] = env.possible_agents
     env.close()
+    env_desc["observation_spaces"] = env.observation_spaces
+    env_desc["action_spaces"] = env.action_spaces
 
     training_config = config["training"]
     rollout_config = config["rollout"]
@@ -57,4 +59,6 @@ if __name__ == "__main__":
         global_evaluator=config["global_evaluator"],
         dataset_config=config.get("dataset_config", {}),
         parameter_server=config.get("parameter_server", {}),
+        use_init_policy_pool=False,
+        task_mode="marl",
     )

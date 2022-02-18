@@ -14,4 +14,4 @@ Submodules
 
    malib.algorithm.ppo.loss
    malib.algorithm.ppo.policy
-   malib.algorithm.ppo.ppo_trainer
+   malib.algorithm.ppo.trainer

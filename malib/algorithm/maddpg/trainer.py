@@ -1,5 +1,5 @@
 from malib.algorithm.common.trainer import Trainer
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
 from .loss import MADDPGLoss
 
 
@@ -27,12 +27,12 @@ class MADDPGTrainer(Trainer):
         """
 
         other_policies = kwargs["other_policies"]
-        for pid, policy in other_policies.items():
-            if batch[pid].get("next_act_by_target") is None:
-                batch[pid][
+        for aid, policy in other_policies.items():
+            if batch[aid].get("next_act_by_target") is None:
+                batch[aid][
                     "next_act_by_target"
                 ] = policy.compute_actions_by_target_actor(
-                    batch[pid][Episode.NEXT_OBS].copy()
+                    batch[aid][EpisodeKey.NEXT_OBS].copy()
                 ).detach()
 
         return batch

@@ -20,7 +20,6 @@ from malib.utils.typing import (
 from malib.algorithm.common.model import get_model
 from malib.utils.preprocessor import get_preprocessor
 from malib.algorithm.common import misc
-from malib.backend.datapool.offline_dataset_server import Episode
 
 
 class AdvIRLReward(Reward):
@@ -90,7 +89,7 @@ class AdvIRLReward(Reward):
 
     @property
     def discriminator(self) -> Any:
-        """ Return reward function, cannot be None """
+        """Return reward function, cannot be None"""
 
         return self._discriminator
 

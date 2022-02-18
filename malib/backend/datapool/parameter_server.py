@@ -1,4 +1,3 @@
-import logging
 import os
 import threading
 
@@ -9,8 +8,7 @@ import pickle5 as pickle
 import ray
 
 from malib import settings
-from malib.utils.logger import get_logger
-from malib.utils import errors
+from malib.utils.logger import Logger
 from malib.algorithm.common.misc import GradientOps
 from malib.utils.typing import (
     Status,
@@ -26,7 +24,7 @@ from malib.utils.typing import (
 PARAMETER_TABLE_NAME_GEN = (
     lambda env_id, agent_id, pid, policy_type: f"{env_id}_{agent_id}_{pid}_{policy_type}"
 )
-DEFAULT_TABLE_SIZE = 2
+
 TableStatus = namedtuple("TableStatus", "locked, gradient_status")
 
 TableStatus.__doc__ = """\
@@ -72,7 +70,7 @@ class Table:
     gradients: List = None
     """A list of stacked gradients, for update parameters."""
 
-    parallel_num: int = 1
+    parallel_num: int = 1  # XXX(ming): consider to use num_copy, not parallel_num
     """Indicates how many copies/parameter learners share this table."""
 
     locked: bool = False
@@ -97,6 +95,17 @@ class Table:
         self._data: Dict[str, Parameter] = dict()
         self.gradients = []
         self._threading_lock = threading.Lock()
+
+    def __setstate__(self, v):
+        self.__dict__ = v
+
+    def __getstate__(self):
+        res = {}
+        for k, v in self.__dict__.items():
+            if k == "_threading_lock":
+                continue
+            res[k] = v
+        return res
 
     @staticmethod
     def parameter_hash_key(parameter_desc: ParameterDescription) -> str:
@@ -124,9 +133,9 @@ class Table:
         )
 
     def _aggregate(self, parameter_desc: ParameterDescription):
-        """Aggregate gradients for policy parameters.
+        """Aggregate gradients.
 
-        :param ParameterDescription parameter_desc: An parameter description entity
+        :param ParameterDescription parameter_desc: A parameter description entity
         """
 
         if len(self.gradients) == self.parallel_num:
@@ -191,10 +200,9 @@ class Table:
                 if len(self.gradients) < self.parallel_num:
                     self.gradient_status = Status.WAITING
                     self.gradients.append(parameter_desc.data)
-                    # try to do aggregation
-                    self._aggregate(parameter_desc)
                 else:
                     raise IndexError("reached maximum")
+                self._aggregate(parameter_desc)
 
     @staticmethod
     def _save_helper_func(obj, fp, candidate_name=""):
@@ -237,25 +245,12 @@ class Table:
             return table
 
 
-@ray.remote
 class ParameterServer:
     """Parameter lib can be initialized with existing database or create a new one"""
 
-    def __init__(self, test_mode=False, **kwargs):
+    def __init__(self, **kwargs):
         self._table: Dict[str, Table] = dict()
         self._table_status: Dict[str, Status] = dict()
-
-        if not test_mode:
-            self.logger = get_logger(
-                log_level=settings.LOG_LEVEL,
-                log_dir=settings.LOG_DIR,
-                name="parameter_server",
-                remote=settings.USE_REMOTE_LOGGER,
-                mongo=settings.USE_MONGO_LOGGER,
-                **kwargs["exp_cfg"],
-            )
-        else:
-            self.logger = logging.getLogger("ParameterServer")
 
         self._threading_lock = threading.Lock()
 
@@ -267,7 +262,26 @@ class ParameterServer:
         self.dump_when_closed = quit_job_config.get("dump_when_closed")
         self.dump_path = quit_job_config.get("path")
 
+    @classmethod
+    def as_remote(
+        cls,
+        num_cpus: int = None,
+        num_gpus: int = None,
+        memory: int = None,
+        object_store_memory: int = None,
+        resources: dict = None,
+    ) -> type:
+        return ray.remote(
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            object_store_memory=object_store_memory,
+            resources=resources,
+        )(cls)
+
     def check_ready(self, parameter_desc):
+        """Check whether current parameter has been updated with stacked gradients"""
+
         table_name = PARAMETER_TABLE_NAME_GEN(
             env_id=parameter_desc.env_id,
             agent_id=parameter_desc.identify,
@@ -301,8 +315,8 @@ class ParameterServer:
             self._table.get(table_name, None) is not None
         ), f"No such a table named={table_name}, {list(self._table.keys())}"
         if self._table[table_name].parallel_num != parameter_desc.parallel_num:
-            # (hanjing): Fix the possible conflicts when recovering from dumped files
-            self.logger.info("Inconsistence found in parallel num, reassigned")
+            # XXX(hanjing): Fix the possible conflicts when recovering from dumped files
+            Logger.info("Inconsistence found in parallel num, reassigned")
             self._table[table_name].parallel_num = parameter_desc.parallel_num
 
         parameter = self._table[table_name].get(parameter_desc)
@@ -339,20 +353,20 @@ class ParameterServer:
                     parallel_num=parameter_desc.parallel_num,
                 )
         else:
-            # (hanjing): Check for consistence
+            # XXX(hanjing): Check for consistence
             assert table.parallel_num == parameter_desc.parallel_num
         self._table[table_name].insert(parameter_desc)
         status = self._table[table_name].status
         return status
 
     def dump(self, file_path=None):
-        """ Export parameters to local storage """
-        # (hanjing): The original implementation directly serialize the table,
-        # however, which contains a threading lock that can not be serialized.
-        # Now reorganize the table when dumping, each table is dumped as a separated
-        # file. Note that consider possible changes in the  parallel num, we will trust
-        # the parallel num recovered from the serialized files. Hence it will be checked and
-        # modified during each pull request if there is a conflict with parameter_desc.parallel_num
+        """Export parameters to local storage"""
+        # XXX(hanjing): The original implementation directly serialize the table,
+        #   however, which contains a threading lock that can not be serialized.
+        #   Now reorganize the table when dumping, each table is dumped as a separated
+        #   file. Note that consider possible changes in the  parallel num, we will trust
+        #   the parallel num recovered from the serialized files. Hence it will be checked and
+        #   modified during each pull request if there is a conflict with parameter_desc.parallel_num
         with self._threading_lock:
             file_path = file_path or settings.PARAM_DIR
 
@@ -366,7 +380,7 @@ class ParameterServer:
         return dumped_list
 
     def load(self, file_path=None, protocol=None):
-        """ Load parameters from local storage """
+        """Load parameters from local storage"""
 
         with self._threading_lock:
             protocol = protocol or settings.PICKLE_PROTOCOL_VER
@@ -378,11 +392,11 @@ class ParameterServer:
                         table = Table.load(os.path.join(file_path, fn))
                         self._table[table.name] = table
                     except Exception as e:
-                        self.logger.error(f"Loading {fn} failed ({e})")
+                        Logger.error(f"Loading {fn} failed ({e})")
 
     def shutdown(self):
         result = None
         if self.dump_when_closed:
             result = self.dump(self.dump_path)
-        self.logger.info(f"Parameter server closed.")
+        Logger.info(f"Parameter server closed.")
         return result

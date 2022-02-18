@@ -1,4 +1,6 @@
-# -*- coding: utf-8 -*-
+"""
+@status: TEST PASSED
+"""
 import argparse
 import datetime
 import os
@@ -6,7 +8,7 @@ import os
 # from pettingzoo.classic import leduc_holdem_v2 as leduc_holdem
 # https://www.pettingzoo.ml/classic/leduc_holdem
 from malib import settings
-from malib.envs import PokerEnv
+from malib.envs import PokerParallelEnv
 from malib.runner import run
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,29 +20,35 @@ parser.add_argument("--num_epoch", type=int, default=8)
 parser.add_argument("--fragment_length", type=int, default=100)
 parser.add_argument("--worker_num", type=int, default=3)
 parser.add_argument("--algorithm", type=str, default="DQN")
-parser.add_argument("--num_total_training_episode", type=int, default=55)
-parser.add_argument("--num_episode", type=int, default=1000)
+parser.add_argument("--num_total_training_episode", type=int, default=1000)
+parser.add_argument("--num_episode", type=int, default=1)
 parser.add_argument("--buffer_size", type=int, default=200000)
 parser.add_argument("--num_simulation", type=int, default=100)
-parser.add_argument("--episode_seg", type=int, default=100)
+parser.add_argument("--episode_seg", type=int, default=1)
 
 args = parser.parse_args()
 
 if __name__ == "__main__":
+
     env_description = {
-        "creator": PokerEnv,
+        "creator": PokerParallelEnv,
         "config": {
             "scenario_configs": {"fixed_player": True},
             "env_id": "leduc_poker",
         },
     }
-
-    env = PokerEnv(**env_description["config"])
+    env = PokerParallelEnv(**env_description["config"])
     possible_agents = env.possible_agents
     observation_spaces = env.observation_spaces
     action_spaces = env.action_spaces
 
     env_description["possible_agents"] = possible_agents
+    env_description.update(
+        {
+            "action_spaces": env.action_spaces,
+            "observation_spaces": env.observation_spaces,
+        }
+    )
 
     run(
         group="psro",
@@ -51,6 +59,7 @@ if __name__ == "__main__":
                 "type": "independent",
                 "observation_spaces": observation_spaces,
                 "action_spaces": action_spaces,
+                "use_init_policy_pool": True,
             },
             "config": {
                 "batch_size": args.batch_size,
@@ -64,7 +73,7 @@ if __name__ == "__main__":
                     "gamma": 1.0,
                     "eps_min": 0,
                     "eps_max": 1.0,
-                    "eps_decay": 100,
+                    "eps_anneal_time": 100,
                     "lr": 1e-2,
                 },
             }
@@ -76,7 +85,9 @@ if __name__ == "__main__":
             "metric_type": "simple",
             "fragment_length": args.fragment_length,
             "num_episodes": args.num_episode,
-            "episode_seg": args.episode_seg,
+            "num_env_per_worker": args.episode_seg,
+            "max_step": 10,
+            "postprocessor_types": ["copy_next_frame"],
         },
         evaluation={
             "max_episode_length": 100,
@@ -89,4 +100,5 @@ if __name__ == "__main__":
             },
         },
         dataset_config={"episode_capacity": args.buffer_size},
+        task_mode="gt",
     )

@@ -180,7 +180,7 @@ class Reward(metaclass=ABCMeta):
         pass
 
     def state_dict(self):
-        """ Return state dict in real time """
+        """Return state dict in real time"""
 
         res = {k: v.state_dict() for k, v in self._state_handler_dict.items()}
         return res

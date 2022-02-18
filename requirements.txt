@@ -1,7 +1,7 @@
 black==20.8b1
 omegaconf==2.0.4
-ray==1.1.0
-pettingzoo
+ray==1.8.0
+pettingzoo==1.9.0
 pytest==6.1.2
 grpcio
 grpcio-tools
@@ -21,3 +21,10 @@ gym==0.18.0
 dataclasses==0.6
 wrapt==1.12.1
 PyYAML==5.4.1
+supersuit==2.6.6
+multi-agent-ale-py==0.1.11
+autorom==0.1.20
+black==20.8b1
+sphinx
+sphinx-rtd-theme
+sphinxcontrib-apidoc

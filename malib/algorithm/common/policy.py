@@ -6,10 +6,19 @@ import gym
 
 from abc import ABCMeta, abstractmethod
 
+import torch
 import torch.nn as nn
 
 from malib.utils import errors
-from malib.utils.typing import DataTransferType, ModelConfig, Dict, Any, Tuple, Callable
+from malib.utils.typing import (
+    DataTransferType,
+    ModelConfig,
+    Dict,
+    Any,
+    Tuple,
+    Callable,
+    List,
+)
 from malib.utils.preprocessor import get_preprocessor, Mode
 from malib.utils.notations import deprecated
 
@@ -56,6 +65,7 @@ class Policy(metaclass=ABCMeta):
         action_space: gym.spaces.Space,
         model_config: ModelConfig = None,
         custom_config: Dict[str, Any] = None,
+        **kwargs,
     ):
         """Create a policy instance.
 
@@ -70,9 +80,10 @@ class Policy(metaclass=ABCMeta):
         self.registered_name = registered_name
         self.observation_space = observation_space
         self.action_space = action_space
+        self.device = torch.device("cpu")
 
         self.custom_config = {
-            "gamma": 0.98,
+            "gamma": 0.99,
             "use_cuda": False,
             "use_dueling": False,
             "preprocess_mode": Mode.FLATTEN,
@@ -96,6 +107,7 @@ class Policy(metaclass=ABCMeta):
         self._actor = None
         self._critic = None
         self._exploration_callback = None
+        self._kwargs = kwargs
 
     @property
     def exploration_callback(self) -> Callable:
@@ -174,20 +186,21 @@ class Policy(metaclass=ABCMeta):
         - action_mask: action mask.
         """
 
-        pass
-
     @abstractmethod
     def compute_action(
         self, observation: DataTransferType, **kwargs
-    ) -> Tuple[Any, Any, Any]:
+    ) -> Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
         """Compute single action when rollout at each step, return 3 elements:
-        action, None, extra_info['actions_prob']
+        action, action_dist, a list of rnn_state
         """
 
-        pass
+    def get_initial_state(self, batch_size: int = None) -> List[DataTransferType]:
+        """Return a list of rnn states if models are rnns"""
+
+        return []
 
     def state_dict(self):
-        """ Return state dict in real time """
+        """Return state dict in real time"""
 
         res = {k: v.state_dict() for k, v in self._state_handler_dict.items()}
         return res
@@ -204,6 +217,7 @@ class Policy(metaclass=ABCMeta):
         for k, v in state_dict.items():
             self._state_handler_dict[k].load_state_dict(v)
 
+    # XXX(ziyu): Add tests for it.
     def set_weights(self, parameters: Dict[str, Any]):
         """Set parameter weights.
 
@@ -234,13 +248,13 @@ class Policy(metaclass=ABCMeta):
 
     @property
     def actor(self) -> Any:
-        """ Return policy, cannot be None """
+        """Return policy, cannot be None"""
 
         return self._actor
 
     @property
     def critic(self) -> Any:
-        """ Return critic, can be None """
+        """Return critic, can be None"""
 
         return self._critic
 
@@ -251,3 +265,16 @@ class Policy(metaclass=ABCMeta):
     @deprecated
     def eval(self):
         pass
+
+    # @abstractmethod
+    def reset(self):
+        """Reset policy intermediates"""
+        pass
+
+    def to_device(self, device):
+        self.device = device
+        return self
+
+    def value_function(self, *args, **kwargs):
+        """Compute values of critic."""
+        raise NotImplementedError

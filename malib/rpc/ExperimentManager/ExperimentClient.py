@@ -14,13 +14,25 @@ from malib.utils.configs.config import EXPERIMENT_MANAGER_CONFIG as CONFIG
 
 
 class ExprManagerClient:
-    def __init__(self, server_addr, nid, log_level, *args, **kwargs):
-        self._server_addr = server_addr
-        self._executor = ThreadPoolExecutor()
+    def __init__(self, server_addr: str, nid: str, log_level: int, *args, **kwargs):
+        """Initialize an independent experiment logging client.
 
+        :param str server_addr: The experiment server address
+        :param str nid: Client's human readable name
+        :param int log_level: Logging level
+        :param tuple args: A tuple of args
+        :param dict kwargs: A dict of args
+        """
+
+        self._server_addr = server_addr
+        self._executor = ThreadPoolExecutor(max_workers=10)
+
+        # a copy of default experiment manager config
         self._config = CONFIG.copy()
-        self._config["nid"] = nid
+        # update name and logging level
+        self._config["nid"] = nid or ""
         self._config["log_level"] = log_level
+        self.is_remote = True
 
     @staticmethod
     def _chunk_generator_wrapper(
@@ -53,6 +65,14 @@ class ExprManagerClient:
     def create_table(
         self, primary=None, secondary=None, nid=None, blocking=False, *args, **kwargs
     ):
+        """Create a logging table.
+
+        :param str primary: None,
+        :param str secondary: None,
+        :param str nid: None
+        :param bool blocking: None
+        """
+
         _call_params = {
             "server_addr": self._server_addr,
             "primary": self._config["primary"] if primary is None else primary,
@@ -192,7 +212,7 @@ class ExprManagerClient:
         )
 
     @staticmethod
-    def _send_scalar(server_addr, key, tag, nid, content, step, time):
+    def _send_scalar(server_addr: str, key: str, tag, nid, content, step, time):
         with grpc.insecure_channel(server_addr) as channel:
             stub = exprmanager_pb2_grpc.ExperimentManagerRPCStub(channel)
             # FIXME(ming): blocked here

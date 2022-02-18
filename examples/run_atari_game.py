@@ -1,12 +1,13 @@
 """
 Share an agent interface
+
+@status: TEST PASSED
 """
 import argparse
-
 import yaml
 import os
 
-from malib.envs.maatari.env import MAAtari
+from malib.envs.maatari import env_desc_gen
 from malib.runner import run
 
 
@@ -25,17 +26,11 @@ if __name__ == "__main__":
         config = yaml.load(f)
 
     env_desc = config["env_description"]
-    env_desc["config"] = env_desc.get("config", {})
-    # load creator
-    env_desc["creator"] = MAAtari
-    env = MAAtari(**env_desc["config"])
+    env_desc = env_desc_gen(**env_desc["config"])
 
-    traianable_agents = env.trainable_agents
-    observation_spaces = env.observation_spaces
-    action_spaces = env.action_spaces
-
-    env_desc["possible_agents"] = env.trainable_agents
-    env.close()
+    traianable_agents = env_desc["possible_agents"]
+    observation_spaces = env_desc["observation_spaces"]
+    action_spaces = env_desc["action_spaces"]
 
     training_config = config["training"]
     rollout_config = config["rollout"]

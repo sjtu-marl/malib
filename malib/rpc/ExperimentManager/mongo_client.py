@@ -78,6 +78,7 @@ class MongoClient:
             args=(heart_beat_freq, heart_beat_max_trail, self._config["nid"]),
         )
         self._hb_thread.daemon = True
+        self.is_remote = True
 
     @staticmethod
     def init_expr(

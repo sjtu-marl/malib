@@ -26,7 +26,7 @@ rollout:
   metric_type: "simple"
   fragment_length: 500
   num_episodes: 250
-  episode_seg: 25
+  num_env_per_worker: 25
   terminate: "any"
   # can be sequential or simultaneous
 

@@ -8,13 +8,12 @@ import hashlib
 import os
 import time
 
-import psutil
 import ray
 import logging
 
 
 from malib import settings
-from malib.rollout import get_rollout_worker, RolloutWorker
+from malib.rollout.rollout_worker import RolloutWorker
 from malib.utils.typing import (
     TaskDescription,
     TaskRequest,
@@ -23,7 +22,7 @@ from malib.utils.typing import (
     Dict,
     Any,
 )
-from malib.utils.logger import get_logger
+from malib.utils.logger import Logger
 
 
 def _get_worker_hash_idx(idx):
@@ -54,7 +53,7 @@ class RolloutWorkerManager:
         self._metric_type = rollout_config["metric_type"]
 
         worker_num = rollout_config["worker_num"]
-        rollout_worker_cls = get_rollout_worker(rollout_config["type"])
+        rollout_worker_cls = RolloutWorker
 
         worker_cls = rollout_worker_cls.as_remote(
             num_cpus=None,
@@ -70,40 +69,23 @@ class RolloutWorkerManager:
                 worker_index=worker_idx,
                 env_desc=self._env_desc,
                 metric_type=self._metric_type,
-                test=False,
                 remote=True,
                 save=rollout_config.get("save_model", False),
                 # parallel_num: the size of actor pool for rollout and simulation
-                parallel_num=rollout_config["num_episodes"]
-                // rollout_config["episode_seg"],
+                num_rollout_actors=rollout_config["num_episodes"]
+                // rollout_config["num_env_per_worker"],
+                num_eval_actors=1,
+                use_subproc_env=rollout_config.get("use_subproc_env", False),
                 exp_cfg=exp_cfg,
+                batch_mode=rollout_config.get("batch_mode", "time_step"),
+                postprocessor_types=rollout_config.get(
+                    "postprocessor_types", ["default"]
+                ),
             )
-            if rollout_config.get("test_num_episodes", 0) > 0:
-                worker_idx = _get_worker_hash_idx(i + worker_num)
-                self._workers[worker_idx] = worker_cls.options(
-                    max_concurrency=100
-                ).remote(
-                    worker_index=worker_idx,
-                    env_desc=self._env_desc,
-                    metric_type=self._metric_type,
-                    test=True,
-                    remote=True,
-                    save=False,
-                    # parallel_num: the size of actor pool for rollout and simulation
-                    parallel_num=rollout_config["test_num_episodes"]
-                    // rollout_config["test_episode_seg"],
-                    exp_cfg=exp_cfg,
-                )
 
-        self.logger = get_logger(
-            log_level=settings.LOG_LEVEL,
-            log_dir=settings.LOG_DIR,
-            name="rollout_worker_manager",
-            remote=settings.USE_REMOTE_LOGGER,
-            mongo=settings.USE_MONGO_LOGGER,
-            **exp_cfg,
+        Logger.info(
+            f"RolloutWorker manager launched, {len(self._workers)} rollout worker(s) alives."
         )
-        print(f"Created {len(self._workers)} rollout worker(s) ...")
 
     def retrieve_information(self, task_request: TaskRequest) -> TaskRequest:
         """Retrieve information from other agent interface. Default do nothing and return the original task request.
@@ -114,7 +96,7 @@ class RolloutWorkerManager:
 
         return task_request
 
-    def get_idle_worker(self, test: bool = False) -> Tuple[str, RolloutWorker]:
+    def get_idle_worker(self) -> Tuple[str, RolloutWorker]:
         """Wait until an idle worker is available.
 
         :return: A tuple of worker index and worker.
@@ -125,8 +107,7 @@ class RolloutWorkerManager:
         while status == Status.FAILED:
             for idx, t in self._workers.items():
                 wstatus = ray.get(t.get_status.remote())
-                wtest = ray.get(t.get_test.remote())
-                if wstatus == Status.IDLE and wtest == test:
+                if wstatus == Status.IDLE:
                     status = ray.get(t.set_status.remote(Status.LOCKED))
                 if status == Status.SUCCESS:
                     worker_idx = idx
@@ -135,15 +116,12 @@ class RolloutWorkerManager:
         return worker_idx, worker
 
     def simulate(self, task_desc: TaskDescription, worker_idx=None):
-        """ Parse simulation task and dispatch it to available workers """
+        """Parse simulation task and dispatch it to available workers"""
 
-        self.logger.debug(
-            f"got simulation task from handler: {task_desc.content.agent_involve_info.training_handler}"
-        )
         worker_idx, worker = self.get_idle_worker()
         worker.simulation.remote(task_desc)
 
-    def rollout(self, task_desc: TaskDescription, test: bool = False) -> None:
+    def rollout(self, task_desc: TaskDescription) -> None:
         """Parse rollout task and dispatch it to available worker.
 
         :param TaskDescription task_desc: A task description.
@@ -151,13 +129,12 @@ class RolloutWorkerManager:
         """
 
         # split into several sub tasks rollout
-        worker_idx, worker = self.get_idle_worker(test=test)
+        worker_idx, worker = self.get_idle_worker()
         worker.rollout.remote(task_desc)
 
     def terminate(self):
-        """ Stop all remote workers """
+        """Stop all remote workers"""
 
         for worker in self._workers.values():
             worker.close.remote()
-            worker.stop.remote()
-            worker.__ray_terminate__.remote()
+            ray.kill(worker)

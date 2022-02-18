@@ -25,9 +25,7 @@ rollout:
   metric_type: "simple"
   fragment_length: 200
   num_episodes: 100
-  episode_seg: 25
-  test_num_episodes: 0
-  test_episode_seg: 5
+  num_env_per_worker: 25
   terminate: "any"
   callback: "simultaneous"
   save_model: True
@@ -35,7 +33,7 @@ rollout:
 env_description:
   creator: "Gym"
   config:
-    env_id: "Pendulum-v0"
+    env_id: "Pendulum-v1"
 
 algorithms:
   DDPG:

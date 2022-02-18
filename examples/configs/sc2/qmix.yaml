@@ -1,0 +1,65 @@
+group: "SC2"
+name: "share/qmix"
+
+training:
+  interface:
+    type: "centralized"
+    population_size: -1
+  config:
+    # control the frequency of remote parameter update
+    update_interval: 1
+    batch_size: 1024
+    optimizer: "Adam"
+    lr: 0.0005
+    tau: 0.01  # soft update
+
+rollout:
+  type: "async"
+  stopper: "simple_rollout"
+  stopper_config:
+    max_step: 10000
+  metric_type: "simple"
+  fragment_length: 100
+  num_episodes: 4
+  episode_seg: 1
+  terminate: "any"
+  num_env_per_worker: 1
+  postprocessor_types:
+    - copy_next_frame
+
+env_description:
+  #  scenario_name: "simple_spread"
+  creator: "SC2"
+  config:
+    env_id: "3m"
+    scenario_configs:
+      map_name: "3m"
+
+algorithms:
+  QMIX:
+    name: "QMIX"
+
+    # set hyper parameter
+    model_config:
+      critic:
+        network: mlp
+        layers:
+          - units: 64
+            activation: ReLU
+          - units: 64
+            activation: ReLU
+        output:
+          activation: Identity
+    custom_config:
+      eps_min: 0.05
+      eps_max: 1.0
+      eps_anneal_time: 50000
+      gamma: 0.99
+      use_cuda: False  # enable cuda or not
+
+global_evaluator:
+  name: "generic"
+
+dataset_config:
+  episode_capacity: 100000
+  learning_start: 100

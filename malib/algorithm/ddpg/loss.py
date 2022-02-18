@@ -4,7 +4,7 @@ import torch
 
 from malib.algorithm.common.loss_func import LossFunc
 from malib.algorithm.common import misc
-from malib.backend.datapool.offline_dataset_server import Episode
+from malib.utils.episode import EpisodeKey
 
 
 class DDPGLoss(LossFunc):
@@ -16,9 +16,6 @@ class DDPGLoss(LossFunc):
         if policy is not self.policy:
             self._policy = policy
             self.setup_optimizers()
-
-    def zero_grad(self):
-        _ = [p.zero_grad() for p in self.optimizers.values()]
 
     def step(self):
         self.policy.soft_update(self._params["tau"])
@@ -46,20 +43,12 @@ class DDPGLoss(LossFunc):
                 {"params": self.policy.critic.parameters()}
             )
 
-    def __call__(self, batch) -> Dict[str, Any]:
-
-        FloatTensor = (
-            torch.cuda.FloatTensor
-            if self.policy.custom_config["use_cuda"]
-            else torch.FloatTensor
-        )
-        cast_to_tensor = lambda x: FloatTensor(x.copy())
-
-        rewards = cast_to_tensor(batch[Episode.REWARD]).view(-1, 1)
-        actions = cast_to_tensor(batch[Episode.ACTION_DIST])
-        cur_obs = cast_to_tensor(batch[Episode.CUR_OBS])
-        next_obs = cast_to_tensor(batch[Episode.NEXT_OBS])
-        dones = cast_to_tensor(batch[Episode.DONE]).view(-1, 1)
+    def loss_compute(self, batch) -> Dict[str, Any]:
+        rewards = batch[EpisodeKey.REWARD].view(-1, 1)
+        actions = batch[EpisodeKey.ACTION_DIST]
+        cur_obs = batch[EpisodeKey.CUR_OBS]
+        next_obs = batch[EpisodeKey.NEXT_OBS]
+        dones = batch[EpisodeKey.DONE].view(-1, 1)
         cliprange = self._params["grad_norm_clipping"]
         gamma = self.policy.custom_config["gamma"]
 
@@ -98,8 +87,8 @@ class DDPGLoss(LossFunc):
         loss_names = ["policy_loss", "value_loss", "target_value_est", "eval_value_est"]
 
         stats_list = [
-            policy_loss.detach().numpy(),
-            value_loss.detach().numpy(),
+            policy_loss.detach().item(),
+            value_loss.detach().item(),
             target_value.mean().item(),
             actual_value.mean().item(),
         ]

@@ -12,10 +12,13 @@ from malib import settings
 from malib.agent import get_training_agent
 from malib.agent.agent_interface import AgentFeedback, AgentTaggedFeedback
 from malib.gt.algos.exploitability import measure_exploitability
-from malib.utils.logger import get_logger, Log
+from malib.utils.logger import Log, Logger
 from malib.utils.typing import (
     List,
+    Tuple,
+    PolicyConfig,
     TaskType,
+    AgentID,
     PolicyID,
     TaskRequest,
     TrainingFeedback,
@@ -57,14 +60,7 @@ class TrainingManager:
         training_agent_mapping = training_agent_mapping or (lambda agent_id: agent_id)
 
         # FIXME(ming): resource configuration is not available now, will open in the next version
-        agent_cls = agent_cls.as_remote(
-            **interface_config["worker_config"]
-            # num_cpus=None,
-            # num_gpus=None,
-            # memory=None,
-            # object_store_memory=None,
-            # resources=None,
-        )
+        agent_cls = agent_cls.as_remote(**interface_config.get("worker_config", {}))
 
         self._agents = {}
         groups = (
@@ -83,15 +79,16 @@ class TrainingManager:
                     self._agents[training_aid] = agent_cls.options(
                         max_concurrency=100
                     ).remote(
-                        training_aid,
-                        env_desc,
-                        algorithms,
-                        training_agent_mapping,
-                        interface_config["observation_spaces"],
-                        interface_config["action_spaces"],
-                        exp_cfg,
-                        interface_config["population_size"],
-                        interface_config["algorithm_mapping"],
+                        assign_id=training_aid,
+                        env_desc=env_desc,
+                        algorithm_candidates=algorithms,
+                        training_agent_mapping=training_agent_mapping,
+                        observation_spaces=interface_config["observation_spaces"],
+                        action_spaces=interface_config["action_spaces"],
+                        exp_cfg=exp_cfg,
+                        use_init_policy_pool=interface_config["use_init_policy_pool"],
+                        population_size=interface_config["population_size"],
+                        algorithm_mapping=interface_config["algorithm_mapping"],
                     )
                 # register trainable env agents
                 self._agents[training_aid].register_env_agent.remote(env_aid)
@@ -102,23 +99,17 @@ class TrainingManager:
         _ = ray.get([agent.start.remote() for agent in self._agents.values()])
 
         self._groups = groups
-        self.proc = psutil.Process(os.getpid())
 
-        self.logger = get_logger(
-            log_level=settings.LOG_LEVEL,
-            log_dir=settings.LOG_DIR,
-            name="training_manager",
-            remote=settings.USE_REMOTE_LOGGER,
-            mongo=settings.USE_MONGO_LOGGER,
-            **exp_cfg,
+        Logger.info(
+            f"training manager launched, {len(self._agents)} learner(s) created"
         )
-        self.logger.debug(f"{len(self._agents)} agents have been created")
 
     def get_agent_interface_num(self) -> int:
+        """Get the number of agent interfaces."""
+
         return len(self._agents)
 
-    @Log.method_timer(enable=settings.PROFILING)
-    def init(self) -> None:
+    def init(self, state_id: str) -> None:
         """Initialize all training agents. Add fixed policies for them.
 
         :return: None
@@ -137,7 +128,7 @@ class TrainingManager:
                                 populations={},
                             ),
                         ),
-                        state_id=None,
+                        state_id=state_id,
                     )
                 )
             )
@@ -163,7 +154,7 @@ class TrainingManager:
         agent_interface = self._agents[interface_id]
         agent_interface.add_policy.remote(task)
 
-    @Log.method_timer(enable=settings.PROFILING)
+    # @Log.method_timer(enable=settings.PROFILING)
     def optimize(self, task: TaskDescription) -> None:
         """Dispatch optimization tasks to training agent interface.
 
@@ -176,19 +167,15 @@ class TrainingManager:
         interface.train.remote(task, self._training_config)
 
     def _get_population_desc(
-        self, state_id: ray.ObjectID
-    ) -> Dict[PolicyID, Sequence[Any]]:
+        self, state_id: str
+    ) -> Dict[AgentID, List[Tuple[PolicyID, PolicyConfig]]]:
         """Return stationary population description with given state_id which is related to a muted object stored as a
         Ray object.
 
-        :param ray.ObjectID state_id: A muted object id.
         :return: A dictionary describes the population
         """
 
-        tasks = [
-            agent.get_stationary_state.remote(state_id)
-            for agent in self._agents.values()
-        ]
+        tasks = [agent.get_stationary_state.remote() for agent in self._agents.values()]
         populations = {}
 
         while len(tasks) > 0:
@@ -202,7 +189,7 @@ class TrainingManager:
 
         return populations
 
-    @Log.method_timer(enable=settings.PROFILING)
+    # @Log.method_timer(enable=settings.PROFILING)
     def retrieve_information(self, task_request: TaskRequest) -> TaskRequest:
         """Fill task request with a training feedback if possible. If there already is a training feedback entity
         assigned to `task_request.content`, return the original task request directly.
@@ -213,10 +200,9 @@ class TrainingManager:
         """
 
         if isinstance(task_request.content, AgentFeedback):
-            populations = self._get_population_desc(task_request.content.state_id)
+            populations = self._get_population_desc(task_request.state_id)
             tasks = [
-                agent.require_parameter_desc.remote(task_request.content.state_id)
-                for agent in self._agents.values()
+                agent.require_parameter_desc.remote() for agent in self._agents.values()
             ]
 
             # state_id = task_request.content.get("state_id", None) or ray.put(populations)
@@ -228,7 +214,7 @@ class TrainingManager:
             task_request.content = TrainingFeedback(
                 agent_involve_info=AgentInvolveInfo(
                     training_handler=task_request.content.id,
-                    env_id=self._env_description["id"],
+                    env_id=self._env_description["config"]["env_id"],
                     populations=populations,
                     trainable_pairs=task_request.content.trainable_pairs,
                     meta_parameter_desc_dict=meta_parameter_desc_dict,
@@ -250,7 +236,7 @@ class TrainingManager:
 
         for agent in self._agents.values():
             # TODO(ming): save interval state
-            agent.exit_actor()
+            ray.kill(agent)
         del self._agents
 
     def get_exp(self, policy_distribution):

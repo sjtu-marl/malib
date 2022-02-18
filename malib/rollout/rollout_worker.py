@@ -1,25 +1,17 @@
 """
 Implementation of async rollout worker.
 """
-from collections import defaultdict
-from malib.algorithm.common.policy import Policy
 
-import ray
 from ray.util import ActorPool
 
-import uuid
-from malib import settings
-from malib import rollout
-from malib.backend.datapool.offline_dataset_server import Episode, MultiAgentEpisode
 from malib.envs.agent_interface import AgentInterface
 from malib.rollout import rollout_func
 from malib.rollout.base_worker import BaseRolloutWorker
-from malib.utils.logger import Log, get_logger
 from malib.utils.typing import (
     AgentID,
     Any,
+    BufferDescription,
     Dict,
-    BehaviorMode,
     PolicyID,
     Tuple,
     Sequence,
@@ -34,9 +26,6 @@ class RolloutWorker(BaseRolloutWorker):
         self,
         worker_index: Any,
         env_desc: Dict[str, Any],
-        metric_type: str,
-        test: bool = False,
-        remote: bool = False,
         save: bool = False,
         **kwargs,
     ):
@@ -45,15 +34,14 @@ class RolloutWorker(BaseRolloutWorker):
 
         :param Any worker_index: Indicates rollout worker
         :param Dict[str,Any] env_desc: The environment description
-        :param str metric_type: Name of registered metric handler
         :param bool remote: Indicates this rollout worker work in remote mode or not, default by False
         """
 
-        BaseRolloutWorker.__init__(
-            self, worker_index, env_desc, metric_type, test, remote, save, **kwargs
-        )
+        BaseRolloutWorker.__init__(self, worker_index, env_desc, save, **kwargs)
 
-        self._parallel_num = kwargs.get("parallel_num", 1)
+        self._num_rollout_actors = kwargs.get("num_rollout_actors", 1)
+        self._num_eval_actors = kwargs.get("num_eval_actors", 1)
+        # XXX(ming): computing resources for rollout / evaluation
         self._resources = kwargs.get(
             "resources",
             {
@@ -65,39 +53,37 @@ class RolloutWorker(BaseRolloutWorker):
             },
         )
 
-        self.actor_pool = None
-        if remote:
-            assert (
-                self._parallel_num > 0
-            ), f"parallel_num should be positive, while parallel_num={self._parallel_num}"
+        assert (
+            self._num_rollout_actors > 0
+        ), f"num_rollout_actors should be positive, but got `{self._num_rollout_actors}`"
 
-            Stepping = rollout_func.Stepping.as_remote(**self._resources)
-            self.actors = [
-                Stepping.remote(kwargs["exp_cfg"], env_desc, self._offline_dataset)
-                for _ in range(self._parallel_num)
-            ]
-            self.actor_pool = ActorPool(self.actors)
-
-    def check_actor_pool_available(self):
-        if self.actor_pool is None:
-            # create actor pool
-            self.logger.warning(
-                "Actor pool has not been created yet, will generate a new one."
+        Stepping = rollout_func.Stepping.as_remote(**self._resources)
+        self.actors = [
+            Stepping.remote(
+                kwargs["exp_cfg"],
+                env_desc,
+                self._offline_dataset,
+                use_subproc_env=kwargs["use_subproc_env"],
+                batch_mode=kwargs["batch_mode"],
+                postprocessor_types=kwargs["postprocessor_types"],
             )
-            assert (
-                self._parallel_num > 0
-            ), f"parallel_num should be positive, while parallel_num={self._parallel_num}"
-
-            Stepping = rollout_func.Stepping.as_remote(**self._resources)
-            self.actors = [
+            for _ in range(self._num_rollout_actors)
+        ]
+        self.rollout_actor_pool = ActorPool(self.actors[: self._num_rollout_actors])
+        self.actors.extend(
+            [
                 Stepping.remote(
-                    self._kwargs["exp_cfg"],
-                    self._env_description,
-                    self._offline_dataset,
+                    kwargs["exp_cfg"],
+                    env_desc,
+                    None,
+                    use_subproc_env=kwargs["use_subproc_env"],
+                    batch_mode=kwargs["batch_mode"],
+                    postprocessor_types=kwargs["postprocessor_types"],
                 )
-                for _ in range(self._parallel_num)
+                for _ in range(self._num_eval_actors)
             ]
-            self.actor_pool = ActorPool(self.actors)
+        )
+        self.eval_actor_pool = ActorPool(self.actors[self._num_eval_actors :])
 
     def ready_for_sample(self, policy_distribution=None):
         """Reset policy behavior distribution.
@@ -109,91 +95,81 @@ class RolloutWorker(BaseRolloutWorker):
 
     def sample(
         self,
-        callback: type,
         num_episodes: int,
         fragment_length: int,
         role: str,
         policy_combinations: List,
-        explore: bool = True,
-        threaded: bool = True,
         policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
-        episodes: Dict[AgentID, Episode] = None,
-    ) -> Tuple[Sequence[Dict], Sequence[Any]]:
-        """Sample function. Support rollout and simulation. Default in threaded mode."""
-
-        if explore:
-            for interface in self._agent_interfaces.values():
-                interface.set_behavior_mode(BehaviorMode.EXPLORATION)
-        else:
-            for interface in self._agent_interfaces.values():
-                interface.set_behavior_mode(BehaviorMode.EXPLOITATION)
+        buffer_desc: BufferDescription = None,
+    ) -> Tuple[Sequence[Dict[str, List]], int]:
+        """Sample function, handling rollout or simulation tasks."""
 
         if role == "simulation":
             tasks = [
-                {"num_episodes": num_episodes, "behavior_policies": comb}
+                {
+                    "num_episodes": num_episodes,
+                    "behavior_policies": comb,
+                    "flag": "simulation",
+                }
                 for comb in policy_combinations
             ]
+            actor_pool = self.eval_actor_pool
         elif role == "rollout":
-            seg_num = self._parallel_num
+            seg_num = self._num_rollout_actors
             x = num_episodes // seg_num
             y = num_episodes - seg_num * x
             episode_segs = [x] * seg_num + ([y] if y else [])
             assert len(policy_combinations) == 1
-            # FIXME(ming): here the policy combinations[0] is actually produced from the trainiable pairs.
-            #   so we need to init behavior policies for other fixed agents
             assert policy_distribution is not None
             tasks = [
                 {
+                    "flag": "rollout",
                     "num_episodes": episode,
                     "behavior_policies": policy_combinations[0],
                     "policy_distribution": policy_distribution,
                 }
                 for episode in episode_segs
             ]
+            # add tasks for evaluation
+            tasks.extend(
+                [
+                    {
+                        "flag": "evaluation",
+                        "num_episodes": 10,  # FIXME(ziyu): fix it and debug
+                        "behavior_policies": policy_combinations[0],
+                        "policy_distribution": policy_distribution,
+                    }
+                    for _ in range(self._num_eval_actors)
+                ]
+            )
+            actor_pool = self.rollout_actor_pool
         else:
             raise TypeError(f"Unkown role: {role}")
 
-        if threaded:
-            self.check_actor_pool_available()
-            rets = self.actor_pool.map(
-                lambda a, task: a.run.remote(
-                    agent_interfaces=self._agent_interfaces,
-                    metric_type=self._metric_type,
-                    fragment_length=fragment_length,
-                    desc=task,
-                    callback=callback,
-                    role=role,
-                    episodes=episodes,
-                ),
-                tasks,
-            )
-        else:
-            step_func = rollout_func.Stepping(
-                self._kwargs["exp_cfg"], env_desc=self._env_description
-            )
-            rets = [
-                step_func.run(
-                    self._agent_interfaces,
-                    self._metric_type,
-                    fragment_length=fragment_length,
-                    desc=task,
-                    callback=callback,
-                    role=role,
-                    episodes=episodes,
-                )
-                for task in tasks
-            ]
+        # self.check_actor_pool_available()
+        rets = actor_pool.map(
+            lambda a, task: a.run.remote(
+                agent_interfaces=self._agent_interfaces,
+                fragment_length=fragment_length,
+                desc=task,
+                buffer_desc=buffer_desc,
+            ),
+            tasks,
+        )
 
         num_frames, stats_list = 0, []
         for ret in rets:
-            stats_list.append(ret[0])
-            num_frames += ret[1]
+            # we retrieve only results from evaluation/simulation actors.
+            if ret[0] in ["evaluation", "simulation"]:
+                stats_list.append(ret[1]["eval_info"])
+            # and total fragment length tracking from rollout actors
+            if ret[0] == "rollout":
+                num_frames += ret[1]["total_fragment_length"]
 
         return stats_list, num_frames
 
-    # @Log.method_timer(enable=False)
     def update_population(self, agent, policy_id, policy):
-        """ Update population with an existing policy instance """
+        """Update population with an existing policy instance"""
 
         agent_interface: AgentInterface = self._agent_interfaces[agent]
         agent_interface.policies[policy_id] = policy
