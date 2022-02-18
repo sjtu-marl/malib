@@ -8,7 +8,7 @@ function check_python_version_gte_3_6 {
 
 function do_install_for_linux {
     echo "Installing python dependencies"
-    sudo apt-get install graphviz
+    sudo apt-get install graphviz cmake clang
     pip install --upgrade pip==21.0.1
     pip install -e .
     pip install pydot
@@ -24,11 +24,6 @@ function do_install_for_linux {
     echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco200/bin" >> $HOME/.bashrc
     source $HOME/.bashrc
     rm /tmp/mujoco200_linux.zip
-
-    echo "Installing ZDoom dependencies"
-    sudo apt install build-essential zlib1g-dev libsdl2-dev libjpeg-dev \
-    nasm tar libbz2-dev libgtk2.0-dev cmake git libfluidsynth-dev libgme-dev \
-    libopenal-dev timidity libwildmidi-dev unzip cmake
 
     echo "Install StarCraftII environments"
     sh malib/envs/star_craft2/install.sh
