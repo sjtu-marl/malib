@@ -11,6 +11,7 @@ from malib.utils.typing import (
     PolicyID,
 )
 
+from malib.utils.logger import Logger
 from malib.agent.agent_interface import AgentInterface
 from malib.algorithm.common.policy import Policy
 from malib.algorithm import get_algorithm_space
@@ -120,6 +121,8 @@ class IndependentAgent(AgentInterface):
         pid = self.default_policy_id_gen(algorithm_conf)
         self._policies[pid] = policy.to_device(self._device) if trainable else policy
         self._trainers[pid] = algorithm.trainer(env_agent_id)
+
+        Logger.info("current trainesf: {}".format(self._trainers))
 
         return pid, policy
 

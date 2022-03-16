@@ -73,7 +73,6 @@ class RolloutWorker(BaseRolloutWorker):
         self.actors.extend(
             [
                 Stepping.remote(
-                    kwargs["exp_cfg"],
                     env_desc,
                     None,
                     use_subproc_env=kwargs["use_subproc_env"],

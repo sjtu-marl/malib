@@ -395,9 +395,7 @@ class Table:
 
 @ray.remote
 class OfflineDataset:
-    def __init__(
-        self, dataset_config: Dict[str, Any], exp_cfg: Dict[str, Any], test_mode=False
-    ):
+    def __init__(self, dataset_config: Dict[str, Any], exp_cfg: Dict[str, Any]):
         self._episode_capacity = dataset_config.get(
             "episode_capacity", settings.DEFAULT_EPISODE_CAPACITY
         )
@@ -487,7 +485,7 @@ class OfflineDataset:
         else:
             return Status.FAILED
 
-    def create_table(self, buffer_desc: BufferDescription):
+    def create_table(self, buffer_desc: BufferDescription, ignore=True):
         name = Table.gen_table_name(
             env_id=buffer_desc.env_id,
             main_id=buffer_desc.agent_id,
@@ -495,8 +493,10 @@ class OfflineDataset:
         )
 
         if name in self._tables:
-            raise Warning("Repeated table definite: {}".format(name))
+            if not ignore:
+                raise Warning("Repeated table definite: {}".format(name))
             # return None
+            pass
         else:
             self._tables[name] = Table(
                 self._episode_capacity,
@@ -522,7 +522,7 @@ class OfflineDataset:
             table = self._tables[table_name]
             indices = table.get_consumer_index(buffer_desc.batch_size)
         except KeyError:
-            # Logger.warn("table {} not ready yet for indexing".format(table_name))
+            Logger.warn("table {} not ready yet for indexing".format(table_name))
             indices = None
 
         return Batch(buffer_desc.identify, indices)

@@ -376,6 +376,7 @@ class AgentInterface(metaclass=ABCMeta):
                     ):
                         break
                     else:
+                        time.sleep(1)
                         continue
                 else:
                     buffer_desc.indices = batch.data

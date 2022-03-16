@@ -334,7 +334,6 @@ def env_runner(
 class Stepping:
     def __init__(
         self,
-        exp_cfg: Dict[str, Any],
         env_desc: Dict[str, Any],
         dataset_server=None,
         use_subproc_env: bool = False,

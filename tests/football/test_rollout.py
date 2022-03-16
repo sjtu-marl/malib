@@ -5,121 +5,34 @@ import tabulate
 import pytest
 import threading
 import ray
-import numpy as np
 
 from itertools import product
 
+from malib import settings
 from malib.utils.typing import List
-from malib.utils.episode import EpisodeKey
+
 from malib.envs import gr_football
 from malib.envs.vector_env import VectorEnv, SubprocVecEnv
+from malib.envs.agent_interface import AgentInterface
 
+from malib.algorithm.random import RandomPolicy
+from malib.algorithm.mappo import MAPPO
+from malib.backend.datapool import parameter_server
 
-@ray.remote(num_cpus=0)
-class _RemoteEnv:
-    def __init__(self, creater, env_config) -> None:
-        self.env = creater(**env_config)
+from tests.football.rollout_case import (
+    run_simple_loop,
+    run_simple_ray_pool,
+    run_vec_env,
+)
+from tests.football.training_case import gen_policy_description
 
-    def reset(self, **kwargs):
-        ret = self.env.reset(**kwargs)
-        return ret
-
-    def step(self, action):
-        ret = self.env.step(action)
-        return ret
-
-
-def act_func(obs, act_space):
-    return np.asarray([act_space.sample() for _ in obs])
-
-
-def run_simple_loop(env_desc, num):
-    envs = [env_desc["creator"](**env_desc["config"]) for _ in range(num)]
-    action_spaces = env_desc["action_spaces"]
-
-    rets = [env.reset() for env in envs]
-    for i, ret in enumerate(rets):
-        rets[i][EpisodeKey.NEXT_OBS] = ret[EpisodeKey.CUR_OBS]
-
-    done = False
-    step_limit = 3000
-
-    cnt = 0
-    n_frames = 0
-
-    start_time = time.time()
-    while len(envs) > 0 and cnt < step_limit:
-        new_envs = []
-        new_rets = []
-        for i, env in enumerate(envs):
-            actions = {
-                aid: act_func(obs, action_spaces[aid])
-                for aid, obs in rets[i][EpisodeKey.NEXT_OBS].items()
-            }
-            ret = env.step(actions)
-            done = ret[EpisodeKey.DONE]["__all__"]
-            if not done:
-                new_envs.append(env)
-                new_rets.append(ret)
-            else:
-                n_frames += cnt
-        envs = new_envs
-        rets = new_rets
-        cnt += 1
-    end_time = time.time()
-
-    if len(envs) > 0:
-        n_frames += cnt * len(envs)
-
-    return n_frames, n_frames / (end_time - start_time)
-
-
-def run_simple_ray_pool(env_desc, num):
-    creator = env_desc["creator"]
-    config = env_desc["config"]
-    action_spaces = env_desc["action_spaces"]
-    # create remote env
-
-    envs = [_RemoteEnv.remote(creater=creator, env_config=config) for _ in range(num)]
-    rets = ray.get([env.reset.remote() for env in envs])
-    for i, ret in enumerate(rets):
-        rets[i][EpisodeKey.NEXT_OBS] = ret[EpisodeKey.CUR_OBS]
-
-    done = False
-    step_limit = 3000
-
-    cnt = 0
-    n_frames = 0
-
-    start_time = time.time()
-    while len(envs) > 0 and cnt < step_limit:
-        new_envs = []
-        new_rets = []
-        actions = {
-            aid: act_func(obs, action_spaces[aid])
-            for aid, obs in rets[i][EpisodeKey.NEXT_OBS].items()
-        }
-        rets_vec = ray.get([env.step.remote(actions) for env in envs])
-        for i, ret in enumerate(rets_vec):
-            done = ret[EpisodeKey.DONE]["__all__"]
-            if not done:
-                new_envs.append(envs[i])
-                new_rets.append(ret)
-            else:
-                n_frames += cnt
-        envs = new_envs
-        rets = new_rets
-        cnt += 1
-    end_time = time.time()
-
-    if len(envs) > 0:
-        n_frames += cnt * len(envs)
-
-    return n_frames, n_frames / (end_time - start_time)
+# from tests.parameter_server import FakeParameterServer
+from tests.dataset import FakeDataServer
 
 
 @pytest.fixture(scope="session")
 def env_desc():
+
     return gr_football.env_desc_gen(
         {
             "env_id": "PSGFootball",
@@ -139,13 +52,29 @@ def env_desc():
     )
 
 
+@pytest.fixture(scope="session")
+def servers():
+    if not ray.is_initialized():
+        ray.init()
+
+    ParameterServer = parameter_server.ParameterServer.as_remote()
+    pserver = ParameterServer.options(name=settings.PARAMETER_SERVER_ACTOR).remote()
+    dataset_server = FakeDataServer.options(
+        name=settings.OFFLINE_DATASET_ACTOR
+    ).remote()
+
+    return (pserver, dataset_server)
+
+
 @pytest.mark.parametrize(
     "vec_modes, num_envs_list",
     [
-        (["simple_loop", "simple_ray_pool"], [1, 2, 4, 8, 16, 32, 64, 128]),
+        (["ray_vec"], [1, 2, 4, 8, 16, 32, 64, 128]),
     ],
 )
-def test_vec_env_performance(env_desc, vec_modes: List[str], num_envs_list: List[int]):
+def test_vec_env_performance(
+    env_desc, servers, vec_modes: List[str], num_envs_list: List[int]
+):
     obs_spaces = env_desc["observation_spaces"]
     act_spaces = env_desc["action_spaces"]
 
@@ -177,12 +106,32 @@ def test_vec_env_performance(env_desc, vec_modes: List[str], num_envs_list: List
     for i, (vec_mode, num_envs) in enumerate(product(vec_modes, num_envs_list)):
         done = False
         if vec_mode == "ray_vec":
-            vec_env = VectorEnv(
-                observation_spaces=obs_spaces,
-                action_spaces=act_spaces,
-                creator=env_desc["creator"],
-                configs=env_desc["configs"],
-                preset_num_envs=num_envs,
+            # start training process here
+            policy_template = RandomPolicy(
+                "random",
+                observation_space=obs_spaces["team_0"],
+                action_space=act_spaces["team_0"],
+                model_config=None,
+                custom_config=None,
+            )
+            policy_description = gen_policy_description(policy_template, env_desc)
+            # push to parameter server
+            for (_, _, param_desc) in policy_description.values():
+                ray.get(servers[0].push.remote(parameter_desc=param_desc))
+            N_Frames, FPS = run_vec_env(
+                env_desc,
+                num_envs,
+                runtime_configs={
+                    "num_episodes": num_envs,
+                    "num_env_per_worker": 1,
+                    "use_subproc_env": False,
+                    "batch_mode": "time_step",
+                    "fragment_length": num_envs * 3000,
+                    "flags": "evaluation",
+                    "policy_description": policy_description,
+                    "trainable_pairs": {"team_0": ("policy_0", _)},
+                    "policy_combinations": [{"team_0": "policy_0"}],
+                },
             )
         elif vec_mode == "simple_loop":
             N_Frames, FPS = run_simple_loop(env_desc, num_envs)

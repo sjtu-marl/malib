@@ -5,14 +5,11 @@ will be assigned with rollout tasks sent from the `CoordinatorServer`.
 """
 
 import hashlib
-import os
 import time
 
 import ray
-import logging
 
 
-from malib import settings
 from malib.rollout.rollout_worker import RolloutWorker
 from malib.utils.typing import (
     TaskDescription,
