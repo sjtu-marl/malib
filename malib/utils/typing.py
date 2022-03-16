@@ -509,3 +509,10 @@ class MetricEntry:
 
     def cleaned_data(self):
         """Return values"""
+
+
+@dataclass
+class DataFrame:
+    header: Any
+    data: Any
+    runtime_config: Dict[str, Any]

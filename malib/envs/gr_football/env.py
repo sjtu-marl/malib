@@ -261,7 +261,12 @@ class BaseGFootBall(Environment):
             data_list.pop(-self._num_right)
 
 
-def ParameterSharing(base_env: BaseGFootBall, parameter_sharing_mapping: Callable):
+def ParameterSharing(
+    base_env: BaseGFootBall,
+    parameter_sharing_mapping: Callable,
+    as_remote: bool = False,
+    ray_config: Dict = None,
+):
     class Env(Environment):
         def __init__(self):
             """
@@ -451,4 +456,19 @@ def ParameterSharing(base_env: BaseGFootBall, parameter_sharing_mapping: Callabl
                 self.custom_metrics[aid]["num_pass"] += info[aid]["num_pass"]
                 self.custom_metrics[aid]["num_shot"] += info[aid]["num_shot"]
 
-    return Env()
+    if as_remote:
+        import ray
+
+        ray_config = ray_config or dict(
+            num_cpus=None,
+            num_gpus=None,
+            memory=None,
+            object_store_memory=None,
+            resources=None,
+        )
+        cls = ray.remote(**ray_config)(Env)
+
+        instance = cls.remote()
+    else:
+        instance = Env()
+    return instance

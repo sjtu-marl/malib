@@ -8,8 +8,8 @@ training:
   interface:
     type: "independent"
     population_size: -1
-    local_buffer_config:
-      size: 100
+    # local_buffer_config:
+    #   size: 100
   config:
     update_interval: 1
     saving_interval: 100
