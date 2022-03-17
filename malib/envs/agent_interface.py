@@ -336,7 +336,8 @@ class AgentInterface:
         :return: None
         """
 
-        os.makedirs(model_dir)
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
 
         for pid, policy in self.policies.items():
             fp = os.path.join(model_dir, pid + ".pkl")

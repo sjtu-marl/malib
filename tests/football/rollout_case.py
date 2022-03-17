@@ -115,29 +115,32 @@ def run_simple_ray_pool(env_desc, num):
     return n_frames, n_frames / (end_time - start_time)
 
 
-def run_vec_env(env_desc, num, runtime_configs):
+def run_vec_env(env_desc, num, runtime_configs, agent_interfaces=None):
     obs_spaces = env_desc["observation_spaces"]
     act_spaces = env_desc["action_spaces"]
     parameter_server = ray.get_actor(name=settings.PARAMETER_SERVER_ACTOR)
-
-    agent_interfaces = {
-        aid: AgentInterface(aid, obs_spaces[aid], act_spaces[aid], parameter_server)
-        for aid in env_desc["possible_agents"]
-    }
 
     policy_description = runtime_configs["policy_description"]
     trainable_pairs = runtime_configs["trainable_pairs"]
     policy_distribution = None
     policy_combinations = runtime_configs["policy_combinations"]
 
-    for agent, interface in agent_interfaces.items():
-        policy_id, policy_description, parameter_desc = policy_description[agent]
-        interface.add_policy(
-            env_aid=agent,
-            policy_id=policy_id,
-            policy_description=policy_description,
-            parameter_desc=parameter_desc,
-        )
+    if agent_interfaces is None:
+        agent_interfaces = {
+            aid: AgentInterface(aid, obs_spaces[aid], act_spaces[aid], parameter_server)
+            for aid in env_desc["possible_agents"]
+        }
+
+        for agent, interface in agent_interfaces.items():
+            policy_id, policy_description, parameter_desc = policy_description[agent]
+            interface.add_policy(
+                env_aid=agent,
+                policy_id=policy_id,
+                policy_description=policy_description,
+                parameter_desc=parameter_desc,
+            )
+    for interface in agent_interfaces.values():
+        interface.update_weights(["MAPPO_0"], True)
 
     # stepping num: num_episodses, num_env_per_worker
     num_rollout_actors = (

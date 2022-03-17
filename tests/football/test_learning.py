@@ -14,6 +14,7 @@ from malib.utils.typing import List, ParameterDescription, Sequence, Dict
 from malib.utils import logger
 from malib.utils.logger import Logger
 from malib.envs import gr_football
+from malib.envs.agent_interface import AgentInterface
 from malib.backend.datapool import parameter_server
 from malib.backend.datapool import offline_dataset_server
 
@@ -190,6 +191,8 @@ def run_rollout(
         num_envs = 3
         base_fragment_length = 3001
 
+        pserver = ray.get_actor(name=settings.PARAMETER_SERVER_ACTOR)
+
         obs_spaces = env_desc["observation_spaces"]
         action_spaces = env_desc["action_spaces"]
 
@@ -223,6 +226,21 @@ def run_rollout(
             for k in possible_agents
         }
 
+        agent_interfaces = {
+            aid: AgentInterface(aid, obs_spaces[aid], action_spaces[aid], pserver)
+            for aid in env_desc["possible_agents"]
+        }
+
+        for agent, interface in agent_interfaces.items():
+            policy_id, policy_description, parameter_desc = policy_description[agent]
+            interface.add_policy(
+                env_aid=agent,
+                policy_id=policy_id,
+                policy_description=policy_description,
+                parameter_desc=parameter_desc,
+            )
+            interface.update_weights(["MAPPO_0"], True)
+
         runtime_configs = {
             "num_episodes": num_envs,
             "num_env_per_worker": 1,
@@ -242,7 +260,10 @@ def run_rollout(
                     response_queue.put({"logs": {}, "status": 200})
                     break
 
-            N_Frames, FPS, eval_stats = run_vec_env(env_desc, None, runtime_configs)
+            # update weights
+            N_Frames, FPS, eval_stats = run_vec_env(
+                env_desc, None, runtime_configs, agent_interfaces
+            )
 
             total_frames += N_Frames
             ave_FPS = (ave_FPS * loop_cnt + FPS) / (loop_cnt + 1)
@@ -270,6 +291,18 @@ def run_rollout(
                     "status": 200,
                 }
             )
+
+            # save every 10
+            if loop_cnt % 10 == 0:
+                save_dir = os.path.join(
+                    settings.LOG_DIR,
+                    exp_cfg["expr_group"],
+                    exp_cfg["expr_name"],
+                    "models",
+                )
+                for aid, interface in agent_interfaces.items():
+                    _save_dir = os.path.join(save_dir, aid)
+                    interface.save(_save_dir)
     except Exception as e:
         traceback.print_exc()
         raise e
@@ -299,6 +332,7 @@ def test_learning(env_desc, servers):
     )
 
     run_optimize.remote(*comm_optimization, env_desc, configs, exp_cfg)
+    time.sleep(10)
     # start rollout and optimization process
     run_rollout.remote(*comm_rollout, env_desc, configs, exp_cfg)
 
@@ -326,7 +360,7 @@ def test_learning(env_desc, servers):
             cnt += 1
         empty = True
 
-        if cnt == 1999:
+        if cnt == 2000:
             for sender in senders:
                 sender.put({"op": "terminate"})
             break

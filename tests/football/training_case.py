@@ -91,6 +91,7 @@ class SimpleLearner(IndependentAgent):
             parameter_desc = self.parameter_desc_gen(
                 env_aid, pid, trainable, data=policy.state_dict()
             )
+            # print("-------------- name:", parameter_desc)
             ray.get(self._parameter_server.push.remote(parameter_desc=parameter_desc))
             parameter_desc.data = None
             self._parameter_desc[pid] = parameter_desc
