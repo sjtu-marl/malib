@@ -1,3 +1,7 @@
+"""
+Run this file with `pytest ./tests/football/test_learning.py -s`.
+"""
+
 from collections import ChainMap
 import os
 import traceback
@@ -183,7 +187,12 @@ def run_optimize(request_queue, response_queue, env_desc, yaml_config, exp_cfg):
 
 @ray.remote
 def run_rollout(
-    request_queue: Queue, response_queue: Queue, env_desc, yaml_config, exp_cfg
+    request_queue: Queue,
+    response_queue: Queue,
+    env_desc,
+    yaml_config,
+    exp_cfg,
+    algo_name,
 ):
     try:
         total_frames, ave_FPS = 0, 0.0
@@ -196,13 +205,13 @@ def run_rollout(
         obs_spaces = env_desc["observation_spaces"]
         action_spaces = env_desc["action_spaces"]
 
-        model_config = yaml_config["algorithms"]["MAPPO"]["model_config"]
-        custom_config = yaml_config["algorithms"]["MAPPO"]["custom_config"]
+        model_config = yaml_config["algorithms"][algo_name]["model_config"]
+        custom_config = yaml_config["algorithms"][algo_name]["custom_config"]
         possible_agents = env_desc["possible_agents"]
         env_id = env_desc["config"]["env_id"]
 
         _description = {
-            "registered_name": "MAPPO",
+            "registered_name": algo_name,
             "observation_space": obs_spaces["team_0"],
             "action_space": action_spaces["team_0"],
             "model_config": model_config,
@@ -211,13 +220,13 @@ def run_rollout(
 
         policy_description = {
             k: (
-                "MAPPO_0",
+                f"{algo_name}_0",
                 _description,
                 ParameterDescription(
                     time.time(),
                     identify=k,
                     env_id=env_id,
-                    id="MAPPO_0",
+                    id=f"{algo_name}_0",
                     lock=False,
                     description=_description,
                     data=None,
@@ -239,7 +248,7 @@ def run_rollout(
                 policy_description=policy_description,
                 parameter_desc=parameter_desc,
             )
-            interface.update_weights(["MAPPO_0"], True)
+            interface.update_weights([f"{algo_name}_0"], True)
 
         runtime_configs = {
             "num_episodes": num_envs,
@@ -249,8 +258,8 @@ def run_rollout(
             "fragment_length": num_envs * base_fragment_length,
             "flags": "rollout",
             "policy_description": policy_description,
-            "trainable_pairs": {"team_0": ("MAPPO_0", None)},
-            "policy_combinations": [{"team_0": "MAPPO_0"}],
+            "trainable_pairs": {"team_0": (f"{algo_name}_0", None)},
+            "policy_combinations": [{"team_0": f"{algo_name}_0"}],
         }
 
         while True:
@@ -308,18 +317,21 @@ def run_rollout(
         raise e
 
 
-def test_learning(env_desc, servers):
+# XXX(ming): @yanxue, if you wanna run ppo, please replace the string mappo with ppo
+@pytest.mark.parametrize("yaml_name", ["mappo"])
+def test_learning(env_desc, servers, yaml_name: str):
     comm_optimization = [Queue(), Queue()]
     comm_rollout = [Queue(), Queue()]
 
     yaml_path = os.path.join(
-        settings.BASE_DIR, "examples/mappo_gfootball/mappo_5_vs_5.yaml"
+        settings.BASE_DIR, f"examples/mappo_gfootball/{yaml_name}_5_vs_5.yaml"
     )
     # load yaml
     with open(yaml_path, "r") as f:
         configs = yaml.safe_load(f)
 
-    configs["algorithms"]["MAPPO"]["custom_config"].update(
+    algo_name = yaml_name.upper()
+    configs["algorithms"][algo_name]["custom_config"].update(
         {"global_state_space": env_desc["state_spaces"]}
     )
 
@@ -334,7 +346,7 @@ def test_learning(env_desc, servers):
     run_optimize.remote(*comm_optimization, env_desc, configs, exp_cfg)
     time.sleep(10)
     # start rollout and optimization process
-    run_rollout.remote(*comm_rollout, env_desc, configs, exp_cfg)
+    run_rollout.remote(*comm_rollout, env_desc, configs, exp_cfg, algo_name)
 
     responders: List[Queue] = [comm_rollout[1], comm_optimization[1]]
     senders: List[Queue] = [comm_rollout[0], comm_optimization[0]]

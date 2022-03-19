@@ -1,0 +1,124 @@
+group: "Football"
+name: "5_vs_5_rnn/vtrace"
+
+worker_config:
+  worker_num: 1
+
+training:
+  interface:
+    type: "independent"
+    population_size: -1
+    # local_buffer_config:
+    #   size: 100
+  config:
+    update_interval: 1
+    saving_interval: 100
+    batch_size: 64
+    optimizer: "Adam"
+    actor_lr: 5.e-4
+    critic_lr: 5.e-4
+    opti_eps: 1.e-5
+    weight_decay: 0.0
+
+
+rollout:
+  type: "independent"
+  stopper: "simple_rollout"
+  stopper_config:
+    max_step: 1000
+  metric_type: "grf"
+  fragment_length: 3001
+  num_episodes: 1
+  num_env_per_worker: 1
+  use_remote_env: False
+  terminate: "any"
+  batch_mode: episode  # sample/save data episodically or in time_step
+  postprocessor_types:
+    - value
+
+evaluation:
+  # max_episode_length: -1
+  num_episodes: 1
+
+
+
+env_description:
+  config:
+    env_id: PSGFootball
+    use_built_in_GK: True
+    scenario_configs:
+      env_name: "5_vs_5"
+      number_of_left_players_agent_controls: 4
+      number_of_right_players_agent_controls: 0
+      representation: "raw"
+      stacked: False
+      logdir: '/tmp/football/malib_psro'
+      write_goal_dumps: False
+      write_full_episode_dumps: False
+      render: False
+
+algorithms:
+  PPO:
+    name: "PPO"
+    model_config:
+      initialization:
+        use_orthogonal: True
+        gain: 1.
+      actor:
+        network: mlp
+        layers:
+          - units: 256
+            activation: ReLU
+          - units: 128
+            activation: ReLU
+          - units: 64
+            activation: ReLU
+        output:
+          activation: False
+      critic:
+        network: mlp
+        layers:
+          - units: 256
+            activation: ReLU
+          - units: 128
+            activation: ReLU
+          - units: 64
+            activation: ReLU
+        output:
+          activation: False
+
+    # set hyper parameter
+    custom_config:
+      gamma: 0.99
+      use_cuda: False  # enable cuda or not
+      use_q_head: False
+      ppo_epoch: 4
+      num_mini_batch: 1  # the number of mini-batches
+      
+      return_mode: gae
+      gae:
+        gae_lambda: 0.95
+      vtrace:
+        clip_rho_threshold: 1.0
+        clip_pg_rho_threshold: 1.0
+
+
+      use_rnn: False
+      # this is not used, instead it is fixed to last hidden in actor/critic
+      rnn_layer_num: 1
+      rnn_data_chunk_length: 16
+
+      use_feature_normalization: True
+      use_popart: True
+      popart_beta: 0.99999
+
+      entropy_coef: 1.e-2
+
+
+
+global_evaluator:
+  name: "generic"
+
+dataset_config:
+  episode_capacity: 100
+  fragment_length: 3001
