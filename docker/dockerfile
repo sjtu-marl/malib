@@ -1,0 +1,21 @@
+FROM nvidia/cuda:8.0-cudnn7-devel-ubuntu16.04
+FROM python:3.7
+MAINTAINER Zhihao Lyu
+RUN dpkg --add-architecture i386 && apt update\
+ && apt-get -y install \
+    clang \
+    curl \
+    git \
+    sudo
+# install open_spiel
+RUN sudo pip3 install --upgrade pip\
+  && DEBIAN_FRONTEND="noninteractive" apt-get -y install tzdata\
+  && pip3 install --upgrade cmake\
+  && pip3 install --upgrade setuptools pip\
+  && pip3 install open_spiel
+WORKDIR /tmp
+# install dependency of malib
+COPY setup.py .
+RUN  pip install -e .[dev] 
+
+
