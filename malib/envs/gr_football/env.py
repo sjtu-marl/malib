@@ -454,5 +454,7 @@ def ParameterSharing(
                 self.custom_metrics[aid]["num_pass"] += info[aid]["num_pass"]
                 self.custom_metrics[aid]["num_shot"] += info[aid]["num_shot"]
 
+            # print("current custom", self.custom_metrics["team_0"])
+
     instance = Env()
     return instance

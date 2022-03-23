@@ -43,24 +43,37 @@ for aid in possible_agents:
 
 # observation, action_mask, state
 # eval for 10 episodes
+ave_eval = {}
 for i in range(10):
     rets = env.reset()
-    done = (False,)
+    done = False
     cnt = 0
 
     rnn_state = {}
     action_prob = {}
     action = {}
-    for aid, model in agents.items():
-        rnn_state[aid] = model.get_initial_state(4)
-        action[aid], action_prob[aid], rnn_state[aid] = model.compute_action(
-            observation=rets["observation"][aid],
-            state=rets["state"][aid],
-            rnn_state=rnn_state,
-            done=done,
-            action_mask=rets["action_mask"][aid],
-        )
-    env.step(action)
 
     while not done and cnt < 3001:
-        env.step()
+        for aid, model in agents.items():
+            rnn_state[aid] = model.get_initial_state(4)
+            action[aid], action_prob[aid], rnn_state[aid] = model.compute_action(
+                observation=rets["observation"][aid],
+                state=rets["state"][aid],
+                rnn_state=rnn_state[aid],
+                done=done,
+                action_mask=rets["action_mask"][aid],
+            )
+        rets = env.step(action)
+        rets["observation"] = rets["next_observation"]
+        rets["state"] = rets["next_state"]
+        cnt += 1
+    eval_info = env.collect_info()
+    print("round {}: {}".format(i, eval_info["custom_metrics"]))
+    for aid, agent_item in eval_info["custom_metrics"].items():
+        if aid not in ave_eval:
+            ave_eval[aid] = {}
+        for k, v in agent_item.items():
+            if k not in ave_eval[aid]:
+                ave_eval[aid][k] = 0.0
+            ave_eval[aid][k] += v / 10
+print(ave_eval)

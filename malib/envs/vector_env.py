@@ -205,6 +205,7 @@ class VectorEnv:
             env = self.active_envs[env_id]
             if env_done:
                 env = active_envs.pop(env_id)
+                print("detected done")
                 self._cached_episode_infos[env_id] = env.collect_info()
                 if not self.is_terminated():
                     # write episode cache
@@ -252,9 +253,10 @@ class VectorEnv:
         # the nonterminal env_info into rets.
         ret = self._cached_episode_infos
         for runtime_id, env in self.active_envs.items():
-            if env.cnt > 0:
+            if env.cnt > 0 and (runtime_id not in ret):
                 ret[runtime_id] = env.collect_info()
 
+        print("---------- ret", {k: v["custom_metrics"] for k, v in ret.items()})
         return ret
 
     def close(self):

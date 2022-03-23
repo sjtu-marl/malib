@@ -1,6 +1,7 @@
 from collections import defaultdict
 import uuid
 import gym
+import copy
 
 from malib.utils.typing import Dict, AgentID, List, Any, Union, Tuple
 from malib.utils.episode import EpisodeKey
@@ -78,7 +79,7 @@ class Environment:
         self.max_step = max_step or self.max_step
         self.cnt = 0
 
-        self.custom_reset_config = custom_reset_config or self.custom_reset_config
+        custom_reset_config = custom_reset_config or self.custom_reset_config
         self.episode_metrics = {
             "env_step": 0,
             "reward": {k: [] for k in self.possible_agents},
@@ -87,7 +88,7 @@ class Environment:
         self.episode_meta_info.update(
             {
                 "max_step": self.max_step,
-                "custom_config": self.custom_reset_config,
+                "custom_config": copy.deepcopy(custom_reset_config),
                 "env_done": False,
             }
         )
@@ -129,8 +130,8 @@ class Environment:
     def collect_info(self) -> Dict[str, Any]:
         return {
             # "episode_runtime_info": self.episode_meta_info,
-            "episode_metrics": self.episode_metrics,
-            "custom_metrics": self.custom_metrics,
+            "episode_metrics": copy.deepcopy(self.episode_metrics),
+            "custom_metrics": copy.deepcopy(self.custom_metrics),
         }
 
 

@@ -95,7 +95,7 @@ algorithms:
       ppo_epoch: 4
       num_mini_batch: 1  # the number of mini-batches
       
-      return_mode: gae
+      return_mode: vtrace
       gae:
         gae_lambda: 0.95
       vtrace:
@@ -120,5 +120,5 @@ global_evaluator:
   name: "generic"
 
 dataset_config:
-  episode_capacity: 100
+  episode_capacity: 64
   fragment_length: 3001

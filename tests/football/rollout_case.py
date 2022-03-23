@@ -246,4 +246,14 @@ def run_vec_env(env_desc, num, runtime_configs, agent_interfaces=None):
     env_rollout_fps = num_frames / (end - start)
     eval_stats = stats_list
 
+    # average evaluation results
+    merged_eval_stats = {}
+    for e in stats_list:
+        for k, v in e.items():
+            if k not in merged_eval_stats:
+                merged_eval_stats[k] = []
+            merged_eval_stats[k].append(v)
+    for k in merged_eval_stats.keys():
+        merged_eval_stats[k] = np.mean(merged_eval_stats[k])
+
     return num_frames, env_rollout_fps, eval_stats
