@@ -52,6 +52,15 @@ def _process_environment_returns(
 ]:
     """Processes environment returns, including observation, rewards. Also the agent
     communication.
+
+    :param env_rets: A dict of environment returns
+    :type env_rets: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]
+    :param agent_interfaces: _description_
+    :type agent_interfaces: Dict[AgentID, AgentInterface]
+    :param filtered_env_outputs: _description_
+    :type filtered_env_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]
+    :return: _description_
+    :rtype: Tuple[ Dict[EnvID, Dict[str, Dict[AgentID, Any]]], Dict[EnvID, Dict[str, Dict[AgentID, Any]]], List[EnvID], ]
     """
 
     policy_inputs = {}

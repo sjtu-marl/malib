@@ -1,21 +1,30 @@
-FROM nvidia/cuda:8.0-cudnn7-devel-ubuntu16.04
-FROM python:3.7
-MAINTAINER Zhihao Lyu
-RUN dpkg --add-architecture i386 && apt update\
- && apt-get -y install \
-    clang \
-    curl \
-    git \
-    sudo
-# install open_spiel
-RUN sudo pip3 install --upgrade pip\
-  && DEBIAN_FRONTEND="noninteractive" apt-get -y install tzdata\
-  && pip3 install --upgrade cmake\
-  && pip3 install --upgrade setuptools pip\
-  && pip3 install open_spiel
-WORKDIR /tmp
-# install dependency of malib
+# syntax=docker/dockerfile:1
+FROM ubuntu:20.04
+ARG DEBIAN_FRONTEND=noninteractive
+ENV LANG C.UTF-8
+
+# Install libraries
+RUN apt-get update --fix-missing && \
+    apt-get install -y \
+        software-properties-common && \
+    apt-get update && \
+    apt-get install -y \
+        libspatialindex-dev \
+        python-dev \
+        python3-pip \
+        # python3.7 \
+        wget \
+        xorg && \
+    apt-get autoremove && \
+    rm -rf /var/lib/apt/lists/*
+
+# Update default python version
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.8 1
+# # Setup pip
+# RUN wget https://bootstrap.pypa.io/get-pip.py -O get-pip.py && \
+#     python get-pip.py && \
+#     pip install --upgrade pip
+
 COPY setup.py .
-RUN  pip install -e .[dev] 
-
-
+COPY README.md .
+# RUN pip install -e .[dev]

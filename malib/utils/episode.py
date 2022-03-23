@@ -42,7 +42,8 @@ class Episode:
         self.policy_mapping = behavior_policies
         self.env_id = env_id
 
-        self.agent_entry = defaultdict(lambda: {aid: [] for aid in self.policy_mapping})
+        # self.agent_entry = defaultdict(lambda: {aid: [] for aid in self.policy_mapping})
+        self.agent_entry = defaultdict(lambda: defaultdict(lambda: []))
 
     def __getitem__(self, __k: str) -> Dict[AgentID, List]:
         return self.agent_entry[__k]
@@ -53,6 +54,16 @@ class Episode:
     def to_numpy(
         self, batch_mode: str = "time_step", filter: List[AgentID] = None
     ) -> Dict[str, Dict[AgentID, np.ndarray]]:
+        """Convert episode to numpy array-like data.
+
+        :param batch_mode: Determine the mechanism of data aggregation, defaults to "time_step"
+        :type batch_mode: str, optional
+        :param filter: Agent id filter, defaults to None, means no filter
+        :type filter: List[AgentID], optional
+        :return: A dict of agent numpy
+        :rtype: Dict[str, Dict[AgentID, np.ndarray]]
+        """
+
         res = defaultdict(lambda: {})
 
         for ek, agent_v in self.agent_entry.items():
@@ -107,9 +118,19 @@ class NewEpisodeDict(defaultdict):
     def to_numpy(
         self, batch_mode: str = "time_step", filter: List[AgentID] = None
     ) -> Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]:
+        """Lossy data transformer, which converts a dict of episode to a dict of numpy array like. (some episode may be empty)
+
+        :param batch_mode: Determine the mechnism for data aggregation, defaults to "time_step"
+        :type batch_mode: str, optional
+        :param filter: Agent filter, defaults to None
+        :type filter: List[AgentID], optional
+        :return: A dict of dict, mapping from runtime environment id to a numpy dict.
+        :rtype: Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]
+        """
+
         res = {}
         for k, v in self.items():
-            tmp = v.to_numpy(batch_mode, filter)
+            tmp: Dict[str, Dict[AgentID, np.ndarray]] = v.to_numpy(batch_mode, filter)
             if len(tmp) == 0:
                 continue
             res[k] = tmp

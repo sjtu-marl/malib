@@ -57,10 +57,12 @@ class RolloutWorker(BaseRolloutWorker):
             self._num_rollout_actors > 0
         ), f"num_rollout_actors should be positive, but got `{self._num_rollout_actors}`"
 
+        self.init_pool(env_desc, **kwargs)
+
+    def init_pool(self, env_desc, **kwargs):
         Stepping = rollout_func.Stepping.as_remote(**self._resources)
         self.actors = [
             Stepping.remote(
-                kwargs["exp_cfg"],
                 env_desc,
                 self._offline_dataset,
                 use_subproc_env=kwargs["use_subproc_env"],
