@@ -27,20 +27,6 @@ from malib.envs import Environment
 from malib.utils.episode import EpisodeKey
 
 
-# class AgentItems:
-#     def __init__(self) -> None:
-#         self._data = {}
-
-#     def update(self, agent_items: Dict[AgentID, Any]):
-#         for k, v in agent_items.items():
-#             if k not in self._data:
-#                 self._data[k] = []
-#             self._data[k].append(v)
-
-#     def cleaned_data(self):
-#         return self._data
-
-
 class VectorEnv:
     def __init__(
         self,
@@ -76,16 +62,6 @@ class VectorEnv:
 
         self.add_envs(num=preset_num_envs)
 
-    # TODO(ming): replace with a warning - sequential env support only 1 env in vec
-    # def _validate_env(self, env: Environment):
-    #     assert (
-    #         not env.is_sequential
-    #     ), "The nested environment must be an instance which steps in simultaneous."
-
-    # @property
-    # def trainable_agents(self):
-    #     return self._envs[0].trainable_agents
-
     @property
     def batched_step_cnt(self) -> int:
         return (
@@ -105,12 +81,6 @@ class VectorEnv:
         """Return a limited list of enviroments"""
 
         return self._envs[: self._limits]
-
-    # @property
-    # def extra_returns(self) -> List[str]:
-    #     """Return extra columns required by this environment"""
-
-    #     return self._envs[0].extra_returns
 
     @property
     def env_creator(self):
@@ -173,6 +143,9 @@ class VectorEnv:
 
         # generate runtime env ids
         runtime_ids = [uuid.uuid1().hex for _ in range(self._limits)]
+        assert len(self.envs) >= limits, "No enough environment instances: {}".format(
+            len(self.envs)
+        )
         self._active_envs = dict(zip(runtime_ids, self.envs[: self._limits]))
 
         self._trainable_agents = (
@@ -194,7 +167,7 @@ class VectorEnv:
 
         return ret
 
-    def step(self, actions: Dict[AgentID, List]) -> Dict:
+    def step(self, actions: Dict[EnvID, Dict[AgentID, Any]]) -> Dict:
         active_envs = self.active_envs
 
         env_rets = {}
@@ -256,7 +229,6 @@ class VectorEnv:
             if env.cnt > 0 and (runtime_id not in ret):
                 ret[runtime_id] = env.collect_info()
 
-        print("---------- ret", {k: v["custom_metrics"] for k, v in ret.items()})
         return ret
 
     def close(self):

@@ -102,16 +102,19 @@ class NewEpisodeDict(defaultdict):
         self, policy_outputs, env_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]
     ):
         for env_id, policy_output in policy_outputs.items():
-            assert EpisodeKey.CUR_OBS in env_outputs[env_id]
-            for k, v in env_outputs[env_id].items():
+            # assert EpisodeKey.CUR_OBS in env_outputs[env_id], env_output[env_id].keys()
+            for k, v in policy_output.items():
+                agent_slot = self[env_id][k]
+                for aid, _v in v.items():
+                    # assert aid in agent_slot, agent_slot
+                    agent_slot[aid].append(_v)
+        # we must split the for-loop here, in the case of async vec_env, the keys in env_outputs maybe different
+        # from keys in policy_outputs,
+        for env_id, env_output in env_outputs.items():
+            for k, v in env_output.items():
                 if k == "infos":
                     continue
                 agent_slot = self[env_id][k]
-                for aid, _v in v.items():
-                    agent_slot[aid].append(_v)
-            for k, v in policy_output.items():
-                agent_slot = self[env_id][k]
-                assert aid in agent_slot, agent_slot
                 for aid, _v in v.items():
                     agent_slot[aid].append(_v)
 

@@ -19,6 +19,7 @@ import collections
 from typing import Iterator
 import ray
 import numpy as np
+import time
 
 from malib import settings
 from malib.utils.general import iter_many_dicts_recursively
@@ -191,8 +192,10 @@ def _process_policy_outputs(
             for aid in agent_ids:
                 _v = agent_v[aid]
                 if k == EpisodeKey.RNN_STATE:
+                    # for environment each.
                     detached[k][aid] = [next(__v) for __v in _v]
                 else:
+                    # for environment each
                     detached[k][aid] = next(_v)
         detached_policy_outputs[env_id] = detached
     env_actions: Dict[EnvID, Dict[AgentID, Any]] = env.action_adapter(
@@ -273,6 +276,7 @@ def env_runner(
     do_policy_eval = _do_policy_eval
 
     while not env.is_terminated():
+        start = time.time()
         filtered_env_outputs = {}
         # ============ a frame =============
         (

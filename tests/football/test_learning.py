@@ -92,7 +92,7 @@ def servers():
     pserver = ParameterServer.options(name=settings.PARAMETER_SERVER_ACTOR).remote()
     dataset_server = offline_dataset_server.OfflineDataset.options(
         name=settings.OFFLINE_DATASET_ACTOR
-    ).remote(dataset_config, None)
+    ).remote(dataset_config)
 
     return (pserver, dataset_server)
 

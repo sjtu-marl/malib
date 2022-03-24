@@ -362,7 +362,7 @@ class TestOfflineDataset:
         self.dataset_config = dataset_config
         self.data_shapes = data_shapes
         self.dtypes = {k: dtypes for k in self.data_shapes}
-        self.server = OfflineDataset.remote(dataset_config, exp_cfg, test_mode=False)
+        self.server = OfflineDataset.remote(dataset_config)
         self.preset_buffer_desc = BufferDescription(
             env_id="fake",
             agent_id=list(data_shapes.keys()),

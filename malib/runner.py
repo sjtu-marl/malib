@@ -62,7 +62,7 @@ def run(**kwargs):
 
         offline_dataset = OfflineDataset.options(
             name=settings.OFFLINE_DATASET_ACTOR, max_concurrency=1000
-        ).remote(global_configs["dataset_config"], exp_cfg)
+        ).remote(global_configs["dataset_config"])
         parameter_server = ParameterServer.options(
             name=settings.PARAMETER_SERVER_ACTOR, max_concurrency=1000
         ).remote(**global_configs["parameter_server"])

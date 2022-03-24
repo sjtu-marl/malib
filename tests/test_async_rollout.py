@@ -17,16 +17,16 @@ from malib.algorithm.random import RandomPolicy
 @pytest.fixture(scope="session")
 def config():
     if not ray.is_initialized():
-        ray.init(local_mode=True)
+        ray.init(local_mode=False)
     yaml_path = os.path.join(
         settings.BASE_DIR, "examples/mappo_gfootball/mappo_5_vs_5.yaml"
     )
 
-    with open(yaml_path, "w") as f:
-        yaml_config = yaml.load(f)
+    with open(yaml_path, "r") as f:
+        yaml_config = yaml.safe_load(f)
 
-    dataset_server = OfflineDataset()
-    parameter_server = ParameterServer()
+    dataset_server = OfflineDataset.remote(yaml_config["dataset_config"])
+    parameter_server = ParameterServer.as_remote().remote()
 
     _config = {
         "yaml": yaml_config,
@@ -37,25 +37,30 @@ def config():
     return _config
 
 
-def test_async_rollout(config):
+@pytest.mark.parametrize("num_episodes", [1, 2, 4])
+@pytest.mark.parametrize("num_workers", [1, 2, 4, 8, 16])
+def test_async_rollout(config, num_episodes, num_workers):
     yaml_config = config["yaml"]
     parameter_server = config["parameter_server"]
     dataset_server = config["dataset_server"]
 
-    env_desc = env_desc_gen(yaml_config["env_description"])
+    env_desc = env_desc_gen(yaml_config["env_description"]["config"])
     postprocessors = yaml_config["rollout"]["postprocessor_types"]
     agents = env_desc["possible_agents"]
 
     obs_spaces = env_desc["observation_spaces"]
     act_spaces = env_desc["action_spaces"]
 
-    client = InferenceClient.remote(
-        env_desc,
-        dataset_server=dataset_server,
-        use_subproc_env=False,
-        batch_mode=yaml_config["rollout"]["batch_mode"],
-        postprocessor_types=postprocessors,
-    )
+    clients = [
+        InferenceClient.remote(
+            env_desc,
+            dataset_server=dataset_server,
+            use_subproc_env=False,
+            batch_mode=yaml_config["rollout"]["batch_mode"],
+            postprocessor_types=postprocessors,
+        )
+        for _ in range(num_workers)
+    ]
 
     servers = {
         agent: InferenceWorkerSet.remote(
@@ -95,33 +100,45 @@ def test_async_rollout(config):
     _ = ray.get([parameter_server.push.remote(e) for e in p_descs.values()])
 
     max_step = 300
-    num_episodes = 3
+    # num_episodes = 3
     trainable_pairs = {aid: "MAPPO_0" for aid in agents}
-    parameter_server.push()
     task_desc = {
         "max_step": max_step,
         "num_episodes": num_episodes,
         "flag": "rollout",
         "behavior_policies": trainable_pairs,
         "paramter_desc_dict": p_descs,
+        "postprocessor_types": yaml_config["rollout"]["postprocessor_types"],
     }
     fragment_length = max_step * num_episodes
 
     buffer_desc = BufferDescription(
         env_id=env_desc["config"]["env_id"],
         agent_id=list(trainable_pairs.keys()),
-        policy_id=[pid for pid, _ in trainable_pairs.values()],
+        policy_id=list(trainable_pairs.values()),
         capacity=None,
         sample_start_size=None,
     )
 
     ray.get(dataset_server.create_table.remote(buffer_desc))
 
+    start = time.time()
     _ = ray.get(
-        client.run.remote(
-            servers,
-            fragment_length=fragment_length,
-            desc=task_desc,
-            buffer_desc=buffer_desc,
+        [
+            client.run.remote(
+                servers,
+                fragment_length=fragment_length,
+                desc=task_desc,
+                buffer_desc=buffer_desc,
+            )
+            for client in clients
+        ]
+    )
+    end = time.time()
+    print(
+        "FPS for num_episodes={}/num_worker={} is {}".format(
+            num_episodes,
+            num_workers,
+            max_step * num_episodes * num_workers / (end - start),
         )
     )

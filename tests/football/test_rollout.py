@@ -118,7 +118,7 @@ def test_vec_env_performance(
             # push to parameter server
             for (_, _, param_desc) in policy_description.values():
                 ray.get(servers[0].push.remote(parameter_desc=param_desc))
-            N_Frames, FPS = run_vec_env(
+            N_Frames, FPS, _ = run_vec_env(
                 env_desc,
                 num_envs,
                 runtime_configs={
@@ -129,8 +129,8 @@ def test_vec_env_performance(
                     "fragment_length": num_envs * 3000,
                     "flags": "evaluation",
                     "policy_description": policy_description,
-                    "trainable_pairs": {"team_0": ("policy_0", _)},
-                    "policy_combinations": [{"team_0": "policy_0"}],
+                    "trainable_pairs": {"team_0": ("MAPPO_0", _)},
+                    "policy_combinations": [{"team_0": "MAPPO_0"}],
                 },
             )
         elif vec_mode == "simple_loop":

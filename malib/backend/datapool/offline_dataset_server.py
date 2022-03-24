@@ -395,7 +395,7 @@ class Table:
 
 @ray.remote
 class OfflineDataset:
-    def __init__(self, dataset_config: Dict[str, Any], exp_cfg: Dict[str, Any]):
+    def __init__(self, dataset_config: Dict[str, Any]):
         self._episode_capacity = dataset_config.get(
             "episode_capacity", settings.DEFAULT_EPISODE_CAPACITY
         )

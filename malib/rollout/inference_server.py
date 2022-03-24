@@ -3,6 +3,7 @@ import threading
 
 from collections import deque, defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
+import traceback
 
 import ray
 import gym
@@ -25,6 +26,7 @@ from malib.utils.typing import (
 from malib.algorithm import get_algorithm_space
 from malib.algorithm.common.policy import Policy
 from malib.envs.agent_interface import _update_weights
+from malib.utils.episode import EpisodeKey
 
 
 RuntimeHandler = namedtuple("RuntimeHandler", "sender,recver,runtime_config")
@@ -66,7 +68,7 @@ class InferenceWorkerSet:
 
     def connect(
         self,
-        queues: List[Queue, Queue],
+        queues: List[Queue],
         runtime_config: Dict[str, Any],
         runtime_id: int,
     ):
@@ -131,21 +133,41 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
 
     while True:
         if handler.recver.empty():
-            time.sleep(1)
+            # time.sleep(1)
+            # print("waiting for obs")
             continue
 
         data_frame: DataFrame = handler.recver.get()
+        rets = {}
 
-        with self.parameter_buffer_lock:
-            policy_id = _sample_policy_id(runtime_config, self.agent_id, policy_id)
-            policy: Policy = self.policies[self.agent_id][policy_id]
-            rets = policy.compute_action(
-                observation=data_frame.data, **data_frame.runtime_config
+        # print("got")
+
+        try:
+            with self.parameter_buffer_lock:
+                policy_id = _sample_policy_id(runtime_config, self.agent_id, policy_id)
+                policy: Policy = self.policies[self.agent_id][policy_id]
+                # print("start compute action")
+                kwargs = {**data_frame.data, **data_frame.runtime_config}
+                observation = kwargs.pop(EpisodeKey.CUR_OBS)
+                if EpisodeKey.RNN_STATE not in kwargs:
+                    kwargs[EpisodeKey.RNN_STATE] = policy.get_initial_state(
+                        batch_size=None if len(observation) == 1 else len(observation)
+                    )
+                (
+                    rets[EpisodeKey.ACTION],
+                    rets[EpisodeKey.ACTION_DIST],
+                    rets[EpisodeKey.RNN_STATE],
+                ) = policy.compute_action(observation=observation, **kwargs)
+                # print("done for compute action")
+
+            handler.sender.put_nowait(
+                DataFrame(
+                    header=None, data=rets, runtime_config=data_frame.runtime_config
+                )
             )
-
-        handler.sender.push_nowait(
-            DataFrame(header=None, data=rets, runtime_config=None)
-        )
+        except Exception as e:
+            # print(data_frame.data.keys())
+            traceback.print_exc()
 
 
 def _update_weights(self: InferenceWorkerSet, force: bool = False) -> None:

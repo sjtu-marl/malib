@@ -19,20 +19,20 @@ from malib.algorithm.common.policy import Policy
 from malib.agent.indepdent_agent import IndependentAgent
 
 
-def gen_policy_description(policy_template: Policy, env_desc):
+def gen_policy_description(policy_template: Policy, env_desc, name="MAPPO"):
     agents = env_desc["possible_agents"]
     env_id = env_desc["config"]["env_id"]
     rets = {}
 
     for agent in agents:
         rets[agent] = (
-            "policy_0",
+            f"{name}_0",
             policy_template.description,
             ParameterDescription(
                 time.time(),
                 identify=agent,
                 env_id=env_id,
-                id="policy_0",
+                id=f"{name}_0",
                 lock=False,
                 description=policy_template.description,
                 data=policy_template.state_dict(),
