@@ -68,6 +68,7 @@ class Episode:
 
         for ek, agent_v in self.agent_entry.items():
             _filter = filter or list(agent_v.keys())
+            print("-------- ek", ek)
             for agent_id in _filter:
                 v = agent_v[agent_id]
                 if ek == EpisodeKey.RNN_STATE:
@@ -134,6 +135,7 @@ class NewEpisodeDict(defaultdict):
         res = {}
         for k, v in self.items():
             tmp: Dict[str, Dict[AgentID, np.ndarray]] = v.to_numpy(batch_mode, filter)
+            print("")
             if len(tmp) == 0:
                 continue
             res[k] = tmp

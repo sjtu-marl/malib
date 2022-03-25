@@ -4,6 +4,8 @@ import yaml
 import os
 import time
 
+from ray.util.actor_pool import ActorPool
+
 from malib import settings
 from malib.utils.typing import AgentID, Dict, BufferDescription, ParameterDescription
 from malib.envs.gr_football import env_desc_gen
@@ -37,8 +39,8 @@ def config():
     return _config
 
 
-@pytest.mark.parametrize("num_episodes", [1, 2, 4])
-@pytest.mark.parametrize("num_workers", [1, 2, 4, 8, 16])
+@pytest.mark.parametrize("num_episodes", [4])
+@pytest.mark.parametrize("num_workers", [1])
 def test_async_rollout(config, num_episodes, num_workers):
     yaml_config = config["yaml"]
     parameter_server = config["parameter_server"]
@@ -61,6 +63,8 @@ def test_async_rollout(config, num_episodes, num_workers):
         )
         for _ in range(num_workers)
     ]
+
+    clients = ActorPool(clients)
 
     servers = {
         agent: InferenceWorkerSet.remote(
@@ -122,23 +126,31 @@ def test_async_rollout(config, num_episodes, num_workers):
 
     ray.get(dataset_server.create_table.remote(buffer_desc))
 
-    start = time.time()
-    _ = ray.get(
-        [
-            client.run.remote(
-                servers,
-                fragment_length=fragment_length,
-                desc=task_desc,
-                buffer_desc=buffer_desc,
-            )
-            for client in clients
-        ]
+    rets = clients.map(
+        lambda a, task: a.run.remote(
+            servers, fragment_length=fragment_length, desc=task, buffer_desc=buffer_desc
+        ),
+        [task_desc for _ in range(num_workers)],
     )
-    end = time.time()
+
+    fps = 0.0
+    avg_connect, avg_env_reset, avg_policy_step, avg_env_step = 0.0, 0.0, 0.0, 0.0
+    for ret in rets:
+        performance = ret["performance"]
+        fps += performance["FPS"]
+        avg_connect += performance["inference_server_connect"] / num_workers
+        avg_env_reset += performance["environment_reset"] / num_workers
+        avg_policy_step += performance["policy_step"] / num_workers
+        avg_env_step += performance["environment_step"] / num_workers
+
     print(
-        "FPS for num_episodes={}/num_worker={} is {}".format(
-            num_episodes,
+        "N_Frames: {} | N_Worker: {} | FPS: {:.4f} | Connect: {:.4f} | Env_reset: {:.4f} | Policy_Step: {:.4f} | Env_Step: {:.4f}".format(
+            num_workers * fragment_length,
             num_workers,
-            max_step * num_episodes * num_workers / (end - start),
+            fps,
+            avg_connect,
+            avg_env_reset,
+            avg_policy_step,
+            avg_env_step,
         )
     )

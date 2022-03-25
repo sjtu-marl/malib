@@ -46,6 +46,7 @@ class AsyncVectorEnv(VectorEnv):
         """
 
         env_rets = {}
+        dead_envs = []
 
         for env_id, _actions in actions.items():
             ret = self._delay_step(env_id, _actions)
@@ -53,24 +54,25 @@ class AsyncVectorEnv(VectorEnv):
                 continue
             env_done = ret[EpisodeKey.DONE]["__all__"]
             env = self.active_envs[env_id]
+
+            self._update_step_cnt()
+
             if env_done:
                 env = self.active_envs.pop(env_id)
+                dead_envs.append(env)
                 self._cached_episode_infos[env_id] = env.collect_info()
-                if not self.is_terminated():
-                    _tmp = env.reset(
-                        max_step=self.max_step,
-                        custom_reset_config=self._custom_reset_config,
-                    )
-                    ret.update(_tmp)
-                    # regenerate runtime id
-                    runtime_id = uuid.uuid1().hex
-                    self._active_envs[runtime_id] = env
-                    env_rets[runtime_id] = _tmp
+                # the terminate judgement is wrong, since step cnt count is delayed
             env_rets[env_id] = ret
-        if isinstance(self._step_cnt, int):
-            self._step_cnt += len(env_rets)
-        else:
-            for _actions in actions.values():
-                if self._trainable_agents in _actions:
-                    self._step_cnt[self._trainable_agents] += 1
+
+        if not self.is_terminated() and len(dead_envs) > 0:
+            for env in dead_env:
+                _tmp = env.reset(
+                    max_step=self.max_step,
+                    custom_reset_config=self._custom_reset_config,
+                )
+                ret.update(_tmp)
+                # regenerate runtime id
+                runtime_id = uuid.uuid1().hex
+                self._active_envs[runtime_id] = env
+                env_rets[runtime_id] = _tmp
         return env_rets

@@ -57,7 +57,7 @@ class InferenceWorkerSet:
 
         self.runtime: Dict[int, RuntimeHandler] = {}
 
-        self.thread_pool.submit(_update_weights, self, force_weight_update)
+        # self.thread_pool.submit(_update_weights, self, force_weight_update)
 
     def shutdown(self):
         self.thread_pool.shutdown(wait=True)

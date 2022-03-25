@@ -64,11 +64,13 @@ class VectorEnv:
 
     @property
     def batched_step_cnt(self) -> int:
-        return (
-            self._step_cnt
-            if isinstance(self._step_cnt, int)
-            else self._step_cnt[self._trainable_agents]
-        )
+        # return (
+        #     self._step_cnt
+        #     if isinstance(self._step_cnt, int)
+        #     else self._step_cnt[self._trainable_agents]
+        # )
+        # XXX(ming): we currently considers only int case
+        return self._step_cnt
 
     @property
     def num_envs(self) -> int:
@@ -152,12 +154,13 @@ class VectorEnv:
             list(trainable_mapping.keys()) if trainable_mapping is not None else None
         )
 
-        if trainable_mapping is None or len(trainable_mapping) > 1:
-            self._step_cnt = 0
-            self._trainable_agents = None
-        else:
-            self._trainable_agents = self._trainable_agents[0]
-            self._step_cnt = {self._trainable_agents: 0}
+        # if trainable_mapping is None or len(trainable_mapping) > 1:
+        #     self._step_cnt = 0
+        #     self._trainable_agents = None
+        # else:
+        #     self._trainable_agents = self._trainable_agents[0]
+        #     self._step_cnt = {self._trainable_agents: 0}
+        self._step_cnt = 0
 
         ret = {}
 
@@ -171,42 +174,50 @@ class VectorEnv:
         active_envs = self.active_envs
 
         env_rets = {}
+        dead_envs = []
         # FIXME(ming): (keyerror, sometimes) the env_id in actions is not an active environment.
         for env_id, _actions in actions.items():
             ret = active_envs[env_id].step(_actions)
             env_done = ret[EpisodeKey.DONE]["__all__"]
             env = self.active_envs[env_id]
+            self._update_step_cnt()
             if env_done:
                 env = active_envs.pop(env_id)
-                print("detected done")
+                dead_envs.append(env)
                 self._cached_episode_infos[env_id] = env.collect_info()
-                if not self.is_terminated():
-                    # write episode cache
-                    # else:
-                    _tmp = env.reset(
-                        max_step=self.max_step,
-                        custom_reset_config=self._custom_reset_config,
-                    )
-                    ret.update(_tmp)
-                    # regenerate runtime id
-                    runtime_id = uuid.uuid1().hex
-                    self._active_envs[runtime_id] = env
-                    env_rets[runtime_id] = _tmp
             env_rets[env_id] = ret
-        if isinstance(self._step_cnt, int):
-            self._step_cnt += len(actions)
-        else:
-            for _actions in actions.values():
-                # print("actionssssss", actions, self._trainable_agents, self._trainable_agents in actions.keys())
-                if self._trainable_agents in _actions:
-                    self._step_cnt[self._trainable_agents] += 1
+        # if isinstance(self._step_cnt, int):
+        #     self._step_cnt += len(actions)
+        # else:
+        #     for _actions in actions.values():
+        #         # print("actionssssss", actions, self._trainable_agents, self._trainable_agents in actions.keys())
+        #         if self._trainable_agents in _actions:
+        #             self._step_cnt[self._trainable_agents] += 1
+        if not self.is_terminated() and len(dead_envs) > 0:
+            for env in dead_envs:
+                _tmp = env.reset(
+                    max_step=self.max_step,
+                    custom_reset_config=self._custom_reset_config,
+                )
+                ret.update(_tmp)
+                # regenerate runtime id
+                runtime_id = uuid.uuid1().hex
+                self._active_envs[runtime_id] = env
+                env_rets[runtime_id] = _tmp
         return env_rets
+
+    def _update_step_cnt(self, ava_agents: List[AgentID] = None):
+        if isinstance(self._step_cnt, int):
+            self._step_cnt += 1
+        else:
+            raise NotImplementedError
 
     def is_terminated(self):
         if isinstance(self._step_cnt, int):
             return self._step_cnt >= self._fragment_length
         else:
-            return self._step_cnt[self._trainable_agents] >= self._fragment_length
+            raise NotImplementedError
+            # return self._step_cnt[self._trainable_agents] >= self._fragment_length
 
     def action_adapter(
         self, policy_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]
