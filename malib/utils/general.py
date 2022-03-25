@@ -114,7 +114,7 @@ def _default_dtype_mapping(dtype):
         return torch.float32
     elif dtype == np.float64:
         return torch.float64
-    elif dtype in [bool, np.bool_]:
+    elif dtype in bool:
         return torch.float32
     else:
         raise NotImplementedError(f"dtype: {dtype} has no transmission rule.") from None

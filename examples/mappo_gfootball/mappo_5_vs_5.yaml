@@ -13,7 +13,7 @@ training:
   config:
     update_interval: 1
     saving_interval: 100
-    batch_size: 64
+    batch_size: 32
     optimizer: "Adam"
     actor_lr: 5.e-4
     critic_lr: 5.e-4
@@ -27,7 +27,7 @@ rollout:
   stopper_config:
     max_step: 1000
   metric_type: "grf"
-  fragment_length: 3001
+  fragment_length: 3000
   num_episodes: 1
   num_env_per_worker: 1
   use_remote_env: False
@@ -102,7 +102,6 @@ algorithms:
         clip_rho_threshold: 1.0
         clip_pg_rho_threshold: 1.0
 
-
       use_rnn: False
       # this is not used, instead it is fixed to last hidden in actor/critic
       rnn_layer_num: 1
@@ -121,4 +120,4 @@ global_evaluator:
 
 dataset_config:
   episode_capacity: 64
-  fragment_length: 3001
+  fragment_length: 3000

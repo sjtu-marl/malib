@@ -39,13 +39,19 @@ def shape_adjusting(wrapped, instance, args, kwargs):
             return x
 
     def recover_fn(x):
-        if isinstance(x, np.ndarray):
-            return np.reshape(x, original_shape_pre + x.shape[1:])
-        else:
-            return x
+        try:
+            if isinstance(x, np.ndarray):
+                return np.reshape(x, original_shape_pre + x.shape[1:])
+            else:
+                return x
+        except ValueError as e:
+            print("--------------->", x.shape, original_shape_pre)
+            raise e
 
     adjusted_args = tree.map_structure(adjust_fn, args)
     adjusted_kwargs = tree.map_structure(adjust_fn, kwargs)
+
+    # print("adjstyee:", {k: v.shape if isinstance(v, np.ndarray) else 0 for k, v in adjusted_kwargs.items()})
 
     rets = wrapped(*adjusted_args, **adjusted_kwargs)
 
@@ -138,8 +144,10 @@ class MAPPO(Policy):
     def compute_action(self, observation, **kwargs):
         actor_rnn_states, critic_rnn_states = kwargs[EpisodeKey.RNN_STATE]
 
-        rnn_masks = kwargs[EpisodeKey.DONE]
-        logits, actor_rnn_states = self.actor(observation, actor_rnn_states, rnn_masks)
+        rnn_masks = kwargs.get(EpisodeKey.DONE, False)
+        logits, actor_rnn_states = self.actor(
+            observation.copy(), actor_rnn_states.copy(), rnn_masks
+        )
         actor_rnn_states = actor_rnn_states.detach().cpu().numpy()
         if EpisodeKey.ACTION_MASK in kwargs:
             illegal_action_mask = torch.FloatTensor(
@@ -157,7 +165,7 @@ class MAPPO(Policy):
         action = dist.sample().cpu().numpy()
         if EpisodeKey.CUR_STATE in kwargs and kwargs[EpisodeKey.CUR_STATE] is not None:
             value, critic_rnn_states = self.critic(
-                kwargs[EpisodeKey.CUR_STATE], critic_rnn_states, rnn_masks
+                kwargs[EpisodeKey.CUR_STATE].copy(), critic_rnn_states.copy(), rnn_masks
             )
             critic_rnn_states = critic_rnn_states.detach().cpu().numpy()
 
@@ -167,10 +175,14 @@ class MAPPO(Policy):
     def value_function(self, *args, **kwargs):
         # FIXME(ziyu): adjust shapes
         state = kwargs[EpisodeKey.CUR_STATE]
-        critic_rnn_state = kwargs[f"{EpisodeKey.RNN_STATE}_1"]
-        rnn_mask = kwargs[EpisodeKey.DONE]
+        rnn_state_key_for_train = f"{EpisodeKey.RNN_STATE}_1"
+        if rnn_state_key_for_train in kwargs:
+            critic_rnn_state = kwargs[rnn_state_key_for_train]
+        else:
+            critic_rnn_state = kwargs[EpisodeKey.RNN_STATE][1]
+        rnn_mask = kwargs.get(EpisodeKey.DONE, False)
         with torch.no_grad():
-            value, _ = self.critic(state, critic_rnn_state, rnn_mask)
+            value, _ = self.critic(state.copy(), critic_rnn_state.copy(), rnn_mask)
         return value.cpu().numpy()
 
     def train(self):

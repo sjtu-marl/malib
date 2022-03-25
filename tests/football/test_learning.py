@@ -11,14 +11,16 @@ import pytest
 import ray
 
 from ray.util.queue import Queue
+from ray.util.actor_pool import ActorPool
 from torch.utils import tensorboard
 
 from malib import settings
-from malib.utils.typing import List, ParameterDescription, Sequence, Dict
+from malib.utils.typing import List, ParameterDescription, Sequence, Dict, AgentID
 from malib.utils import logger
 from malib.utils.logger import Logger
 from malib.envs import gr_football
-from malib.envs.agent_interface import AgentInterface
+from malib.rollout.inference_client import InferenceClient
+from malib.rollout.inference_server import InferenceWorkerSet
 from malib.backend.datapool import parameter_server
 from malib.backend.datapool import offline_dataset_server
 
@@ -26,8 +28,12 @@ from tests.football.rollout_case import (
     run_simple_loop,
     run_simple_ray_pool,
     run_vec_env,
+    run_async_vec_env,
 )
 from tests.football.training_case import SimpleLearner
+
+
+BLOCK_SIZE = 3000
 
 
 def write_to_tensorboard(
@@ -86,12 +92,14 @@ def servers():
     if not ray.is_initialized():
         ray.init()
 
-    dataset_config = {"episode_capacity": 300, "fragment_length": 3001}
+    dataset_config = {"episode_capacity": 300, "fragment_length": BLOCK_SIZE}
 
     ParameterServer = parameter_server.ParameterServer.as_remote()
-    pserver = ParameterServer.options(name=settings.PARAMETER_SERVER_ACTOR).remote()
+    pserver = ParameterServer.options(
+        name=settings.PARAMETER_SERVER_ACTOR, max_concurrency=100
+    ).remote()
     dataset_server = offline_dataset_server.OfflineDataset.options(
-        name=settings.OFFLINE_DATASET_ACTOR
+        name=settings.OFFLINE_DATASET_ACTOR, max_concurrency=100
     ).remote(dataset_config)
 
     return (pserver, dataset_server)
@@ -133,8 +141,7 @@ def run_optimize(request_queue, response_queue, env_desc, yaml_config, exp_cfg):
 
         loop_cnt = 0
         ave_FPS = 0
-        batch_size = 64
-        block_size = 3001
+        batch_size = 32
         total_frames = 0
 
         training_config = yaml_config["training"]["config"]
@@ -157,8 +164,8 @@ def run_optimize(request_queue, response_queue, env_desc, yaml_config, exp_cfg):
             for k, v in statistics.items():
                 washed[f"training/{k}"] = v
 
-            FPS = len(learners) * batch_size * block_size / (end - start)
-            total_frames += len(learners) * batch_size * block_size
+            FPS = len(learners) * batch_size * BLOCK_SIZE / (end - start)
+            total_frames += len(learners) * batch_size * BLOCK_SIZE
             ave_FPS = (ave_FPS * loop_cnt + FPS) / (loop_cnt + 1)
             loop_cnt += 1
 
@@ -171,7 +178,7 @@ def run_optimize(request_queue, response_queue, env_desc, yaml_config, exp_cfg):
             response_queue.put(
                 {
                     "logs": {
-                        "training/N_Frames": len(learners) * batch_size * block_size,
+                        "training/N_Frames": len(learners) * batch_size * BLOCK_SIZE,
                         "training/FPS": FPS,
                         "training/AVE_FPS": ave_FPS,
                         "training/Total_Frames": total_frames,
@@ -197,8 +204,8 @@ def run_rollout(
     try:
         total_frames, ave_FPS = 0, 0.0
         loop_cnt = 0
-        num_envs = 3
-        base_fragment_length = 3001
+        num_envs = 16
+        num_env_per_worker = 4
 
         pserver = ray.get_actor(name=settings.PARAMETER_SERVER_ACTOR)
 
@@ -207,8 +214,6 @@ def run_rollout(
 
         model_config = yaml_config["algorithms"][algo_name]["model_config"]
         custom_config = yaml_config["algorithms"][algo_name]["custom_config"]
-        possible_agents = env_desc["possible_agents"]
-        env_id = env_desc["config"]["env_id"]
 
         _description = {
             "registered_name": algo_name,
@@ -218,49 +223,61 @@ def run_rollout(
             "custom_config": custom_config,
         }
 
-        policy_description = {
-            k: (
-                f"{algo_name}_0",
-                _description,
-                ParameterDescription(
-                    time.time(),
-                    identify=k,
-                    env_id=env_id,
-                    id=f"{algo_name}_0",
-                    lock=False,
-                    description=_description,
-                    data=None,
-                ),
-            )
-            for k in possible_agents
-        }
-
         agent_interfaces = {
-            aid: AgentInterface(aid, obs_spaces[aid], action_spaces[aid], pserver)
-            for aid in env_desc["possible_agents"]
+            agent: InferenceWorkerSet.options(num_cpus=10).remote(
+                agent_id=agent,
+                observation_space=obs_spaces[agent],
+                action_space=action_spaces[agent],
+                parameter_server=pserver,
+                force_weight_update=True,
+            )
+            for agent in env_desc["possible_agents"]
         }
 
-        for agent, interface in agent_interfaces.items():
-            policy_id, policy_description, parameter_desc = policy_description[agent]
-            interface.add_policy(
-                env_aid=agent,
-                policy_id=policy_id,
-                policy_description=policy_description,
-                parameter_desc=parameter_desc,
+        num_rollout_actors = num_envs // num_env_per_worker
+        num_eval_actors = 1
+
+        p_descs: Dict[AgentID, ParameterDescription] = {
+            agent: ParameterDescription(
+                time_stamp=time.time(),
+                identify=agent,
+                env_id=env_desc["config"]["env_id"],
+                id=f"{algo_name}_0",
+                type=ParameterDescription.Type.PARAMETER,
+                lock=False,
+                description=_description,
+                data=None,
+                parallel_num=1,
+                version=0,
             )
-            interface.update_weights([f"{algo_name}_0"], True)
+            for agent in env_desc["possible_agents"]
+        }
 
         runtime_configs = {
             "num_episodes": num_envs,
-            "num_env_per_worker": 1,
+            "num_env_per_worker": num_env_per_worker,
             "use_subproc_env": False,
             "batch_mode": "episode",
-            "fragment_length": num_envs * base_fragment_length,
+            "max_step": BLOCK_SIZE,
             "flags": "rollout",
-            "policy_description": policy_description,
+            "postprocessor_types": ["defaults"],
+            "parameter_desc_dict": p_descs,
             "trainable_pairs": {"team_0": (f"{algo_name}_0", None)},
             "policy_combinations": [{"team_0": f"{algo_name}_0"}],
         }
+
+        actor_pool = ActorPool(
+            [
+                InferenceClient.remote(
+                    env_desc,
+                    ray.get_actor(settings.OFFLINE_DATASET_ACTOR),
+                    use_subproc_env=runtime_configs["use_subproc_env"],
+                    batch_mode=runtime_configs["batch_mode"],
+                    postprocessor_types=runtime_configs["postprocessor_types"],
+                )
+                for _ in range(num_rollout_actors + num_eval_actors)
+            ]
+        )
 
         while True:
             if not request_queue.empty():
@@ -270,8 +287,11 @@ def run_rollout(
                     break
 
             # update weights
-            N_Frames, FPS, eval_stats = run_vec_env(
-                env_desc, None, runtime_configs, agent_interfaces
+            # N_Frames, FPS, eval_stats = run_vec_env(
+            #     env_desc, None, runtime_configs, agent_interfaces
+            # )
+            N_Frames, FPS, eval_stats = run_async_vec_env(
+                env_desc, None, runtime_configs, agent_interfaces, actor_pool
             )
 
             total_frames += N_Frames
@@ -311,7 +331,7 @@ def run_rollout(
                 )
                 for aid, interface in agent_interfaces.items():
                     _save_dir = os.path.join(save_dir, aid)
-                    interface.save(_save_dir)
+                    ray.get(interface.save.remote(_save_dir))
     except Exception as e:
         traceback.print_exc()
         raise e

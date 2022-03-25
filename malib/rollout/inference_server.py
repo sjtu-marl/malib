@@ -1,3 +1,7 @@
+from functools import reduce
+from operator import mul
+import os
+import pickle as pkl
 import time
 import threading
 
@@ -11,6 +15,7 @@ import numpy as np
 
 from ray.util.queue import Queue
 
+from malib import settings
 from malib.utils.logger import Logger
 from malib.utils.typing import (
     AgentID,
@@ -29,7 +34,7 @@ from malib.envs.agent_interface import _update_weights
 from malib.utils.episode import EpisodeKey
 
 
-RuntimeHandler = namedtuple("RuntimeHandler", "sender,recver,runtime_config")
+RuntimeHandler = namedtuple("RuntimeHandler", "sender,recver,runtime_config,rnn_states")
 
 
 @ray.remote
@@ -57,7 +62,7 @@ class InferenceWorkerSet:
 
         self.runtime: Dict[int, RuntimeHandler] = {}
 
-        # self.thread_pool.submit(_update_weights, self, force_weight_update)
+        self.thread_pool.submit(_update_weights, self, force_weight_update)
 
     def shutdown(self):
         self.thread_pool.shutdown(wait=True)
@@ -65,6 +70,21 @@ class InferenceWorkerSet:
             _runtime.sender.shutdown(True)
             _runtime.recver.shutdown(True)
         self.runtime: Dict[int, RuntimeHandler] = {}
+
+    def save(self, model_dir: str) -> None:
+        """Save policies.
+
+        :param str model_dir: Directory path.
+        :return: None
+        """
+
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+
+        for pid, policy in self.policies.items():
+            fp = os.path.join(model_dir, pid + ".pkl")
+            with open(fp, "wb") as f:
+                pkl.dump(policy, f, protocol=settings.PICKLE_PROTOCOL_VER)
 
     def connect(
         self,
@@ -74,7 +94,7 @@ class InferenceWorkerSet:
     ):
         send_queue, recv_queue = queues
         self.runtime[runtime_id] = RuntimeHandler(
-            send_queue, recv_queue, runtime_config
+            send_queue, recv_queue, runtime_config, []
         )
 
         with self.parameter_buffer_lock:
@@ -126,6 +146,21 @@ def _sample_policy_id(runtime_config, main_agent_id, old_policy_id):
     return policy_id
 
 
+def _get_initial_states(self, runtime_id, observation, policy: Policy):
+    # try to retrive cached states
+    if len(self.runtime[runtime_id].rnn_states) > 0:
+        return self.runtime[runtime_id].rnn_states[-1]
+    else:
+        # use inner shape to judge it
+        offset = len(policy.preprocessor.shape)
+        batch_size = reduce(mul, observation.shape[:-offset])
+        return policy.get_initial_state(batch_size=batch_size)
+
+
+def _update_initial_states(self, runtime_id, rnn_states):
+    self.runtime[runtime_id].rnn_states.append(rnn_states)
+
+
 def _compute_action(self: InferenceWorkerSet, runtime_id: int):
     handler = self.runtime[runtime_id]
     runtime_config = handler.runtime_config
@@ -149,15 +184,21 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
                 # print("start compute action")
                 kwargs = {**data_frame.data, **data_frame.runtime_config}
                 observation = kwargs.pop(EpisodeKey.CUR_OBS)
-                if EpisodeKey.RNN_STATE not in kwargs:
-                    kwargs[EpisodeKey.RNN_STATE] = policy.get_initial_state(
-                        batch_size=None if len(observation) == 1 else len(observation)
-                    )
+                # if EpisodeKey.RNN_STATE not in kwargs:
+                kwargs[EpisodeKey.RNN_STATE] = _get_initial_states(
+                    self, runtime_id, observation, policy
+                )
                 (
                     rets[EpisodeKey.ACTION],
                     rets[EpisodeKey.ACTION_DIST],
                     rets[EpisodeKey.RNN_STATE],
                 ) = policy.compute_action(observation=observation, **kwargs)
+                # compute state value
+                rets[EpisodeKey.STATE_VALUE] = policy.value_function(
+                    observation=observation, **kwargs
+                )
+                # save rnn state
+                _update_initial_states(self, runtime_id, rets[EpisodeKey.RNN_STATE])
                 # print("done for compute action")
 
             handler.sender.put_nowait(

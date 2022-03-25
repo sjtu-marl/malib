@@ -64,15 +64,14 @@ class AsyncVectorEnv(VectorEnv):
                 # the terminate judgement is wrong, since step cnt count is delayed
             env_rets[env_id] = ret
 
-        if not self.is_terminated() and len(dead_envs) > 0:
-            for env in dead_env:
-                _tmp = env.reset(
-                    max_step=self.max_step,
-                    custom_reset_config=self._custom_reset_config,
-                )
-                ret.update(_tmp)
-                # regenerate runtime id
-                runtime_id = uuid.uuid1().hex
-                self._active_envs[runtime_id] = env
-                env_rets[runtime_id] = _tmp
+        # if not self.is_terminated() and len(dead_envs) > 0:
+        #     for env in dead_envs:
+        #         _tmp = env.reset(
+        #             max_step=self.max_step,
+        #             custom_reset_config=self._custom_reset_config,
+        #         )
+        #         # regenerate runtime id
+        #         runtime_id = uuid.uuid1().hex
+        #         self._active_envs[runtime_id] = env
+        #         env_rets[runtime_id] = _tmp
         return env_rets

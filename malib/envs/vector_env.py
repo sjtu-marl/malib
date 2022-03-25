@@ -186,20 +186,13 @@ class VectorEnv:
                 dead_envs.append(env)
                 self._cached_episode_infos[env_id] = env.collect_info()
             env_rets[env_id] = ret
-        # if isinstance(self._step_cnt, int):
-        #     self._step_cnt += len(actions)
-        # else:
-        #     for _actions in actions.values():
-        #         # print("actionssssss", actions, self._trainable_agents, self._trainable_agents in actions.keys())
-        #         if self._trainable_agents in _actions:
-        #             self._step_cnt[self._trainable_agents] += 1
+
         if not self.is_terminated() and len(dead_envs) > 0:
             for env in dead_envs:
                 _tmp = env.reset(
                     max_step=self.max_step,
                     custom_reset_config=self._custom_reset_config,
                 )
-                ret.update(_tmp)
                 # regenerate runtime id
                 runtime_id = uuid.uuid1().hex
                 self._active_envs[runtime_id] = env

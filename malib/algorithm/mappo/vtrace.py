@@ -12,21 +12,22 @@ def target_logp_from_policy_and_act(policy, obs, act, rnn_states, masks):
         obs = _cast(obs)
         masks = _cast(masks)
         rnn_states = torch.tensor(
-            rnn_states.reshape((B * T * N, *rnn_states.shape[-2:])),
+            # rnn_states.reshape((B * T * N, *rnn_states.shape[-2:])),
+            rnn_states.reshape((B * T, *rnn_states.shape[-2:])),
             dtype=torch.float32,
             device=policy.device,
         )
     logits, _ = policy.actor(obs, rnn_states, masks)
     logits = logits.reshape((B, T, N, -1)).detach()
     dist = Categorical(logits=logits)
-    act = torch.tensor(act.squeeze(-1), dtype=torch.float32, device=policy.device)
-    return dist.log_prob(act).unsqueeze(-1).cpu().numpy()
+    act = torch.tensor(act, dtype=torch.float32, device=policy.device)
+    return dist.log_prob(act).cpu().numpy()
 
 
 def behavior_logp_from_prob_and_act(act_dist, act):
-    dist = Categorical(logits=torch.FloatTensor(act_dist))
-    act = torch.LongTensor(act.squeeze(-1))
-    return dist.log_prob(act).unsqueeze(-1).numpy()
+    dist = Categorical(logits=torch.FloatTensor(act_dist.copy()))
+    act = torch.LongTensor(act.copy())
+    return dist.log_prob(act).numpy()
 
 
 def compute_vtrace(
@@ -44,7 +45,7 @@ def compute_vtrace(
 ):
     behavior_logp = behavior_logp_from_prob_and_act(act_dist, act)
     target_logp = target_logp_from_policy_and_act(policy, obs, act, rnn_state, done)
-    log_rhos = target_logp - behavior_logp
+    log_rhos = np.expand_dims((target_logp - behavior_logp), -1)
     log_rhos, values = log_rhos[:, :-1], value[:, :-1]
     rewards, dones = reward[:, :-1], done[:, :-1]
 
@@ -87,6 +88,7 @@ def vtrace_return(
         log_rhos.shape,
         values.shape,
         rewards.shape,
+        dones.shape,
     )
     assert bootstrap_values.ndim == rho_rank - 1
 

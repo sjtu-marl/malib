@@ -83,7 +83,7 @@ class BaseGFootBall(Environment):
         self.n_agents = len(self.possible_agents)
 
         self._build_interacting_spaces()
-        self.max_step = 3001
+        self.max_step = 3000
 
     def seed(self, seed=None):
         self._raw_env.seed(seed)

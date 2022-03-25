@@ -7,8 +7,10 @@ from ray.util import ActorPool
 from malib import settings
 from malib.rollout import rollout_func
 
-from malib.utils.typing import BufferDescription, List
+from malib.utils.typing import BufferDescription, Dict, AgentID
 from malib.utils.episode import EpisodeKey
+from malib.rollout.inference_server import InferenceWorkerSet
+from malib.rollout.inference_client import InferenceClient
 from malib.envs.agent_interface import AgentInterface
 
 
@@ -115,6 +117,155 @@ def run_simple_ray_pool(env_desc, num):
     return n_frames, n_frames / (end_time - start_time)
 
 
+def run_async_vec_env(
+    env_desc,
+    num,
+    runtime_configs,
+    agent_interfaces: Dict[AgentID, InferenceWorkerSet] = None,
+    actor_pool: ActorPool = None,
+):
+    # runtime_configs required:
+    #   num_episodes,
+    #   num_env_per_worker
+    #   flags
+    #   use_subproc_env
+    #   batch_mode
+    #   max_step
+    #   postprocessor_types
+    #   policy_combinations
+    #   trainable_pairs
+    obs_spaces = env_desc["observation_spaces"]
+    act_spaces = env_desc["action_spaces"]
+    parameter_server = ray.get_actor(name=settings.PARAMETER_SERVER_ACTOR)
+
+    trainable_pairs = runtime_configs["trainable_pairs"]
+    policy_distribution = None
+    policy_combinations = runtime_configs["policy_combinations"]
+
+    if agent_interfaces is None:
+        agent_interfaces = {
+            agent: InferenceWorkerSet.remote(
+                agent_id=agent,
+                observation_space=obs_spaces[agent],
+                action_space=act_spaces[agent],
+                parameter_server=parameter_server,
+                force_weight_update=True,
+            )
+            for agent in env_desc["possible_agents"]
+        }
+
+    # stepping num: num_episodses, num_env_per_worker
+    num_rollout_actors = (
+        runtime_configs["num_episodes"] // runtime_configs["num_env_per_worker"]
+    )
+    num_eval_actors = 1
+
+    if runtime_configs["flags"] == "rollout":
+        dataserver = ray.get_actor(name=settings.OFFLINE_DATASET_ACTOR)
+    else:
+        dataserver = None
+
+    if actor_pool is None:
+        actors = [
+            InferenceClient.remote(
+                env_desc,
+                dataserver,
+                use_subproc_env=runtime_configs["use_subproc_env"],
+                batch_mode=runtime_configs["batch_mode"],
+                postprocessor_types=["defaults"],
+            )
+            for _ in range(num_rollout_actors + num_eval_actors)
+        ]
+
+        actor_pool = ActorPool(actors)
+
+    # start eval
+    tasks = [
+        {
+            "flag": runtime_configs["flags"],
+            "behavior_policies": policy_combinations[0],
+            "policy_distribution": policy_distribution,
+            "parameter_desc_dict": runtime_configs["parameter_desc_dict"],
+            "num_episodes": runtime_configs["num_env_per_worker"],
+            "max_step": runtime_configs["max_step"],
+            "postprocessor_types": runtime_configs["postprocessor_types"],
+        }
+        for _ in range(num_rollout_actors)
+    ]
+
+    if runtime_configs["flags"] == "rollout":
+        tasks.extend(
+            [
+                {
+                    "flag": "evaluation",
+                    "behavior_policies": policy_combinations[0],
+                    "policy_distribution": policy_distribution,
+                    "parameter_desc_dict": runtime_configs["parameter_desc_dict"],
+                    "num_episodes": 4,
+                    "max_step": runtime_configs["max_step"],
+                }
+                for _ in range(num_eval_actors)
+            ]
+        )
+
+    buffer_desc = BufferDescription(
+        env_id=env_desc["config"][
+            "env_id"
+        ],  # TODO(ziyu): this should be move outside "config"
+        agent_id=list(trainable_pairs.keys()),
+        policy_id=[pid for pid, _ in trainable_pairs.values()],
+        capacity=None,
+        sample_start_size=None,
+    )
+
+    if dataserver:
+        ray.get(dataserver.create_table.remote(buffer_desc, ignore=True))
+
+    rets = actor_pool.map(
+        lambda a, task: a.run.remote(
+            agent_interfaces=agent_interfaces,
+            desc=task,
+            buffer_desc=buffer_desc,
+        ),
+        tasks,
+    )
+
+    num_frames = 0
+    stats_list = []
+    fps = 0.0
+    num_workers = num_eval_actors + num_rollout_actors
+    avg_connect, avg_env_reset, avg_policy_step, avg_env_step = 0.0, 0.0, 0.0, 0.0
+
+    for ret in rets:
+        # we retrieve only results from evaluation/simulation actors.
+        performance = ret["performance"]
+
+        avg_connect += performance["inference_server_connect"] / num_workers
+        avg_env_reset += performance["environment_reset"] / num_workers
+        avg_policy_step += performance["policy_step"] / num_workers
+        avg_env_step += performance["environment_step"] / num_workers
+        num_frames += ret["total_fragment_length"]
+        fps += performance["FPS"]
+
+        if ret["task_type"] in ["evaluation", "simulation"]:
+            stats_list.append(ret["eval_info"])
+
+    env_rollout_fps = fps
+    eval_stats = stats_list
+
+    # average evaluation results
+    merged_eval_stats = {}
+    for e in stats_list:
+        for k, v in e.items():
+            if k not in merged_eval_stats:
+                merged_eval_stats[k] = []
+            merged_eval_stats[k].append(v)
+    for k in merged_eval_stats.keys():
+        merged_eval_stats[k] = np.mean(merged_eval_stats[k])
+
+    return num_frames, env_rollout_fps, eval_stats
+
+
 def run_vec_env(env_desc, num, runtime_configs, agent_interfaces=None):
     obs_spaces = env_desc["observation_spaces"]
     act_spaces = env_desc["action_spaces"]
@@ -164,18 +315,8 @@ def run_vec_env(env_desc, num, runtime_configs, agent_interfaces=None):
         )
         for _ in range(num_rollout_actors + num_eval_actors)
     ]
-    eval_actors = [
-        Stepping.remote(
-            env_desc,
-            None,
-            use_subproc_env=runtime_configs["use_subproc_env"],
-            batch_mode=runtime_configs["batch_mode"],
-            postprocessor_types=["value"],
-        )
-    ]
 
     rollout_actor_pool = ActorPool(actors)
-    eval_actor_pool = ActorPool(eval_actors)
 
     # start eval
     tasks = [
@@ -197,7 +338,7 @@ def run_vec_env(env_desc, num, runtime_configs, agent_interfaces=None):
                     "num_episodes": 1,
                     "behavior_policies": policy_combinations[0],
                     "policy_distribution": policy_distribution,
-                    "fragment_length": 1 * 3001,
+                    "fragment_length": 1 * 3000,
                 }
                 for _ in range(num_eval_actors)
             ]

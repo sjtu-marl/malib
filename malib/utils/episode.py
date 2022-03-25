@@ -68,13 +68,15 @@ class Episode:
 
         for ek, agent_v in self.agent_entry.items():
             _filter = filter or list(agent_v.keys())
-            print("-------- ek", ek)
             for agent_id in _filter:
                 v = agent_v[agent_id]
                 if ek == EpisodeKey.RNN_STATE:
                     if len(v) == 0 or len(v[0]) == 0:
                         continue
-                    tmp = [np.stack(r)[:-1] for r in list(zip(*v))]
+                    tmp = [
+                        np.stack([np.zeros_like(r[0], dtype=np.float32)] + list(r[:-1]))
+                        for r in list(zip(*v))
+                    ]
                     if batch_mode == "episode":
                         tmp = [np.expand_dims(r, axis=0) for r in tmp]
                     res[agent_id].update(
@@ -135,7 +137,6 @@ class NewEpisodeDict(defaultdict):
         res = {}
         for k, v in self.items():
             tmp: Dict[str, Dict[AgentID, np.ndarray]] = v.to_numpy(batch_mode, filter)
-            print("")
             if len(tmp) == 0:
                 continue
             res[k] = tmp

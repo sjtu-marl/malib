@@ -179,7 +179,7 @@ class Table:
                     # '+1' is because truncated mode to get the bootstrap value.
                     t[dk] = np.zeros(
                         (capacity,)
-                        + ((fragment_length + 1,) if self._fragment_length > 0 else ())
+                        + ((fragment_length,) if self._fragment_length > 0 else ())
                         + dshape,
                         dtype=data_dtypes[agent][dk],
                     )
@@ -240,8 +240,8 @@ class Table:
         else:
             return self._producer_queue.get_nowait_batch(int(buffer_size))
 
-    def get_consumer_index(self, buffer_size: int) -> Union[List[int], None]:
-        buffer_size = min(self._consumer_queue.qsize(), buffer_size)
+    def get_consumer_index(self, request_buffer_size: int) -> Union[List[int], None]:
+        buffer_size = min(self._consumer_queue.qsize(), request_buffer_size)
         if buffer_size <= 0:
             return None
         else:

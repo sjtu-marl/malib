@@ -39,7 +39,7 @@ def config():
     return _config
 
 
-@pytest.mark.parametrize("num_episodes", [4])
+@pytest.mark.parametrize("num_episodes", [1])
 @pytest.mark.parametrize("num_workers", [1])
 def test_async_rollout(config, num_episodes, num_workers):
     yaml_config = config["yaml"]
@@ -111,7 +111,7 @@ def test_async_rollout(config, num_episodes, num_workers):
         "num_episodes": num_episodes,
         "flag": "rollout",
         "behavior_policies": trainable_pairs,
-        "paramter_desc_dict": p_descs,
+        "parameter_desc_dict": p_descs,
         "postprocessor_types": yaml_config["rollout"]["postprocessor_types"],
     }
     fragment_length = max_step * num_episodes

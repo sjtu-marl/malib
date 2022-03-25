@@ -17,7 +17,7 @@ class PayoffTable:
         # record policy idx
         self._policy_idx = {agent: {} for agent in self.agents}
         self.table = np.zeros([0] * len(self.agents), dtype=np.float32)
-        self.simulation_flag = np.zeros([0] * len(self.agents), dtype=np.bool)
+        self.simulation_flag = np.zeros([0] * len(self.agents), dtype=bool)
 
     def __getitem__(self, key: Dict[str, Sequence[PolicyID]]) -> np.ndarray:
         """Return a sub matrix"""
