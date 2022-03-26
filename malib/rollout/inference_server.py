@@ -30,7 +30,6 @@ from malib.utils.typing import (
 )
 from malib.algorithm import get_algorithm_space
 from malib.algorithm.common.policy import Policy
-from malib.envs.agent_interface import _update_weights
 from malib.utils.episode import EpisodeKey
 
 
@@ -50,7 +49,7 @@ class InferenceWorkerSet:
         self.agent_id = agent_id
         self.observation_space = observation_space
         self.action_space = action_space
-        self.parameter_sever = parameter_server
+        self.parameter_server = parameter_server
 
         self.policies = {self.agent_id: {}}
         self.parameter_desc: List[ParameterDescription] = []
@@ -62,6 +61,7 @@ class InferenceWorkerSet:
 
         self.runtime: Dict[int, RuntimeHandler] = {}
 
+        Logger.info("ready to submit weights update")
         self.thread_pool.submit(_update_weights, self, force_weight_update)
 
     def shutdown(self):
@@ -175,8 +175,6 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
         data_frame: DataFrame = handler.recver.get()
         rets = {}
 
-        # print("got")
-
         try:
             with self.parameter_buffer_lock:
                 policy_id = _sample_policy_id(runtime_config, self.agent_id, policy_id)
@@ -213,30 +211,34 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
 
 def _update_weights(self: InferenceWorkerSet, force: bool = False) -> None:
     """Update weights for agent interface."""
-    parameter_server = self.parameter_server
-    parameter_descs = self.parameter_desc
-    # parameter_buffer = self.parameter_buffer
-    parameter_version = self.parameter_version
+    try:
+        parameter_server = self.parameter_server
+        parameter_descs = self.parameter_desc
+        # parameter_buffer = self.parameter_buffer
+        parameter_version = self.parameter_version
 
-    Logger.info(
-        "start parameter update thread for agent server: {}".format(self.agent_id)
-    )
+        while True:
+            with self.parameter_buffer_lock:
+                tasks = []
+                for version, p_desc in zip(parameter_version, parameter_descs):
+                    # set request version
+                    if force:
+                        p_desc.version = -1
+                    else:
+                        p_desc.version = version
+                    task = parameter_server.pull.remote(p_desc, keep_return=True)
+                    tasks.append(task)
 
-    while True:
-        with self.parameter_buffer_lock:
-            tasks = []
-            for version, p_desc in zip(parameter_version, parameter_descs):
-                # set request version
-                if force:
-                    p_desc.version = -1
-                else:
-                    p_desc.version = version
-                task = parameter_server.pull.remote(p_desc, keep_return=True)
-                tasks.append(task)
-
-            rets = ray.get(tasks)
-            for i, (status, content) in enumerate(rets):
-                if content.data is not None:
-                    parameter_version[i] = content.version
-                    parameter_descs[i].lock = status.locked
-        time.sleep(1)
+                rets = ray.get(tasks)
+                for i, (status, content) in enumerate(rets):
+                    if content.data is not None:
+                        # update parameter here
+                        print("update weights here with version:", content.version)
+                        self.policies[self.agent_id][parameter_descs[i].id].set_weights(
+                            content.data
+                        )
+                        parameter_version[i] = content.version
+                        parameter_descs[i].lock = status.locked
+            time.sleep(1)
+    except Exception as e:
+        traceback.print_exc()

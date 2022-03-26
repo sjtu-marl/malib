@@ -201,7 +201,7 @@ def run_async_vec_env(
                     "behavior_policies": policy_combinations[0],
                     "policy_distribution": policy_distribution,
                     "parameter_desc_dict": runtime_configs["parameter_desc_dict"],
-                    "num_episodes": 4,
+                    "num_episodes": runtime_configs["num_env_per_worker"],
                     "max_step": runtime_configs["max_step"],
                 }
                 for _ in range(num_eval_actors)

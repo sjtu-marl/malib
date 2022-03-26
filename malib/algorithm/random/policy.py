@@ -45,7 +45,7 @@ class RandomPolicy(Policy):
         self, observation: DataTransferType, **kwargs
     ) -> Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
         actor_rnn_state, critic_rnn_state = kwargs[EpisodeKey.RNN_STATE]
-        assert len(actor_rnn_state) == len(critic_rnn_state) == len(observation)
+        # assert len(actor_rnn_state) == len(critic_rnn_state) == len(observation)
         logits = torch.softmax(self.actor(observation), dim=-1)
         if isinstance(self.action_space, gym.spaces.Discrete):
             action_prob = torch.zeros((len(observation), self.action_space.n)).numpy()
@@ -81,6 +81,10 @@ class RandomPolicy(Policy):
             np.zeros(shape)
             for _ in range(2)
         ]
+
+    def value_function(self, *args, **kwargs):
+        shape = kwargs[EpisodeKey.CUR_OBS].shape
+        return np.zeros(shape=(shape[0], 1))
 
     def train(self):
         pass

@@ -204,7 +204,7 @@ def run_rollout(
     try:
         total_frames, ave_FPS = 0, 0.0
         loop_cnt = 0
-        num_envs = 16
+        num_envs = 32
         num_env_per_worker = 4
 
         pserver = ray.get_actor(name=settings.PARAMETER_SERVER_ACTOR)
@@ -229,7 +229,7 @@ def run_rollout(
                 observation_space=obs_spaces[agent],
                 action_space=action_spaces[agent],
                 parameter_server=pserver,
-                force_weight_update=True,
+                force_weight_update=False,
             )
             for agent in env_desc["possible_agents"]
         }

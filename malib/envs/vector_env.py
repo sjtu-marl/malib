@@ -219,9 +219,10 @@ class VectorEnv:
 
         # since activ_envs maybe updated after self.step, so we should use keys
         # in self.active_envs
-        for env_id, env in self.active_envs.items():
-            policy_output = policy_outputs[env_id]
-            res[env_id] = env.action_adapter(policy_output)
+        res = {
+            env_id: self.active_envs[env_id].action_adapter(policy_output)
+            for env_id, policy_output in policy_outputs.items()
+        }
 
         return res
 
@@ -255,6 +256,15 @@ class _RemoteEnv:
         ret = self.env.step(action)
         return {self.runtime_id: ret}
 
+    def action_adapter(self, policy_outpus):
+        return {self.runtime_id: self.env.action_adapter(policy_outpus)}
+
+    def collect_info(self):
+        if self.env.cnt > 0:
+            return {self.runtime_id: self.env.collect_info()}
+        else:
+            return {}
+
     def from_env(self, env):
         assert isinstance(env, Environment)
         self.env = env
@@ -268,26 +278,38 @@ class SubprocVecEnv(VectorEnv):
         action_spaces: Dict[AgentID, gym.Space],
         creator: type,
         configs: Dict[str, Any],
-        max_num_envs: int = 0,
     ):
         # modify creator as remote creator
-        self.max_num_envs = max_num_envs
         self.pending_tasks = []
 
         super(SubprocVecEnv, self).__init__(
             observation_spaces, action_spaces, creator, configs
         )
 
+    def action_adapter(
+        self, policy_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]
+    ) -> Dict[EnvID, Dict[AgentID, Any]]:
+        res = {}
+
+        # since activ_envs maybe updated after self.step, so we should use keys
+        # in self.active_envs
+        res = ray.get(
+            [
+                self.active_envs[env_id].action_adapter.remote(policy_output)
+                for env_id, policy_output in policy_outputs.items()
+            ]
+        )
+        res = ChainMap(*res)
+
+        return res
+
     def add_envs(self, envs: List = None, num: int = 0):
         """Add existin envs to remote actor"""
 
-        if self.num_envs == self.max_num_envs:
-            return
-
-        num_env_pool = self.num_envs
+        # num_env_pool = self.num_envs
 
         if envs and len(envs) > 0:
-            for env in envs[: self.max_num_envs - num_env_pool]:
+            for env in envs:
                 if isinstance(env, ActorHandle):
                     self._envs.append(env)
                 else:
@@ -296,9 +318,9 @@ class SubprocVecEnv(VectorEnv):
                 self._num_envs += 1
             Logger.debug(f"added {len(envs)} exisiting environments.")
         elif num > 0:
-            num = min(
-                self.max_num_envs - self.num_envs, max(0, self.max_num_envs - num)
-            )
+            # num = min(
+            #     self.max_num_envs - self.num_envs, max(0, self.max_num_envs - num)
+            # )
             for _ in range(num):
                 self._envs.append(
                     _RemoteEnv.remote(
@@ -306,7 +328,7 @@ class SubprocVecEnv(VectorEnv):
                     )
                 )
                 self._num_envs += 1
-            Logger.debug(f"created {num} new environments.")
+            Logger.info(f"created {num} new environments.")
 
     def reset(
         self,
@@ -314,6 +336,7 @@ class SubprocVecEnv(VectorEnv):
         fragment_length: int,
         max_step: int,
         custom_reset_config: Dict[str, Any] = None,
+        trainable_mapping: Dict[AgentID, PolicyID] = None,
     ) -> Dict[EnvID, Dict[str, Dict[AgentID, Any]]]:
         self._limits = limits or self.num_envs
         self._step_cnt = 0
@@ -329,6 +352,12 @@ class SubprocVecEnv(VectorEnv):
         runtime_ids = [uuid.uuid1().hex for _ in range(self._limits)]
         self._active_envs = dict(zip(runtime_ids, self.envs[: self._limits]))
 
+        self._trainable_agents = (
+            list(trainable_mapping.keys()) if trainable_mapping is not None else None
+        )
+
+        self._step_cnt = 0
+
         ret = {}
 
         for env_id, env in self.active_envs.items():
@@ -340,6 +369,18 @@ class SubprocVecEnv(VectorEnv):
                 )
             )
             ret.update(_ret)
+
+        ret = ray.get(
+            [
+                env.reset.remote(
+                    runtime_id=runtime_id,
+                    max_step=max_step,
+                    custom_reset_config=custom_reset_config,
+                )
+                for runtime_id, env in self._active_envs.items()
+            ]
+        )
+        ret = ChainMap(*ret)
 
         return ret
 
@@ -358,6 +399,7 @@ class SubprocVecEnv(VectorEnv):
         self._step_cnt += len(rets)
 
         # FIXME(ming): (runtime error, sometimes) dictionary changed size during iteration
+        dead_envs = []
         for env_id, _ret in rets.items():
             dones = _ret[EpisodeKey.DONE]
             env_done = any(dones.values())
@@ -366,7 +408,11 @@ class SubprocVecEnv(VectorEnv):
                 env = self._active_envs.pop(env_id)
                 runtime_id = uuid.uuid1().hex
                 self.active_envs[runtime_id] = env
-                _ret.update(
+                dead_envs.append(env)
+
+        if not self.is_terminated() and len(dead_envs) > 0:
+            for env in dead_envs:
+                rets.update(
                     ray.get(
                         env.reset.remote(
                             runtime_id=runtime_id,
@@ -377,6 +423,17 @@ class SubprocVecEnv(VectorEnv):
                 )
 
         return rets
+
+    def collect_info(self, truncated=False) -> List[Dict[str, Any]]:
+        # XXX(ziyu): We can add a new param 'truncated' to determine whether to add
+        # the nonterminal env_info into rets.
+        ret = self._cached_episode_infos
+        additional = ray.get(
+            [env.collect_info.remote() for env in self.active_envs.values()]
+        )
+        additional = ChainMap(*additional)
+        ret.update(additional)
+        return ret
 
     def close(self):
         for env in self.envs:

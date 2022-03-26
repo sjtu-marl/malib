@@ -39,8 +39,8 @@ def config():
     return _config
 
 
-@pytest.mark.parametrize("num_episodes", [1])
-@pytest.mark.parametrize("num_workers", [1])
+@pytest.mark.parametrize("num_episodes", [8, 10, 12])
+@pytest.mark.parametrize("num_workers", [4])
 def test_async_rollout(config, num_episodes, num_workers):
     yaml_config = config["yaml"]
     parameter_server = config["parameter_server"]
@@ -64,7 +64,7 @@ def test_async_rollout(config, num_episodes, num_workers):
         for _ in range(num_workers)
     ]
 
-    clients = ActorPool(clients)
+    actor_pool = ActorPool(clients)
 
     servers = {
         agent: InferenceWorkerSet.remote(
@@ -72,7 +72,7 @@ def test_async_rollout(config, num_episodes, num_workers):
             observation_space=obs_spaces[agent],
             action_space=act_spaces[agent],
             parameter_server=parameter_server,
-            force_weight_update=True,
+            force_weight_update=False,
         )
         for agent in agents
     }
@@ -109,7 +109,7 @@ def test_async_rollout(config, num_episodes, num_workers):
     task_desc = {
         "max_step": max_step,
         "num_episodes": num_episodes,
-        "flag": "rollout",
+        "flag": "evaluation",
         "behavior_policies": trainable_pairs,
         "parameter_desc_dict": p_descs,
         "postprocessor_types": yaml_config["rollout"]["postprocessor_types"],
@@ -126,10 +126,8 @@ def test_async_rollout(config, num_episodes, num_workers):
 
     ray.get(dataset_server.create_table.remote(buffer_desc))
 
-    rets = clients.map(
-        lambda a, task: a.run.remote(
-            servers, fragment_length=fragment_length, desc=task, buffer_desc=buffer_desc
-        ),
+    rets = actor_pool.map(
+        lambda a, task: a.run.remote(servers, desc=task, buffer_desc=buffer_desc),
         [task_desc for _ in range(num_workers)],
     )
 
@@ -154,3 +152,5 @@ def test_async_rollout(config, num_episodes, num_workers):
             avg_env_step,
         )
     )
+
+    ray.get([c.close.remote() for c in clients])

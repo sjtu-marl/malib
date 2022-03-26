@@ -27,8 +27,8 @@ from malib.utils.episode import Episode, EpisodeKey, NewEpisodeDict
 from malib.utils.preprocessor import get_preprocessor
 from malib.utils.timing import Timing
 from malib.algorithm.common.policy import Policy
-from malib.envs.vector_env import SubprocVecEnv, VectorEnv
-from malib.envs.async_vector_env import AsyncVectorEnv
+from malib.envs.vector_env import VectorEnv
+from malib.envs.async_vector_env import AsyncVectorEnv, AsyncSubProcVecEnv
 from malib.rollout.postprocessor import get_postprocessor
 from malib.rollout.inference_server import InferenceWorkerSet
 
@@ -203,9 +203,7 @@ class InferenceClient:
         }
 
         if use_subproc_env:
-            self.env = SubprocVecEnv(
-                obs_spaces, act_spaces, env_cls, env_config, max_num_envs=2
-            )
+            self.env = AsyncSubProcVecEnv(obs_spaces, act_spaces, env_cls, env_config)
         else:
             self.env = AsyncVectorEnv(obs_spaces, act_spaces, env_cls, env_config)
 
@@ -227,6 +225,9 @@ class InferenceClient:
         self.env.add_envs(num=maximum - existing_env_num)
 
         return self.env.num_envs
+
+    def close(self):
+        self.env.close()
 
     @Log.data_feedback(enable=settings.DATA_FEEDBACK)
     def run(
@@ -298,7 +299,7 @@ class InferenceClient:
                 fragment_length=client_runtime_config["fragment_length"],
                 max_step=client_runtime_config["max_step"],
                 custom_reset_config=client_runtime_config["custom_reset_config"],
-                trainable_mapping=client_runtime_config["trainable_mapping"],
+                # trainable_mapping=client_runtime_config["trainable_mapping"],
             )
 
         # TODO(ming): process env returns here
@@ -312,6 +313,7 @@ class InferenceClient:
         start = time.time()
         while not self.env.is_terminated():
             # send query to servers
+            # print("---- se", self.env.batched_step_cnt)
             with self.timer.time_avg("policy_step"):
                 for agent, dataframe in dataframes.items():
                     send_queue[agent].put_nowait(dataframe)
@@ -376,7 +378,7 @@ class InferenceClient:
 
         performance = self.timer.todict()
         performance["FPS"] = self.env.batched_step_cnt / (end - start)
-        # print("performance:", performance)
+        print("performance:", performance)
         res = {
             "task_type": task_type,
             "total_fragment_length": self.env.batched_step_cnt,
