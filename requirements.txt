@@ -12,6 +12,7 @@ numpy~=1.19.5
 torch~=1.8.1
 tensorboardX~=2.1
 tensorboard
+dm_tree
 readerwriterlock
 nashpy==0.0.21
 pymongo

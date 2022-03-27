@@ -26,6 +26,7 @@ setup(
         "torch",
         "tensorboardX",
         "tensorboard",
+        "dm_tree",
         "readerwriterlock",
         "nashpy==0.0.21",
         "pymongo",
