@@ -4,9 +4,9 @@ Model factory. Add more description
 
 import copy
 from typing import Optional
-
 import gym
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -25,7 +25,7 @@ def mlp(layers_config):
 
 
 class Model(nn.Module):
-    def __init__(self, input_space, output_space):
+    def __init__(self, input_space, output_space, model_config, **kwargs):
         """
         Create a Model instance.
         Common abstract methods could be added here.
@@ -45,12 +45,25 @@ class Model(nn.Module):
         else:
             self.output_dim = output_space
 
+        self.input_space = input_space
+        self.output_space = output_space
+        self.model_config = model_config
+        self.kwargs = kwargs
+
     def get_initial_state(
         self, batch_size: Optional[int] = None
     ) -> List[torch.TensorType]:
         """Return a list of initial rnn state, if current model is rnn"""
 
         return []
+
+    def copy(self):
+        cls = self.__class__
+        instance = cls(
+            self.input_space, self.output_space, self.model_config, **self.kwargs
+        )
+        instance.load_state_dict(self.state_dict())
+        return instance
 
 
 class MLP(Model):
@@ -61,12 +74,14 @@ class MLP(Model):
         model_config: Dict[str, Any],
         **kwargs
     ):
-        super(MLP, self).__init__(observation_space, action_space)
+        super(MLP, self).__init__(
+            observation_space, action_space, model_config, **kwargs
+        )
 
         layers_config: list = (
             self._default_layers()
             if model_config.get("layers") is None
-            else model_config["layers"]
+            else copy.deepcopy(model_config["layers"])
         )
         layers_config.insert(0, {"units": self.input_dim})
 
@@ -87,6 +102,8 @@ class MLP(Model):
         ]
 
     def forward(self, obs):
+        if isinstance(obs, np.ndarray):
+            obs = obs.copy()
         obs = torch.as_tensor(obs, dtype=torch.float32)
         if self.use_feature_normalization:
             obs = self._feature_norm(obs)
@@ -100,8 +117,11 @@ class RNN(Model):
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         model_config: Dict[str, Any],
+        **kwargs
     ):
-        super(RNN, self).__init__(observation_space, action_space)
+        super(RNN, self).__init__(
+            observation_space, action_space, model_config, **kwargs
+        )
         self.hidden_dim = (
             64 if model_config is None else model_config.get("rnn_hidden_dim", 64)
         )

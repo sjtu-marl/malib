@@ -1,9 +1,11 @@
 from collections import defaultdict
+import traceback
 import ray
 import time
 import gym
 import os
 import numpy as np
+import gc
 
 from ray.util.queue import Queue
 
@@ -290,83 +292,86 @@ class InferenceClient:
                 ],
                 timeout=3.0,
             )
+            gc.collect()
 
         self.add_envs(desc["num_episodes"])
 
-        with self.timer.timeit("environment_reset"):
-            rets = self.env.reset(
-                limits=client_runtime_config["num_envs"],
-                fragment_length=client_runtime_config["fragment_length"],
-                max_step=client_runtime_config["max_step"],
-                custom_reset_config=client_runtime_config["custom_reset_config"],
-                # trainable_mapping=client_runtime_config["trainable_mapping"],
-            )
-
-        # TODO(ming): process env returns here
-        _, rets, dataframes = process_env_rets(rets, server_runtime_config)
-        episodes = NewEpisodeDict(lambda env_id: Episode(None, env_id=env_id))
-
-        assert (
-            len(self.env.active_envs) == client_runtime_config["num_envs"]
-        ), self.env.active_envs.keys()
-
-        start = time.time()
-        while not self.env.is_terminated():
-            # send query to servers
-            # print("---- se", self.env.batched_step_cnt)
-            with self.timer.time_avg("policy_step"):
-                for agent, dataframe in dataframes.items():
-                    send_queue[agent].put_nowait(dataframe)
-
-                policy_outputs = recieve(recv_queue)
-                env_actions, policy_outputs = process_policy_outputs(
-                    policy_outputs, self.env
+        try:
+            with self.timer.timeit("environment_reset"):
+                rets = self.env.reset(
+                    limits=client_runtime_config["num_envs"],
+                    fragment_length=client_runtime_config["fragment_length"],
+                    max_step=client_runtime_config["max_step"],
+                    custom_reset_config=client_runtime_config["custom_reset_config"],
+                    # trainable_mapping=client_runtime_config["trainable_mapping"],
                 )
-            with self.timer.time_avg("environment_step"):
-                next_rets = self.env.step(env_actions)
-                # merge RNN states here
-                rets_holder, next_rets, next_dataframes = process_env_rets(
-                    next_rets, server_runtime_config
+
+            # TODO(ming): process env returns here
+            _, rets, dataframes = process_env_rets(rets, server_runtime_config)
+            episodes = NewEpisodeDict(lambda env_id: Episode(None, env_id=env_id))
+
+            assert (
+                len(self.env.active_envs) == client_runtime_config["num_envs"]
+            ), self.env.active_envs.keys()
+
+            start = time.time()
+            while not self.env.is_terminated():
+                # print("env step:", self.env.batched_step_cnt, len(self.env.active_envs), client_runtime_config["fragment_length"])
+                with self.timer.time_avg("policy_step"):
+                    for agent, dataframe in dataframes.items():
+                        send_queue[agent].put_nowait(dataframe)
+
+                    policy_outputs = recieve(recv_queue)
+                    env_actions, policy_outputs = process_policy_outputs(
+                        policy_outputs, self.env
+                    )
+                with self.timer.time_avg("environment_step"):
+                    next_rets = self.env.step(env_actions)
+                    # merge RNN states here
+                    rets_holder, next_rets, next_dataframes = process_env_rets(
+                        next_rets, server_runtime_config
+                    )
+                    # collect all rets and save as buffer
+                    # env_id, k, agent_ids
+                    env_rets = merge_env_rets(rets, next_rets)
+
+                episodes.record(policy_outputs, env_rets)
+                # update next keys
+                rets = rets_holder
+                dataframes = next_dataframes
+            end = time.time()
+
+            _ = [e.shutdown(force=True) for e in recv_queue.values()]
+            _ = [e.shutdown(force=True) for e in send_queue.values()]
+
+            rollout_info = self.env.collect_info()
+            if task_type == "rollout":
+                episodes = list(
+                    episodes.to_numpy(
+                        self.batch_mode, filter=list(desc["behavior_policies"].keys())
+                    ).values()
                 )
-                # collect all rets and save as buffer
-                # env_id, k, agent_ids
-                env_rets = merge_env_rets(rets, next_rets)
-
-            episodes.record(policy_outputs, env_rets)
-            # update next keys
-            rets = rets_holder
-            dataframes = next_dataframes
-        end = time.time()
-
-        # assert len(episodes) == desc["num_episodes"], (len(episodes), desc["num_episodes"], fragment_length, self.env.batched_step_cnt)
-
-        _ = [e.shutdown(force=True) for e in recv_queue.values()]
-        _ = [e.shutdown(force=True) for e in send_queue.values()]
-
-        rollout_info = self.env.collect_info()
-        if task_type == "rollout":
-            episodes = list(
-                episodes.to_numpy(
-                    self.batch_mode, filter=list(desc["behavior_policies"].keys())
-                ).values()
-            )
-            episodes = postprocessing(episodes, desc["postprocessor_types"])
-            buffer_desc.batch_size = (
-                self.env.batched_step_cnt
-                if self.batch_mode == "time_step"
-                else len(episodes)
-            )
-
-            indices = None
-            while indices is None:
-                batch = ray.get(
-                    self.dataset_server.get_producer_index.remote(buffer_desc)
+                episodes = postprocessing(episodes, desc["postprocessor_types"])
+                buffer_desc.batch_size = (
+                    self.env.batched_step_cnt
+                    if self.batch_mode == "time_step"
+                    else len(episodes)
                 )
-                indices = batch.data
 
-            buffer_desc.data = episodes
-            buffer_desc.indices = indices
-            self.dataset_server.save.remote(buffer_desc)
+                indices = None
+                while indices is None:
+                    batch = ray.get(
+                        self.dataset_server.get_producer_index.remote(buffer_desc)
+                    )
+                    indices = batch.data
+                gc.collect()
+
+                buffer_desc.data = episodes
+                buffer_desc.indices = indices
+                self.dataset_server.save.remote(buffer_desc)
+        except Exception as e:
+            traceback.print_exc()
+            raise e
 
         ph = list(rollout_info.values())
 
@@ -378,7 +383,7 @@ class InferenceClient:
 
         performance = self.timer.todict()
         performance["FPS"] = self.env.batched_step_cnt / (end - start)
-        print("performance:", performance)
+        # print("performance:", performance)
         res = {
             "task_type": task_type,
             "total_fragment_length": self.env.batched_step_cnt,

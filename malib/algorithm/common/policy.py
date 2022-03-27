@@ -21,6 +21,7 @@ from malib.utils.typing import (
 )
 from malib.utils.preprocessor import get_preprocessor, Mode
 from malib.utils.notations import deprecated
+from malib.algorithm.common.model import Model
 
 
 class SimpleObject:
@@ -77,9 +78,9 @@ class Policy(metaclass=ABCMeta):
         :param Dict[str,Any] custom_config: Custom configuration, includes some hyper-parameters. Default to None.
         """
 
-        self.registered_name = registered_name
-        self.observation_space = observation_space
-        self.action_space = action_space
+        self.registered_name: str = registered_name
+        self.observation_space: gym.Space = observation_space
+        self.action_space: gym.Space = action_space
         self.device = torch.device("cpu")
 
         self.custom_config = {
@@ -199,10 +200,15 @@ class Policy(metaclass=ABCMeta):
 
         return []
 
-    def state_dict(self):
+    def state_dict(self, device="cpu"):
         """Return state dict in real time"""
 
-        res = {k: v.state_dict() for k, v in self._state_handler_dict.items()}
+        res = {}
+        for k, v in self._state_handler_dict.items():
+            if isinstance(v, Model) and "cpu" in device:
+                res[k] = {_k: _v.cpu() for _k, _v in v.state_dict().items()}
+            else:
+                res[k] = v.state_dict()
         return res
 
     def load_state(self, state_dict: Dict[str, Any]) -> None:

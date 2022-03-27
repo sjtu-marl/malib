@@ -4,6 +4,7 @@ import os
 import pickle as pkl
 import time
 import threading
+import gc
 
 from collections import deque, defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
@@ -168,8 +169,6 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
 
     while True:
         if handler.recver.empty():
-            # time.sleep(1)
-            # print("waiting for obs")
             continue
 
         data_frame: DataFrame = handler.recver.get()
@@ -239,6 +238,7 @@ def _update_weights(self: InferenceWorkerSet, force: bool = False) -> None:
                         )
                         parameter_version[i] = content.version
                         parameter_descs[i].lock = status.locked
+            gc.collect()
             time.sleep(1)
     except Exception as e:
         traceback.print_exc()

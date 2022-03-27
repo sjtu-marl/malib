@@ -17,7 +17,7 @@ class LossFunc(metaclass=ABCMeta):
     2. setup optimizers: loss.setup_optimizers(**kwargs)
     3. zero grads: loss.zero_grads()
     4. calculate loss and got returned statistics: statistics = loss(batch)
-    5. do optimization (step): loss.step()
+    # 5. do optimization (step): loss.step()
     **NOTE**: if you wanna calculate policy for another policy, do reset: loss.reset(policy)
     """
 
@@ -70,9 +70,9 @@ class LossFunc(metaclass=ABCMeta):
     def loss_compute(self, *args, **kwargs):
         """Implement loss computation here"""
 
-    @abstractmethod
-    def step(self) -> Any:
-        pass
+    # @abstractmethod
+    # def step(self) -> Any:
+    #     pass
 
     def zero_grad(self):
         """Clean stacked gradients and optimizers"""

@@ -266,7 +266,9 @@ def run_async_vec_env(
     return num_frames, env_rollout_fps, eval_stats
 
 
-def run_vec_env(env_desc, num, runtime_configs, agent_interfaces=None):
+def run_vec_env(
+    env_desc, num, runtime_configs, agent_interfaces=None, algo_name: str = "MAPPO"
+):
     obs_spaces = env_desc["observation_spaces"]
     act_spaces = env_desc["action_spaces"]
     parameter_server = ray.get_actor(name=settings.PARAMETER_SERVER_ACTOR)
@@ -291,7 +293,7 @@ def run_vec_env(env_desc, num, runtime_configs, agent_interfaces=None):
                 parameter_desc=parameter_desc,
             )
     for interface in agent_interfaces.values():
-        interface.update_weights(["MAPPO_0"], True)
+        interface.update_weights([f"{algo_name}_0"], True)
 
     # stepping num: num_episodses, num_env_per_worker
     num_rollout_actors = (

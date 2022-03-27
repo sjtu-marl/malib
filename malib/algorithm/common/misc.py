@@ -111,26 +111,67 @@ def masked_softmax(logits: torch.Tensor, mask: torch.Tensor):
     return probs / Z
 
 
-# def non_centered_rmsprop(
-#     gradient: Union[torch.Tensor, DataTransferType],
-#     delta: Union[torch.Tensor, DataTransferType],
-#     alpha: float,
-#     eta: float,
-#     eps: float,
-# ):
-#     """Implementation of non-centered RMSProb algorithm (# TODO(ming): add reference here)
+def monte_carlo_discounted(rewards, dones, gamma: float) -> torch.Tensor:
+    running_add = 0
+    returns = []
 
-#     :param gradient: Union[torch.Tensor, DataTransferType], bootstrapped gradient
-#     :param delta: Union[torch.Tensor, DataTransferType]
-#     :param alpha: float, moving factor
-#     :param eta: flat, learning step
-#     :param eps: float, control exploration
-#     :return:
-#     """
+    for step in reversed(range(len(rewards))):
+        running_add = rewards[step] + (1.0 - dones[step]) * gamma * running_add
+        returns.insert(0, running_add)
 
-#     gradient = alpha * gradient + (1.0 - alpha) * delta ** 2
-#     delta = -eta * delta / np.sqrt(gradient + eps)
-#     return delta
+    return torch.stack(returns)
+
+
+def temporal_difference(reward, next_value, done, gamma: float) -> torch.Tensor:
+    q_values = reward + (1.0 - done) * gamma * next_value
+    return q_values
+
+
+def generalized_advantage_estimation(
+    values: torch.Tensor,
+    rewards: torch.Tensor,
+    next_values: torch.Tensor,
+    dones: torch.Tensor,
+    gamma: float,
+    lam: float,
+):
+    gae = 0
+    adv = []
+
+    delta = rewards + (1.0 - dones) * gamma * next_values - values
+    for step in reversed(range(len(rewards))):
+        gae = delta[step] + (1.0 - dones[step]) * gamma * lam * gae
+        adv.insert(0, gae)
+
+    return torch.stack(adv)
+
+
+def vtrace(
+    values: torch.Tensor,
+    rewards: torch.Tensor,
+    next_values: torch.Tensor,
+    dones: torch.Tensor,
+    log_probs: torch.Tensor,
+    worker_logprobs: torch.Tensor,
+    gamma: float,
+    lam: float,
+) -> torch.Tensor:
+    gae = 0
+    adv = []
+
+    limit = torch.FloatTensor([1.0]).to(values.device)
+    ratio = torch.min(limit, (worker_logprobs - log_probs).sum().exp())
+
+    # assert rewards.shape == dones.shape == next_values.shape == values.shape, (rewards.shape, dones.shape, next_values.shape, values.shape)
+    delta = rewards + (1.0 - dones) * gamma * next_values - values
+    delta = ratio * delta
+
+    for step in reversed(range(len(rewards))):
+        gae = (1.0 - dones[step]) * gamma * lam * gae
+        gae = delta[step] + ratio * gae
+        adv.insert(0, gae)
+
+    return torch.stack(adv)
 
 
 class GradientOps:

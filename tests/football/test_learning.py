@@ -108,7 +108,7 @@ def servers():
 @ray.remote
 def run_optimize(request_queue, response_queue, env_desc, yaml_config, exp_cfg):
     try:
-        remote_learner_cls = SimpleLearner.as_remote()
+        remote_learner_cls = SimpleLearner.as_remote(num_gpus=1, num_cpus=4)
         possible_agents = env_desc["possible_agents"]
         observation_spaces = env_desc["observation_spaces"]
         action_spaces = env_desc["action_spaces"]
@@ -164,7 +164,13 @@ def run_optimize(request_queue, response_queue, env_desc, yaml_config, exp_cfg):
             for k, v in statistics.items():
                 washed[f"training/{k}"] = v
 
-            FPS = len(learners) * batch_size * BLOCK_SIZE / (end - start)
+            FPS = (
+                len(learners)
+                * batch_size
+                * BLOCK_SIZE
+                * training_config["ppo_epoch"]
+                / (end - start)
+            )
             total_frames += len(learners) * batch_size * BLOCK_SIZE
             ave_FPS = (ave_FPS * loop_cnt + FPS) / (loop_cnt + 1)
             loop_cnt += 1
@@ -213,7 +219,7 @@ def run_rollout(
         action_spaces = env_desc["action_spaces"]
 
         model_config = yaml_config["algorithms"][algo_name]["model_config"]
-        custom_config = yaml_config["algorithms"][algo_name]["custom_config"]
+        custom_config = yaml_config["algorithms"][algo_name].get("custom_config", {})
 
         _description = {
             "registered_name": algo_name,
@@ -338,7 +344,7 @@ def run_rollout(
 
 
 # XXX(ming): @yanxue, if you wanna run ppo, please replace the string mappo with ppo
-@pytest.mark.parametrize("yaml_name", ["mappo"])
+@pytest.mark.parametrize("yaml_name", ["ppo"])
 def test_learning(env_desc, servers, yaml_name: str):
     comm_optimization = [Queue(), Queue()]
     comm_rollout = [Queue(), Queue()]
@@ -351,9 +357,10 @@ def test_learning(env_desc, servers, yaml_name: str):
         configs = yaml.safe_load(f)
 
     algo_name = yaml_name.upper()
-    configs["algorithms"][algo_name]["custom_config"].update(
-        {"global_state_space": env_desc["state_spaces"]}
-    )
+    if configs["algorithms"][algo_name].get("custom_config"):
+        configs["algorithms"][algo_name]["custom_config"].update(
+            {"global_state_space": env_desc["state_spaces"]}
+        )
 
     start_ray_info = ray.nodes()[0]
 

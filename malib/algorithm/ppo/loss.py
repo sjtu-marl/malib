@@ -20,9 +20,6 @@ class PPOLoss(LossFunc):
             }
         )
 
-    def step(self):
-        pass
-
     def reset(self, policy, configs):
         self._params.update(configs)
         if policy is not self.policy:

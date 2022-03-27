@@ -30,6 +30,7 @@ from malib.utils.logger import get_logger, Log, Logger
 from malib.utils.stoppers import get_stopper
 from malib.utils.remote.ray_actor import RayActor
 from malib.rollout.inference_server import InferenceWorkerSet
+from malib.rollout.inference_client import InferenceClient
 
 
 def _parse_rollout_info(raw_statistics: List[Dict[str, Any]]) -> Dict[str, Any]:

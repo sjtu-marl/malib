@@ -50,6 +50,6 @@ class Trainer(metaclass=ABCMeta):
         # else:
         #     raise ValueError("Loss has not been initialized yet.")
 
-    @abstractmethod
-    def preprocess(self, batch, **kwargs) -> Any:
-        """Preprocess batch if need"""
+    # @abstractmethod
+    # def preprocess(self, batch, **kwargs) -> Any:
+    #     """Preprocess batch if need"""

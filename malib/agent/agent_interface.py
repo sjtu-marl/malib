@@ -299,7 +299,7 @@ class AgentInterface(metaclass=ABCMeta):
 
         parameter_desc = self._parameter_desc[pid]
         policy = self._policies[pid]
-        parameter_desc.data = policy.state_dict()
+        parameter_desc.data = policy.state_dict(device="cpu")
         parameter_desc.version += 1
         status = ray.get(self._parameter_server.push.remote(parameter_desc))
         parameter_desc.data = None
@@ -396,6 +396,7 @@ class AgentInterface(metaclass=ABCMeta):
                     buffer_desc.indices = None
                     break
         if self.local_buffer is not None:
+            print("local buffer size:", self.local_buffer.size)
             res = self.local_buffer.sample(size=buffer_desc.batch_size)
         if (self._global_step + 1) % self._print_every == 0:
             Logger.debug(

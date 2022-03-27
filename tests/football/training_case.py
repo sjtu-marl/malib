@@ -91,7 +91,6 @@ class SimpleLearner(IndependentAgent):
             parameter_desc = self.parameter_desc_gen(
                 env_aid, pid, trainable, data=policy.state_dict()
             )
-            # print("-------------- name:", parameter_desc)
             ray.get(self._parameter_server.push.remote(parameter_desc=parameter_desc))
             parameter_desc.data = None
             self._parameter_desc[pid] = parameter_desc
@@ -114,7 +113,7 @@ class SimpleLearner(IndependentAgent):
         batch_size = training_config.get("batch_size", 64)
         sample_mode = None
 
-        policy_id_mapping = {k: "MAPPO_0" for k in self._group}
+        policy_id_mapping = {k: "PPO_0" for k in self._group}
         buffer_desc = self.gen_buffer_description(
             policy_id_mapping,
             batch_size,
