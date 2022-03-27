@@ -43,7 +43,7 @@ def run(**kwargs):
 
         try:
             start_ray_info = ray.init(address="auto")
-        except ConnectionError:
+        except OSError:
             Logger.warning(
                 "No active cluster deteced, will create a local ray instance."
             )
