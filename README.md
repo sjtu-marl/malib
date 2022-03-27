@@ -40,13 +40,13 @@ from malib.rollout import rollout_func
 
 
 env_description = {
-    "creator": PokerParallelEnv,
+    "creator": leduc_holdem.PokerParallelEnv,
     "config": {
         "scenario_configs": {"fixed_player": True},
         "env_id": "leduc_poker",
     },
 }
-env = PokerParallelEnv(**env_description["config"])
+env = leduc_holdem.PokerParallelEnv(**env_description["config"])
 possible_agents = env.possible_agents
 observation_spaces = env.observation_spaces
 action_spaces = env.action_spaces
@@ -71,13 +71,13 @@ run(
             "use_init_policy_pool": True,
         },
         "config": {
-            "batch_size": args.batch_size,
-            "update_interval": args.num_epoch,
+            "batch_size": 1024,
+            "update_interval": 8,
         },
     },
     algorithms={
-        args.algorithm: {
-            "name": args.algorithm,
+        "PSRO_PPO": {
+            "name": "PPO",
             "custom_config": {
                 "gamma": 1.0,
                 "eps_min": 0,
@@ -124,7 +124,7 @@ If you use MALib in your work, please cite the accompanying [paper](https://arxi
 
 ```bibtex
 @misc{zhou2021malib,
-      title={MALib: A Parallel Framework for Population-based Multi-agent Reinforcement Learning}, 
+      title={MALib: A Parallel Framework for Population-based Multi-agent Reinforcement Learning},
       author={Ming Zhou and Ziyu Wan and Hanjing Wang and Muning Wen and Runzhe Wu and Ying Wen and Yaodong Yang and Weinan Zhang and Jun Wang},
       year={2021},
       eprint={2106.07551},

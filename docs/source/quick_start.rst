@@ -9,7 +9,7 @@ If you have not installed MALib yet, please refer to :ref:`installation` before 
 PSRO Learning
 -------------
 
-**Policy Space Response Oracle (PSRO)** is a population-based MARL algorithm which cooperates game-theory and MARL algorithm to solve multi-agent tasks in the scope of meta-game. At each iteration, the algorithm will generate some policy combinations and executes independent learning for each agent. Such a nested learning process comprises rollout, training, evaluation in sequence, and works circularly until the algorithm finds the estimated Nash Equilibrium. 
+**Policy Space Response Oracle (PSRO)** is a population-based MARL algorithm which cooperates game-theory and MARL algorithm to solve multi-agent tasks in the scope of meta-game. At each iteration, the algorithm will generate some policy combinations and executes independent learning for each agent. Such a nested learning process comprises rollout, training, evaluation in sequence, and works circularly until the algorithm finds the estimated Nash Equilibrium.
 
 .. note:: If you want to use alpha\-rank to estimate the equilibrium, you need to install open\-spiel before that. Follow the :ref:`installation` to get more details.
 
@@ -22,9 +22,9 @@ The first thing to start your training task is to determine the environment for 
 
     from malib.envs.poker import poker_aec_env as leduc_holdem
 
-    env = leduc_holdem.env(scenario_configs={"fixed_player": True}, env_id="leduc_poker")
+    env = leduc_holdem.PokerParallelEnv(scenario_configs={"fixed_player": True}, env_id="leduc_poker")
     env_description = {
-        "creator": leduc_holdem.env,
+        "creator": leduc_holdem.PokerParallelEnv,
         "config": {
             "scenario_configs": {"fixed_player": True},
             "env_id": "leduc_poker",
