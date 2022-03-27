@@ -6,18 +6,18 @@ training:
     type: independent
     population_size: -1
     local_buffer_config:
-      size: 1000
+      size: 128
   config:
     ppo_epoch: 4
     batch_size: 32  # episode size
-    mini_batch: 32  # data size
+    mini_batch: 4  # data size
     optimizer: Adam
     actor_lr: 2.5e-4
     critic_lr: 2.5e-4
     opti_eps: 1.e-5
     weight_decay: 0.0
-    cliprange: 0.0008
-    policy_params: 20
+    cliprange: 0.003
+    policy_params: 5
     entropy_coef: 0.05
     vf_loss_coef: 1.0
     value_clip: 1.0

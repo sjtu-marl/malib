@@ -1,4 +1,5 @@
 from collections import defaultdict
+from black import E
 import torch
 import numpy as np
 
@@ -25,6 +26,7 @@ class PPOLoss:
         rewards,
         dones,
         worker_action_probs,
+        action_masks,
         training_config: Dict[str, Any],
     ) -> Any:
         Old_values = old_values.detach()
@@ -69,7 +71,10 @@ class PPOLoss:
             .squeeze()
         )
 
+        # limit = 2.4
         ratios = (logprobs - Old_logprobs).exp()
+        ratios = torch.clamp(ratios, 0.6, 1.4)
+        # ratios = torch.min(torch.FloatTensor([limit]).to(logprobs.device), (logprobs - Old_logprobs).exp())
         # print("ratio shape: ", logprobs.shape, Old_logprobs.shape)
         # assert logprobs.shape == Old_logprobs.shape, (logprobs.shape, Old_logprobs.shape)
         Kl = kl_divergence(old_dist, dist).float()
@@ -77,11 +82,13 @@ class PPOLoss:
         # torch.mean(torch.greater(torch.abs(ratios - 1.0), cliprange).float())
 
         # Combining TR-PPO with Rollback (Truly PPO)
+        # print("ratio, adv, kl", ratios.mean(), Advantages.mean(), Kl.mean(), ratios.shape, Advantages.shape, Kl.shape)
         pg_loss = torch.where(
             (Kl >= policy_kl_range) & (ratios > 1),
             ratios * Advantages - policy_params * Kl,
             ratios * Advantages,
         )
+        # pg_loss = torch.min(ratios * Advantages, clipped_ratios * Advantages)
         pg_loss = pg_loss.mean()
 
         # Getting entropy from the action probability
@@ -108,6 +115,7 @@ class CustomDataset(Dataset):
     def __init__(self, batch: Dict[str, np.ndarray], flatten: bool = False) -> None:
         self.states = batch[EpisodeKey.CUR_OBS]
         self.actions = batch[EpisodeKey.ACTION]
+        self.action_masks = batch[EpisodeKey.ACTION_MASK]
         self.action_probs = batch[EpisodeKey.ACTION_DIST]
         self.rewards = batch[EpisodeKey.REWARD]
         self.dones = batch[EpisodeKey.DONE]
@@ -119,6 +127,7 @@ class CustomDataset(Dataset):
     def __getitem__(self, idx):
         return (
             self.states[idx],
+            self.action_masks[idx],
             self.actions[idx],
             self.action_probs[idx],
             self.rewards[idx],
@@ -140,6 +149,7 @@ class PPOTrainer(Trainer):
     def _step(
         self,
         state: torch.Tensor,
+        action_mask: torch.Tensor,
         action: torch.Tensor,
         worker_action_prob: torch.Tensor,
         reward: torch.Tensor,
@@ -147,6 +157,7 @@ class PPOTrainer(Trainer):
         next_state: torch.Tensor,
     ):
         logits = self.policy.actor(state)
+        logits -= 1e10 * (1.0 - action_mask)
         values = self.policy.critic(state)
 
         # print("---------- device check:", state.device, next(self.target_actor.parameters()).device, next(self.policy.actor.parameters()).device)
@@ -165,6 +176,7 @@ class PPOTrainer(Trainer):
             reward,
             done,
             worker_action_prob,
+            action_mask,
             self.training_config,
         )
 
@@ -205,8 +217,18 @@ class PPOTrainer(Trainer):
         merged_loss = defaultdict(lambda: 0.0)
         ppo_epoch = self.training_config["ppo_epoch"]
         for _ in range(ppo_epoch):
-            for state, action, action_prob, reward, done, next_state in dataloader:
-                loss = self._step(state, action, action_prob, reward, done, next_state)
+            for (
+                state,
+                action_mask,
+                action,
+                action_prob,
+                reward,
+                done,
+                next_state,
+            ) in dataloader:
+                loss = self._step(
+                    state, action_mask, action, action_prob, reward, done, next_state
+                )
                 for k, v in loss.items():
                     merged_loss[k] += v / ppo_epoch
 
