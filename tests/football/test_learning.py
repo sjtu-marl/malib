@@ -33,7 +33,7 @@ from tests.football.rollout_case import (
 from tests.football.training_case import SimpleLearner
 
 
-BLOCK_SIZE = 3000
+BLOCK_SIZE = 2000
 
 
 def write_to_tensorboard(

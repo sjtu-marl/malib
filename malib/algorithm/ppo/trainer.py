@@ -3,6 +3,7 @@ from black import E
 import torch
 import numpy as np
 
+import torch.nn.functional as F
 from torch.distributions import Categorical, Normal
 from torch.distributions.kl import kl_divergence
 from torch.utils.data import Dataset, DataLoader
@@ -10,7 +11,7 @@ from torch.utils.data import Dataset, DataLoader
 from malib.utils.typing import Dict, Any
 from malib.utils.episode import EpisodeKey
 from malib.algorithm.common.trainer import Trainer
-from malib.algorithm.common.misc import vtrace
+from malib.algorithm.common.misc import vtrace, MaskedCategorical
 from malib.algorithm.common.model import get_model
 
 
@@ -46,8 +47,8 @@ class PPOLoss:
             dist = Normal(*logits)
             old_dist = Normal(*old_logits)
         else:
-            dist = Categorical(logits=logits)
-            old_dist = Categorical(logits=old_logits)
+            dist = MaskedCategorical(logits, action_masks)
+            old_dist = MaskedCategorical(old_logits, action_masks)
 
         # Finding the ratio (pi_theta / pi_theta__old):
         logprobs = dist.log_prob(actions)
@@ -90,9 +91,7 @@ class PPOLoss:
         # ratios = torch.min(torch.FloatTensor([limit]).to(logprobs.device), (logprobs - Old_logprobs).exp())
         # print("ratio shape: ", logprobs.shape, Old_logprobs.shape)
         # assert logprobs.shape == Old_logprobs.shape, (logprobs.shape, Old_logprobs.shape)
-        Kl = 0.5 * torch.mean(
-            torch.square(logprobs - Old_logprobs)
-        )  # kl_divergence(old_dist, dist).float()
+        Kl = kl_divergence(old_dist, dist).float()
         # assert old_dist.probs.shape == dist.probs.shape, (old_dist.shape, dist.shape)
         # torch.mean(torch.greater(torch.abs(ratios - 1.0), cliprange).float())
 
@@ -109,18 +108,19 @@ class PPOLoss:
         # print("---------- pg loss:", pg_loss.detach().cpu().item())
 
         # Getting entropy from the action probability
-        dist_entropy = dist.entropy().mean()
+        dist_entropy = dist.entropy.mean()
         # print(ratios.shape, Advantages.shape, Kl.shape)
 
         # Getting critic loss by using Clipped critic value
-        vpredclipped = Old_values + torch.clamp(
-            values - Old_values, value_clip, value_clip
-        )  # Minimize the difference between old value and new value
+        # vpredclipped = Old_values + torch.clamp(
+        #     values - Old_values, value_clip, value_clip
+        # )  # Minimize the difference between old value and new value
         # assert values.shape == Old_values.shape == Returns.shape == vpredclipped.shape, (values.shape, Old_values.shape, Returns.shape, vpredclipped.shape)
         # print("values loss:", (values.shape, Old_values.shape, Returns.shape, vpredclipped.shape))
         vf_losses1 = (Returns - values).pow(2) * 0.5  # Mean Squared Error
-        vf_losses2 = (Returns - vpredclipped).pow(2) * 0.5  # Mean Squared Error
-        critic_loss = torch.max(vf_losses1, vf_losses2).mean()
+        # vf_losses2 = (Returns - vpredclipped).pow(2) * 0.5  # Mean Squared Error
+        # critic_loss = torch.max(vf_losses1, vf_losses2).mean()
+        critic_loss = vf_losses1.mean()
 
         # We need to maximaze Policy Loss to make agent always find Better Rewards
         # and minimize Critic Loss
@@ -175,11 +175,10 @@ class PPOTrainer(Trainer):
     ):
         logits = self.policy.actor(state)
         # print("---------- shape logits, and ams", logits.shape, action_mask.shape)
-        logits = torch.clamp(logits - 1e9 * (1.0 - action_mask), -1e9, 1e9)
+        assert not logits.isnan().any()
         values = self.policy.critic(state)
 
         old_logits = self.target_actor(state).detach()
-        old_logits = torch.clamp(old_logits - 1e9 * (1.0 - action_mask), -1e9, 1e9)
         old_values = self.target_critic(state)
 
         next_values = self.policy.critic(next_state).detach()

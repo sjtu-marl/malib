@@ -91,7 +91,7 @@ class PPO(Policy):
                         action_mask = torch.FloatTensor(action_mask.copy()).to(
                             logits.device
                         )
-                        pi = misc.masked_softmax(logits, action_mask)
+                        pi = misc.MaskedCategorical.masked_softmax(logits, action_mask)
                     else:
                         pi = F.softmax(logits, dim=-1)
 

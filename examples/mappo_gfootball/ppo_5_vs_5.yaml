@@ -6,7 +6,7 @@ training:
     type: independent
     population_size: -1
     local_buffer_config:
-      size: 128
+      size: 300
   config:
     ppo_epoch: 4
     batch_size: 16  # episode size
@@ -19,7 +19,7 @@ training:
     cliprange: 0.4
     policy_kl_range: 0.0008
     policy_params: 20
-    grad_norm_clipping: 0.5
+    grad_norm_clipping: 5.0
     entropy_coef: 0.05
     vf_loss_coef: 1.0
     value_clip: 1.0
