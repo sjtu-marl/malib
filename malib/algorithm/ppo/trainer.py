@@ -91,7 +91,8 @@ class PPOLoss:
         # ratios = torch.min(torch.FloatTensor([limit]).to(logprobs.device), (logprobs - Old_logprobs).exp())
         # print("ratio shape: ", logprobs.shape, Old_logprobs.shape)
         # assert logprobs.shape == Old_logprobs.shape, (logprobs.shape, Old_logprobs.shape)
-        Kl = kl_divergence(old_dist, dist).float()
+        Kl = 0.5 * torch.mean(torch.square(logprobs - Old_logprobs))
+        # kl_divergence(old_dist, dist).float()
         # assert old_dist.probs.shape == dist.probs.shape, (old_dist.shape, dist.shape)
         # torch.mean(torch.greater(torch.abs(ratios - 1.0), cliprange).float())
 

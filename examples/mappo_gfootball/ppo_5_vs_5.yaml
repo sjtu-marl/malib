@@ -93,4 +93,4 @@ global_evaluator:
 
 dataset_config:
   episode_capacity: 32
-  fragment_length: 3000
+  fragment_length: 2000
