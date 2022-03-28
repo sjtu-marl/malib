@@ -3,8 +3,9 @@ import numpy as np
 import torch.nn.functional as F
 
 from torch.autograd import Variable
+from torch.distributions.categorical import Categorical
 
-from malib.utils.typing import Dict, List, DataTransferType, Any
+from malib.utils.typing import Dict, List, DataTransferType, Any, Optional
 
 
 def soft_update(target, source, tau):
@@ -105,8 +106,9 @@ def gumbel_softmax(logits: DataTransferType, temperature=1.0, hard=False, explor
 
 
 def masked_softmax(logits: torch.Tensor, mask: torch.Tensor):
-    probs = F.softmax(logits, dim=-1) * mask
-    probs = probs + (mask.sum(dim=-1, keepdim=True) == 0.0).to(dtype=torch.float32)
+    logits = torch.clamp(logits - (1.0 - mask) * 1e9, -1e9, 1e9)
+    probs = F.softmax(logits, dim=-1)  # * mask
+    # probs = probs + (mask.sum(dim=-1, keepdim=True) == 0.0).to(dtype=torch.float32)
     Z = probs.sum(dim=-1, keepdim=True)
     return probs / Z
 
@@ -289,3 +291,29 @@ class EPSGreedy:
     def __init__(self, action_dimension: int, threshold: float = 0.3):
         self._action_dim = action_dimension
         self._threshold = threshold
+
+
+class CategoricalMasked(Categorical):
+    def __init__(self, logits: torch.Tensor, mask: Optional[torch.Tensor] = None):
+        self.mask = mask
+        self.batch, self.nb_action = logits.size()
+        if mask is None:
+            super(CategoricalMasked, self).__init__(logits=logits)
+        else:
+            self.mask_value = torch.finfo(logits.dtype).min
+            logits.masked_fill_(~self.mask, self.mask_value)
+            super(CategoricalMasked, self).__init__(logits=logits)
+
+    def entropy(self):
+        pass
+        # if self.mask is None:
+        #     return super().entropy()
+        # # Elementwise multiplication
+        # p_log_p = einsum("ij,ij->ij", self.logits, self.probs)
+        # # Compute the entropy with possible action only
+        # p_log_p = torch.where(
+        #     self.mask,
+        #     p_log_p,
+        #     torch.tensor(0, dtype=p_log_p.dtype, device=p_log_p.device),
+        # )
+        # return -reduce(p_log_p, "b a -> b", "sum", b=self.batch, a=self.nb_action)

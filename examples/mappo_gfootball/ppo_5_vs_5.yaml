@@ -16,8 +16,9 @@ training:
     critic_lr: 2.5e-4
     opti_eps: 1.e-5
     weight_decay: 0.0
-    cliprange: 0.003
-    policy_params: 5
+    cliprange: 0.4
+    policy_kl_range: 0.0008
+    policy_params: 20
     entropy_coef: 0.05
     vf_loss_coef: 1.0
     value_clip: 1.0

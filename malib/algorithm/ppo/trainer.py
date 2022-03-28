@@ -45,7 +45,8 @@ class PPOLoss:
             worker_action_probs.gather(-1, actions.unsqueeze(-1)).squeeze(-1)
         )
 
-        policy_kl_range = training_config["cliprange"]
+        policy_kl_range = training_config["policy_kl_range"]
+        cliprange = training_config["cliprange"]
         entropy_coef = training_config["entropy_coef"]
         policy_params = training_config["policy_params"]
         vf_loss_coef = training_config["vf_loss_coef"]
@@ -73,7 +74,8 @@ class PPOLoss:
 
         # limit = 2.4
         ratios = (logprobs - Old_logprobs).exp()
-        ratios = torch.clamp(ratios, 0.6, 1.4)
+        ratios = torch.clamp(ratios, 1.0 - cliprange, 1.0 + cliprange) * Advantages
+        # surr_2 = ratios * Advantages
         # ratios = torch.min(torch.FloatTensor([limit]).to(logprobs.device), (logprobs - Old_logprobs).exp())
         # print("ratio shape: ", logprobs.shape, Old_logprobs.shape)
         # assert logprobs.shape == Old_logprobs.shape, (logprobs.shape, Old_logprobs.shape)
@@ -83,13 +85,15 @@ class PPOLoss:
 
         # Combining TR-PPO with Rollback (Truly PPO)
         # print("ratio, adv, kl", ratios.mean(), Advantages.mean(), Kl.mean(), ratios.shape, Advantages.shape, Kl.shape)
+        adv_loss = ratios * Advantages
         pg_loss = torch.where(
             (Kl >= policy_kl_range) & (ratios > 1),
-            ratios * Advantages - policy_params * Kl,
-            ratios * Advantages,
+            adv_loss - policy_params * Kl,
+            adv_loss,
         )
         # pg_loss = torch.min(ratios * Advantages, clipped_ratios * Advantages)
         pg_loss = pg_loss.mean()
+        # print("---------- pg loss:", pg_loss.detach().cpu().item())
 
         # Getting entropy from the action probability
         dist_entropy = dist.entropy().mean()
@@ -108,7 +112,7 @@ class PPOLoss:
         # We need to maximaze Policy Loss to make agent always find Better Rewards
         # and minimize Critic Loss
         loss = (critic_loss * vf_loss_coef) - (dist_entropy * entropy_coef) - pg_loss
-        return loss, critic_loss, pg_loss, dist_entropy
+        return loss, critic_loss, pg_loss, dist_entropy, Kl, adv_loss
 
 
 class CustomDataset(Dataset):
@@ -157,16 +161,17 @@ class PPOTrainer(Trainer):
         next_state: torch.Tensor,
     ):
         logits = self.policy.actor(state)
-        logits -= 1e10 * (1.0 - action_mask)
+        # print("---------- shape logits, and ams", logits.shape, action_mask.shape)
+        logits = torch.clamp(logits - 1e9 * (1.0 - action_mask), -1e9, 1e9)
         values = self.policy.critic(state)
 
-        # print("---------- device check:", state.device, next(self.target_actor.parameters()).device, next(self.policy.actor.parameters()).device)
-        old_logits = self.target_actor(state)
+        old_logits = self.target_actor(state).detach()
+        old_logits = torch.clamp(old_logits - 1e9 * (1.0 - action_mask), -1e9, 1e9)
         old_values = self.target_critic(state)
 
-        next_values = self.policy.critic(next_state)
+        next_values = self.policy.critic(next_state).detach()
 
-        loss, critic_loss, pg_loss, dist_entropy = self.loss(
+        loss, critic_loss, pg_loss, dist_entropy, kl, adv_loss = self.loss(
             logits,
             values,
             old_logits,
@@ -193,6 +198,10 @@ class PPOTrainer(Trainer):
             "pg_loss": pg_loss.detach().item(),
             "critic_loss": critic_loss.detach().item(),
             "entropy": dist_entropy.detach().item(),
+            "kl": kl.detach().mean().item(),
+            "kl_max": kl.detach().max().item(),
+            "kl_min": kl.detach().min().item(),
+            "adv_loss": adv_loss.detach().mean().item(),
         }
 
     def optimize(self, batch: Dict[str, Any]):
