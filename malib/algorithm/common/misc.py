@@ -170,7 +170,12 @@ def vtrace(
     limit = torch.FloatTensor([1.0]).to(values.device)
     ratio = torch.min(limit, (worker_logprobs - log_probs).sum().exp())
 
-    # assert rewards.shape == dones.shape == next_values.shape == values.shape, (rewards.shape, dones.shape, next_values.shape, values.shape)
+    assert rewards.shape == dones.shape == next_values.shape == values.shape, (
+        rewards.shape,
+        dones.shape,
+        next_values.shape,
+        values.shape,
+    )
     delta = rewards + (1.0 - dones) * gamma * next_values - values
     delta = ratio * delta
 

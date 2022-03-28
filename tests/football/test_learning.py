@@ -33,7 +33,7 @@ from tests.football.rollout_case import (
 from tests.football.training_case import SimpleLearner
 
 
-BLOCK_SIZE = 2000
+BLOCK_SIZE = 100
 
 
 def write_to_tensorboard(
@@ -108,7 +108,8 @@ def servers():
 @ray.remote
 def run_optimize(request_queue, response_queue, env_desc, yaml_config, exp_cfg):
     try:
-        remote_learner_cls = SimpleLearner.as_remote(num_gpus=1, num_cpus=4)
+        n_agent = len(env_desc["possible_agents"])
+        remote_learner_cls = SimpleLearner.as_remote(num_gpus=1 / n_agent, num_cpus=1)
         possible_agents = env_desc["possible_agents"]
         observation_spaces = env_desc["observation_spaces"]
         action_spaces = env_desc["action_spaces"]
@@ -230,7 +231,7 @@ def run_rollout(
         }
 
         agent_interfaces = {
-            agent: InferenceWorkerSet.options(num_cpus=10).remote(
+            agent: InferenceWorkerSet.remote(
                 agent_id=agent,
                 observation_space=obs_spaces[agent],
                 action_space=action_spaces[agent],
@@ -399,7 +400,7 @@ def test_learning(env_desc, servers, yaml_name: str):
             cnt += 1
         empty = True
 
-        if cnt == 2000:
+        if cnt == 2000 * len(responders):
             for sender in senders:
                 sender.put({"op": "terminate"})
             break

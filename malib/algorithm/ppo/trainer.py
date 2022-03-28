@@ -42,7 +42,6 @@ class PPOLoss:
     ) -> Any:
         Old_values = old_values.detach()
 
-        assert not logits.isnan().any()
         if isinstance(logits, tuple):
             dist = Normal(*logits)
             old_dist = Normal(*old_logits)
@@ -77,6 +76,7 @@ class PPOLoss:
             training_config["lam"],
         )
         # print("adv and shae:", Advantages.shape, values.shape)
+        assert Advantages.shape == values.shape, (Advantages.shape, values.shape)
         Returns = (Advantages + values).detach()
         Advantages = (
             ((Advantages - Advantages.mean()) / (Advantages.std() + 1e-6))
@@ -86,7 +86,7 @@ class PPOLoss:
 
         # limit = 2.4
         ratios = (logprobs - Old_logprobs).exp()
-        ratios = torch.clamp(ratios, 1.0 - cliprange, 1.0 + cliprange) * Advantages
+        ratios = torch.clamp(ratios, 1.0 - cliprange, 1.0 + cliprange)
         # surr_2 = ratios * Advantages
         # ratios = torch.min(torch.FloatTensor([limit]).to(logprobs.device), (logprobs - Old_logprobs).exp())
         # print("ratio shape: ", logprobs.shape, Old_logprobs.shape)
@@ -98,35 +98,50 @@ class PPOLoss:
 
         # Combining TR-PPO with Rollback (Truly PPO)
         # print("ratio, adv, kl", ratios.mean(), Advantages.mean(), Kl.mean(), ratios.shape, Advantages.shape, Kl.shape)
-        adv_loss = ratios * Advantages
-        pg_loss = torch.where(
-            (Kl >= policy_kl_range) & (ratios > 1),
-            adv_loss - policy_params * Kl,
-            adv_loss,
-        )
-        # pg_loss = torch.min(ratios * Advantages, clipped_ratios * Advantages)
-        pg_loss = pg_loss.mean()
+        adv_loss = ratios.squeeze() * Advantages
+        pg_loss = adv_loss.mean()
+        # pg_loss = torch.where(
+        #     (Kl >= policy_kl_range) & (ratios > 1),
+        #     adv_loss - policy_params * Kl,
+        #     adv_loss,
+        # )
+        # # pg_loss = torch.min(ratios * Advantages, clipped_ratios * Advantages)
+        # pg_loss = pg_loss.mean()
         # print("---------- pg loss:", pg_loss.detach().cpu().item())
 
         # Getting entropy from the action probability
         dist_entropy = dist.entropy.mean()
-        # print(ratios.shape, Advantages.shape, Kl.shape)
 
         # Getting critic loss by using Clipped critic value
         # vpredclipped = Old_values + torch.clamp(
         #     values - Old_values, value_clip, value_clip
         # )  # Minimize the difference between old value and new value
         # assert values.shape == Old_values.shape == Returns.shape == vpredclipped.shape, (values.shape, Old_values.shape, Returns.shape, vpredclipped.shape)
-        # print("values loss:", (values.shape, Old_values.shape, Returns.shape, vpredclipped.shape))
-        vf_losses1 = (Returns - values).pow(2) * 0.5  # Mean Squared Error
+        vf_losses1 = (Returns.squeeze() - values.squeeze()).pow(
+            2
+        ) * 0.5  # Mean Squared Error
         # vf_losses2 = (Returns - vpredclipped).pow(2) * 0.5  # Mean Squared Error
         # critic_loss = torch.max(vf_losses1, vf_losses2).mean()
         critic_loss = vf_losses1.mean()
 
         # We need to maximaze Policy Loss to make agent always find Better Rewards
         # and minimize Critic Loss
-        loss = (critic_loss * vf_loss_coef) - (dist_entropy * entropy_coef) - pg_loss
-        return loss, critic_loss, pg_loss, dist_entropy, Kl, adv_loss
+        loss = (
+            (critic_loss * vf_loss_coef)
+            - (dist_entropy * entropy_coef)
+            - pg_loss
+            + Kl * 0.003
+        )
+        return (
+            loss,
+            critic_loss,
+            pg_loss,
+            dist_entropy,
+            Kl,
+            adv_loss,
+            Returns.mean().item(),
+            values.detach().mean().item(),
+        )
 
 
 class CustomDataset(Dataset):
@@ -186,7 +201,16 @@ class PPOTrainer(Trainer):
         self.actor_optimizer.zero_grad()
         self.critic_optimizer.zero_grad()
 
-        loss, critic_loss, pg_loss, dist_entropy, kl, adv_loss = self.loss(
+        (
+            loss,
+            critic_loss,
+            pg_loss,
+            dist_entropy,
+            kl,
+            adv_loss,
+            avg_return,
+            avg_value,
+        ) = self.loss(
             logits,
             values,
             old_logits,
@@ -224,6 +248,8 @@ class PPOTrainer(Trainer):
             "adv_loss": adv_loss.detach().mean().item(),
             "actor_norm": actor_norm.detach().item(),
             "critic_norm": critic_norm.detach().item(),
+            "avg_return": avg_return,
+            "avg_value": avg_value,
         }
 
     def optimize(self, batch: Dict[str, Any]):

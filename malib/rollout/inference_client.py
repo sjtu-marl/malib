@@ -111,7 +111,7 @@ def process_env_rets(
     for k in dataframes.keys():
         dataframes[k] = DataFrame(
             header=None,
-            data={_k: np.stack(_v) for _k, _v in dataframes[k].items()},
+            data={_k: np.stack(_v).squeeze() for _k, _v in dataframes[k].items()},
             runtime_config={
                 "behavior_mode": server_runtime_config["behavior_mode"],
                 "environment_ids": env_ids,
@@ -151,6 +151,8 @@ def process_policy_outputs(
                     rets[env_id][k][agent] = [_v[i] for _v in v]
             else:
                 for env_id, _v in zip(env_ids, v):
+                    # if k == EpisodeKey.ACTION:
+                    #     print("------------ action dim:", _v.shape)
                     rets[env_id][k][agent] = _v
 
     # process action with action adapter
