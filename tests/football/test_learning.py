@@ -33,7 +33,7 @@ from tests.football.rollout_case import (
 from tests.football.training_case import SimpleLearner
 
 
-BLOCK_SIZE = 2000
+BLOCK_SIZE = 3000
 
 
 def write_to_tensorboard(
@@ -141,7 +141,7 @@ def run_optimize(request_queue, response_queue, env_desc, yaml_config, exp_cfg):
 
         loop_cnt = 0
         ave_FPS = 0
-        batch_size = 32
+        batch_size = yaml_config["training"]["config"]["batch_size"]
         total_frames = 0
 
         training_config = yaml_config["training"]["config"]
@@ -210,7 +210,7 @@ def run_rollout(
     try:
         total_frames, ave_FPS = 0, 0.0
         loop_cnt = 0
-        num_envs = 32
+        num_envs = 16
         num_env_per_worker = 4
 
         pserver = ray.get_actor(name=settings.PARAMETER_SERVER_ACTOR)

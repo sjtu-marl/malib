@@ -14,23 +14,34 @@ from malib.algorithm.common.misc import vtrace
 from malib.algorithm.common.model import get_model
 
 
+def grad_norm(model):
+    parameters = model.parameters()
+    norm_type = 2
+    total_norm = torch.norm(
+        torch.stack([torch.norm(p.grad.detach(), norm_type) for p in parameters]),
+        norm_type,
+    )
+    return total_norm
+
+
 class PPOLoss:
     def __call__(
         self,
-        logits,
-        values,
-        old_logits,
-        old_values,
-        next_values,
-        actions,
-        rewards,
-        dones,
-        worker_action_probs,
+        logits: torch.Tensor,
+        values: torch.Tensor,
+        old_logits: torch.Tensor,
+        old_values: torch.Tensor,
+        next_values: torch.Tensor,
+        actions: torch.Tensor,
+        rewards: torch.Tensor,
+        dones: torch.Tensor,
+        worker_action_probs: torch.Tensor,
         action_masks,
         training_config: Dict[str, Any],
     ) -> Any:
         Old_values = old_values.detach()
 
+        assert not logits.isnan().any()
         if isinstance(logits, tuple):
             dist = Normal(*logits)
             old_dist = Normal(*old_logits)
@@ -79,7 +90,9 @@ class PPOLoss:
         # ratios = torch.min(torch.FloatTensor([limit]).to(logprobs.device), (logprobs - Old_logprobs).exp())
         # print("ratio shape: ", logprobs.shape, Old_logprobs.shape)
         # assert logprobs.shape == Old_logprobs.shape, (logprobs.shape, Old_logprobs.shape)
-        Kl = kl_divergence(old_dist, dist).float()
+        Kl = 0.5 * torch.mean(
+            torch.square(logprobs - Old_logprobs)
+        )  # kl_divergence(old_dist, dist).float()
         # assert old_dist.probs.shape == dist.probs.shape, (old_dist.shape, dist.shape)
         # torch.mean(torch.greater(torch.abs(ratios - 1.0), cliprange).float())
 
@@ -170,6 +183,8 @@ class PPOTrainer(Trainer):
         old_values = self.target_critic(state)
 
         next_values = self.policy.critic(next_state).detach()
+        self.actor_optimizer.zero_grad()
+        self.critic_optimizer.zero_grad()
 
         loss, critic_loss, pg_loss, dist_entropy, kl, adv_loss = self.loss(
             logits,
@@ -184,11 +199,16 @@ class PPOTrainer(Trainer):
             action_mask,
             self.training_config,
         )
-
-        self.actor_optimizer.zero_grad()
-        self.critic_optimizer.zero_grad()
-
         loss.backward()
+
+        actor_norm = grad_norm(self.policy.actor)
+        critic_norm = grad_norm(self.policy.critic)
+
+        torch.nn.utils.clip_grad_norm_(
+            list(self.policy.actor.parameters())
+            + list(self.policy.critic.parameters()),
+            self.training_config["grad_norm_clipping"],
+        )
 
         self.actor_optimizer.step()
         self.critic_optimizer.step()
@@ -202,6 +222,8 @@ class PPOTrainer(Trainer):
             "kl_max": kl.detach().max().item(),
             "kl_min": kl.detach().min().item(),
             "adv_loss": adv_loss.detach().mean().item(),
+            "actor_norm": actor_norm.detach().item(),
+            "critic_norm": critic_norm.detach().item(),
         }
 
     def optimize(self, batch: Dict[str, Any]):
