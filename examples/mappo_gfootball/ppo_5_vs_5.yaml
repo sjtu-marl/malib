@@ -50,6 +50,7 @@ evaluation:
 env_description:
   config:
     env_id: PSGFootball
+    enable_sharing: True
     use_built_in_GK: True
     scenario_configs:
       env_name: "5_vs_5"
