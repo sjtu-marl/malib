@@ -98,14 +98,17 @@ class InferenceWorkerSet:
             send_queue, recv_queue, runtime_config, []
         )
 
+        # print("agent server: {} accepts a connection with: {}".format(self.agent_id, runtime_id))
+
         with self.parameter_buffer_lock:
             parameter_desc_dict: Dict[AgentID, ParameterDescription] = runtime_config[
                 "parameter_desc_dict"
             ]
-            for aid, p_desc in parameter_desc_dict.items():
-                assert isinstance(p_desc, ParameterDescription)
-                if p_desc.id in self.policies[aid]:
-                    continue
+            # for aid, p_desc in parameter_desc_dict.items():
+            p_desc = parameter_desc_dict[self.agent_id]
+            aid = self.agent_id
+            assert isinstance(p_desc, ParameterDescription)
+            if p_desc.id not in self.policies[aid]:
                 policy = get_algorithm_space(
                     p_desc.description["registered_name"]
                 ).policy(**p_desc.description, env_agent_id=aid)
@@ -163,22 +166,23 @@ def _update_initial_states(self, runtime_id, rnn_states):
 
 
 def _compute_action(self: InferenceWorkerSet, runtime_id: int):
-    handler = self.runtime[runtime_id]
-    runtime_config = handler.runtime_config
-    policy_id = None
 
-    while True:
-        if handler.recver.empty():
-            continue
+    try:
+        handler = self.runtime[runtime_id]
+        runtime_config = handler.runtime_config
+        policy_id = None
 
-        data_frame: DataFrame = handler.recver.get()
-        rets = {}
+        # print("start compute action thread for runtime={} agent={}".format(runtime_id, self.agent_id))
+        while True:
 
-        try:
+            if handler.recver.empty():
+                continue
+
+            data_frame: DataFrame = handler.recver.get()
+            rets = {}
             with self.parameter_buffer_lock:
                 policy_id = _sample_policy_id(runtime_config, self.agent_id, policy_id)
                 policy: Policy = self.policies[self.agent_id][policy_id]
-                # print("start compute action")
                 kwargs = {**data_frame.data, **data_frame.runtime_config}
                 observation = kwargs.pop(EpisodeKey.CUR_OBS)
                 # if EpisodeKey.RNN_STATE not in kwargs:
@@ -203,9 +207,10 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
                     header=None, data=rets, runtime_config=data_frame.runtime_config
                 )
             )
-        except Exception as e:
-            # print(data_frame.data.keys())
-            traceback.print_exc()
+    except Exception as e:
+        # print(data_frame.data.keys())
+        traceback.print_exc()
+        raise e
 
 
 def _update_weights(self: InferenceWorkerSet, force: bool = False) -> None:

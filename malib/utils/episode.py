@@ -53,7 +53,7 @@ class Episode:
 
     def to_numpy(
         self, batch_mode: str = "time_step", filter: List[AgentID] = None
-    ) -> Dict[str, Dict[AgentID, np.ndarray]]:
+    ) -> Dict[AgentID, Dict[str, np.ndarray]]:
         """Convert episode to numpy array-like data.
 
         :param batch_mode: Determine the mechanism of data aggregation, defaults to "time_step"
@@ -78,18 +78,18 @@ class Episode:
                         for r in list(zip(*v))
                     ]
                     if batch_mode == "episode":
-                        tmp = [np.expand_dims(r, axis=0) for r in tmp]
+                        tmp = [np.expand_dims(r.squeeze(), axis=0) for r in tmp]
                     res[agent_id].update(
-                        {f"{ek}_{i}": _tmp for i, _tmp in enumerate(tmp)}
+                        {f"{ek}_{i}": _tmp.squeeze() for i, _tmp in enumerate(tmp)}
                     )
                 else:
                     if len(v) == 0:
                         return {}
                     tmp = np.asarray(v, dtype=np.float32)
                     if batch_mode == "episode":
-                        res[agent_id][ek] = np.expand_dims(tmp, axis=0)
+                        res[agent_id][ek] = np.expand_dims(tmp.squeeze(), axis=0)
                     else:
-                        res[agent_id][ek] = tmp
+                        res[agent_id][ek] = tmp.squeeze()
         return dict(res)
 
 
@@ -136,7 +136,8 @@ class NewEpisodeDict(defaultdict):
 
         res = {}
         for k, v in self.items():
-            tmp: Dict[str, Dict[AgentID, np.ndarray]] = v.to_numpy(batch_mode, filter)
+            tmp: Dict[AgentID, Dict[str, np.ndarray]] = v.to_numpy(batch_mode, filter)
+            # print("agent episode shape check:", {agent: {_k: _v.shape for _k, _v in agent_v.items()} for agent, agent_v in tmp.items()})
             if len(tmp) == 0:
                 continue
             res[k] = tmp

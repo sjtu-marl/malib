@@ -224,8 +224,8 @@ def run_rollout(
 
         _description = {
             "registered_name": algo_name,
-            "observation_space": obs_spaces["team_0"],
-            "action_space": action_spaces["team_0"],
+            "observation_space": list(obs_spaces.values())[0],
+            "action_space": list(action_spaces.values())[0],
             "model_config": model_config,
             "custom_config": custom_config,
         }
@@ -269,8 +269,12 @@ def run_rollout(
             "flags": "rollout",
             "postprocessor_types": ["defaults"],
             "parameter_desc_dict": p_descs,
-            "trainable_pairs": {"team_0": (f"{algo_name}_0", None)},
-            "policy_combinations": [{"team_0": f"{algo_name}_0"}],
+            "trainable_pairs": {
+                agent: (f"{algo_name}_0", None) for agent in env_desc["possible_agents"]
+            },
+            "policy_combinations": [
+                {agent: f"{algo_name}_0" for agent in env_desc["possible_agents"]}
+            ],
         }
 
         actor_pool = ActorPool(
@@ -347,8 +351,14 @@ def run_rollout(
 # XXX(ming): @yanxue, if you wanna run ppo, please replace the string mappo with ppo
 @pytest.mark.parametrize("yaml_name", ["ppo"])
 def test_learning(env_desc, servers, yaml_name: str):
-    comm_optimization = [Queue(), Queue()]
-    comm_rollout = [Queue(), Queue()]
+    comm_optimization = [
+        Queue(actor_options={"num_cpus": 0.1}),
+        Queue(actor_options={"num_cpus": 0.1}),
+    ]
+    comm_rollout = [
+        Queue(actor_options={"num_cpus": 0.1}),
+        Queue(actor_options={"num_cpus": 0.1}),
+    ]
 
     yaml_path = os.path.join(
         settings.BASE_DIR, f"examples/mappo_gfootball/{yaml_name}_5_vs_5.yaml"

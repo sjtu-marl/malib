@@ -311,21 +311,25 @@ class ParameterServer:
             )
         except Exception as e:
             parameter_desc.data = None
-        assert (
-            self._table.get(table_name, None) is not None
-        ), f"No such a table named={table_name}, {list(self._table.keys())}"
-        if self._table[table_name].parallel_num != parameter_desc.parallel_num:
-            # XXX(hanjing): Fix the possible conflicts when recovering from dumped files
-            Logger.info("Inconsistence found in parallel num, reassigned")
-            self._table[table_name].parallel_num = parameter_desc.parallel_num
-
-        parameter = self._table[table_name].get(parameter_desc)
-        status = self._table[table_name].status
-        if self._table[table_name].version <= parameter_desc.version:
+        # assert (
+        #     self._table.get(table_name, None) is not None
+        # ), f"No such a table named={table_name}, {list(self._table.keys())}"
+        if self._table.get(table_name, None) is None:
             parameter_desc.data = None
+            status = TableStatus(False, Status.NORMAL)
         else:
-            parameter_desc.version = self._table[table_name].version
-            parameter_desc.data = parameter
+            if self._table[table_name].parallel_num != parameter_desc.parallel_num:
+                # XXX(hanjing): Fix the possible conflicts when recovering from dumped files
+                Logger.info("Inconsistence found in parallel num, reassigned")
+                self._table[table_name].parallel_num = parameter_desc.parallel_num
+
+            parameter = self._table[table_name].get(parameter_desc)
+            status = self._table[table_name].status
+            if self._table[table_name].version <= parameter_desc.version:
+                parameter_desc.data = None
+            else:
+                parameter_desc.version = self._table[table_name].version
+                parameter_desc.data = parameter
         return status, parameter_desc
 
     def push(self, parameter_desc: ParameterDescription) -> TableStatus:

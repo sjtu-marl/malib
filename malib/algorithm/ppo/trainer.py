@@ -13,6 +13,7 @@ from malib.utils.episode import EpisodeKey
 from malib.algorithm.common.trainer import Trainer
 from malib.algorithm.common.misc import vtrace, MaskedCategorical
 from malib.algorithm.common.model import get_model
+from malib.algorithm.mappo.utils import PopArt
 
 
 def grad_norm(model):
@@ -46,6 +47,7 @@ class PPOLoss:
             dist = Normal(*logits)
             old_dist = Normal(*old_logits)
         else:
+            # print("------------ shape check:", logits.shape, action_masks.shape, values.shape, old_logits.shape, old_values.shape, next_values.shape, actions.shape, rewards.shape, dones.shape, worker_action_probs.shape)
             dist = MaskedCategorical(logits, action_masks)
             old_dist = MaskedCategorical(old_logits, action_masks)
 
@@ -74,15 +76,13 @@ class PPOLoss:
             Worker_logprobs,
             training_config["gamma"],
             training_config["lam"],
-        )
+        ).squeeze()
         # print("adv and shae:", Advantages.shape, values.shape)
         assert Advantages.shape == values.shape, (Advantages.shape, values.shape)
         Returns = (Advantages + values).detach()
         Advantages = (
-            ((Advantages - Advantages.mean()) / (Advantages.std() + 1e-6))
-            .detach()
-            .squeeze()
-        )
+            (Advantages - Advantages.mean()) / (Advantages.std() + 1e-6)
+        ).detach()
 
         # limit = 2.4
         ratios = (logprobs - Old_logprobs).exp()
@@ -113,16 +113,16 @@ class PPOLoss:
         dist_entropy = dist.entropy.mean()
 
         # Getting critic loss by using Clipped critic value
-        # vpredclipped = Old_values + torch.clamp(
-        #     values - Old_values, value_clip, value_clip
-        # )  # Minimize the difference between old value and new value
+        vpredclipped = Old_values + torch.clamp(
+            values - Old_values, -value_clip, value_clip
+        )  # Minimize the difference between old value and new value
         # assert values.shape == Old_values.shape == Returns.shape == vpredclipped.shape, (values.shape, Old_values.shape, Returns.shape, vpredclipped.shape)
         vf_losses1 = (Returns.squeeze() - values.squeeze()).pow(
             2
         ) * 0.5  # Mean Squared Error
-        # vf_losses2 = (Returns - vpredclipped).pow(2) * 0.5  # Mean Squared Error
-        # critic_loss = torch.max(vf_losses1, vf_losses2).mean()
-        critic_loss = vf_losses1.mean()
+        vf_losses2 = (Returns - vpredclipped).pow(2) * 0.5  # Mean Squared Error
+        critic_loss = torch.max(vf_losses1, vf_losses2).mean()
+        # critic_loss = vf_losses1.mean()
 
         # We need to maximaze Policy Loss to make agent always find Better Rewards
         # and minimize Critic Loss
@@ -130,7 +130,7 @@ class PPOLoss:
             (critic_loss * vf_loss_coef)
             - (dist_entropy * entropy_coef)
             - pg_loss
-            + Kl * 0.003
+            # + Kl * 0.003
         )
         return (
             loss,
@@ -153,6 +153,8 @@ class CustomDataset(Dataset):
         self.rewards = batch[EpisodeKey.REWARD]
         self.dones = batch[EpisodeKey.DONE]
         self.next_states = batch[EpisodeKey.NEXT_OBS]
+
+        # print("dataset shape check:", self.states.shape, self.actions.shape, self.action_masks.shape, self.action_probs.shape, self.rewards.shape, self.dones.shape, self.next_states.shape)
 
     def __len__(self):
         return len(self.dones)
@@ -192,12 +194,12 @@ class PPOTrainer(Trainer):
         logits = self.policy.actor(state)
         # print("---------- shape logits, and ams", logits.shape, action_mask.shape)
         assert not logits.isnan().any()
-        values = self.policy.critic(state)
+        values = self.policy.critic(state).squeeze()
 
         old_logits = self.target_actor(state).detach()
-        old_values = self.target_critic(state)
+        old_values = self.target_critic(state).squeeze()
 
-        next_values = self.policy.critic(next_state).detach()
+        next_values = self.policy.critic(next_state).squeeze().detach()
         self.actor_optimizer.zero_grad()
         self.critic_optimizer.zero_grad()
 
@@ -254,8 +256,12 @@ class PPOTrainer(Trainer):
 
     def optimize(self, batch: Dict[str, Any]):
         for k, v in batch.items():
-            v = np.moveaxis(v, 2, 1)
-            batch[k] = v.reshape(-1, *v.shape[3:])
+            if self.training_config["batch_mode"] == "episode":
+                if len(v.shape) > 3:
+                    v = np.moveaxis(v, 2, 1)
+                    batch[k] = v.reshape(-1, *v.shape[3:])
+                else:
+                    batch[k] = v.reshape(-1, *v.shape[2:])
             if k == EpisodeKey.ACTION:
                 batch[k] = torch.LongTensor(batch[k].copy()).to(self.policy.device)
             else:
@@ -264,11 +270,11 @@ class PPOTrainer(Trainer):
         batch_size = batch[EpisodeKey.CUR_OBS].shape[0]  # num of data point
         mini_batch_size = batch_size // self.training_config["mini_batch"]
 
-        print(
-            "mini_batch, size: {}, num: {}".format(
-                mini_batch_size, self.training_config["mini_batch"]
-            )
-        )
+        # print(
+        #     "mini_batch, size: {}, num: {}".format(
+        #         mini_batch_size, self.training_config["mini_batch"]
+        #     )
+        # )
 
         dataloader = DataLoader(CustomDataset(batch), mini_batch_size, shuffle=False)
         merged_loss = defaultdict(lambda: 0.0)

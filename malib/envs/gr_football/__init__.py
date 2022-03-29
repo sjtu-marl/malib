@@ -23,7 +23,8 @@ DEFAULT_ENV_CONNFIG = {
 
 def creator(**kwargs):
     base = BaseGFootBall(**kwargs)
-    return ParameterSharing(base, default_sharing_mapping)
+    return base
+    # return ParameterSharing(base, default_sharing_mapping)
 
 
 def env_desc_gen(config):
@@ -33,7 +34,7 @@ def env_desc_gen(config):
         "possible_agents": env.possible_agents,
         "action_spaces": env.action_spaces,
         "observation_spaces": env.observation_spaces,
-        "state_spaces": env.state_spaces,
+        # "state_spaces": env.state_spaces,
         "config": config,
     }
     env.close()

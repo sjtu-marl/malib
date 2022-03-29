@@ -1,5 +1,5 @@
-from collections import defaultdict
 import traceback
+from collections import defaultdict
 import ray
 import time
 import gym
@@ -23,6 +23,7 @@ from malib.utils.typing import (
     BehaviorMode,
     Tuple,
     EnvID,
+    Union,
 )
 from malib.utils.general import iter_many_dicts_recursively
 from malib.utils.episode import Episode, EpisodeKey, NewEpisodeDict
@@ -211,6 +212,10 @@ class InferenceClient:
         else:
             self.env = AsyncVectorEnv(obs_spaces, act_spaces, env_cls, env_config)
 
+            # build connection with agent interfaces
+        self.recv_queue = None
+        self.send_queue = None
+
     def add_envs(self, maximum: int) -> int:
         """Create environments, if env is an instance of VectorEnv, add these new environment instances into it,
         otherwise do nothing.
@@ -231,6 +236,9 @@ class InferenceClient:
         return self.env.num_envs
 
     def close(self):
+        if self.recv_queue is not None:
+            _ = [e.shutdown(force=True) for e in self.recv_queue.values()]
+            _ = [e.shutdown(force=True) for e in self.send_queue.values()]
         self.env.close()
 
     @Log.data_feedback(enable=settings.DATA_FEEDBACK)
@@ -238,7 +246,8 @@ class InferenceClient:
         self,
         agent_interfaces: Dict[AgentID, InferenceWorkerSet],
         desc: Dict[str, Any],
-        buffer_desc: BufferDescription = None,
+        buffer_desc: Union[BufferDescription, Dict[AgentID, BufferDescription]],
+        reset: bool = False,
     ) -> Tuple[str, Dict[str, List]]:
 
         # desc required:
@@ -278,15 +287,21 @@ class InferenceClient:
         elif task_type in ["evaluation", "simulation"]:
             server_runtime_config["behavior_mode"] = BehaviorMode.EXPLOITATION
 
-        # build connection with agent interfaces
-        recv_queue = {agent: Queue() for agent in agent_interfaces}
-        send_queue = {agent: Queue() for agent in agent_interfaces}
+        if self.recv_queue is None or reset:
+            self.recv_queue = {
+                agent: Queue(actor_options={"num_cpus": 0.1})
+                for agent in agent_interfaces
+            }
+            self.send_queue = {
+                agent: Queue(actor_options={"num_cpus": 0.1})
+                for agent in agent_interfaces
+            }
 
         with self.timer.timeit("inference_server_connect"):
             _ = ray.get(
                 [
                     server.connect.remote(
-                        [recv_queue[aid], send_queue[aid]],
+                        [self.recv_queue[aid], self.send_queue[aid]],
                         runtime_config=server_runtime_config,
                         runtime_id=self.process_id,
                     )
@@ -318,12 +333,11 @@ class InferenceClient:
 
             start = time.time()
             while not self.env.is_terminated():
-                # print("env step:", self.env.batched_step_cnt, len(self.env.active_envs), client_runtime_config["fragment_length"])
                 with self.timer.time_avg("policy_step"):
                     for agent, dataframe in dataframes.items():
-                        send_queue[agent].put_nowait(dataframe)
-
-                    policy_outputs = recieve(recv_queue)
+                        self.send_queue[agent].put_nowait(dataframe)
+                    policy_outputs = recieve(self.recv_queue)
+                    # print("env step:", self.env.batched_step_cnt, len(self.env.active_envs), client_runtime_config["fragment_length"], task_type)
                     env_actions, policy_outputs = process_policy_outputs(
                         policy_outputs, self.env
                     )
@@ -343,9 +357,6 @@ class InferenceClient:
                 dataframes = next_dataframes
             end = time.time()
 
-            _ = [e.shutdown(force=True) for e in recv_queue.values()]
-            _ = [e.shutdown(force=True) for e in send_queue.values()]
-
             rollout_info = self.env.collect_info()
             if task_type == "rollout":
                 episodes = list(
@@ -353,24 +364,25 @@ class InferenceClient:
                         self.batch_mode, filter=list(desc["behavior_policies"].keys())
                     ).values()
                 )
-                episodes = postprocessing(episodes, desc["postprocessor_types"])
-                buffer_desc.batch_size = (
-                    self.env.batched_step_cnt
-                    if self.batch_mode == "time_step"
-                    else len(episodes)
-                )
-
-                indices = None
-                while indices is None:
-                    batch = ray.get(
-                        self.dataset_server.get_producer_index.remote(buffer_desc)
+                # episodes = postprocessing(episodes, desc["postprocessor_types"])
+                for agent, _buffer_desc in buffer_desc.items():
+                    _buffer_desc.batch_size = (
+                        self.env.batched_step_cnt
+                        if self.batch_mode == "time_step"
+                        else len(episodes)
                     )
-                    indices = batch.data
-                gc.collect()
 
-                buffer_desc.data = episodes
-                buffer_desc.indices = indices
-                self.dataset_server.save.remote(buffer_desc)
+                    indices = None
+                    while indices is None:
+                        batch = ray.get(
+                            self.dataset_server.get_producer_index.remote(_buffer_desc)
+                        )
+                        indices = batch.data
+                    gc.collect()
+
+                    _buffer_desc.data = [{agent: e[agent]} for e in episodes]
+                    _buffer_desc.indices = indices
+                    self.dataset_server.save.remote(_buffer_desc)
         except Exception as e:
             traceback.print_exc()
             raise e

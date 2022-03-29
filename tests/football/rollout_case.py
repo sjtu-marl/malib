@@ -208,18 +208,22 @@ def run_async_vec_env(
             ]
         )
 
-    buffer_desc = BufferDescription(
-        env_id=env_desc["config"][
-            "env_id"
-        ],  # TODO(ziyu): this should be move outside "config"
-        agent_id=list(trainable_pairs.keys()),
-        policy_id=[pid for pid, _ in trainable_pairs.values()],
-        capacity=None,
-        sample_start_size=None,
-    )
+    buffer_desc = {
+        agent: BufferDescription(
+            env_id=env_desc["config"][
+                "env_id"
+            ],  # TODO(ziyu): this should be move outside "config"
+            agent_id=[agent],
+            policy_id=[trainable_pairs[agent][0]],
+            capacity=None,
+            sample_start_size=None,
+        )
+        for agent in env_desc["possible_agents"]
+    }
 
     if dataserver:
-        ray.get(dataserver.create_table.remote(buffer_desc, ignore=True))
+        for v in buffer_desc.values():
+            ray.get(dataserver.create_table.remote(v, ignore=True))
 
     rets = actor_pool.map(
         lambda a, task: a.run.remote(

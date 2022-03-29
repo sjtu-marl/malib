@@ -396,7 +396,7 @@ class AgentInterface(metaclass=ABCMeta):
                     buffer_desc.indices = None
                     break
         if self.local_buffer is not None:
-            print("local buffer size:", self.local_buffer.size)
+            # print("local buffer size:", self.local_buffer.size)
             res = self.local_buffer.sample(size=buffer_desc.batch_size)
         if (self._global_step + 1) % self._print_every == 0:
             Logger.debug(
@@ -460,9 +460,9 @@ class AgentInterface(metaclass=ABCMeta):
             for env_aid, (pid, _) in agent_involve_info.trainable_pairs.items()
         }
 
-        Logger.info(
-            f"Start training task for interface={self._id} with policy mapping:\n\t{policy_id_mapping} -----"
-        )
+        # Logger.info(
+        #     f"Start training task for interface={self._id} with policy mapping:\n\t{policy_id_mapping} -----"
+        # )
         # register sub tasks
         stopper = get_stopper(training_task.stopper)(
             tasks=[env_aid for env_aid in policy_id_mapping],

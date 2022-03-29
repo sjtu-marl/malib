@@ -13,6 +13,9 @@ from malib.utils.typing import (
     ParameterDescription,
     TaskDescription,
     MetaParameterDescription,
+    BufferDescription,
+    Tuple,
+    Union,
 )
 from malib.utils.logger import Logger
 from malib.algorithm.common.policy import Policy
@@ -120,9 +123,9 @@ class SimpleLearner(IndependentAgent):
             sample_mode,
         )
 
-        Logger.info(
-            f"Start training task for interface={self._id} with policy mapping: {policy_id_mapping}"
-        )
+        # Logger.info(
+        #     f"Start training task for interface={self._id} with policy mapping: {policy_id_mapping}"
+        # )
 
         batch, size = self.request_data(buffer_desc)
         statistics = self.optimize(policy_id_mapping, batch, training_config)

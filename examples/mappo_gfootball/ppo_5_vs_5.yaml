@@ -9,7 +9,8 @@ training:
       size: 300
   config:
     ppo_epoch: 4
-    batch_size: 16  # episode size
+    batch_size: 32  # episode size
+    batch_mode: episode
     mini_batch: 4  # data size
     optimizer: Adam
     actor_lr: 2.5e-4
