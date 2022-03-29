@@ -305,6 +305,8 @@ def run_rollout(
                 env_desc, None, runtime_configs, agent_interfaces, actor_pool
             )
 
+            FPS *= len(env_desc["possible_agents"])
+
             total_frames += N_Frames
             ave_FPS = (ave_FPS * loop_cnt + FPS) / (loop_cnt + 1)
             loop_cnt += 1

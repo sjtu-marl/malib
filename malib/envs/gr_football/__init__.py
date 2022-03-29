@@ -1,5 +1,4 @@
 from .env import BaseGFootBall, ParameterSharing
-from .wrappers import GroupedGFBall
 
 
 default_sharing_mapping = lambda x: x[:6]
@@ -23,8 +22,10 @@ DEFAULT_ENV_CONNFIG = {
 
 def creator(**kwargs):
     base = BaseGFootBall(**kwargs)
-    return base
-    # return ParameterSharing(base, default_sharing_mapping)
+    if kwargs.get("enable_sharing", False):
+        return ParameterSharing(base, default_sharing_mapping)
+    else:
+        return base
 
 
 def env_desc_gen(config):
@@ -34,8 +35,9 @@ def env_desc_gen(config):
         "possible_agents": env.possible_agents,
         "action_spaces": env.action_spaces,
         "observation_spaces": env.observation_spaces,
-        # "state_spaces": env.state_spaces,
         "config": config,
     }
+    if hasattr(env, "state_spaces"):
+        env_desc["state_spaces"] = env.state_spaces
     env.close()
     return env_desc
