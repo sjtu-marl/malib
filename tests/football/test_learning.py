@@ -411,7 +411,9 @@ def test_learning(env_desc, servers, yaml_name: str):
         host=start_ray_info["NodeManagerAddress"],
     )
 
-    training_agent_mapping = lambda agent: agent[:6]
+    training_agent_mapping = lambda agent: agent[:6]  # share parameter
+    # non share parameter
+    # training_agent_mapping = lambda agent: agent
 
     run_optimize.remote(
         *comm_optimization, env_desc, configs, exp_cfg, training_agent_mapping
