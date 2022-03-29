@@ -270,6 +270,7 @@ class Table:
 
         shuffle_idx = np.arange(len(indices))
         np.random.shuffle(shuffle_idx)
+        # print("--------- data type:", type(data[0]), data[0].keys())
         for d_list, k, value_list in iter_many_dicts_recursively(*data):
             head_d = d_list[0]
             batch_sizes = [v.shape[0] for v in value_list]

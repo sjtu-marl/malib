@@ -513,6 +513,6 @@ class MetricEntry:
 
 @dataclass
 class DataFrame:
-    header: Any
+    identifier: Any
     data: Any
     runtime_config: Dict[str, Any]

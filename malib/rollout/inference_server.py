@@ -9,6 +9,7 @@ import gc
 from collections import deque, defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
 import traceback
+from types import LambdaType
 
 import ray
 import gym
@@ -45,20 +46,22 @@ class InferenceWorkerSet:
         observation_space: gym.Space,
         action_space: gym.Space,
         parameter_server: Any,
+        governed_agents: List[AgentID],
         force_weight_update: bool = False,
     ) -> None:
-        self.agent_id = agent_id
+        self.runtime_agent_id = agent_id
         self.observation_space = observation_space
         self.action_space = action_space
         self.parameter_server = parameter_server
 
-        self.policies = {self.agent_id: {}}
+        self.policies = {self.runtime_agent_id: {}}
         self.parameter_desc: List[ParameterDescription] = []
         self.parameter_version: List[int] = []
 
         self.thread_pool = ThreadPoolExecutor()
         self.parameter_buffer_lock = threading.Lock()
         self.parameter_buffer = defaultdict(lambda: None)
+        self.governed_agents = governed_agents
 
         self.runtime: Dict[int, RuntimeHandler] = {}
 
@@ -95,18 +98,21 @@ class InferenceWorkerSet:
     ):
         send_queue, recv_queue = queues
         self.runtime[runtime_id] = RuntimeHandler(
-            send_queue, recv_queue, runtime_config, []
+            send_queue,
+            recv_queue,
+            runtime_config,
+            {agent: [] for agent in self.governed_agents},
         )
 
-        # print("agent server: {} accepts a connection with: {}".format(self.agent_id, runtime_id))
+        # print("agent server: {} accepts a connection with: {}".format(self.runtime_agent_id, runtime_id))
 
         with self.parameter_buffer_lock:
             parameter_desc_dict: Dict[AgentID, ParameterDescription] = runtime_config[
                 "parameter_desc_dict"
             ]
             # for aid, p_desc in parameter_desc_dict.items():
-            p_desc = parameter_desc_dict[self.agent_id]
-            aid = self.agent_id
+            p_desc = parameter_desc_dict[self.runtime_agent_id]
+            aid = self.runtime_agent_id
             assert isinstance(p_desc, ParameterDescription)
             if p_desc.id not in self.policies[aid]:
                 policy = get_algorithm_space(
@@ -150,10 +156,10 @@ def _sample_policy_id(runtime_config, main_agent_id, old_policy_id):
     return policy_id
 
 
-def _get_initial_states(self, runtime_id, observation, policy: Policy):
+def _get_initial_states(self, runtime_id, observation, policy: Policy, identifier):
     # try to retrive cached states
-    if len(self.runtime[runtime_id].rnn_states) > 0:
-        return self.runtime[runtime_id].rnn_states[-1]
+    if len(self.runtime[runtime_id].rnn_states[identifier]) > 0:
+        return self.runtime[runtime_id].rnn_states[identifier][-1]
     else:
         # use inner shape to judge it
         offset = len(policy.preprocessor.shape)
@@ -161,8 +167,8 @@ def _get_initial_states(self, runtime_id, observation, policy: Policy):
         return policy.get_initial_state(batch_size=batch_size)
 
 
-def _update_initial_states(self, runtime_id, rnn_states):
-    self.runtime[runtime_id].rnn_states.append(rnn_states)
+def _update_initial_states(self, runtime_id, rnn_states, identifier):
+    self.runtime[runtime_id].rnn_states[identifier].append(rnn_states)
 
 
 def _compute_action(self: InferenceWorkerSet, runtime_id: int):
@@ -172,41 +178,56 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
         runtime_config = handler.runtime_config
         policy_id = None
 
-        # print("start compute action thread for runtime={} agent={}".format(runtime_id, self.agent_id))
+        # print("start compute action thread for runtime={} agent={}".format(runtime_id, self.runtime_agent_id))
         while True:
 
             if handler.recver.empty():
                 continue
 
-            data_frame: DataFrame = handler.recver.get()
+            data_frames: List[DataFrame] = handler.recver.get()
             rets = {}
+            send_data_frames = []
             with self.parameter_buffer_lock:
-                policy_id = _sample_policy_id(runtime_config, self.agent_id, policy_id)
-                policy: Policy = self.policies[self.agent_id][policy_id]
-                kwargs = {**data_frame.data, **data_frame.runtime_config}
-                observation = kwargs.pop(EpisodeKey.CUR_OBS)
-                # if EpisodeKey.RNN_STATE not in kwargs:
-                kwargs[EpisodeKey.RNN_STATE] = _get_initial_states(
-                    self, runtime_id, observation, policy
-                )
-                (
-                    rets[EpisodeKey.ACTION],
-                    rets[EpisodeKey.ACTION_DIST],
-                    rets[EpisodeKey.RNN_STATE],
-                ) = policy.compute_action(observation=observation, **kwargs)
-                # compute state value
-                rets[EpisodeKey.STATE_VALUE] = policy.value_function(
-                    observation=observation, **kwargs
-                )
-                # save rnn state
-                _update_initial_states(self, runtime_id, rets[EpisodeKey.RNN_STATE])
-                # print("done for compute action")
+                for data_frame in data_frames:
+                    policy_id = _sample_policy_id(
+                        runtime_config, data_frame.identifier, policy_id
+                    )
+                    policy: Policy = self.policies[self.runtime_agent_id][policy_id]
+                    kwargs = {**data_frame.data, **data_frame.runtime_config}
+                    observation = kwargs.pop(EpisodeKey.CUR_OBS)
+                    # if EpisodeKey.RNN_STATE not in kwargs:
+                    kwargs[EpisodeKey.RNN_STATE] = _get_initial_states(
+                        self,
+                        runtime_id,
+                        observation,
+                        policy,
+                        identifier=data_frame.identifier,
+                    )
+                    (
+                        rets[EpisodeKey.ACTION],
+                        rets[EpisodeKey.ACTION_DIST],
+                        rets[EpisodeKey.RNN_STATE],
+                    ) = policy.compute_action(observation=observation, **kwargs)
+                    # compute state value
+                    rets[EpisodeKey.STATE_VALUE] = policy.value_function(
+                        observation=observation, **kwargs
+                    )
+                    send_df = DataFrame(
+                        identifier=data_frame.identifier,
+                        data=rets,
+                        runtime_config=data_frame.runtime_config,
+                    )
+                    send_data_frames.append(send_df)
+                    # save rnn state
+                    _update_initial_states(
+                        self,
+                        runtime_id,
+                        rets[EpisodeKey.RNN_STATE],
+                        identifier=data_frame.identifier,
+                    )
+                    # print("done for compute action")
 
-            handler.sender.put_nowait(
-                DataFrame(
-                    header=None, data=rets, runtime_config=data_frame.runtime_config
-                )
-            )
+            handler.sender.put_nowait(send_data_frames)
     except Exception as e:
         # print(data_frame.data.keys())
         traceback.print_exc()
@@ -238,9 +259,9 @@ def _update_weights(self: InferenceWorkerSet, force: bool = False) -> None:
                     if content.data is not None:
                         # update parameter here
                         print("update weights here with version:", content.version)
-                        self.policies[self.agent_id][parameter_descs[i].id].set_weights(
-                            content.data
-                        )
+                        self.policies[self.runtime_agent_id][
+                            parameter_descs[i].id
+                        ].set_weights(content.data)
                         parameter_version[i] = content.version
                         parameter_descs[i].lock = status.locked
             gc.collect()

@@ -16,6 +16,7 @@ from malib.utils.typing import (
     BufferDescription,
     Tuple,
     Union,
+    PolicyID,
 )
 from malib.utils.logger import Logger
 from malib.algorithm.common.policy import Policy
@@ -48,7 +49,7 @@ def gen_policy_description(policy_template: Policy, env_desc, name="MAPPO"):
 class SimpleLearner(IndependentAgent):
     def __init__(
         self,
-        assign_id: str,
+        runtime_id: str,
         env_desc: Dict[str, Any],
         algorithm_candidates: Dict[str, Any],
         training_agent_mapping: Callable,
@@ -62,7 +63,7 @@ class SimpleLearner(IndependentAgent):
     ):
         IndependentAgent.__init__(
             self,
-            assign_id,
+            runtime_id,
             env_desc,
             algorithm_candidates,
             training_agent_mapping,
@@ -77,34 +78,77 @@ class SimpleLearner(IndependentAgent):
 
     def start(self) -> None:
         self._parameter_server = ray.get_actor(settings.PARAMETER_SERVER_ACTOR)
-
         self._offline_dataset = ray.get_actor(settings.OFFLINE_DATASET_ACTOR)
+
+    def optimize(
+        self,
+        policy_ids: Dict[AgentID, PolicyID],
+        batch: Dict[AgentID, Any],
+        training_config: Dict[str, Any],
+    ) -> Dict[str, float]:
+        """Execute optimization for a group of policies with given batches.
+
+        :param policy_ids: Dict[AgentID, PolicyID], Mapping from environment agent ids to policy ids. The agent ids in
+            this dictionary should be registered in groups, and also policy ids should have been existed ones in the
+            policy pool.
+        :param Dict[Agent, Any] batch, Mapping from agent ids to batches.
+        :param Dict[Agent,Any] training_config: Training configuration.
+        :return: An agent-wise training statistics dict.
+        """
+
+        res = {}
+        pid = policy_ids[self.agent_group()[0]]
+        trainer = self.get_trainer(pid)
+        trainer.reset(self.policies[pid], training_config)
+        training_info = trainer.optimize(batch[self.runtime_id])
+
+        res.update(
+            dict(
+                map(
+                    lambda kv: (f"{self.runtime_id}/{kv[0]}", kv[1]),
+                    training_info.items(),
+                )
+            )
+        )
+
+        return res
 
     def add_policy(self, trainable: bool = True):
         trainable = True
-        policy_dict = {
-            env_aid: self.add_policy_for_agent(env_aid, trainable)
-            for env_aid in self._group
-        }
+        # policy_dict = {
+        #     env_aid: self.add_policy_for_agent(env_aid, trainable)
+        #     for env_aid in self._group
+        # }
 
-        Logger.info("add policy: {}".format(policy_dict))
-
-        for env_aid, (pid, policy) in policy_dict.items():
-            self._agent_to_pids[env_aid].append(pid)
-            parameter_desc = self.parameter_desc_gen(
-                env_aid, pid, trainable, data=policy.state_dict()
+        Logger.info(
+            "Learner={} adds policies for agent={}".format(
+                self.runtime_id, self.agent_group()
             )
-            ray.get(self._parameter_server.push.remote(parameter_desc=parameter_desc))
-            parameter_desc.data = None
-            self._parameter_desc[pid] = parameter_desc
-            if self._meta_parameter_desc.get(env_aid, None) is None:
-                self._meta_parameter_desc[env_aid] = MetaParameterDescription(
-                    meta_pid=env_aid, parameter_desc_dict={}
-                )
+        )
 
-            self._meta_parameter_desc[env_aid].parameter_desc_dict[
-                pid
-            ] = self.parameter_desc_gen(env_aid, pid, trainable)
+        # random select an agent for policy generation
+        pid, policy = self.add_policy_for_agent(
+            self.agent_group()[0], trainable=trainable
+        )
+
+        for env_aid in self.agent_group():
+            self._agent_to_pids[env_aid].append(pid)
+
+        parameter_desc = self.parameter_desc_gen(
+            self.runtime_id, pid, trainable, data=policy.state_dict()
+        )
+        ray.get(self._parameter_server.push.remote(parameter_desc=parameter_desc))
+        parameter_desc.data = None
+        self._parameter_desc[pid] = parameter_desc
+
+        if self._meta_parameter_desc.get(self.runtime_id, None) is None:
+            self._meta_parameter_desc[self.runtime_id] = MetaParameterDescription(
+                meta_pid=self.runtime_id, parameter_desc_dict={}
+            )
+
+        self._meta_parameter_desc[self.runtime_id].parameter_desc_dict[
+            pid
+        ] = parameter_desc
 
     def train(self, training_config: Dict[str, Any] = None):
         """Execute only one epoch per call
@@ -116,23 +160,20 @@ class SimpleLearner(IndependentAgent):
         batch_size = training_config.get("batch_size", 64)
         sample_mode = None
 
-        policy_id_mapping = {k: "PPO_0" for k in self._group}
+        env_aid = self.agent_group()[0]
+        policy_id_mapping = {
+            env_aid: self._agent_to_pids[env_aid][-1] for env_aid in self.agent_group()
+        }
         buffer_desc = self.gen_buffer_description(
             policy_id_mapping,
             batch_size,
             sample_mode,
         )
 
-        # Logger.info(
-        #     f"Start training task for interface={self._id} with policy mapping: {policy_id_mapping}"
-        # )
-
         batch, size = self.request_data(buffer_desc)
         statistics = self.optimize(policy_id_mapping, batch, training_config)
 
-        # update parameter
-        for env_aid in self._group:
-            pid = policy_id_mapping[env_aid]
-            status = self.push(env_aid, pid)
+        pid = policy_id_mapping[env_aid]
+        status = self.push(self.runtime_id, pid)
 
         return statistics

@@ -113,6 +113,7 @@ class NewEpisodeDict(defaultdict):
                     agent_slot[aid].append(_v)
         # we must split the for-loop here, in the case of async vec_env, the keys in env_outputs maybe different
         # from keys in policy_outputs,
+        # print("------ env ouputs:", {eid: {k: {ak: _v.shape if isinstance(_v, np.ndarray) else _v for ak, _v in v.items()} for k, v in _env_output.items()} for eid, _env_output in env_outputs.items()})
         for env_id, env_output in env_outputs.items():
             for k, v in env_output.items():
                 if k == "infos":

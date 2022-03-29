@@ -154,7 +154,16 @@ class CustomDataset(Dataset):
         self.dones = batch[EpisodeKey.DONE]
         self.next_states = batch[EpisodeKey.NEXT_OBS]
 
-        # print("dataset shape check:", self.states.shape, self.actions.shape, self.action_masks.shape, self.action_probs.shape, self.rewards.shape, self.dones.shape, self.next_states.shape)
+        # print(
+        #     "dataset shape check:",
+        #     self.states.shape,
+        #     self.actions.shape,
+        #     self.action_masks.shape,
+        #     self.action_probs.shape,
+        #     self.rewards.shape,
+        #     self.dones.shape,
+        #     self.next_states.shape,
+        # )
 
     def __len__(self):
         return len(self.dones)
@@ -257,6 +266,7 @@ class PPOTrainer(Trainer):
     def optimize(self, batch: Dict[str, Any]):
         for k, v in batch.items():
             if self.training_config["batch_mode"] == "episode":
+                # print("original k and shape:", k, v.shape)
                 if len(v.shape) > 3:
                     v = np.moveaxis(v, 2, 1)
                     batch[k] = v.reshape(-1, *v.shape[3:])

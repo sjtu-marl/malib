@@ -2,7 +2,7 @@
 Run this file with `pytest ./tests/football/test_learning.py -s`.
 """
 
-from collections import ChainMap
+from collections import ChainMap, defaultdict
 import os
 import traceback
 import yaml
@@ -33,7 +33,7 @@ from tests.football.rollout_case import (
 from tests.football.training_case import SimpleLearner
 
 
-BLOCK_SIZE = 3000
+BLOCK_SIZE = 100
 
 
 def write_to_tensorboard(
@@ -106,22 +106,37 @@ def servers():
 
 
 @ray.remote
-def run_optimize(request_queue, response_queue, env_desc, yaml_config, exp_cfg):
+def run_optimize(
+    request_queue,
+    response_queue,
+    env_desc,
+    yaml_config,
+    exp_cfg,
+    training_agent_mapping,
+):
     try:
         n_agent = len(env_desc["possible_agents"])
         remote_learner_cls = SimpleLearner.as_remote(num_gpus=1 / n_agent, num_cpus=1)
         possible_agents = env_desc["possible_agents"]
         observation_spaces = env_desc["observation_spaces"]
         action_spaces = env_desc["action_spaces"]
-        training_agent_mapping = lambda agent: agent[:6]
         algorithms = yaml_config["algorithms"]
         local_buffer_config = yaml_config["training"]["interface"].get(
             "local_buffer_config", None
         )
 
+        # map agents
+        agent_group = defaultdict(lambda: [])
+        runtime_agent_ids = []
+        for agent in env_desc["possible_agents"]:
+            runtime_id = training_agent_mapping(agent)
+            agent_group[runtime_id].append(agent)
+            runtime_agent_ids.append(runtime_id)
+        runtime_agent_ids = set(runtime_agent_ids)
+
         learners = {
-            aid: remote_learner_cls.remote(
-                aid,
+            runtime_id: remote_learner_cls.remote(
+                runtime_id,
                 env_desc,
                 algorithms,
                 training_agent_mapping,
@@ -131,13 +146,12 @@ def run_optimize(request_queue, response_queue, env_desc, yaml_config, exp_cfg):
                 use_init_policy_pool=False,
                 local_buffer_config=local_buffer_config,
             )
-            for aid in possible_agents
+            for runtime_id in runtime_agent_ids
         }
 
-        # sorted_env_agents = sorted(env_desc["possible_agents"])
-        for aid, learner in learners.items():
+        for runtime_id, learner in learners.items():
             ray.get(learner.start.remote())
-            ray.get(learner.register_env_agent.remote(aid))
+            ray.get(learner.register_env_agent.remote(agent_group[runtime_id]))
             ray.get(learner.add_policy.remote())
 
         loop_cnt = 0
@@ -207,6 +221,7 @@ def run_rollout(
     yaml_config,
     exp_cfg,
     algo_name,
+    training_agent_mapping,
 ):
     try:
         total_frames, ave_FPS = 0, 0.0
@@ -230,22 +245,33 @@ def run_rollout(
             "custom_config": custom_config,
         }
 
+        # map agents
+        agent_group = defaultdict(lambda: [])
+        runtime_agent_ids = []
+        for agent in env_desc["possible_agents"]:
+            runtime_id = training_agent_mapping(agent)
+            agent_group[runtime_id].append(agent)
+            runtime_agent_ids.append(runtime_id)
+        runtime_agent_ids = set(runtime_agent_ids)
+        agent_group = dict(agent_group)
+
         agent_interfaces = {
-            agent: InferenceWorkerSet.remote(
-                agent_id=agent,
+            runtime_id: InferenceWorkerSet.remote(
+                agent_id=runtime_id,
                 observation_space=obs_spaces[agent],
                 action_space=action_spaces[agent],
                 parameter_server=pserver,
                 force_weight_update=False,
+                governed_agents=agent_group[runtime_id],
             )
-            for agent in env_desc["possible_agents"]
+            for runtime_id in runtime_agent_ids
         }
 
         num_rollout_actors = num_envs // num_env_per_worker
         num_eval_actors = 1
 
         p_descs: Dict[AgentID, ParameterDescription] = {
-            agent: ParameterDescription(
+            runtime_id: ParameterDescription(
                 time_stamp=time.time(),
                 identify=agent,
                 env_id=env_desc["config"]["env_id"],
@@ -257,7 +283,7 @@ def run_rollout(
                 parallel_num=1,
                 version=0,
             )
-            for agent in env_desc["possible_agents"]
+            for runtime_id in runtime_agent_ids
         }
 
         runtime_configs = {
@@ -275,6 +301,7 @@ def run_rollout(
             "policy_combinations": [
                 {agent: f"{algo_name}_0" for agent in env_desc["possible_agents"]}
             ],
+            "agent_group": agent_group,
         }
 
         actor_pool = ActorPool(
@@ -284,6 +311,7 @@ def run_rollout(
                     ray.get_actor(settings.OFFLINE_DATASET_ACTOR),
                     use_subproc_env=runtime_configs["use_subproc_env"],
                     batch_mode=runtime_configs["batch_mode"],
+                    training_agent_mapping=training_agent_mapping,
                     postprocessor_types=runtime_configs["postprocessor_types"],
                 )
                 for _ in range(num_rollout_actors + num_eval_actors)
@@ -383,10 +411,16 @@ def test_learning(env_desc, servers, yaml_name: str):
         host=start_ray_info["NodeManagerAddress"],
     )
 
-    run_optimize.remote(*comm_optimization, env_desc, configs, exp_cfg)
+    training_agent_mapping = lambda agent: agent[:6]
+
+    run_optimize.remote(
+        *comm_optimization, env_desc, configs, exp_cfg, training_agent_mapping
+    )
     time.sleep(10)
     # start rollout and optimization process
-    run_rollout.remote(*comm_rollout, env_desc, configs, exp_cfg, algo_name)
+    run_rollout.remote(
+        *comm_rollout, env_desc, configs, exp_cfg, algo_name, training_agent_mapping
+    )
 
     responders: List[Queue] = [comm_rollout[1], comm_optimization[1]]
     senders: List[Queue] = [comm_rollout[0], comm_optimization[0]]
@@ -396,23 +430,18 @@ def test_learning(env_desc, servers, yaml_name: str):
         log_dir=os.path.join(settings.BASE_DIR, "logs/test/case_{}".format(time.time()))
     )
 
-    cnt = 0
-    empty = True
+    cnt = [0 for _ in range(len(responders))]
     while True:
 
-        for responder in responders:
+        for i, responder in enumerate(responders):
             if responder.empty():
                 continue
-            empty = False
             message = responder.get_nowait()
             # parse message
-            write_to_tensorboard(writer, message["logs"], cnt)
+            write_to_tensorboard(writer, message["logs"], cnt[i])
+            cnt[i] += 1
 
-        if not empty:
-            cnt += 1
-        empty = True
-
-        if cnt == 2000 * len(responders):
+        if sum(cnt) >= len(responders) * 2000:
             for sender in senders:
                 sender.put({"op": "terminate"})
             break

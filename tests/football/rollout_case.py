@@ -134,25 +134,12 @@ def run_async_vec_env(
     #   postprocessor_types
     #   policy_combinations
     #   trainable_pairs
-    obs_spaces = env_desc["observation_spaces"]
-    act_spaces = env_desc["action_spaces"]
-    parameter_server = ray.get_actor(name=settings.PARAMETER_SERVER_ACTOR)
-
     trainable_pairs = runtime_configs["trainable_pairs"]
     policy_distribution = None
     policy_combinations = runtime_configs["policy_combinations"]
 
-    if agent_interfaces is None:
-        agent_interfaces = {
-            agent: InferenceWorkerSet.remote(
-                agent_id=agent,
-                observation_space=obs_spaces[agent],
-                action_space=act_spaces[agent],
-                parameter_server=parameter_server,
-                force_weight_update=True,
-            )
-            for agent in env_desc["possible_agents"]
-        }
+    assert agent_interfaces is not None
+    assert actor_pool is not None
 
     # stepping num: num_episodses, num_env_per_worker
     num_rollout_actors = (
@@ -164,20 +151,6 @@ def run_async_vec_env(
         dataserver = ray.get_actor(name=settings.OFFLINE_DATASET_ACTOR)
     else:
         dataserver = None
-
-    if actor_pool is None:
-        actors = [
-            InferenceClient.remote(
-                env_desc,
-                dataserver,
-                use_subproc_env=runtime_configs["use_subproc_env"],
-                batch_mode=runtime_configs["batch_mode"],
-                postprocessor_types=["defaults"],
-            )
-            for _ in range(num_rollout_actors + num_eval_actors)
-        ]
-
-        actor_pool = ActorPool(actors)
 
     # start eval
     tasks = [
@@ -208,17 +181,20 @@ def run_async_vec_env(
             ]
         )
 
+    agent_group = runtime_configs["agent_group"]
+
+    # runtime buffer use
     buffer_desc = {
-        agent: BufferDescription(
+        runtime_id: BufferDescription(
             env_id=env_desc["config"][
                 "env_id"
             ],  # TODO(ziyu): this should be move outside "config"
-            agent_id=[agent],
-            policy_id=[trainable_pairs[agent][0]],
+            agent_id=[runtime_id],
+            policy_id=[trainable_pairs[agent][0] for agent in agent_group[runtime_id]],
             capacity=None,
             sample_start_size=None,
         )
-        for agent in env_desc["possible_agents"]
+        for runtime_id in agent_interfaces
     }
 
     if dataserver:

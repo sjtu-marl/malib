@@ -107,7 +107,7 @@ class AgentInterface(metaclass=ABCMeta):
 
         self._device = torch.device("cuda" if ray.get_gpu_ids() else "cpu")
 
-        self._id = assign_id
+        self._runtime_id = assign_id
         self._env_desc = env_desc
         self._algorithm_candidates = algorithm_candidates
         self._observation_spaces = observation_spaces
@@ -131,7 +131,7 @@ class AgentInterface(metaclass=ABCMeta):
         self.logger = get_logger(
             log_level=settings.LOG_LEVEL,
             log_dir=settings.LOG_DIR,
-            name=f"training_agent_{self._id}",
+            name=f"training_agent_{self._runtime_id}",
             remote=settings.USE_REMOTE_LOGGER,
             mongo=settings.USE_MONGO_LOGGER,
             **exp_cfg,
@@ -153,7 +153,7 @@ class AgentInterface(metaclass=ABCMeta):
         self._print_every = 100
 
     def get_policies(self) -> Dict[PolicyID, Policy]:
-        """Get a dict of policies.
+        """Get a dict of policies, mapping from pid to policy
 
         :return: A dict of policies.
         """
@@ -256,7 +256,7 @@ class AgentInterface(metaclass=ABCMeta):
                     self._offline_dataset = ray.get_actor(
                         settings.OFFLINE_DATASET_ACTOR
                     )
-                Logger.debug(f"agent={self._id} got coordinator handler")
+                Logger.debug(f"agent={self._runtime_id} got coordinator handler")
                 break
             except Exception as e:
                 Logger.debug(f"Waiting for coordinator server... {e}")
@@ -287,12 +287,12 @@ class AgentInterface(metaclass=ABCMeta):
                 tmp.append((pid, self._policies[pid].description))
             res[env_aid] = tmp
 
-        return AgentTaggedFeedback(self._id, content=res)
+        return AgentTaggedFeedback(self._runtime_id, content=res)
 
     def push(self, env_aid: AgentID, pid: PolicyID) -> Status:
         """Coordinate with remote parameter server, default behavior is to push parameters.
 
-        :param AgentID env_aid: registered agent id
+        :param AgentID env_aid: registered agent id, deprecated
         :param PolicyID pid: registered policy id
         :return a TableStatus code.
         """
@@ -423,11 +423,15 @@ class AgentInterface(metaclass=ABCMeta):
 
         return BufferDescription(
             env_id=self._env_desc["config"]["env_id"],
-            agent_id=self._group,
+            agent_id=self.runtime_id,
             policy_id=[agent_policy_mapping[aid] for aid in self._group],
             batch_size=batch_size,
             sample_mode=sample_mode,
         )
+
+    @property
+    def runtime_id(self):
+        return self._runtime_id
 
     @Log.method_timer(enable=settings.PROFILING)
     def train(self, task_desc: TaskDescription, training_config: Dict[str, Any] = None):
@@ -461,7 +465,7 @@ class AgentInterface(metaclass=ABCMeta):
         }
 
         # Logger.info(
-        #     f"Start training task for interface={self._id} with policy mapping:\n\t{policy_id_mapping} -----"
+        #     f"Start training task for interface={self._runtime_id} with policy mapping:\n\t{policy_id_mapping} -----"
         # )
         # register sub tasks
         stopper = get_stopper(training_task.stopper)(
@@ -637,7 +641,7 @@ class AgentInterface(metaclass=ABCMeta):
             # rewrite task type and content
             task_type=TaskType.ROLLOUT if trainable else TaskType.SIMULATION,
             content=AgentFeedback(
-                id=self._id,
+                id=self._runtime_id,
                 trainable_pairs={
                     aid: (pid, policy.description)
                     for aid, (pid, policy) in policy_dict.items()
