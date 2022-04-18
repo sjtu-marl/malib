@@ -20,6 +20,7 @@ from malib.utils.typing import (
     AgentInvolveInfo,
     TrainingFeedback,
 )
+from malib.utils import general
 from malib.manager.training_manager import TrainingManager
 from malib.manager.rollout_worker_manager import RolloutWorkerManager
 from malib.agent.agent_interface import AgentFeedback, AgentTaggedFeedback
@@ -200,13 +201,11 @@ def test_training_manager(server_and_config, mocker: MockerFixture):
 
 
 def test_rollout_manager(server_and_config, mocker: MockerFixture):
+    rollout_config = general.update_rollout_configs(settings.DEFAULT_CONFIG, {})
     manager = RolloutWorkerManager(
-        rollout_config={
-            "num_episodes": 1,
-            "num_env_per_worker": 1,
-            "worker_num": 2,
-            "metric_type": "simple",
-        },
+        num_worker=1,
+        agent_mapping_func=lambda agent: agent,
+        rollout_config=rollout_config,
         env_desc=server_and_config["env_desc"],
         exp_cfg=server_and_config["exp_cfg"],
     )
@@ -223,8 +222,8 @@ def test_rollout_manager(server_and_config, mocker: MockerFixture):
             "remote",
             return_value=gen_fake_remote_task.remote(Status.SUCCESS),
         )
-        worker.simulation.remote = mocker.patch.object(
-            worker.simulation, "remote", return_value=None
+        worker.simulate.remote = mocker.patch.object(
+            worker.simulate, "remote", return_value=None
         )
         worker.rollout.remote = mocker.patch.object(
             worker.rollout, "remote", return_value=None

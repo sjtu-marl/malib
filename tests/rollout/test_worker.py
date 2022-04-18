@@ -88,25 +88,6 @@ class TestRolloutWorker(ServerMixin):
 
         assert len(self.worker.actors) == num_eval_actors + num_rollout_actors
 
-    # def test_simulation_exec(self):
-    #     agent_ids = self.locals['env_desc']['possible_agents']
-    #     observation_space = self.locals['env_desc']['observation_spaces'][agent_ids[0]]
-    #     action_space = self.locals['env_desc']['action_spaces'][agent_ids[0]]
-    #     task_desc = TaskDescription.gen_template(
-    #         task_type=TaskType.SIMULATION,
-    #         state_id="test_{}".format(time.time()),
-    #         content={
-    #             "policy_combinations": None,
-    #             "agent_involve_info": {
-    #                 "agent_ids": agent_ids,
-    #                 "observation_space": observation_space,
-    #                 "action_space": action_space,
-    #             },
-    #             "max_episode_length": 10,
-    #         },
-    #     )
-    #     self.worker.simulation(task_desc)
-
     def test_rollout_exec(self):
         agent_ids = self.locals["env_desc"]["possible_agents"]
         observation_space = self.locals["env_desc"]["observation_spaces"][agent_ids[0]]
