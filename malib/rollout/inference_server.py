@@ -109,6 +109,7 @@ class InferenceWorkerSet:
         """
 
         send_queue, recv_queue = queues
+        is_exisiting = runtime_id in self.runtime
         self.runtime[runtime_id] = RuntimeHandler(
             send_queue,
             recv_queue,
@@ -132,7 +133,8 @@ class InferenceWorkerSet:
                 for parameter_desc in p_desc.parameter_desc_dict.values():
                     self._update_policies(parameter_desc, aid)
 
-        self.thread_pool.submit(_compute_action, self, runtime_id)
+        if not is_exisiting:
+            self.thread_pool.submit(_compute_action, self, runtime_id)
 
     def _update_policies(self, p_desc: ParameterDescription, aid: AgentID):
         if p_desc.id not in self.policies[aid]:

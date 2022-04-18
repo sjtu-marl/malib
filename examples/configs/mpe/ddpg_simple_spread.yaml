@@ -35,8 +35,8 @@ rollout_worker:
   use_subproc_env: False
   task_config:
     max_step: 25
-    fragment_length: 1000
-    num_episodes: 40
+    fragment_length: 500
+    num_episodes: 20
 
 evaluation:
   fragment_length: 25

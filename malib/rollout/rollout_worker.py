@@ -7,10 +7,7 @@ import operator
 import numpy as np
 
 from functools import reduce
-from ray.util import ActorPool
 
-from malib.envs.agent_interface import AgentInterface
-from malib.rollout import rollout_func
 from malib.rollout.base_worker import BaseRolloutWorker
 from malib.utils.typing import (
     Dict,
@@ -19,9 +16,6 @@ from malib.utils.typing import (
     Any,
     BufferDescription,
     Dict,
-    PolicyID,
-    Tuple,
-    Sequence,
     List,
     Callable,
     TaskDescription,
@@ -52,14 +46,6 @@ class RolloutWorker(BaseRolloutWorker):
         runtime_configs: Dict[str, Any],
         experiment_config: Dict[str, Any],
     ):
-
-        """Create a rollout worker instance.
-
-        :param Any worker_index: Indicates rollout worker
-        :param Dict[str,Any] env_desc: The environment description
-        :param bool remote: Indicates this rollout worker work in remote mode or not, default by False
-        """
-
         BaseRolloutWorker.__init__(
             self,
             worker_index,
@@ -103,19 +89,19 @@ class RolloutWorker(BaseRolloutWorker):
         )
 
         stats_list = []
+        num_frames = 0
         for ret in rets:
             # we retrieve only results from evaluation/simulation actors.
             if ret["task_type"] == "evaluation":
                 stats_list.append(ret["eval_info"])
-            # if ret["task_type"] == "rollout":
-            #     num_frames += ret["total_fragment_length"]
+            num_frames += ret["total_fragment_length"]
 
         holder = _parse_rollout_info(stats_list)
 
-        return holder
+        return holder, num_frames
 
     def step_simulation(self, task_desc: TaskDescription):
-        # set state here
+        # TODO(ming): has not been tested yet.
         combinations = task_desc.content.policy_combinations
         num_episodes = task_desc.content.num_episodes
         policy_combinations = [
@@ -140,15 +126,9 @@ class RolloutWorker(BaseRolloutWorker):
             tasks,
         )
 
-        num_frames, stats_list = 0, []
+        stats_list = []
         for ret in rets:
-            # we retrieve only results from evaluation/simulation actors.
-            if ret["task_type"] == "simulation":
-                stats_list.append(ret["eval_info"])
-            # and total fragment length tracking from rollout actors
-            if ret["task_type"] == "rollout":
-                num_frames += ret["total_fragment_length"]
-
+            stats_list.append(ret["eval_info"])
         return stats_list
 
     def close(self):
