@@ -62,7 +62,22 @@ class BaseRolloutWorker(RemoteInterFace):
         runtime_configs: Dict[str, Any],
         experiment_config: Dict[str, Any],
     ):
-        """Create a rollout worker instance."""
+        """Create a instance for simulations, rollout and evaluation. This base class initializes \
+            all necessary servers and workers for rollouts. Including remote agent interfaces, \
+                workers for simultaions.
+
+        :param worker_index: The assigned worker index.
+        :type worker_index: Any
+        :param env_desc: The environment description.
+        :type env_desc: Dict[str, Any]
+        :param agent_mapping_func: The agent mapping function, maps environment agents to runtime ids. \
+            It is shared among all workers.
+        :type agent_mapping_func: Callable
+        :param runtime_configs: The runtim configuraiton for the initialization of all workers.
+        :type runtime_configs: Dict[str, Any]
+        :param experiment_config: The experiment configuration, for the logging server connection.
+        :type experiment_config: Dict[str, Any]
+        """
 
         self._worker_index = worker_index
         self._env_description = env_desc
@@ -103,6 +118,17 @@ class BaseRolloutWorker(RemoteInterFace):
     def init_agent_interfaces(
         self, env_desc: Dict[str, Any], runtime_ids: Sequence[AgentID]
     ) -> Dict[AgentID, Any]:
+        """Initialize agent interfaces which is a dict of `InterfaceWorkerSet`. The keys in the \
+            dict is generated from the given agent mapping function.
+
+        :param env_desc: Environment description.
+        :type env_desc: Dict[str, Any]
+        :param runtime_ids: Available runtime ids, generated with agent mapping function.
+        :type runtime_ids: Sequence[AgentID]
+        :return: A dict of agent interface.
+        :rtype: Dict[AgentID, Any]
+        """
+
         # interact with environment
         obs_spaces = env_desc["observation_spaces"]
         act_spaces = env_desc["action_spaces"]
@@ -121,8 +147,29 @@ class BaseRolloutWorker(RemoteInterFace):
         return agent_interfaces
 
     def init_actor_pool(
-        self, env_desc, runtime_configs: Dict[str, Any], agent_mapping_func: Callable
+        self,
+        env_desc: Dict[str, Any],
+        runtime_configs: Dict[str, Any],
+        agent_mapping_func: Callable,
     ) -> ActorPool:
+        """Initialize an actor pool for the management of simulation tasks. Note the size of the \
+            generated actor pool is determined by `num_threads + num_eval_threads`.
+
+        :param env_desc: Environment description.
+        :type env_desc: Dict[str, Any]
+        :param runtime_configs: Runtime configuraitons, the given keys in this configuration include
+            - `num_threads`: determines the size of this actor pool.
+            - `num_env_per_thread`: indicates how many environments will be created for each thread.
+            - `num_eval_threads`: determines how many threads will be created for the evaluation along the rollouts.
+
+        :type runtime_configs: Dict[str, Any]
+        :param agent_mapping_func: Agent mapping function which maps environment agents to runtime ids, shared \
+            among all workers.
+        :type agent_mapping_func: Callable
+        :return: An instance of `ActorPool`.
+        :rtype: ActorPool
+        """
+
         num_threads = runtime_configs["num_threads"]
         num_env_per_thread = runtime_configs["num_env_per_thread"]
         num_eval_threads = runtime_configs["num_eval_threads"]
@@ -230,10 +277,15 @@ class BaseRolloutWorker(RemoteInterFace):
                 "fragment_length": task_desc.content.fragment_length,
             }
         )
+        start = time.time()
+        total_num_frames = 0
         while not stopper(merged_statics, global_step=epoch):
-            holder = self.step_rollout(
+            epoch_start = time.time()
+            holder, epoch_num_frames = self.step_rollout(
                 epoch, task_desc, buffer_desc, runtime_configs_template
             )
+            total_num_frames += epoch_num_frames
+            epoch_end = time.time()
 
             if (epoch + 1) % print_every == 0:
                 Logger.info("\tepoch: %s (evaluation) %s", epoch, holder)
@@ -244,11 +296,16 @@ class BaseRolloutWorker(RemoteInterFace):
                         content=v,
                         global_step=epoch,
                     )
-                # self.logger.send_scalar(
-                #     tag="Performance/rollout_FPS",
-                #     content=total_num_frames / time_consump,
-                #     global_step=epoch,
-                # )
+                self.logger.send_scalar(
+                    tag="Performance/rollout_FPS",
+                    content=epoch_num_frames / (epoch_end - epoch_start),
+                    global_step=epoch,
+                )
+                self.logger.send_scalar(
+                    tag="Performance/ave_rollout_FPS",
+                    content=total_num_frames / (epoch_end - start),
+                    global_step=epoch,
+                )
             epoch += 1
 
         rollout_feedback = RolloutFeedback(
@@ -290,6 +347,33 @@ class BaseRolloutWorker(RemoteInterFace):
         buffer_desc: BufferDescription,
         runtime_configs: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
+        """The logic function to run rollout. Users must implment this method.
+
+        :param n_step: Indicates the rollout iteration.
+        :type n_step: int
+        :param task_desc: The instance of task description.
+        :type task_desc: TaskDescription
+        :param buffer_desc: The instance of buffer description
+        :type buffer_desc: BufferDescription
+        :param runtime_configs: Runtime configurations to control the amount of sampled data. Keys include:
+            - `flag`: indicate the task type, the value is rollout.
+            - `max_step`: indicates the maximum length of an episode.
+            - `num_episodes`: indicates how many episodes will be collected.
+            - `policy_distribution`: a dict describes the policy distribution.
+            - `parameter_desc_dict`: a dict describes the parameter description.
+            - `trainable_pairs`: a dict describes the trainable policy configuration, it is a mapping from `runtime_ids` \
+                to a tuple of policy id and policy configuration.
+            - `behavior_policies`: a dict maps runtime agents to policy ids, it specifies the behavior policy for available agents, \
+                could be a subset of the full agent set.
+            - `agent_group`: a dict that maps runtime agents to a list of environment agents, which describes the envrionment agents \
+                governed by what runtime agent interface.
+            - `fragment_length`: the maximum of collected data frames.
+
+        :type runtime_configs: Dict[str, Any]
+        :raises NotImplementedError: Not implemented error
+        :return: A list of dict which logs the rollout information.
+        :rtype: List[Dict[str, Any]]
+        """
         raise NotImplementedError
 
     def step_simulation(self, task_desc: TaskDescription) -> List[Dict[str, Any]]:
