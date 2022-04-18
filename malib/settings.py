@@ -85,9 +85,8 @@ DEFAULT_CONFIG = {
     "agent_mapping_func": lambda agent: agent,
     # configuration for rollout
     "rollout": {
-        "type": "async",
+        # "type": "async",
         # provide stopping rules for rollout, see rollout/rollout_worker.py::rollout
-        "metric_type": "simple",
         "fragment_length": 25000,  #
         # if vector_env is enabled, there will be (num_episodes + episode_seg - 1) // episode_seg environments
         # rollout in parallel.
@@ -106,7 +105,6 @@ DEFAULT_CONFIG = {
         # callback specify which manner you wanna use for rollout/simulation, default is sequential
         # feasible choices: sequential, simultaneous, or any registered name of rollout func
         "callback": None,
-        "worker_num": -1,
     },
     # for evaluation, if not specified, MALib will use rollout configuration to do evaluation
     "evaluation": {},  #
@@ -119,7 +117,7 @@ DEFAULT_CONFIG = {
     # task, followed by add_policy task.
     "global_evaluator": {"name": "psro", "config": {}},
     # configuration for dataset server
-    "dataset_config": {},  #
+    "dataset": {},  #
     "parameter_server": {},
     # should be specified
     "task_mode": None,

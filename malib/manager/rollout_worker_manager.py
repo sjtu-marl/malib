@@ -18,6 +18,7 @@ from malib.utils.typing import (
     Tuple,
     Dict,
     Any,
+    Callable,
 )
 from malib.utils.logger import Logger
 
@@ -31,6 +32,8 @@ def _get_worker_hash_idx(idx):
 class RolloutWorkerManager:
     def __init__(
         self,
+        num_worker: int,
+        agent_mapping_func: Callable,
         rollout_config: Dict[str, Any],
         env_desc: Dict[str, Any],
         exp_cfg: Dict[str, Any],
@@ -47,11 +50,8 @@ class RolloutWorkerManager:
         self._workers: Dict[str, ray.actor] = {}
         self._config = rollout_config
         self._env_desc = env_desc
-        self._metric_type = rollout_config["metric_type"]
 
-        worker_num = rollout_config["worker_num"]
         rollout_worker_cls = RolloutWorker
-
         worker_cls = rollout_worker_cls.as_remote(
             num_cpus=None,
             num_gpus=None,
@@ -60,24 +60,14 @@ class RolloutWorkerManager:
             resources=None,
         )
 
-        for i in range(worker_num):
+        for i in range(num_worker):
             worker_idx = _get_worker_hash_idx(i)
             self._workers[worker_idx] = worker_cls.options(max_concurrency=100).remote(
                 worker_index=worker_idx,
-                env_desc=self._env_desc,
-                metric_type=self._metric_type,
-                remote=True,
-                save=rollout_config.get("save_model", False),
-                # parallel_num: the size of actor pool for rollout and simulation
-                num_rollout_actors=rollout_config["num_episodes"]
-                // rollout_config["num_env_per_worker"],
-                num_eval_actors=1,
-                use_subproc_env=rollout_config.get("use_subproc_env", False),
+                env_desc=env_desc,
+                agent_mapping_func=agent_mapping_func,
                 exp_cfg=exp_cfg,
-                batch_mode=rollout_config.get("batch_mode", "time_step"),
-                postprocessor_types=rollout_config.get(
-                    "postprocessor_types", ["default"]
-                ),
+                runtime_configs=rollout_config,
             )
 
         Logger.info(
@@ -116,7 +106,7 @@ class RolloutWorkerManager:
         """Parse simulation task and dispatch it to available workers"""
 
         worker_idx, worker = self.get_idle_worker()
-        worker.simulation.remote(task_desc)
+        worker.simulate.remote(task_desc)
 
     def rollout(self, task_desc: TaskDescription) -> None:
         """Parse rollout task and dispatch it to available worker.

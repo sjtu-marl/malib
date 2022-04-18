@@ -6,24 +6,13 @@ a special case for large-scale multi-agent learning actually.
 
 import threading
 
-import copy
-from typing import List, Dict
-
-import ray
-
-from malib import settings
 from malib.utils.typing import (
-    AgentID,
+    List,
     TaskDescription,
     TaskRequest,
     TaskType,
-    RolloutDescription,
-    TrainingDescription,
-    EvaluateResult,
-    TrainingFeedback,
     SimulationDescription,
     AgentInvolveInfo,
-    BColors,
 )
 from malib.utils.logger import Logger
 from malib.evaluator import get_evaluator, Evaluator
@@ -33,7 +22,6 @@ from malib.evaluator.utils.payoff_manager import PayoffManager
 from malib.backend.coordinator.base_coordinator import BaseCoordinator
 
 
-# @ray.remote
 class CoordinatorServer(BaseCoordinator):
     """Coordinator server maintains the payoff matrix and serves for the task assignment."""
 
@@ -57,7 +45,7 @@ class CoordinatorServer(BaseCoordinator):
             ),
             state_id=task_request.state_id,
         )
-        self._rollout_manager.simulate(task_desc)
+        self.rollout_manager.simulate(task_desc)
 
     def gen_add_policy_task(self, aid: str, task_request: TaskRequest):
         """Generate policy adding task then dispatch to one agent interface.
@@ -83,6 +71,7 @@ class CoordinatorServer(BaseCoordinator):
         self._configs = kwargs
         self._terminate = False
         self._pending_trainable_pairs = {}
+        self._exp_cfg = kwargs["exp_cfg"]
 
         # maintain the population sets.
         self._populations = {
@@ -92,24 +81,24 @@ class CoordinatorServer(BaseCoordinator):
         assert (
             len(self._populations) > 0
         ), "no possible agents detected, please specify it in the env_description"
+
         # payoff manager responses for the payoff management of all agents
-        self._payoff_manager = PayoffManager(
+        self.payoff_manager = PayoffManager(
             self._configs["env_description"]["possible_agents"],
             kwargs["exp_cfg"],
             solve_method="fictitious_play"
             if len(self._populations) < 3
             else "alpharank",
         )
+
         # hyper_evaluator: determine global convergence achievement or not
         self._hyper_evaluator: Evaluator = get_evaluator(
             self._configs["global_evaluator"]["name"]
         )(**self._configs["global_evaluator"]["config"])
 
-        self._training_manager = None
-        self._exp_cfg = kwargs["exp_cfg"]
-
+        self.training_manager = None
+        self.rollout_manager = None
         self.task_mode = kwargs["task_mode"]
-
         self.request_lock = threading.Lock()
 
     @property
@@ -120,8 +109,12 @@ class CoordinatorServer(BaseCoordinator):
     def payoff_manager(self) -> PayoffManager:
         return self._payoff_manager
 
-    def start(self):
-        self._training_manager = TrainingManager(
+    @payoff_manager.setter
+    def payoff_manager(self, value):
+        self._payoff_manager = value
+
+    def init_managers(self):
+        self.training_manager = TrainingManager(
             algorithms=self._configs["algorithms"],
             env_desc=self._configs["env_description"],
             interface_config=self._configs["training"]["interface"],
@@ -130,20 +123,24 @@ class CoordinatorServer(BaseCoordinator):
             exp_cfg=self._exp_cfg,
         )
 
-        # one training interface one rollout worker
-        self._configs["rollout"][
-            "worker_num"
-        ] = self._training_manager.get_agent_interface_num()
-        Logger.info(
-            "set worker num as {}".format(self._configs["rollout"]["worker_num"])
-        )
-        self._rollout_manager = RolloutWorkerManager(
+        self.rollout_manager = RolloutWorkerManager(
+            num_worker=self.training_manager.get_agent_interface_num(),
+            agent_mapping_func=self._configs["agent_mapping_func"],
             rollout_config=self._configs["rollout"],
             env_desc=self._configs["env_description"],
             exp_cfg=self._exp_cfg,
         )
 
-        self._training_manager.init(state_id=self.generate_task_id())
+        Logger.info(
+            "set worker num as {}".format(
+                self.training_manager.get_agent_interface_num()
+            )
+        )
+
+    def start(self):
+        """Start coordinator server, init TrainingManager and RolloutManager."""
+        self.init_managers()
+        self.training_manager.init(state_id=self.generate_task_id())
 
         Logger.info("Coordinator server started")
 
@@ -171,5 +168,5 @@ class CoordinatorServer(BaseCoordinator):
 
     def terminate(self):
         self._terminate = True  # hard terminate
-        self._training_manager.terminate()
-        self._rollout_manager.terminate()
+        self.training_manager.terminate()
+        self.rollout_manager.terminate()

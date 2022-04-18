@@ -71,6 +71,9 @@ class TestServer(ServerTestMixin):
         )
         mocked(self.server, None)
 
+    def test_manager_start(self):
+        self.server.init_managers()
+
     def test_helpers_and_close_server(self, mocker: MockerFixture):
         class fake_tmanager:
             def terminate(self):

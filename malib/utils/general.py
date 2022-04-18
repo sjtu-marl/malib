@@ -5,28 +5,143 @@ import numpy as np
 import copy
 
 from malib import settings
-from malib.utils.typing import Dict, Callable, List, Tuple
+from malib.utils.typing import Dict, Callable, List, Tuple, Any
+from malib.envs import gen_env_desc
 
 
-def update_configs(update_dict, ori_dict=None):
+def update_rollout_configs(
+    global_dict: Dict[str, Any], runtime_dict: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Update default rollout configuration and return a new one.
+
+    :note: the keys in rollout configuration include
+        - num_envs, int, the total number of environments for each rollout worker.
+        - num_env_per_worker, int.
+        - batch_mode, default by 'time_step'.
+        - post_processor_types, default by ['default'].
+        - use_subprov_env, default by False.
+        - num_eval_workers, default by 1.
+
+    :param global_dict: The default global configuration.
+    :type global_dict: Dict[str, Any]
+    :param runtime_dict: The dict used to update the rollout configuration.
+    :type runtime_dict: Dict[str, Any]
+    :return: The new rollout configuration.
+    :rtype: Dict[str, Any]
+    """
+
+    new_instance = global_dict["rollout"].copy()
+    rollout_config = runtime_dict.get("config", {})
+    for k, v in rollout_config.items():
+        new_instance[k] = v
+
+    defaults = {
+        "batch_mode": "time_step",
+        "postprocessor_types": ["default"],
+        "use_subproc_env": False,
+        "num_eval_workers": 1,
+    }
+
+    for k, v in defaults.items():
+        if new_instance.get(k) is None:
+            new_instance[k] = v
+    return new_instance
+
+
+def update_training_config(
+    global_dict: Dict[str, Any], runtime_dict: Dict[str, Any]
+) -> Dict[str, Any]:
+    training_config = global_dict["training"].copy()
+    env_description = runtime_dict["env_description"]
+    runtime_training = runtime_dict["training"]
+
+    training_config["interface"].update(runtime_training["interface"])
+
+    # check None
+    if training_config["interface"].get("observation_spaces") is None:
+        training_config["interface"]["observation_spaces"] = env_description[
+            "observation_spaces"
+        ]
+    if training_config["interface"].get("action_spaces") is None:
+        training_config["interface"]["action_spaces"] = env_description["action_spaces"]
+    if training_config["interface"]["use_init_policy_pool"]:
+        assert runtime_dict["task_mode"] == "gt"
+
+    training_config["config"].update(runtime_dict["training"]["config"])
+    return training_config
+
+
+def update_dataset_config(global_dict: Dict[str, Any], runtime_config: Dict[str, Any]):
+    dataset_config = global_dict["dataset"].copy()
+    dataset_config.update(runtime_config.get("dataset", {}))
+    return dataset_config
+
+
+def update_parameter_server_config(
+    global_dict: Dict[str, Any], runtime_config: Dict[str, Any]
+):
+    pconfig = global_dict["parameter_server"].copy()
+    pconfig.update(runtime_config.get("parameter_server", {}))
+    return pconfig
+
+
+def update_global_evaluator_config(
+    global_dict: Dict[str, Any], runtime_config: Dict[str, Any]
+):
+    econfig = global_dict["global_evaluator"].copy()
+    econfig.update(runtime_config.get("global_evaluator", {}))
+    return econfig
+
+
+def update_evaluation_config(
+    global_dict: Dict[str, Any], runtime_config: Dict[str, Any]
+):
+    econfig = global_dict["evaluation"].copy()
+    econfig.update(runtime_config.get("evaluation", {}))
+    return econfig
+
+
+def update_configs(runtime_config: Dict[str, Any]):
     """Update global configs with a given dict"""
 
-    ori_configs = (
-        copy.copy(ori_dict)
-        if ori_dict is not None
-        else copy.copy(settings.DEFAULT_CONFIG)
+    assert runtime_config.get("task_mode") in [
+        "gt",
+        "marl",
+    ], "Illegal task mode: {}".format(runtime_config.get("task_mode"))
+
+    runtime_config["env_description"] = gen_env_desc(
+        runtime_config["env_description"]["creator"]
+    )(**runtime_config["env_description"]["config"])
+    rollout_config = update_rollout_configs(settings.DEFAULT_CONFIG, runtime_config)
+    env_description = runtime_config["env_description"]
+    training_config = update_training_config(settings.DEFAULT_CONFIG, runtime_config)
+    algorithms = runtime_config["algorithms"]
+    agent_mapping_func = runtime_config.get(
+        "agent_mapping_func", settings.DEFAULT_CONFIG["agent_mapping_func"]
+    )
+    dataset_config = update_dataset_config(settings.DEFAULT_CONFIG, runtime_config)
+    parameter_server_config = update_parameter_server_config(
+        settings.DEFAULT_CONFIG, runtime_config
+    )
+    global_evaluator_config = update_global_evaluator_config(
+        settings.DEFAULT_CONFIG, runtime_config
+    )
+    evaluation_config = update_evaluation_config(
+        settings.DEFAULT_CONFIG, runtime_config
     )
 
-    for k, v in update_dict.items():
-        # assert k in ori_configs, f"Illegal key: {k}, {list(ori_configs.keys())}"
-        if isinstance(v, dict):
-            ph = ori_configs[k] if isinstance(ori_configs.get(k), dict) else {}
-            ori_configs[k] = update_configs(v, ph)
-        else:
-            ori_configs[k] = copy.copy(v)
-
-    # clean environment desc
-    return ori_configs
+    return {
+        "env_description": env_description,
+        "rollout": rollout_config,
+        "training": training_config,
+        "algorithms": algorithms,
+        "agent_mapping_func": agent_mapping_func,
+        "task_mode": runtime_config["task_mode"],
+        "evaluation": evaluation_config,
+        "dataset": dataset_config,
+        "global_evaluator": global_evaluator_config,
+        "parameter_server": parameter_server_config,
+    }
 
 
 # TODO(ming): will be replaced with many dicts
