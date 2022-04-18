@@ -84,27 +84,33 @@ DEFAULT_CONFIG = {
     # mapping environment agents to training agent interfaces
     "agent_mapping_func": lambda agent: agent,
     # configuration for rollout
-    "rollout": {
-        # "type": "async",
-        # provide stopping rules for rollout, see rollout/rollout_worker.py::rollout
-        "fragment_length": 25000,  #
-        # if vector_env is enabled, there will be (num_episodes + episode_seg - 1) // episode_seg environments
-        # rollout in parallel.
-        "num_episodes": 1000,  #
-        "episode_seg": 100,
-        "test_num_episodes": 0,
-        "test_episode_seg": 0,
-        # terminate condition for environment stepping, any means once an agent dead, then terminate all agents
-        # all means terminate environment until all agents dead.
-        "terminate": "any",
-        # on_policy means collect only newest samples, off_policy will maintain an increasing data buffer
-        "mode": "on_policy",
-        # default stopper for rollout is simple_rollout, will terminate training by rollout evaluation
+    "rollout_worker": {
+        "num_threads": 1,
+        "num_env_per_thread": 1,
+        "use_subproc_env": False,
+        "num_eval_threads": 1,  # additional threads for evaluation
+        "batch_mode": "time_step",
+        "postprocessor_types": ["defaults"],
         "stopper": "simple_rollout",
         "stopper_config": {},
+        "callback": None,
+        # "task_config": {}
+        # {
+        #     "fragment_length": 25000,  #
+        #     "num_episodes": 1000,  #
+        #     "episode_seg": 100,
+        #     "terminate": "any",
+        # },
+        # "type": "async",
+        # provide stopping rules for rollout, see rollout/rollout_worker.py::rollout
+        # if vector_env is enabled, there will be (num_episodes + episode_seg - 1) // episode_seg environments
+        # rollout in parallel.
+        # terminate condition for environment stepping, any means once an agent dead, then terminate all agents
+        # all means terminate environment until all agents dead.
+        # on_policy means collect only newest samples, off_policy will maintain an increasing data buffer
+        # default stopper for rollout is simple_rollout, will terminate training by rollout evaluation
         # callback specify which manner you wanna use for rollout/simulation, default is sequential
         # feasible choices: sequential, simultaneous, or any registered name of rollout func
-        "callback": None,
     },
     # for evaluation, if not specified, MALib will use rollout configuration to do evaluation
     "evaluation": {},  #

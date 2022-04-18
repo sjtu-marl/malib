@@ -126,7 +126,7 @@ class CoordinatorServer(BaseCoordinator):
         self.rollout_manager = RolloutWorkerManager(
             num_worker=self.training_manager.get_agent_interface_num(),
             agent_mapping_func=self._configs["agent_mapping_func"],
-            rollout_config=self._configs["rollout"],
+            rollout_configs=self._configs["rollout"],
             env_desc=self._configs["env_description"],
             exp_cfg=self._exp_cfg,
         )

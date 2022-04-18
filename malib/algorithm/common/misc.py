@@ -110,11 +110,15 @@ def gumbel_softmax(logits: DataTransferType, temperature=1.0, hard=False, explor
     return y
 
 
-def masked_softmax(logits: torch.Tensor, mask: torch.Tensor):
+def masked_logits(logits: torch.Tensor, mask: torch.Tensor):
     logits = F.normalize(logits)
     logits = torch.clamp(logits - (1.0 - mask) * 1e9, -1e9, 1e9)
-    probs = F.softmax(logits, dim=-1)  # * mask
-    # probs = probs + (mask.sum(dim=-1, keepdim=True) == 0.0).to(dtype=torch.float32)
+    return logits
+
+
+def masked_softmax(logits: torch.Tensor, mask: torch.Tensor):
+    probs = F.softmax(logits, dim=-1) * mask
+    probs = probs + (mask.sum(dim=-1, keepdim=True) == 0.0).to(dtype=torch.float32)
     Z = probs.sum(dim=-1, keepdim=True)
     return probs / Z
 

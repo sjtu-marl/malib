@@ -13,7 +13,7 @@ from malib.utils.typing import (
     TaskType,
 )
 
-from tests import ServerMixin, FakeAgentInterface, FakeStepping
+from tests import ServerMixin
 
 
 def simple_env_desc():
@@ -44,12 +44,16 @@ def simple_env_desc():
         (
             simple_env_desc(),
             {
-                "num_rollout_actors": 2,
-                "num_eval_actors": 1,
-                "exp_cfg": {},
-                "use_subproc_env": False,
-                "batch_mode": False,
-                "postprocessor_types": ["default"],
+                "agent_mapping_func": lambda agent: agent,
+                "runtime_configs": {
+                    "num_threads": 2,
+                    "num_eval_threads": 1,
+                    "num_env_per_thread": 1,
+                    "use_subproc_env": False,
+                    "batch_mode": False,
+                    "postprocessor_types": ["default"],
+                },
+                "experiment_config": {},
             },
         )
     ],
@@ -72,21 +76,27 @@ class TestRolloutWorker(ServerMixin):
         monkeypatch.setattr("malib.settings.USE_REMOTE_LOGGER", False)
         monkeypatch.setattr("malib.settings.USE_MONGO_LOGGER", False)
         # XXX(ming): mock AgentInterface directly will raise deep recursive error here.
-        monkeypatch.setattr(
-            "malib.rollout.base_worker.AgentInterface", FakeAgentInterface
-        )
-        monkeypatch.setattr(
-            "malib.rollout.rollout_worker.rollout_func.Stepping", FakeStepping
-        )
+        # monkeypatch.setattr(
+        #     "malib.rollout.base_worker.AgentInterface", FakeAgentInterface
+        # )
+        # monkeypatch.setattr(
+        #     "malib.rollout.rollout_worker.rollout_func.Stepping", FakeStepping
+        # )
         from malib.rollout.rollout_worker import RolloutWorker
 
         self.worker = RolloutWorker("test", env_desc, **kwargs)
 
     def test_actor_pool_checking(self):
-        num_eval_actors = self.locals["kwargs"]["num_eval_actors"]
-        num_rollout_actors = self.locals["kwargs"]["num_rollout_actors"]
+        runtime_configs = self.locals["kwargs"]["runtime_configs"]
+        num_envs = runtime_configs["num_threads"]
+        num_env_per_worker = runtime_configs["num_env_per_thread"]
+        num_rollout_actors = num_envs // num_env_per_worker
+        num_eval_actors = runtime_configs["num_eval_threads"]
 
-        assert len(self.worker.actors) == num_eval_actors + num_rollout_actors
+        assert (
+            len(self.worker.actor_pool._idle_actors)
+            == num_eval_actors + num_rollout_actors
+        )
 
     def test_rollout_exec(self):
         agent_ids = self.locals["env_desc"]["possible_agents"]
@@ -97,10 +107,9 @@ class TestRolloutWorker(ServerMixin):
             state_id="test_{}".format(time.time()),
             content={
                 "fragment_length": 10,
+                "max_step": 5,
                 "num_episodes": 1,
-                "episode_seg": 1,
                 "terminate_mode": None,
-                "mode": None,
                 "stopper": "simple_rollout",
                 "stopper_config": {"max_step": 1},
                 "agent_involve_info": {

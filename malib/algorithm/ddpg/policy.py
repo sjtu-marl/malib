@@ -49,6 +49,9 @@ class DDPG(Policy):
         critic_state_space = gym.spaces.Dict(
             {"obs": observation_space, "act": action_space}
         )
+        self.critic_preprocessor = get_preprocessor(critic_state_space)(
+            critic_state_space
+        )
         self.set_critic(
             get_model(self.model_config.get("critic"))(
                 critic_state_space,
@@ -80,6 +83,14 @@ class DDPG(Policy):
         else:
             pi = self.actor(observation)
         return pi
+
+    def value_function(self, observation, **kwargs):
+        with torch.no_grad():
+            state = self.critic_preprocessor.transform(
+                {"obs": observation, "act": kwargs["action_dist"]}, nested=True
+            )
+            values = self.critic(state)
+        return values.cpu().numpy()
 
     def compute_action(
         self, observation: DataTransferType, **kwargs

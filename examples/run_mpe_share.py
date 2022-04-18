@@ -25,40 +25,4 @@ if __name__ == "__main__":
     with open(os.path.join(BASE_DIR, args.config), "r") as f:
         config = yaml.safe_load(f)
 
-    env_desc = config["env_description"]
-    env_desc["config"] = env_desc.get("config", {})
-    # load creator
-    env_desc["creator"] = MPE
-    env = MPE(**env_desc["config"])
-
-    possible_agents = env.possible_agents
-    observation_spaces = env.observation_spaces
-    action_spaces = env.action_spaces
-
-    env_desc["possible_agents"] = env.possible_agents
-    env.close()
-    env_desc["observation_spaces"] = env.observation_spaces
-    env_desc["action_spaces"] = env.action_spaces
-
-    training_config = config["training"]
-    rollout_config = config["rollout"]
-
-    training_config["interface"]["observation_spaces"] = observation_spaces
-    training_config["interface"]["action_spaces"] = action_spaces
-
-    run(
-        group=config["group"],
-        name=config["name"],
-        env_description=env_desc,
-        agent_mapping_func=lambda agent: "share",
-        training=training_config,
-        algorithms=config["algorithms"],
-        # rollout configuration for each learned policy model
-        rollout=rollout_config,
-        evaluation=config.get("evaluation", {}),
-        global_evaluator=config["global_evaluator"],
-        dataset_config=config.get("dataset_config", {}),
-        parameter_server=config.get("parameter_server", {}),
-        use_init_policy_pool=False,
-        task_mode="marl",
-    )
+    run(use_init_policy_pool=False, **config)

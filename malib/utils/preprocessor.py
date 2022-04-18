@@ -17,20 +17,22 @@ def _get_batched(data: Any):
         for k, v in data.items():
             cleaned_v = _get_batched(v)
             for i, e in enumerate(cleaned_v):
-                if i > len(res):
-                    res[i] = {}
+                if i >= len(res):
+                    res.append({})
                 res[i][k] = e
     elif isinstance(data, Sequence):
         for v in data:
             cleaned_v = _get_batched(v)
             for i, e in enumerate(cleaned_v):
-                if i > len(res):
-                    res[i] = []
+                if i >= len(res):
+                    res.append([])
                 res[i].append(e)
     elif isinstance(data, np.ndarray):
         return data
     else:
         raise TypeError(f"Unexpected nested data type: {type(data)}")
+
+    return res
 
 
 class Preprocessor(metaclass=ABCMeta):
@@ -231,6 +233,9 @@ class DiscreteFlattenPreprocessor(Preprocessor):
         if isinstance(data, int):
             array = np.zeros(self.size, dtype=np.int32)
             array[data] = 1
+            return array
+        elif isinstance(data, np.ndarray):
+            array = data.reshape((-1, self.size))
             return array
         else:
             raise TypeError(f"Unexpected type: {type(data)}")

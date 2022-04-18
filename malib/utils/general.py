@@ -15,12 +15,12 @@ def update_rollout_configs(
     """Update default rollout configuration and return a new one.
 
     :note: the keys in rollout configuration include
-        - num_envs, int, the total number of environments for each rollout worker.
-        - num_env_per_worker, int.
+        - num_threads, int, the total threads in a rollout worker to run simulations.
+        - num_env_per_thread, int.
         - batch_mode, default by 'time_step'.
         - post_processor_types, default by ['default'].
         - use_subprov_env, default by False.
-        - num_eval_workers, default by 1.
+        - num_eval_threads, default by 1.
 
     :param global_dict: The default global configuration.
     :type global_dict: Dict[str, Any]
@@ -30,8 +30,8 @@ def update_rollout_configs(
     :rtype: Dict[str, Any]
     """
 
-    new_instance = global_dict["rollout"].copy()
-    rollout_config = runtime_dict.get("config", {})
+    new_instance = global_dict["rollout_worker"].copy()
+    rollout_config = runtime_dict.get("rollout_worker", {})
     for k, v in rollout_config.items():
         new_instance[k] = v
 
@@ -39,7 +39,7 @@ def update_rollout_configs(
         "batch_mode": "time_step",
         "postprocessor_types": ["default"],
         "use_subproc_env": False,
-        "num_eval_workers": 1,
+        "num_eval_threads": 1,
     }
 
     for k, v in defaults.items():

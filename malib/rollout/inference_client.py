@@ -31,7 +31,6 @@ from malib.utils.general import iter_many_dicts_recursively
 from malib.utils.episode import Episode, EpisodeKey, NewEpisodeDict
 from malib.utils.preprocessor import get_preprocessor
 from malib.utils.timing import Timing
-from malib.algorithm.common.policy import Policy
 from malib.envs.vector_env import VectorEnv
 from malib.envs.async_vector_env import AsyncVectorEnv, AsyncSubProcVecEnv
 from malib.rollout.postprocessor import get_postprocessor
@@ -156,8 +155,6 @@ def process_policy_outputs(
                         rets[env_id][k][agent] = [_v[i] for _v in v]
                 else:
                     for env_id, _v in zip(env_ids, v):
-                        # if k == EpisodeKey.ACTION:
-                        #     print("------------ action dim:", _v.shape)
                         rets[env_id][k][agent] = _v
 
     # process action with action adapter
@@ -188,8 +185,9 @@ def postprocessing(episodes, postprocessor_types, policies=None):
 class InferenceClient:
     def __init__(
         self,
-        env_desc,
+        env_desc: Dict[str, Any],
         dataset_server,
+        max_env_num: int,
         use_subproc_env: bool = False,
         batch_mode: str = "time_step",
         postprocessor_types: Dict = None,
@@ -202,6 +200,7 @@ class InferenceClient:
         self.process_id = os.getpid()
         self.timer = Timing()
         self.training_agent_mapping = training_agent_mapping or (lambda agent: agent)
+        self.max_env_num = max_env_num
 
         agent_group = defaultdict(lambda: [])
         runtime_agent_ids = []
@@ -280,8 +279,9 @@ class InferenceClient:
 
         server_runtime_config = {
             "behavior_mode": None,
+            # a mapping, from agent to pid
             "main_behavior_policies": desc["behavior_policies"],
-            "policy_distribution": desc.get("policy_distribution", None),
+            "policy_distribution": desc["policy_distribution"],
             "sample_mode": "once",
             "parameter_desc_dict": desc["parameter_desc_dict"],
             "preprocessor": self.preprocessor,
@@ -357,7 +357,6 @@ class InferenceClient:
                     for runtime_id, _send_queue in self.send_queue.items():
                         _send_queue.put_nowait(grouped_data_frames[runtime_id])
                     policy_outputs = recieve(self.recv_queue)
-                    # print("env step:", self.env.batched_step_cnt, len(self.env.active_envs), client_runtime_config["fragment_length"], task_type)
                     env_actions, policy_outputs = process_policy_outputs(
                         policy_outputs, self.env
                     )
@@ -385,7 +384,6 @@ class InferenceClient:
                         self.batch_mode, filter=list(desc["behavior_policies"].keys())
                     ).values()
                 )
-                # episodes = postprocessing(episodes, desc["postprocessor_types"])
                 for runtime_id, _buffer_desc in buffer_desc.items():
                     _buffer_desc.batch_size = (
                         self.env.batched_step_cnt
@@ -421,7 +419,6 @@ class InferenceClient:
 
         performance = self.timer.todict()
         performance["FPS"] = self.env.batched_step_cnt / (end - start)
-        # print("performance:", performance)
         res = {
             "task_type": task_type,
             "total_fragment_length": self.env.batched_step_cnt,

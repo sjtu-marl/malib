@@ -2,12 +2,19 @@
 Implementation of async rollout worker.
 """
 
+import operator
+
+import numpy as np
+
+from functools import reduce
 from ray.util import ActorPool
 
 from malib.envs.agent_interface import AgentInterface
 from malib.rollout import rollout_func
 from malib.rollout.base_worker import BaseRolloutWorker
 from malib.utils.typing import (
+    Dict,
+    Any,
     AgentID,
     Any,
     BufferDescription,
@@ -16,7 +23,22 @@ from malib.utils.typing import (
     Tuple,
     Sequence,
     List,
+    Callable,
+    TaskDescription,
+    Union,
 )
+from malib.utils.general import iter_many_dicts_recursively
+
+
+def _parse_rollout_info(raw_statistics: List[Dict[str, Any]]) -> Dict[str, Any]:
+    holder = {}
+    for history, ds, k, vs in iter_many_dicts_recursively(*raw_statistics, history=[]):
+        prefix = "/".join(history)
+        vs = reduce(operator.add, vs)
+        holder[f"{prefix}_mean"] = np.mean(vs)
+        holder[f"{prefix}_max"] = np.max(vs)
+        holder[f"{prefix}_min"] = np.min(vs)
+    return holder
 
 
 class RolloutWorker(BaseRolloutWorker):
@@ -26,8 +48,9 @@ class RolloutWorker(BaseRolloutWorker):
         self,
         worker_index: Any,
         env_desc: Dict[str, Any],
-        save: bool = False,
-        **kwargs,
+        agent_mapping_func: Callable,
+        runtime_configs: Dict[str, Any],
+        experiment_config: Dict[str, Any],
     ):
 
         """Create a rollout worker instance.
@@ -37,123 +60,82 @@ class RolloutWorker(BaseRolloutWorker):
         :param bool remote: Indicates this rollout worker work in remote mode or not, default by False
         """
 
-        BaseRolloutWorker.__init__(self, worker_index, env_desc, save, **kwargs)
-
-        self._num_rollout_actors = kwargs.get("num_rollout_actors", 1)
-        self._num_eval_actors = kwargs.get("num_eval_actors", 1)
-        # XXX(ming): computing resources for rollout / evaluation
-        self._resources = kwargs.get(
-            "resources",
-            {
-                "num_cpus": None,
-                "num_gpus": None,
-                "memory": None,
-                "object_store_memory": None,
-                "resources": None,
-            },
+        BaseRolloutWorker.__init__(
+            self,
+            worker_index,
+            env_desc,
+            agent_mapping_func,
+            runtime_configs,
+            experiment_config,
         )
 
-        assert (
-            self._num_rollout_actors > 0
-        ), f"num_rollout_actors should be positive, but got `{self._num_rollout_actors}`"
-
-        self.init_pool(env_desc, **kwargs)
-
-    def init_pool(self, env_desc, **kwargs):
-        Stepping = rollout_func.Stepping.as_remote(**self._resources)
-        self.actors = [
-            Stepping.remote(
-                env_desc,
-                self._offline_dataset,
-                use_subproc_env=kwargs["use_subproc_env"],
-                batch_mode=kwargs["batch_mode"],
-                postprocessor_types=kwargs["postprocessor_types"],
-            )
-            for _ in range(self._num_rollout_actors)
-        ]
-        self.rollout_actor_pool = ActorPool(self.actors[: self._num_rollout_actors])
-        self.actors.extend(
-            [
-                Stepping.remote(
-                    env_desc,
-                    None,
-                    use_subproc_env=kwargs["use_subproc_env"],
-                    batch_mode=kwargs["batch_mode"],
-                    postprocessor_types=kwargs["postprocessor_types"],
-                )
-                for _ in range(self._num_eval_actors)
-            ]
-        )
-        self.eval_actor_pool = ActorPool(self.actors[self._num_eval_actors :])
-
-    def ready_for_sample(self, policy_distribution=None):
-        """Reset policy behavior distribution.
-
-        :param Dict[AgentID,Dict[PolicyID,float]] policy_distribution: The agent policy distribution
-        """
-
-        return BaseRolloutWorker.ready_for_sample(self, policy_distribution)
-
-    def sample(
+    def step_rollout(
         self,
-        num_episodes: int,
-        fragment_length: int,
-        role: str,
-        policy_combinations: List,
-        policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
-        buffer_desc: BufferDescription = None,
-    ) -> Tuple[Sequence[Dict[str, List]], int]:
-        """Sample function, handling rollout or simulation tasks."""
+        n_step: int,
+        task_desc: TaskDescription,
+        buffer_desc: Union[Dict[AgentID, BufferDescription], BufferDescription],
+        runtime_configs_template: Dict[str, Any],
+    ):
+        num_episodes = task_desc.content.num_episodes
+        num_rollout_tasks = (
+            num_episodes // self.worker_runtime_configs["num_env_per_thread"]
+        )
 
-        if role == "simulation":
-            tasks = [
-                {
-                    "num_episodes": num_episodes,
-                    "behavior_policies": comb,
-                    "flag": "simulation",
-                }
-                for comb in policy_combinations
-            ]
-            actor_pool = self.eval_actor_pool
-        elif role == "rollout":
-            seg_num = self._num_rollout_actors
-            x = num_episodes // seg_num
-            y = num_episodes - seg_num * x
-            episode_segs = [x] * seg_num + ([y] if y else [])
-            assert len(policy_combinations) == 1
-            assert policy_distribution is not None
-            tasks = [
-                {
-                    "flag": "rollout",
-                    "num_episodes": episode,
-                    "behavior_policies": policy_combinations[0],
-                    "policy_distribution": policy_distribution,
-                }
-                for episode in episode_segs
-            ]
-            # add tasks for evaluation
-            tasks.extend(
-                [
-                    {
-                        "flag": "evaluation",
-                        "num_episodes": 4,  # FIXME(ziyu): fix it and debug
-                        "behavior_policies": policy_combinations[0],
-                        "policy_distribution": policy_distribution,
-                    }
-                    for _ in range(self._num_eval_actors)
-                ]
-            )
-            actor_pool = self.rollout_actor_pool
-        else:
-            raise TypeError(f"Unkown role: {role}")
+        tasks = [runtime_configs_template for _ in range(num_rollout_tasks)]
 
-        # self.check_actor_pool_available()
-        rets = actor_pool.map(
+        # add tasks for evaluation
+        eval_runtime_configs = runtime_configs_template.copy()
+        eval_runtime_configs["flag"] = "evaluation"
+        tasks.extend(
+            [
+                eval_runtime_configs
+                for _ in range(self.worker_runtime_configs["num_eval_threads"])
+            ]
+        )
+
+        rets = self.actor_pool.map(
             lambda a, task: a.run.remote(
-                agent_interfaces=self._agent_interfaces,
-                fragment_length=fragment_length,
+                agent_interfaces=self.agent_interfaces,
                 desc=task,
                 buffer_desc=buffer_desc,
+            ),
+            tasks,
+        )
+
+        stats_list = []
+        for ret in rets:
+            # we retrieve only results from evaluation/simulation actors.
+            if ret["task_type"] == "evaluation":
+                stats_list.append(ret["eval_info"])
+            # if ret["task_type"] == "rollout":
+            #     num_frames += ret["total_fragment_length"]
+
+        holder = _parse_rollout_info(stats_list)
+
+        return holder
+
+    def step_simulation(self, task_desc: TaskDescription):
+        # set state here
+        combinations = task_desc.content.policy_combinations
+        num_episodes = task_desc.content.num_episodes
+        policy_combinations = [
+            {k: p for k, (p, _) in comb.items()} for comb in combinations
+        ]
+
+        tasks = [
+            {
+                "num_episodes": num_episodes,
+                "behavior_policies": comb,
+                "flag": "simulation",
+            }
+            for comb in policy_combinations
+        ]
+
+        rets = self.actor_pool.map(
+            lambda a, task: a.run.remote(
+                agent_interfaces=self._agent_interfaces,
+                desc=task,
+                buffer_desc=None,
             ),
             tasks,
         )
@@ -161,19 +143,13 @@ class RolloutWorker(BaseRolloutWorker):
         num_frames, stats_list = 0, []
         for ret in rets:
             # we retrieve only results from evaluation/simulation actors.
-            if ret[0] in ["evaluation", "simulation"]:
-                stats_list.append(ret[1]["eval_info"])
+            if ret["task_type"] == "simulation":
+                stats_list.append(ret["eval_info"])
             # and total fragment length tracking from rollout actors
-            if ret[0] == "rollout":
-                num_frames += ret[1]["total_fragment_length"]
+            if ret["task_type"] == "rollout":
+                num_frames += ret["total_fragment_length"]
 
-        return stats_list, num_frames
-
-    def update_population(self, agent, policy_id, policy):
-        """Update population with an existing policy instance"""
-
-        agent_interface: AgentInterface = self._agent_interfaces[agent]
-        agent_interface.policies[policy_id] = policy
+        return stats_list
 
     def close(self):
         BaseRolloutWorker.close(self)

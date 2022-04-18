@@ -56,9 +56,6 @@ def write_to_tensorboard(
             write_to_tensorboard(writer, v, global_step, f"{prefix}{k}")
         elif isinstance(v, Sequence):
             writer.add_scalar(f"{prefix}{k}", sum(v), global_step=global_step)
-            # raise NotImplementedError(
-            #     f"Sequence value cannot be logged currently: {k}, {v}."
-            # )
         elif v is None:
             continue
         else:
@@ -117,7 +114,6 @@ def run_optimize(
     try:
         n_agent = len(env_desc["possible_agents"])
         remote_learner_cls = SimpleLearner.as_remote(num_gpus=1 / n_agent, num_cpus=1)
-        possible_agents = env_desc["possible_agents"]
         observation_spaces = env_desc["observation_spaces"]
         action_spaces = env_desc["action_spaces"]
         algorithms = yaml_config["algorithms"]

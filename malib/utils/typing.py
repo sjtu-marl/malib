@@ -145,13 +145,13 @@ class ParameterDescription:
             identify=kwargs.get("identify", None),
             id=kwargs["id"],
             lock=kwargs.get("lock", True),
-            env_id=kwargs.get("env_id", "test"),
+            env_id=kwargs["env_id"],
             type=kwargs.get("type", cls.Type.PARAMETER),
             data=kwargs.get("data", None),
             description=kwargs.get(
                 "description",
                 {
-                    "registered_name": "test",
+                    "registered_name": "random",
                     "observation_space": None,
                     "action_space": None,
                     "model_config": {},
@@ -274,10 +274,7 @@ class RolloutDescription:
     agent_involve_info: AgentInvolveInfo
     fragment_length: int
     num_episodes: int
-    episode_seg: int
-    terminate_mode: str
-    mode: str  # on_policy or off_policy or imitation learning ?
-    # parameter_desc_seq: Sequence[MetaParameterDescription] = None
+    max_step: int
     callback: Union[str, Callable] = "sequential"
     stopper: str = "none"
     stopper_config: Dict[str, Any] = field(default_factory=dict)

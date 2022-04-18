@@ -34,7 +34,7 @@ class RolloutWorkerManager:
         self,
         num_worker: int,
         agent_mapping_func: Callable,
-        rollout_config: Dict[str, Any],
+        rollout_configs: Dict[str, Any],
         env_desc: Dict[str, Any],
         exp_cfg: Dict[str, Any],
     ):
@@ -47,10 +47,6 @@ class RolloutWorkerManager:
         :param Dict[str,Any] exp_cfg: Experiment description.
         """
 
-        self._workers: Dict[str, ray.actor] = {}
-        self._config = rollout_config
-        self._env_desc = env_desc
-
         rollout_worker_cls = RolloutWorker
         worker_cls = rollout_worker_cls.as_remote(
             num_cpus=None,
@@ -59,17 +55,19 @@ class RolloutWorkerManager:
             object_store_memory=None,
             resources=None,
         )
+        workers = {}
 
         for i in range(num_worker):
             worker_idx = _get_worker_hash_idx(i)
-            self._workers[worker_idx] = worker_cls.options(max_concurrency=100).remote(
+            workers[worker_idx] = worker_cls.options(max_concurrency=100).remote(
                 worker_index=worker_idx,
                 env_desc=env_desc,
                 agent_mapping_func=agent_mapping_func,
-                exp_cfg=exp_cfg,
-                runtime_configs=rollout_config,
+                experiment_config=exp_cfg,
+                runtime_configs=rollout_configs,
             )
 
+        self._workers: Dict[str, ray.actor] = workers
         Logger.info(
             f"RolloutWorker manager launched, {len(self._workers)} rollout worker(s) alives."
         )

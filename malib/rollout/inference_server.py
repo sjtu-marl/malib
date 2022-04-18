@@ -24,11 +24,13 @@ from malib.utils.typing import (
     Any,
     DataFrame,
     List,
+    MetaParameterDescription,
     ParameterDescription,
     PolicyID,
     Dict,
     Status,
     BehaviorMode,
+    Union,
 )
 from malib.algorithm import get_algorithm_space
 from malib.algorithm.common.policy import Policy
@@ -96,6 +98,16 @@ class InferenceWorkerSet:
         runtime_config: Dict[str, Any],
         runtime_id: int,
     ):
+        """Connect new inference task with given configuraiton and queus.
+
+        :param queues: A tuple of send and recieve queus.
+        :type queues: List[Queue]
+        :param runtime_config: The runtime configuration, including parameter description dict.
+        :type runtime_config: Dict[str, Any]
+        :param runtime_id: The referred runtime id.
+        :type runtime_id: int
+        """
+
         send_queue, recv_queue = queues
         self.runtime[runtime_id] = RuntimeHandler(
             send_queue,
@@ -107,35 +119,42 @@ class InferenceWorkerSet:
         # print("agent server: {} accepts a connection with: {}".format(self.runtime_agent_id, runtime_id))
 
         with self.parameter_buffer_lock:
-            parameter_desc_dict: Dict[AgentID, ParameterDescription] = runtime_config[
-                "parameter_desc_dict"
-            ]
+            parameter_desc_dict: Dict[
+                AgentID, Union[ParameterDescription, MetaParameterDescription]
+            ] = runtime_config["parameter_desc_dict"]
             # for aid, p_desc in parameter_desc_dict.items():
             p_desc = parameter_desc_dict[self.runtime_agent_id]
             aid = self.runtime_agent_id
-            assert isinstance(p_desc, ParameterDescription)
-            if p_desc.id not in self.policies[aid]:
-                policy = get_algorithm_space(
-                    p_desc.description["registered_name"]
-                ).policy(**p_desc.description, env_agent_id=aid)
-                self.policies[aid][p_desc.id] = policy
-                self.parameter_desc.append(
-                    ParameterDescription(
-                        time_stamp=p_desc.time_stamp,
-                        identify=p_desc.identify,
-                        env_id=p_desc.env_id,
-                        id=p_desc.id,
-                        type=p_desc.type,
-                        lock=False,
-                        description=p_desc.description.copy(),
-                        data=None,
-                        parallel_num=p_desc.parallel_num,
-                        version=-1,
-                    )
-                )
-                self.parameter_version.append(-1)
+            # assert isinstance(p_desc, ParameterDescription), type(p_desc)
+            if isinstance(p_desc, ParameterDescription):
+                self._update_policies(p_desc, aid)
+            elif isinstance(p_desc, MetaParameterDescription):
+                for parameter_desc in p_desc.parameter_desc_dict.values():
+                    self._update_policies(parameter_desc, aid)
 
         self.thread_pool.submit(_compute_action, self, runtime_id)
+
+    def _update_policies(self, p_desc: ParameterDescription, aid: AgentID):
+        if p_desc.id not in self.policies[aid]:
+            policy = get_algorithm_space(p_desc.description["registered_name"]).policy(
+                **p_desc.description, env_agent_id=aid
+            )
+            self.policies[aid][p_desc.id] = policy
+            self.parameter_desc.append(
+                ParameterDescription(
+                    time_stamp=p_desc.time_stamp,
+                    identify=p_desc.identify,
+                    env_id=p_desc.env_id,
+                    id=p_desc.id,
+                    type=p_desc.type,
+                    lock=False,
+                    description=p_desc.description.copy(),
+                    data=None,
+                    parallel_num=p_desc.parallel_num,
+                    version=-1,
+                )
+            )
+            self.parameter_version.append(-1)
 
 
 def _sample_policy_id(runtime_config, main_agent_id, old_policy_id):
@@ -210,7 +229,9 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
                     ) = policy.compute_action(observation=observation, **kwargs)
                     # compute state value
                     rets[EpisodeKey.STATE_VALUE] = policy.value_function(
-                        observation=observation, **kwargs
+                        observation=observation,
+                        action_dist=rets[EpisodeKey.ACTION_DIST],
+                        **kwargs
                     )
                     send_df = DataFrame(
                         identifier=data_frame.identifier,

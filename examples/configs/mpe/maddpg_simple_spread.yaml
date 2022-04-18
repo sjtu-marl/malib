@@ -20,16 +20,23 @@ training:
     tau: 0.01  # soft update
     grad_norm_clipping: 0.5
 
-rollout:
-  type: "async"
-  stopper: "simple_rollout"
-  stopper_config:
-    max_step: 1000
-  metric_type: "simple"
-  fragment_length: 100
-  num_episodes: 250
-  num_env_per_worker: 25
-  terminate: "any"
+rollout_worker:
+  callback: simultaneous
+  stopper:
+    name: simple_rollout
+    config:
+      max_step: 1000
+  num_threads: 2
+  num_env_per_thread: 1
+  num_eval_threads: 1
+  batch_mode: time_step
+  post_processor_types:
+    - default
+  use_subproc_env: False
+  task_config:
+    max_step: 25
+    fragment_length: 100
+    num_episodes: 4
 
 evaluation:
   fragment_length: 100

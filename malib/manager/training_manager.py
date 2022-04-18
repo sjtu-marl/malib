@@ -98,6 +98,7 @@ class TrainingManager:
 
         _ = ray.get([agent.start.remote() for agent in self._agents.values()])
 
+        # training_agent -> env_agents
         self._groups = groups
 
         Logger.info(
