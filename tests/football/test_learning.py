@@ -305,6 +305,7 @@ def run_rollout(
                 InferenceClient.remote(
                     env_desc,
                     ray.get_actor(settings.OFFLINE_DATASET_ACTOR),
+                    max_env_num=num_envs,
                     use_subproc_env=runtime_configs["use_subproc_env"],
                     batch_mode=runtime_configs["batch_mode"],
                     training_agent_mapping=training_agent_mapping,
