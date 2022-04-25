@@ -98,11 +98,12 @@ class BaseRolloutWorker(RemoteInterFace):
         runtime_agent_ids = set(runtime_agent_ids)
         agent_group = dict(agent_group)
 
-        self.init_servers()
-        self.agent_interfaces = self.init_agent_interfaces(env_desc, runtime_agent_ids)
         self.runtime_agent_ids = runtime_agent_ids
         self.agent_group = agent_group
         self.worker_runtime_configs = runtime_configs
+
+        self.init_servers()
+        self.agent_interfaces = self.init_agent_interfaces(env_desc, runtime_agent_ids)
         self.actor_pool = self.init_actor_pool(
             env_desc, runtime_configs, agent_mapping_func
         )
@@ -133,13 +134,20 @@ class BaseRolloutWorker(RemoteInterFace):
         obs_spaces = env_desc["observation_spaces"]
         act_spaces = env_desc["action_spaces"]
 
+        runtime_obs_spaces = {}
+        runtime_act_spaces = {}
+
+        for rid, agents in self.agent_group.items():
+            runtime_obs_spaces[rid] = obs_spaces[agents[0]]
+            runtime_act_spaces[rid] = act_spaces[agents[0]]
+
         agent_interfaces = {
             runtime_id: InferenceWorkerSet.remote(
                 agent_id=runtime_id,
-                observation_space=obs_spaces[runtime_id],
-                action_space=act_spaces[runtime_id],
+                observation_space=runtime_obs_spaces[runtime_id],
+                action_space=runtime_act_spaces[runtime_id],
                 parameter_server=self._parameter_server,
-                governed_agents=[runtime_id],
+                governed_agents=self.agent_group[runtime_id],
             )
             for runtime_id in runtime_ids
         }
@@ -246,18 +254,25 @@ class BaseRolloutWorker(RemoteInterFace):
 
         # create data table
         trainable_pairs = task_desc.content.agent_involve_info.trainable_pairs
-        buffer_desc = {
-            runtime_id: BufferDescription(
+        # map trainable to runtime
+        buffer_desc = {}
+        for rid in self.runtime_agent_ids:
+            pids = [
+                trainable_pairs[aid][0]
+                for aid in self.agent_group[rid]
+                if aid in trainable_pairs
+            ]
+            if len(pids) == 0:
+                continue
+            buffer_desc[rid] = BufferDescription(
                 env_id=self._env_description["config"][
                     "env_id"
                 ],  # TODO(ziyu): this should be move outside "config"
-                agent_id=[runtime_id],
-                policy_id=[pid],
+                agent_id=self.agent_group[rid],
+                policy_id=pids,
                 capacity=None,
                 sample_start_size=None,
             )
-            for runtime_id, (pid, _) in trainable_pairs.items()
-        }
         for v in buffer_desc.values():
             ray.get(self._offline_dataset.create_table.remote(v))
 

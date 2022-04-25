@@ -277,13 +277,22 @@ class InferenceClient:
         self.timer.clear()
         task_type = desc["flag"]
 
+        mapped_parameter_desc_dict = {}
+        for rid in agent_interfaces.keys():
+            agents = self.agent_group[rid]
+            # random choice
+            mapped_parameter_desc_dict[rid] = {
+                aid: desc["parameter_desc_dict"][aid] for aid in agents
+            }
+
         server_runtime_config = {
             "behavior_mode": None,
             # a mapping, from agent to pid
             "main_behavior_policies": desc["behavior_policies"],
             "policy_distribution": desc["policy_distribution"],
             "sample_mode": "once",
-            "parameter_desc_dict": desc["parameter_desc_dict"],
+            # map raw agents parameter desc dict to runtime id
+            "parameter_desc_dict": mapped_parameter_desc_dict,  # desc["parameter_desc_dict"],
             "preprocessor": self.preprocessor,
         }
 
@@ -367,8 +376,6 @@ class InferenceClient:
                     rets_holder, next_rets, next_dataframes = process_env_rets(
                         next_rets, server_runtime_config
                     )
-                    # collect all rets and save as buffer
-                    # env_id, k, agent_ids
                     env_rets = merge_env_rets(rets, next_rets)
                 assert len(env_rets) > 0
                 episodes.record(policy_outputs, env_rets)

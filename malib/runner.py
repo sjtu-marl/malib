@@ -1,5 +1,6 @@
 import threading
 import time
+from types import LambdaType
 
 import ray
 
@@ -24,8 +25,49 @@ def _terminate(recycle_funcs: List[Dict[str, Any]], waiting: bool = True):
         print("Background recycling thread ended.")
 
 
-def run(**kwargs):
-    config = locals()["kwargs"]
+def run(
+    task_mode: str,
+    env_description: Dict[str, Any],
+    training: Dict[str, Any],
+    algorithms: Dict[str, Any],
+    rollout_worker: Dict[str, Any],
+    group: str = "experiment",
+    name: str = str(time.time()),
+    agent_mapping_func: LambdaType = lambda agent: agent,
+    evaluation: Dict[str, Any] = dict(),
+    global_evaluator: Any = None,
+    dataset_config: Dict[str, Any] = dict(),
+    parameter_server: Dict[str, Any] = dict(),
+):
+    """Launch learning task.
+
+    :param group: Naming the experiment group
+    :type group: str
+    :param name: Specifying the experiment name
+    :type name: str
+    :param task_mode: Task mode, could be `marl` or `gt`
+    :type task_mode: str
+    :param env_description: Environment description
+    :type env_description: Dict[str, Any]
+    :param training: Training configuration
+    :type training: Dict[str, Any]
+    :param algorithms: Algorithm configuration
+    :type algorithms: Dict[str, Any]
+    :param rollout_worker: Rollout configuration for worker initialization
+    :type rollout_worker: Dict[str, Any]
+    :param agent_mapping_func: Agent mapping function, will determine which agent will be mapped into one learner, defaults to lambdaagent:agent
+    :type agent_mapping_func: LambdaType, optional
+    :param evaluation: Evaluation configuration, defaults to None
+    :type evaluation: Dict[str, Any], optional
+    :param global_evaluator: Specifying the global evaluator configuration, defaults to None
+    :type global_evaluator: Any, optional
+    :param dataset_config: Dataset configuration, defaults to None
+    :type dataset_config: Dict[str, Any], optional
+    :param parameter_server: Parameter server configuration, defaults to None
+    :type parameter_server: Dict[str, Any], optional
+    """
+
+    config = locals()
     global_configs = update_configs(config)
     if global_configs["training"]["interface"].get("worker_config") is None:
         global_configs["training"]["interface"]["worker_config"] = {

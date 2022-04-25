@@ -2,6 +2,7 @@
 Implementation of training manager, which is responsible for a group of training agent interfaces.
 """
 
+from collections import defaultdict
 import os
 from typing import Dict, Any, Callable, Sequence
 
@@ -63,43 +64,61 @@ class TrainingManager:
         agent_cls = agent_cls.as_remote(**interface_config.get("worker_config", {}))
 
         self._agents = {}
-        groups = (
-            {}
-        )  # mapping from training agent id to environment agent id (many to many)
+        agent_groups = defaultdict(lambda: [])
         sorted_env_agents = sorted(env_desc["possible_agents"])
-        for env_aid in sorted_env_agents:
-            training_aid = training_agent_mapping(env_aid)
-            if isinstance(training_aid, str):
-                training_aids = [training_aid]
-            else:
-                training_aids = training_aid
 
-            for training_aid in training_aids:
-                if training_aid not in self._agents:
-                    self._agents[training_aid] = agent_cls.options(
-                        max_concurrency=100
-                    ).remote(
-                        assign_id=training_aid,
-                        env_desc=env_desc,
-                        algorithm_candidates=algorithms,
-                        training_agent_mapping=training_agent_mapping,
-                        observation_spaces=interface_config["observation_spaces"],
-                        action_spaces=interface_config["action_spaces"],
-                        exp_cfg=exp_cfg,
-                        use_init_policy_pool=interface_config["use_init_policy_pool"],
-                        population_size=interface_config["population_size"],
-                        algorithm_mapping=interface_config["algorithm_mapping"],
-                    )
-                # register trainable env agents
-                self._agents[training_aid].register_env_agent.remote(env_aid)
-                if groups.get(training_aid) is None:
-                    groups[training_aid] = []
-                groups[training_aid].append(env_aid)
+        for agent in sorted_env_agents:
+            rid = training_agent_mapping(agent)
+            agent_groups[rid].append(agent)
+
+        for rid, agents in agent_groups.items():
+            self._agents[rid] = agent_cls.options(max_concurrency=100).remote(
+                assign_id=rid,
+                env_desc=env_desc,
+                algorithm_candidates=algorithms,
+                training_agent_mapping=training_agent_mapping,
+                observation_spaces=interface_config["observation_spaces"],
+                action_spaces=interface_config["action_spaces"],
+                exp_cfg=exp_cfg,
+                use_init_policy_pool=interface_config["use_init_policy_pool"],
+                population_size=interface_config["population_size"],
+                algorithm_mapping=interface_config["algorithm_mapping"],
+                governed_agents=agents,
+            )
+
+        # for env_aid in sorted_env_agents:
+        #     training_aid = training_agent_mapping(env_aid)
+        #     if isinstance(training_aid, str):
+        #         training_aids = [training_aid]
+        #     else:
+        #         training_aids = training_aid
+
+        #     for training_aid in training_aids:
+        #         if training_aid not in self._agents:
+        #             self._agents[training_aid] = agent_cls.options(
+        #                 max_concurrency=100
+        #             ).remote(
+        #                 assign_id=training_aid,
+        #                 env_desc=env_desc,
+        #                 algorithm_candidates=algorithms,
+        #                 training_agent_mapping=training_agent_mapping,
+        #                 observation_spaces=interface_config["observation_spaces"],
+        #                 action_spaces=interface_config["action_spaces"],
+        #                 exp_cfg=exp_cfg,
+        #                 use_init_policy_pool=interface_config["use_init_policy_pool"],
+        #                 population_size=interface_config["population_size"],
+        #                 algorithm_mapping=interface_config["algorithm_mapping"],
+        #             )
+        #         # register trainable env agents
+        #         self._agents[training_aid].register_env_agent.remote(env_aid)
+        #         if agent_groups.get(training_aid) is None:
+        #             agent_groups[training_aid] = []
+        #         agent_groups[training_aid].append(env_aid)
 
         _ = ray.get([agent.start.remote() for agent in self._agents.values()])
 
         # training_agent -> env_agents
-        self._groups = groups
+        self._groups = agent_groups
 
         Logger.info(
             f"training manager launched, {len(self._agents)} learner(s) created"
@@ -117,15 +136,15 @@ class TrainingManager:
         """
         tasks = []
         # add policy
-        for aid, agent_interface in self._agents.items():
+        for rid, agent_interface in self._agents.items():
             tasks.append(
                 agent_interface.add_policy.remote(
                     TaskDescription(
                         task_type=TaskType.ADD_POLICY,
                         content=TrainingDescription(
                             agent_involve_info=AgentInvolveInfo(
-                                training_handler=aid,
-                                trainable_pairs=dict.fromkeys(self.groups[aid], None),
+                                training_handler=rid,
+                                trainable_pairs=dict.fromkeys(self.groups[rid], None),
                                 populations={},
                             ),
                         ),

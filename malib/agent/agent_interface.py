@@ -30,6 +30,7 @@ from malib.utils.typing import (
     TrainingFeedback,
     TaskRequest,
     AgentID,
+    List,
 )
 from malib.utils import errors
 from malib.utils.logger import Logger, get_logger, Log
@@ -84,6 +85,7 @@ class AgentInterface(metaclass=ABCMeta):
         exp_cfg: Dict[str, Any],
         population_size: int,
         use_init_policy_pool: bool,
+        governed_agents: List[AgentID],
         algorithm_mapping: Callable = None,
         local_buffer_config: Dict = None,
     ):
@@ -115,7 +117,6 @@ class AgentInterface(metaclass=ABCMeta):
         self._population_size = population_size
         self._policies = {}
         self._trainers = {}
-        self._agent_to_pids = {}
         self._offline_dataset = None
         self._coordinator = None
         self._parameter_server = None
@@ -123,11 +124,13 @@ class AgentInterface(metaclass=ABCMeta):
         self._meta_parameter_desc = {}
         self._algorithm_mapping_func = algorithm_mapping
         self._training_agent_mapping = training_agent_mapping
-        self._group = []
+        self._group = governed_agents
         self._global_step = 0
         self._use_init_policy_pool = use_init_policy_pool
 
         self._param_desc_lock = threading.Lock()
+
+        self.agent_to_pids = {aid: [] for aid in self._group}
         self.logger = get_logger(
             log_level=settings.LOG_LEVEL,
             log_dir=settings.LOG_DIR,
@@ -198,12 +201,12 @@ class AgentInterface(metaclass=ABCMeta):
         if isinstance(env_agent_id, AgentID):
             assert env_agent_id not in self._group, (env_agent_id, self._group)
             self._group.append(env_agent_id)
-            self._agent_to_pids[env_agent_id] = []
+            self.agent_to_pids[env_agent_id] = []
         else:
             env_agent_ids = list(env_agent_id)
             for e in env_agent_ids:
                 assert e not in self._group
-                self._agent_to_pids[e] = []
+                self.agent_to_pids[e] = []
             self._group.extend(env_agent_ids)
 
     @property
@@ -275,13 +278,13 @@ class AgentInterface(metaclass=ABCMeta):
         res = {}
         for env_aid in self._group:
             # wait
-            while len(self._agent_to_pids[env_aid]) == 0:
+            while len(self.agent_to_pids[env_aid]) == 0:
                 pass
             tmp = []
             fixed_or_single_pids = (
-                self._agent_to_pids[env_aid]
-                if len(self._agent_to_pids[env_aid]) < 2
-                else self._agent_to_pids[env_aid][:-1]
+                self.agent_to_pids[env_aid]
+                if len(self.agent_to_pids[env_aid]) < 2
+                else self.agent_to_pids[env_aid][:-1]
             )
             for pid in fixed_or_single_pids:
                 tmp.append((pid, self._policies[pid].description))
@@ -301,6 +304,7 @@ class AgentInterface(metaclass=ABCMeta):
         policy = self._policies[pid]
         parameter_desc.data = policy.state_dict(device="cpu")
         parameter_desc.version += 1
+        parameter_desc.identify = env_aid
         status = ray.get(self._parameter_server.push.remote(parameter_desc))
         parameter_desc.data = None
         return status
@@ -423,7 +427,7 @@ class AgentInterface(metaclass=ABCMeta):
 
         return BufferDescription(
             env_id=self._env_desc["config"]["env_id"],
-            agent_id=self.runtime_id,
+            agent_id=self.agent_group(),
             policy_id=[agent_policy_mapping[aid] for aid in self._group],
             batch_size=batch_size,
             sample_mode=sample_mode,
@@ -605,15 +609,16 @@ class AgentInterface(metaclass=ABCMeta):
             trainable = True
 
         self.check_population_size()
-        policy_dict: Dict[AgentID, Tuple[PolicyID, Policy]] = {
-            env_aid: self.add_policy_for_agent(env_aid, trainable)
-            for env_aid in self._group
-        }
+        # policy_dict: Dict[AgentID, Tuple[PolicyID, Policy]] = {
+        #     env_aid: self.add_policy_for_agent(env_aid, trainable)
+        #     for env_aid in self._group
+        # }
+        policy_dict = self.add_policy_for_agent(trainable)
 
         pending_tasks = []
         with self._param_desc_lock:
             for env_aid, (pid, policy) in policy_dict.items():
-                self._agent_to_pids[env_aid].append(pid)
+                self.agent_to_pids[env_aid].append(pid)
                 parameter_desc = self.parameter_desc_gen(
                     env_aid, pid, trainable, data=policy.state_dict()
                 )
@@ -715,14 +720,11 @@ class AgentInterface(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def add_policy_for_agent(
-        self, env_agent_id: AgentID, trainable
-    ) -> Tuple[PolicyID, Policy]:
-        """Create new policy and trainer for env agent tagged with `env_agent_id`.
+    def add_policy_for_agent(self, trainable: bool) -> Dict[PolicyID, Policy]:
+        """Create a dict of policies.
 
-        :param env_agent_id: AgentID, the environment agent id
         :param trainable: bool, tag added policy is trainable or not
-        :return: a tuple of policy id and policy
+        :return: a dict of policy id and policy
         """
 
     @abstractmethod

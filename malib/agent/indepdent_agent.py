@@ -9,6 +9,7 @@ import gym
 from malib.utils.typing import (
     AgentID,
     PolicyID,
+    List,
 )
 
 from malib.utils.logger import Logger
@@ -27,6 +28,7 @@ class IndependentAgent(AgentInterface):
         observation_spaces: Dict[AgentID, gym.spaces.Space],
         action_spaces: Dict[AgentID, gym.spaces.Space],
         exp_cfg: Dict[str, Any],
+        governed_agents: List[AgentID],
         population_size: int = -1,
         use_init_policy_pool: bool = False,
         algorithm_mapping: Callable = None,
@@ -61,6 +63,7 @@ class IndependentAgent(AgentInterface):
             exp_cfg,
             population_size,
             use_init_policy_pool,
+            governed_agents,
             algorithm_mapping,
             local_buffer_config,
         )
@@ -82,49 +85,54 @@ class IndependentAgent(AgentInterface):
         """
 
         res = {}
-        for env_aid, pid in policy_ids.items():
+        for pid in policy_ids.values():
             trainer = self.get_trainer(pid)
-            if env_aid not in batch:
-                continue
+            if self.runtime_id not in batch:
+                raise KeyError(
+                    "sampled batch does not contain data for agent={}".format(
+                        self.runtime_id
+                    )
+                )
             trainer.reset(self.policies[pid], training_config)
-            training_info = trainer.optimize(batch[env_aid])
+            training_info = trainer.optimize(batch[self.runtime_id])
             res.update(
                 dict(
-                    map(lambda kv: (f"{env_aid}/{kv[0]}", kv[1]), training_info.items())
+                    map(
+                        lambda kv: (f"{self.runtime_id}/{kv[0]}", kv[1]),
+                        training_info.items(),
+                    )
                 )
             )
         return res
 
-    def add_policy_for_agent(
-        self, env_agent_id: AgentID, trainable: bool
-    ) -> Tuple[PolicyID, Policy]:
+    def add_policy_for_agent(self, trainable: bool) -> Dict[PolicyID, Policy]:
 
         """Add new policy according to env_agent_id.
 
-        :param AgentID env_agent_id: The agent_id with which observation, action space will be determined if is None.
         :param bool trainable: Whether the added policy is trainable or not.
         :return:
         """
 
-        assert env_agent_id in self._group, (env_agent_id, self._group)
-        algorithm_conf = self.get_algorithm_config(env_agent_id)
+        # sharable learner generate only one policy
+        agent_id = self.agent_group()[0]
+        algorithm_conf = self.get_algorithm_config(agent_id)
         algorithm = get_algorithm_space(algorithm_conf["name"])
         policy = algorithm.policy(
             registered_name=algorithm_conf["name"],
-            observation_space=self._observation_spaces[env_agent_id],
-            action_space=self._action_spaces[env_agent_id],
+            observation_space=self._observation_spaces[agent_id],
+            action_space=self._action_spaces[agent_id],
             model_config=algorithm_conf.get("model_config", {}),
             custom_config=algorithm_conf.get("custom_config", {}),
-            env_agent_id=env_agent_id,
+            env_agent_id=agent_id,
         )
 
         pid = self.default_policy_id_gen(algorithm_conf)
         self._policies[pid] = policy.to_device(self._device) if trainable else policy
-        self._trainers[pid] = algorithm.trainer(env_agent_id)
+        self._trainers[pid] = algorithm.trainer(agent_id)
 
-        Logger.info("current trainesf: {}".format(self._trainers))
+        Logger.info("current train: {}".format(self._trainers))
 
-        return pid, policy
+        return dict.fromkeys(self.agent_group(), (pid, policy))
 
     def save(self, model_dir: str) -> None:
         """Save policies and states.

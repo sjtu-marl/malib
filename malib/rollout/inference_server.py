@@ -56,7 +56,6 @@ class InferenceWorkerSet:
         self.action_space = action_space
         self.parameter_server = parameter_server
 
-        self.policies = {self.runtime_agent_id: {}}
         self.parameter_desc: List[ParameterDescription] = []
         self.parameter_version: List[int] = []
 
@@ -64,6 +63,7 @@ class InferenceWorkerSet:
         self.parameter_buffer_lock = threading.Lock()
         self.parameter_buffer = defaultdict(lambda: None)
         self.governed_agents = governed_agents
+        self.policies = {aid: {} for aid in governed_agents}
 
         self.runtime: Dict[int, RuntimeHandler] = {}
 
@@ -120,18 +120,17 @@ class InferenceWorkerSet:
         # print("agent server: {} accepts a connection with: {}".format(self.runtime_agent_id, runtime_id))
 
         with self.parameter_buffer_lock:
+            # should be a mapped parameter description dict
             parameter_desc_dict: Dict[
                 AgentID, Union[ParameterDescription, MetaParameterDescription]
-            ] = runtime_config["parameter_desc_dict"]
+            ] = runtime_config["parameter_desc_dict"][self.runtime_agent_id]
             # for aid, p_desc in parameter_desc_dict.items():
-            p_desc = parameter_desc_dict[self.runtime_agent_id]
-            aid = self.runtime_agent_id
-            # assert isinstance(p_desc, ParameterDescription), type(p_desc)
-            if isinstance(p_desc, ParameterDescription):
-                self._update_policies(p_desc, aid)
-            elif isinstance(p_desc, MetaParameterDescription):
-                for parameter_desc in p_desc.parameter_desc_dict.values():
-                    self._update_policies(parameter_desc, aid)
+            for aid, p_desc in parameter_desc_dict.items():
+                if isinstance(p_desc, ParameterDescription):
+                    self._update_policies(p_desc, aid)
+                elif isinstance(p_desc, MetaParameterDescription):
+                    for parameter_desc in p_desc.parameter_desc_dict.values():
+                        self._update_policies(parameter_desc, aid)
 
         if not is_exisiting:
             self.thread_pool.submit(_compute_action, self, runtime_id)
@@ -213,7 +212,7 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
                     policy_id = _sample_policy_id(
                         runtime_config, data_frame.identifier, policy_id
                     )
-                    policy: Policy = self.policies[self.runtime_agent_id][policy_id]
+                    policy: Policy = self.policies[data_frame.identifier][policy_id]
                     kwargs = {**data_frame.data, **data_frame.runtime_config}
                     observation = kwargs.pop(EpisodeKey.CUR_OBS)
                     # if EpisodeKey.RNN_STATE not in kwargs:
@@ -276,13 +275,16 @@ def _update_weights(self: InferenceWorkerSet, force: bool = False) -> None:
                         p_desc.version = version
                     task = parameter_server.pull.remote(p_desc, keep_return=True)
                     tasks.append(task)
-
                 rets = ray.get(tasks)
                 for i, (status, content) in enumerate(rets):
                     if content.data is not None:
                         # update parameter here
-                        print("update weights here with version:", content.version)
-                        self.policies[self.runtime_agent_id][
+                        print(
+                            "update weights here with version:",
+                            content.version,
+                            content.identify,
+                        )
+                        self.policies[content.identify][
                             parameter_descs[i].id
                         ].set_weights(content.data)
                         parameter_version[i] = content.version

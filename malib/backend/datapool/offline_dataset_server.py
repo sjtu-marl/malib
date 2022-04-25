@@ -542,7 +542,6 @@ class OfflineDataset:
             table = self._tables[table_name]
             indices = table.get_producer_index(buffer_desc.batch_size)
         except KeyError:
-            # Logger.warn("table {} not ready yet for indexing".format(table_name))
             indices = None
 
         return Batch(buffer_desc.identify, indices)
