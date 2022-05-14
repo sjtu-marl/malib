@@ -2,7 +2,7 @@ import uuid
 import ray
 
 
-from malib.remote_interface import RemoteInterFace
+from malib.remote.interface import RemoteInterFace
 from malib.utils.typing import Dict
 from malib.manager.rollout_worker_manager import RolloutWorkerManager
 from malib.manager.training_manager import TrainingManager
