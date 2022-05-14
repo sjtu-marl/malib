@@ -225,7 +225,9 @@ class BaseRolloutWorker(RemoteInterFace):
         self._parameter_server = None
 
         self.init_servers()
-        self.inference_client_cls = outer_inference_client or InferenceClient
+        self.inference_client_cls = outer_inference_client or InferenceClient.as_remote(
+            num_cpus=0
+        )
         self.inference_server_cls = outer_inference_server or InferenceWorkerSet
         self.agent_interfaces = self.init_agent_interfaces(env_desc, runtime_agent_ids)
         self.actor_pool: ActorPool = self.init_actor_pool(

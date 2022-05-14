@@ -22,30 +22,31 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import traceback
-from collections import defaultdict
+from typing import Type, Union, Any, List, Dict, Tuple
 from types import LambdaType
-import ray
+from collections import defaultdict
+
 import time
 import os
-import numpy as np
 import gc
+import traceback
+
+import ray
+import numpy as np
+import reverb
 
 from ray.util.queue import Queue
+from reverb.client import Writer as ReverbWriter
 
 from malib import settings
+from malib.remote.interface import RemoteInterFace
 from malib.utils.logger import Log
 from malib.utils.typing import (
     AgentID,
-    Any,
     BufferDescription,
     DataFrame,
-    List,
-    Dict,
     BehaviorMode,
-    Tuple,
     EnvID,
-    Union,
 )
 from malib.utils.general import iter_many_dicts_recursively
 from malib.utils.episode import Episode, EpisodeKey, NewEpisodeDict
@@ -201,8 +202,7 @@ def postprocessing(episodes, postprocessor_types, policies=None):
     return episodes
 
 
-@ray.remote
-class InferenceClient:
+class InferenceClient(RemoteInterFace):
     def __init__(
         self,
         env_desc: Dict[str, Any],
@@ -213,6 +213,18 @@ class InferenceClient:
         postprocessor_types: Dict = None,
         training_agent_mapping: LambdaType = None,
     ):
+        """Construct an inference client.
+
+        Args:
+            env_desc (Dict[str, Any]): Environment description
+            dataset_server (_type_): A ray object reference.
+            max_env_num (int): The maximum of created environment instance.
+            use_subproc_env (bool, optional): Indicate subproc envrionment enabled or not. Defaults to False.
+            batch_mode (str, optional): Batch mode, could be `time_step` or `episode` mode. Defaults to "time_step".
+            postprocessor_types (Dict, optional): Post processor type list. Defaults to None.
+            training_agent_mapping (LambdaType, optional): Agent mapping function. Defaults to None.
+        """
+
         self.dataset_server = dataset_server
         self.use_subproc_env = use_subproc_env
         self.batch_mode = batch_mode
@@ -250,15 +262,19 @@ class InferenceClient:
                 obs_spaces, act_spaces, env_cls, env_config, preset_num_envs=max_env_num
             )
 
-            # build connection with agent interfaces
         self.recv_queue = None
         self.send_queue = None
+        self.reverb_clients: Dict[str, Type[reverb.Client]] = {}
 
     def add_envs(self, maximum: int) -> int:
-        """Create environments, if env is an instance of VectorEnv, add these new environment instances into it,
-        otherwise do nothing.
+        """Create environments, if env is an instance of VectorEnv, add these \
+            new environment instances into it,otherwise do nothing.
 
-        :returns: The number of nested environments.
+        Args:
+            maximum (int): Maximum limits.
+
+        Returns:
+            int: The number of nested environments.
         """
 
         if not isinstance(self.env, VectorEnv):
@@ -279,14 +295,13 @@ class InferenceClient:
             _ = [e.shutdown(force=True) for e in self.send_queue.values()]
         self.env.close()
 
-    @Log.data_feedback(enable=settings.DATA_FEEDBACK)
     def run(
         self,
         agent_interfaces: Dict[AgentID, InferenceWorkerSet],
         desc: Dict[str, Any],
-        buffer_desc: Union[BufferDescription, Dict[AgentID, BufferDescription]],
+        dataserver_entrypoint: str = None,
         reset: bool = False,
-    ) -> Tuple[str, Dict[str, List]]:
+    ) -> Union[List, Dict]:
 
         # reset timer, ready for monitor
         self.timer.clear()
@@ -304,10 +319,7 @@ class InferenceClient:
             "behavior_mode": None,
             # a mapping, from agent to pid
             "main_behavior_policies": desc["behavior_policies"],
-            "policy_distribution": desc["policy_distribution"],
             "sample_mode": "once",
-            # map raw agents parameter desc dict to runtime id
-            "parameter_desc_dict": mapped_parameter_desc_dict,
             "preprocessor": self.preprocessor,
         }
 
@@ -327,11 +339,11 @@ class InferenceClient:
 
         if self.recv_queue is None or reset:
             self.recv_queue = {
-                runtime_id: Queue(actor_options={"num_cpus": 0.1})
+                runtime_id: Queue(actor_options={"num_cpus": 0})
                 for runtime_id in agent_interfaces
             }
             self.send_queue = {
-                runtime_id: Queue(actor_options={"num_cpus": 0.1})
+                runtime_id: Queue(actor_options={"num_cpus": 0})
                 for runtime_id in agent_interfaces
             }
 
@@ -349,7 +361,21 @@ class InferenceClient:
             )
             gc.collect()
 
-        # self.add_envs(desc["num_episodes"])
+        if dataserver_entrypoint is not None:
+            if dataserver_entrypoint not in self.reverb_clients:
+                with self.timer.timeit("dataset_sever_connect"):
+                    address = ray.get(
+                        self.dataset_server.get_client_kwargs.remote(
+                            dataserver_entrypoint
+                        )
+                    )["address"]
+                    self.reverb_clients[dataserver_entrypoint] = reverb.Client(address)
+            reverb_writer: ReverbWriter = self.reverb_clients[
+                dataserver_entrypoint
+            ].writer(max_sequence_length=desc["fragment_length"])
+
+        else:
+            reverb_writer: ReverbWriter = None
 
         try:
             with self.timer.timeit("environment_reset"):
@@ -376,6 +402,7 @@ class InferenceClient:
                     env_actions, policy_outputs = process_policy_outputs(
                         policy_outputs, self.env
                     )
+
                 with self.timer.time_avg("environment_step"):
                     next_rets = self.env.step(env_actions)
                     assert len(next_rets) > 0, env_actions
@@ -385,44 +412,14 @@ class InferenceClient:
                     )
                     env_rets = merge_env_rets(rets, next_rets)
                 assert len(env_rets) > 0
-                # print("poccc", policy_outputs)
-                episodes.record(policy_outputs, env_rets)
+                # episodes.record(policy_outputs, env_rets)
+                if reverb_writer is not None:
+                    reverb_writer.append()
                 # update next keys
                 rets = rets_holder
                 dataframes = next_dataframes
             end = time.time()
-
             rollout_info = self.env.collect_info()
-            if task_type == "rollout":
-                episodes = list(
-                    episodes.to_numpy(
-                        self.batch_mode, filter=list(desc["behavior_policies"].keys())
-                    ).values()
-                )
-                for runtime_id, _buffer_desc in buffer_desc.items():
-                    _buffer_desc.batch_size = (
-                        self.env.batched_step_cnt
-                        if self.batch_mode == "time_step"
-                        else len(episodes)
-                    )
-
-                    indices = None
-                    while indices is None:
-                        batch = ray.get(
-                            self.dataset_server.get_producer_index.remote(_buffer_desc)
-                        )
-                        indices = batch.data
-                    gc.collect()
-
-                    # group data by agents
-                    tmp = {agent: [] for agent in _buffer_desc.agent_id}
-                    for e in episodes:
-                        # actually many agents
-                        for agent in _buffer_desc.agent_id:
-                            tmp[agent].append({agent: e[agent]})
-                    _buffer_desc.data = tmp
-                    _buffer_desc.indices = indices
-                    self.dataset_server.save.remote(_buffer_desc)
         except Exception as e:
             traceback.print_exc()
             raise e
@@ -439,8 +436,9 @@ class InferenceClient:
         performance["FPS"] = self.env.batched_step_cnt / (end - start)
         res = {
             "task_type": task_type,
-            "total_fragment_length": self.env.batched_step_cnt,
-            "eval_info": holder,
+            "total_timesteps": self.env.batched_step_cnt,
             "performance": performance,
         }
+        if task_type in ["evaluation", "simulation"]:
+            res["evaluation"] = holder
         return res

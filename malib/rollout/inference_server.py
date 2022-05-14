@@ -6,10 +6,9 @@ import time
 import threading
 import gc
 
-from collections import deque, defaultdict, namedtuple
+from collections import defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
 import traceback
-from types import LambdaType
 
 import ray
 import gym
@@ -26,10 +25,7 @@ from malib.utils.typing import (
     List,
     MetaParameterDescription,
     ParameterDescription,
-    PolicyID,
     Dict,
-    Status,
-    BehaviorMode,
     Union,
 )
 from malib.algorithm import get_algorithm_space
@@ -98,14 +94,12 @@ class InferenceWorkerSet:
         runtime_config: Dict[str, Any],
         runtime_id: int,
     ):
-        """Connect new inference task with given configuraiton and queus.
+        """Connect new inference task with given configuration and queues.
 
-        :param queues: A tuple of send and recieve queus.
-        :type queues: List[Queue]
-        :param runtime_config: The runtime configuration, including parameter description dict.
-        :type runtime_config: Dict[str, Any]
-        :param runtime_id: The referred runtime id.
-        :type runtime_id: int
+        Args:
+            queues (List[Queue]): A list of send and recieve queues.
+            runtime_config (Dict[str, Any]): Runtime configuration for rollout.
+            runtime_id (int): Refered runtime id.
         """
 
         send_queue, recv_queue = queues
