@@ -282,8 +282,6 @@ class BaseRolloutWorker(RemoteInterFace):
             {
                 "flag": "rollout",
                 "max_step": task_desc.content.max_step,
-                "num_episodes": task_desc.content.num_episodes,
-                # for other Non-trainable agents
                 "policy_distribution": task_desc.content.policy_distribution,
                 "parameter_desc_dict": task_desc.content.agent_involve_info.meta_parameter_desc_dict,
                 "trainable_pairs": trainable_pairs,

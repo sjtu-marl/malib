@@ -60,16 +60,19 @@ class TrainingManager:
         # training agent mapping function is enough for
         training_agent_mapping = training_agent_mapping or (lambda agent_id: agent_id)
 
-        # FIXME(ming): resource configuration is not available now, will open in the next version
-        agent_cls = agent_cls.as_remote(**interface_config.get("worker_config", {}))
-
         self._agents = {}
         agent_groups = defaultdict(lambda: [])
         sorted_env_agents = sorted(env_desc["possible_agents"])
-
         for agent in sorted_env_agents:
             rid = training_agent_mapping(agent)
             agent_groups[rid].append(agent)
+
+        # FIXME(ming): resource configuration is not available now, will open in the next version
+        if training_config.get("use_cuda", False):
+            num_gpus = 1 / len(agent_groups)
+        else:
+            num_gpus = 0.0
+        agent_cls = agent_cls.as_remote(num_gpus=num_gpus)
 
         for rid, agents in agent_groups.items():
             self._agents[rid] = agent_cls.options(max_concurrency=100).remote(

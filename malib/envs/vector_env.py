@@ -59,6 +59,7 @@ class VectorEnv:
         self._fragment_length = None
         self._active_envs = {}
         self._cached_episode_infos = {}
+        self._action_adapter = creator.action_adapter
 
         self.add_envs(num=preset_num_envs)
 
@@ -130,13 +131,12 @@ class VectorEnv:
 
     def reset(
         self,
-        limits: int,
         fragment_length: int,
         max_step: int,
         custom_reset_config: Dict[str, Any] = None,
         trainable_mapping: Dict[AgentID, PolicyID] = None,
     ) -> Dict[EnvID, Dict[str, Dict[AgentID, Any]]]:
-        self._limits = limits or self.num_envs
+        self._limits = self.num_envs
         self._step_cnt = 0
         self._fragment_length = fragment_length
         self._custom_reset_config = custom_reset_config
@@ -145,9 +145,6 @@ class VectorEnv:
 
         # generate runtime env ids
         runtime_ids = [uuid.uuid1().hex for _ in range(self._limits)]
-        assert len(self.envs) >= limits, "No enough environment instances: {}".format(
-            len(self.envs)
-        )
         self._active_envs = dict(zip(runtime_ids, self.envs[: self._limits]))
 
         self._trainable_agents = (
@@ -220,7 +217,7 @@ class VectorEnv:
         # since activ_envs maybe updated after self.step, so we should use keys
         # in self.active_envs
         res = {
-            env_id: self.active_envs[env_id].action_adapter(policy_output)
+            env_id: self._action_adapter(policy_output)
             for env_id, policy_output in policy_outputs.items()
         }
 

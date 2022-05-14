@@ -35,7 +35,7 @@ class GymEnv(Environment):
 
     def time_step(self, actions: Dict[AgentID, Any]) -> Dict[str, Any]:
         observations, rewards, dones, infos = self._env.step(
-            actions[self._default_agent]
+            actions[self._default_agent][0]
         )
 
         # agent done or achieving_max_step_done

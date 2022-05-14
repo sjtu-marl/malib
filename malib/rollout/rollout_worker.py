@@ -62,12 +62,10 @@ class RolloutWorker(BaseRolloutWorker):
         buffer_desc: Union[Dict[AgentID, BufferDescription], BufferDescription],
         runtime_configs_template: Dict[str, Any],
     ):
-        num_episodes = task_desc.content.num_episodes
-        num_rollout_tasks = (
-            num_episodes // self.worker_runtime_configs["num_env_per_thread"]
-        )
-
-        tasks = [runtime_configs_template for _ in range(num_rollout_tasks)]
+        tasks = [
+            runtime_configs_template
+            for _ in range(self.worker_runtime_configs["num_threads"])
+        ]
 
         # add tasks for evaluation
         eval_runtime_configs = runtime_configs_template.copy()

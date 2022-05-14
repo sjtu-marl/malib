@@ -1,13 +1,16 @@
 # battle: https://github.com/wsjeon/maddpg-rllib
 group: "MPE"
-name: "share/ddpg"
+name: "share/ddpg_simple_push_ball"
+task_mode: marl
 
 training:
   interface:
     type: "independent"
     population_size: -1
+    use_init_population_pool: False
   config:
     # control the frequency of remote parameter update
+    use_cuda: True
     update_interval: 1
     saving_interval: 10
     batch_size: 1024
@@ -18,17 +21,22 @@ training:
     tau: 0.01  # soft update
     grad_norm_clipping: 0.5
 
-rollout:
-  type: "async"
-  stopper: "simple_rollout"
-  stopper_config:
-    max_step: 1000
-  metric_type: "simple"
-  fragment_length: 250
-  num_episodes: 250
-  num_env_per_worker: 10
-  max_step: 25
-  terminate: "any"
+rollout_worker:
+  callback: simultaneous
+  stopper:
+    name: simple_rollout
+    config:
+      max_step: 1000
+  num_threads: 2
+  num_env_per_thread: 1
+  num_eval_threads: 1
+  batch_mode: time_step
+  post_processor_types:
+    - default
+  use_subproc_env: False
+  task_config:
+    max_step: 25
+    fragment_length: 500
 
 evaluation:
   fragment_length: 25
@@ -37,7 +45,6 @@ evaluation:
 env_description:
   creator: "MPE"
   config:
-    #    scenario_name: "simple_push"
     env_id: "simple_push_v2"
     scenario_configs:
       max_cycles: 25
@@ -68,7 +75,6 @@ algorithms:
     # set hyper parameter
     custom_config:
       gamma: 0.95
-      use_cuda: False  # enable cuda or not
 
 global_evaluator:
   name: "generic"

@@ -26,30 +26,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     with open(os.path.join(BASE_DIR, args.config), "r") as f:
-        config = yaml.safe_load(f)
-
-    # read environment description
-    env_desc = custom_gym.env_desc_gen(**config["env_description"]["config"])
-    obs_space_template = list(env_desc["observation_spaces"].values())[0]
-    training_config = config["training"]
-    rollout_config = config["rollout"]
-
-    training_config["interface"]["observation_spaces"] = env_desc["observation_spaces"]
-    training_config["interface"]["action_spaces"] = env_desc["action_spaces"]
+        config = argparse.Namespace(**yaml.safe_load(f))
 
     run(
-        group=config["group"],
-        name=config["name"],
-        env_description=env_desc,
-        agent_mapping_func=lambda agent: "share",
-        training=training_config,
-        algorithms=config["algorithms"],
-        # rollout configuration for each learned policy model
-        rollout=rollout_config,
-        evaluation=config.get("evaluation", {}),
-        global_evaluator=config["global_evaluator"],
-        dataset_config=config.get("dataset_config", {}),
-        parameter_server=config.get("parameter_server", {}),
-        use_init_policy_pool=False,
         task_mode="marl",
+        group=config.group,
+        name=config.name,
+        env_description=config.env_description,
+        agent_mapping_func=lambda agent: "share",
+        training=config.training,
+        algorithms=config.algorithms,
+        rollout_worker=config.rollout_worker,
+        evaluation=config.evaluation,
+        global_evaluator=config.global_evaluator,
+        dataset_config=config.dataset_config,
     )

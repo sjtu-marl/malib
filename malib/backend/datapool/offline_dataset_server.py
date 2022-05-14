@@ -21,6 +21,7 @@ from malib.utils.general import BufferDict, iter_many_dicts_recursively
 from malib.utils.logger import Log, Logger
 from malib.utils.typing import (
     BufferDescription,
+    EpisodeID,
     PolicyID,
     AgentID,
     Dict,
@@ -217,12 +218,15 @@ class Table:
         return self._name
 
     def build_buffer_from_samples(self, sample: Dict):
-        self._buffer = BufferDict()
+        if self._buffer is None:
+            self._buffer = BufferDict()
+
         for agent, _buff in sample.items():
-            t = BufferDict()
-            for dk, v in _buff.items():
-                t[dk] = np.zeros((self.capacity,) + v.shape[1:], dtype=v.dtype)
-            self._buffer[agent] = t
+            if agent not in self._buffer:
+                t = BufferDict()
+                for dk, v in _buff.items():
+                    t[dk] = np.zeros((self.capacity,) + v.shape[1:], dtype=v.dtype)
+                self._buffer[agent] = t
 
     def sample_activated(self) -> bool:
         return self._consumer_queue.size() >= self._sample_start_size
@@ -258,43 +262,55 @@ class Table:
         return DATASET_TABLE_NAME_GEN(*args, **kwargs)
 
     def insert(
-        self, data: List[Dict[str, Any]], indices: List[int] = None, size: int = None
+        self,
+        data: Union[Dict[AgentID, List], List[Dict[str, Any]]],
+        indices: List[int] = None,
+        size: int = None,
+        update_idx: bool = True,
     ):
-        assert isinstance(data, List), type(data)
-        if self.buffer is None:
-            self.build_buffer_from_samples(data[0])
-
         if indices is None:
             # generate indices
             indices = np.arange(self._flag, self._flag + size) % self._capacity
 
-        shuffle_idx = np.arange(len(indices))
-        np.random.shuffle(shuffle_idx)
-        # print("--------- data type:", type(data[0]), data[0].keys())
-        for d_list, k, value_list in iter_many_dicts_recursively(*data):
-            head_d = d_list[0]
-            batch_sizes = [v.shape[0] for v in value_list]
-            merged_shape = (sum(batch_sizes),) + value_list[0].shape[1:]
-            _placeholder = np.zeros(merged_shape, dtype=head_d[k].dtype)
-            index = 0
-            for batch_size, value in zip(batch_sizes, value_list):
-                _placeholder[index : index + batch_size] = value[:]
-                index += batch_size
-            assert len(_placeholder) >= len(indices), (
-                len(_placeholder),
-                len(indices),
-                _placeholder.shape,
-                k,
-                value_list[0].shape,
-                len(value_list),
-            )
-            head_d[k] = _placeholder[shuffle_idx]
+        if isinstance(data, Dict):
+            for k, v in data.items():
+                self.insert(v, indices, size, update_idx=False)
+        else:
+            self.build_buffer_from_samples(data[0])
+            shuffle_idx = np.arange(len(indices))
+            np.random.shuffle(shuffle_idx)
+            for d_list, k, value_list in iter_many_dicts_recursively(*data):
+                head_d = d_list[0]
+                batch_sizes = []
+                value_list = list(value_list)
+                for i, v in enumerate(value_list):
+                    if len(v.shape) < 1:
+                        v = v.reshape(-1)
+                        value_list[i] = v
+                    batch_sizes.append(v.shape[0])
+                merged_shape = (sum(batch_sizes),) + value_list[0].shape[1:]
+                _placeholder = np.zeros(merged_shape, dtype=head_d[k].dtype)
+                index = 0
+                for batch_size, value in zip(batch_sizes, value_list):
+                    _placeholder[index : index + batch_size] = value[:]
+                    index += batch_size
+                assert len(_placeholder) >= len(indices), (
+                    len(_placeholder),
+                    len(indices),
+                    _placeholder.shape,
+                    k,
+                    value_list[0].shape,
+                    len(value_list),
+                )
+                head_d[k] = _placeholder[shuffle_idx]
 
-        # assert indices is not None, "indices: {}".format(indices)
-        self._buffer.set_data(indices, data[0])
-        self._size += len(indices)
-        self._size = min(self._size, self._capacity)
-        self._flag = (self._flag + len(indices)) % self._capacity
+            # assert indices is not None, "indices: {}".format(indices)
+            self._buffer.set_data(indices, data[0])
+
+        if update_idx:
+            self._size += len(indices)
+            self._size = min(self._size, self._capacity)
+            self._flag = (self._flag + len(indices)) % self._capacity
 
     def sample(self, indices: List[int] = None, size: int = None) -> Dict[str, Any]:
         if indices is None:
@@ -502,7 +518,6 @@ class OfflineDataset:
             self._tables[name] = Table(
                 self._episode_capacity,
                 self._fragment_length,
-                # buffer_desc.data_shapes,
                 sample_start_size=self._learning_start,
                 event_loop=self.event_loop,
                 name=name,

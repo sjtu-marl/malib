@@ -113,7 +113,8 @@ class Environment:
 
         raise NotImplementedError
 
-    def action_adapter(self, policy_outputs: Dict[str, Dict[AgentID, Any]], **kwargs):
+    @staticmethod
+    def action_adapter(policy_outputs: Dict[str, Dict[AgentID, Any]], **kwargs):
         """Convert policy action to environment actions. Default by policy action"""
 
         return policy_outputs["action"]

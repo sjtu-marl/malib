@@ -76,6 +76,15 @@ class DQN(Policy):
         #     -self._step / self._eps_decay
         # )
 
+    def value_function(self, observation, **kwargs):
+        with torch.no_grad():
+            act_dist = np.asarray(kwargs["action_dist"])
+            state = self.preprocessor.transform(
+                observation, nested=(len(act_dist.shape) > 1)
+            )
+            values = self.critic(state)
+        return values.cpu().numpy().reshape(-1)
+
     def compute_action(self, observation: DataTransferType, **kwargs):
         """Compute action with one piece of observation. Behavior mode is used to do exploration/exploitation trade-off.
 

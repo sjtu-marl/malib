@@ -20,6 +20,7 @@ from malib.utils.typing import (
     Any,
     Callable,
     Tuple,
+    List,
     AgentID,
     PolicyID,
     MetricEntry,
@@ -46,6 +47,7 @@ class CTDEAgent(AgentInterface):
         action_spaces: Dict[AgentID, gym.spaces.Space],
         exp_cfg: Dict[str, Any],
         use_init_policy_pool: bool,
+        governed_agents: List[AgentID],
         population_size: int = -1,
         algorithm_mapping: Callable = None,
         local_buffer_config: Dict = None,
@@ -81,6 +83,7 @@ class CTDEAgent(AgentInterface):
             population_size=population_size,
             algorithm_mapping=algorithm_mapping,
             local_buffer_config=local_buffer_config,
+            governed_agents=governed_agents,
         )
 
     def gen_buffer_description(

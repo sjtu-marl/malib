@@ -33,7 +33,7 @@ if __name__ == "__main__":
     algo = list(config.algorithms.keys())[0]
 
     run(
-        group="MPE",
+        group=config.group,
         name=f"share={args.share}_eid={config.env_description['config']['env_id']}_algo={algo}",
         # parameter sharing, will derive only one agent
         agent_mapping_func=agent_mapping_func,

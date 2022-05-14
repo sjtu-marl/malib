@@ -296,7 +296,6 @@ def _request_rollout(coordinator: CoordinatorServer, task_request: TaskRequest):
         content=RolloutDescription(
             agent_involve_info=agent_involve_info,
             fragment_length=task_config["fragment_length"],
-            num_episodes=task_config["num_episodes"],
             max_step=task_config["max_step"],
             callback=rollout_config["callback"],
             stopper=rollout_config["stopper"]["name"],

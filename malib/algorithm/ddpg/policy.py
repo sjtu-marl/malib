@@ -86,11 +86,13 @@ class DDPG(Policy):
 
     def value_function(self, observation, **kwargs):
         with torch.no_grad():
+            act_dist = np.asarray(kwargs["action_dist"])
             state = self.critic_preprocessor.transform(
-                {"obs": observation, "act": kwargs["action_dist"]}, nested=True
+                {"obs": observation, "act": kwargs["action_dist"]},
+                nested=(len(act_dist.shape) > 1),
             )
             values = self.critic(state)
-        return values.cpu().numpy()
+        return values.cpu().numpy().reshape(-1)
 
     def compute_action(
         self, observation: DataTransferType, **kwargs

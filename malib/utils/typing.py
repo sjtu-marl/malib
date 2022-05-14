@@ -273,7 +273,6 @@ class TrainingDescription:
 class RolloutDescription:
     agent_involve_info: AgentInvolveInfo
     fragment_length: int
-    num_episodes: int
     max_step: int
     callback: Union[str, Callable] = "sequential"
     stopper: str = "none"

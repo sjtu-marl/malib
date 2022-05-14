@@ -183,7 +183,10 @@ def _get_initial_states(self, runtime_id, observation, policy: Policy, identifie
     else:
         # use inner shape to judge it
         offset = len(policy.preprocessor.shape)
-        batch_size = reduce(mul, observation.shape[:-offset])
+        if offset < len(observation.shape):
+            batch_size = reduce(mul, observation.shape[:-offset])
+        else:
+            batch_size = 1
         return policy.get_initial_state(batch_size=batch_size)
 
 
@@ -214,6 +217,8 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
                     )
                     policy: Policy = self.policies[data_frame.identifier][policy_id]
                     kwargs = {**data_frame.data, **data_frame.runtime_config}
+                    batch_size = len(kwargs["environment_ids"])
+                    assert EpisodeKey.CUR_OBS in kwargs, kwargs.keys()
                     observation = kwargs.pop(EpisodeKey.CUR_OBS)
                     # if EpisodeKey.RNN_STATE not in kwargs:
                     kwargs[EpisodeKey.RNN_STATE] = _get_initial_states(
@@ -231,9 +236,19 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
                     # compute state value
                     rets[EpisodeKey.STATE_VALUE] = policy.value_function(
                         observation=observation,
-                        action_dist=rets[EpisodeKey.ACTION_DIST],
+                        action_dist=rets[EpisodeKey.ACTION_DIST].copy(),
                         **kwargs
                     )
+                    for k, v in rets.items():
+                        if k == EpisodeKey.RNN_STATE:
+                            continue
+                        if len(v.shape) < 1:
+                            rets[k] = v.reshape(-1)
+                        elif v.shape[0] == 1:
+                            continue
+                        else:
+                            rets[k] = v.reshape(batch_size, -1)
+                    # recover env length
                     send_df = DataFrame(
                         identifier=data_frame.identifier,
                         data=rets,

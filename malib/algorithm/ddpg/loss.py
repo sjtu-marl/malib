@@ -59,7 +59,6 @@ class DDPGLoss(LossFunc):
         )
         next_value = self.policy.target_critic(target_vf_in)
         target_value = rewards + gamma * next_value * (1.0 - dones)
-
         vf_in = torch.cat([cur_obs, actions], dim=-1)
         actual_value = self.policy.critic(vf_in)
 

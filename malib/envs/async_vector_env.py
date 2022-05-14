@@ -27,14 +27,15 @@ class AsyncVectorEnv(VectorEnv):
         self, env_id: EnvID, actions: Dict[AgentID, Any]
     ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
         rets = None
-        cached_frame = self.cached_frame[env_id]
-        for aid, action in actions.items():
-            if aid not in cached_frame:
-                cached_frame[aid] = action
+        if env_id in self.active_envs:
+            cached_frame = self.cached_frame[env_id]
+            for aid, action in actions.items():
+                if aid not in cached_frame:
+                    cached_frame[aid] = action
 
-        if len(cached_frame) == len(self.possible_agents):
-            rets = self.active_envs[env_id].step(cached_frame)
-            self.cached_frame[env_id] = {}
+            if len(cached_frame) == len(self.possible_agents):
+                rets = self.active_envs[env_id].step(cached_frame)
+                self.cached_frame[env_id] = {}
 
         return rets
 
@@ -66,16 +67,16 @@ class AsyncVectorEnv(VectorEnv):
                 # the terminate judgement is wrong, since step cnt count is delayed
             env_rets[env_id] = ret
 
-        # if not self.is_terminated() and len(dead_envs) > 0:
-        #     for env in dead_envs:
-        #         _tmp = env.reset(
-        #             max_step=self.max_step,
-        #             custom_reset_config=self._custom_reset_config,
-        #         )
-        #         # regenerate runtime id
-        #         runtime_id = uuid.uuid1().hex
-        #         self._active_envs[runtime_id] = env
-        #         env_rets[runtime_id] = _tmp
+        if not self.is_terminated() and len(dead_envs) > 0:
+            for env in dead_envs:
+                _tmp = env.reset(
+                    max_step=self.max_step,
+                    custom_reset_config=self._custom_reset_config,
+                )
+                runtime_id = uuid.uuid1().hex
+                self._active_envs[runtime_id] = env
+                env_rets[runtime_id] = _tmp
+
         return env_rets
 
 
@@ -86,8 +87,10 @@ class AsyncSubProcVecEnv(SubprocVecEnv):
         action_spaces: Dict[AgentID, gym.Space],
         creator: type,
         configs: Dict[str, Any],
+        preset_num_envs: int = 0,
     ):
         super().__init__(observation_spaces, action_spaces, creator, configs)
+        self.num_envs = preset_num_envs
         self.cached_frame = defaultdict(lambda: {})
 
     def _delay_step(

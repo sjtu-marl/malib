@@ -1,6 +1,7 @@
 import traceback
 from collections import defaultdict
 from types import LambdaType
+from typing import Iterable, Sequence
 import ray
 import time
 import gym
@@ -79,12 +80,16 @@ def process_env_rets(
     processed = {}
     dataframes = {}
     replaced_holder = {}
-    env_ids = list(env_rets.keys())
+    remain_env_ids = []
     preprocessor = server_runtime_config["preprocessor"]
 
     for env_id, ret in env_rets.items():
         processed[env_id] = {}
         replaced_holder[env_id] = {}
+
+        dframe_jump = any(ret.get(EpisodeKey.DONE, {"default": False}).values())
+        if not dframe_jump:
+            remain_env_ids.append(env_id)
 
         for k, agent_v in ret.items():
             processed[env_id][k] = {}
@@ -93,7 +98,7 @@ def process_env_rets(
             if k == EpisodeKey.DONE:
                 agent_v.pop("__all__")
             for agent, _v in agent_v.items():
-                if agent not in dataframes:
+                if not dframe_jump and (agent not in dataframes):
                     dataframes[agent] = defaultdict(lambda: [])
                 if k in [EpisodeKey.CUR_OBS, EpisodeKey.NEXT_OBS]:
                     dk = EpisodeKey.CUR_OBS
@@ -105,9 +110,10 @@ def process_env_rets(
                 if dk not in replaced_holder[env_id]:
                     replaced_holder[env_id][dk] = {}
 
-                dataframes[agent][dk].append(_v)
+                if not dframe_jump:
+                    dataframes[agent][dk].append(_v)
+                    replaced_holder[env_id][dk][agent] = _v
                 processed[env_id][k][agent] = _v
-                replaced_holder[env_id][dk][agent] = _v
 
     # pack to data frame
     for env_aid in dataframes.keys():
@@ -116,13 +122,13 @@ def process_env_rets(
             data={_k: np.stack(_v).squeeze() for _k, _v in dataframes[env_aid].items()},
             runtime_config={
                 "behavior_mode": server_runtime_config["behavior_mode"],
-                "environment_ids": env_ids,
+                "environment_ids": remain_env_ids,
             },
         )
         # check batch size:
-        pred_batch_size = list(dataframes[env_aid].data.values())[0].shape[0]
-        for _k, _v in dataframes[env_aid].data.items():
-            assert _v.shape[0] == pred_batch_size, (_k, _v.shape, pred_batch_size)
+        # pred_batch_size = list(dataframes[env_aid].data.values())[0].shape[0]
+        # for _k, _v in dataframes[env_aid].data.items():
+        #     assert _v.shape[0] == pred_batch_size, (_k, _v.shape, pred_batch_size)
 
     return replaced_holder, processed, dataframes
 
@@ -154,8 +160,18 @@ def process_policy_outputs(
                     for i, env_id in enumerate(env_ids):
                         rets[env_id][k][agent] = [_v[i] for _v in v]
                 else:
+                    # if len(env_ids) == 1:
+                    #     if not isinstance(v, Iterable):
+                    #         v = [v]
+                    #     elif len(v.shape) == 0:
+                    #         v = v.reshape(-1)
+                    #         data[k] = v
+                    # try:
                     for env_id, _v in zip(env_ids, v):
                         rets[env_id][k][agent] = _v
+                    # except Exception as e:
+                    #     print("----------- ", type(v), v, env_ids)
+                    #     raise e
 
     # process action with action adapter
     env_actions: Dict[EnvID, Dict[AgentID, Any]] = env.action_adapter(rets)
@@ -222,9 +238,13 @@ class InferenceClient:
         }
 
         if use_subproc_env:
-            self.env = AsyncSubProcVecEnv(obs_spaces, act_spaces, env_cls, env_config)
+            self.env = AsyncSubProcVecEnv(
+                obs_spaces, act_spaces, env_cls, env_config, preset_num_envs=max_env_num
+            )
         else:
-            self.env = AsyncVectorEnv(obs_spaces, act_spaces, env_cls, env_config)
+            self.env = AsyncVectorEnv(
+                obs_spaces, act_spaces, env_cls, env_config, preset_num_envs=max_env_num
+            )
 
             # build connection with agent interfaces
         self.recv_queue = None
@@ -292,14 +312,13 @@ class InferenceClient:
             "policy_distribution": desc["policy_distribution"],
             "sample_mode": "once",
             # map raw agents parameter desc dict to runtime id
-            "parameter_desc_dict": mapped_parameter_desc_dict,  # desc["parameter_desc_dict"],
+            "parameter_desc_dict": mapped_parameter_desc_dict,
             "preprocessor": self.preprocessor,
         }
 
         client_runtime_config = {
             "max_step": desc["max_step"],
-            "fragment_length": desc["max_step"] * desc["num_episodes"],
-            "num_envs": desc["num_episodes"],
+            "fragment_length": desc["fragment_length"],
             "custom_reset_config": None,
             "trainable_mapping": desc["behavior_policies"]
             if task_type == "rollout"
@@ -331,16 +350,15 @@ class InferenceClient:
                     )
                     for runtime_id, server in agent_interfaces.items()
                 ],
-                timeout=3.0,
+                timeout=10.0,
             )
             gc.collect()
 
-        self.add_envs(desc["num_episodes"])
+        # self.add_envs(desc["num_episodes"])
 
         try:
             with self.timer.timeit("environment_reset"):
                 rets = self.env.reset(
-                    limits=client_runtime_config["num_envs"],
                     fragment_length=client_runtime_config["fragment_length"],
                     max_step=client_runtime_config["max_step"],
                     custom_reset_config=client_runtime_config["custom_reset_config"],
@@ -350,10 +368,6 @@ class InferenceClient:
             # TODO(ming): process env returns here
             _, rets, dataframes = process_env_rets(rets, server_runtime_config)
             episodes = NewEpisodeDict(lambda env_id: Episode(None, env_id=env_id))
-
-            assert (
-                len(self.env.active_envs) == client_runtime_config["num_envs"]
-            ), self.env.active_envs.keys()
 
             start = time.time()
             while not self.env.is_terminated():
@@ -378,6 +392,7 @@ class InferenceClient:
                     )
                     env_rets = merge_env_rets(rets, next_rets)
                 assert len(env_rets) > 0
+                # print("poccc", policy_outputs)
                 episodes.record(policy_outputs, env_rets)
                 # update next keys
                 rets = rets_holder
@@ -406,10 +421,13 @@ class InferenceClient:
                         indices = batch.data
                     gc.collect()
 
-                    _buffer_desc.data = []
+                    # group data by agents
+                    tmp = {agent: [] for agent in _buffer_desc.agent_id}
                     for e in episodes:
-                        for agent in self.agent_group[runtime_id]:
-                            _buffer_desc.data.append({runtime_id: e[agent]})
+                        # actually many agents
+                        for agent in _buffer_desc.agent_id:
+                            tmp[agent].append({agent: e[agent]})
+                    _buffer_desc.data = tmp
                     _buffer_desc.indices = indices
                     self.dataset_server.save.remote(_buffer_desc)
         except Exception as e:

@@ -67,10 +67,6 @@ class MAAtari(Environment):
     def action_spaces(self) -> Dict[AgentID, gym.Space]:
         return self._action_spaces
 
-    def action_adapter(self, policy_outputs: Dict[str, Dict[AgentID, Any]], **kwargs):
-        """Return only actions"""
-        return policy_outputs[EpisodeKey.ACTION]
-
     def time_step(self, actions: Dict[AgentID, Any]):
         observations, rewards, dones, infos = self._env.step(actions)
         return {

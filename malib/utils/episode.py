@@ -86,6 +86,8 @@ class Episode:
                     if len(v) == 0:
                         return {}
                     tmp = np.asarray(v, dtype=np.float32)
+                    # if ek == "action_logits":
+                    #     print("------------", tmp.shape)
                     if batch_mode == "episode":
                         res[agent_id][ek] = np.expand_dims(tmp.squeeze(), axis=0)
                     else:

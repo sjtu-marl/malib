@@ -5,12 +5,34 @@ training:
   interface:
     type: independent
     population_size: -1
+    use_init_population_pool: False
   config:
     update_interval: 5
     batch_size: 128
 
+rollout_worker:
+  callback: simultaneous
+  stopper:
+    name: simple_rollout
+    config:
+      max_step: 1250
+  num_threads: 2
+  num_env_per_thread: 2
+  num_eval_threads: 5
+  batch_mode: time_step
+  post_processor_types:
+    - default
+  use_subproc_env: False
+  task_config:
+    max_step: 100
+    fragment_length: 200
+
+evaluation:
+  fragment_length: 200
+  num_episodes: 1
+
 env_description:
-  creator: "MAAtari"
+  creator: MAAtari
   config:
     env_id: "basketball_pong_v2"
     # supersuit wrapper
@@ -45,21 +67,8 @@ algorithms:
       eps_min: 0.1
       eps_anneal_time: 10000
 
-rollout:
-  type: "async"
-  metric_type: "simple"
-  fragment_length: 100
-  # read rollout config to assign nested workers
-  num_episodes: 200
-  num_env_per_worker: 50
-  terminate: "any"
-  stopper: "simple_rollout"
-  stopper_config:
-    stop_num: 1000
-  callback: "simultaneous"
-
 global_evaluator:
   name: "generic"
 
 dataset_config:
-  episode_capacity: 300
+  episode_capacity: 10000

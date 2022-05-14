@@ -85,16 +85,16 @@ class IndependentAgent(AgentInterface):
         """
 
         res = {}
-        for pid in policy_ids.values():
+        for aid, pid in policy_ids.items():
             trainer = self.get_trainer(pid)
-            if self.runtime_id not in batch:
+            if aid not in batch:
                 raise KeyError(
                     "sampled batch does not contain data for agent={}".format(
                         self.runtime_id
                     )
                 )
             trainer.reset(self.policies[pid], training_config)
-            training_info = trainer.optimize(batch[self.runtime_id])
+            training_info = trainer.optimize(batch[aid])
             res.update(
                 dict(
                     map(
