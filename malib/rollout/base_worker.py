@@ -22,91 +22,177 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from typing import Dict, Any, List, Callable, Sequence
+
 import os
-import copy
 import time
 import traceback
 import operator
-import numpy as np
-
-import ray
+import logging
 
 from functools import reduce
 from collections import defaultdict
+
+import ray
+import gym
+import numpy as np
+
 from ray.util import ActorPool
+from torch.utils import tensorboard
 
 from malib import settings
-from malib.utils.general import iter_many_dicts_recursively
-from malib.utils.typing import (
-    AgentID,
-    BufferDescription,
-    TaskDescription,
-    TaskRequest,
-    TaskType,
-    RolloutFeedback,
-    Status,
-    Sequence,
-    Dict,
-    Any,
-    List,
-    Callable,
-)
-
-from malib.utils.logger import Logger, get_logger
-from malib.utils.stoppers import get_stopper
-from malib.remote_interface import RemoteInterFace
+from malib.utils.typing import AgentID
+from malib.utils.stopping_conditions import get_stopper
+from malib.common.strategy_spec import StrategySpec
+from malib.remote.interface import RemoteInterFace
+from malib.monitor.utils import write_to_tensorboard
 from malib.rollout.inference_server import InferenceWorkerSet
 from malib.rollout.inference_client import InferenceClient
+
 
 PARAMETER_GET_TIMEOUT = 3
 MAX_PARAMETER_GET_RETRIES = 10
 
+logger = logging.getLogger(__name__)
+
 
 def _parse_rollout_info(raw_statistics: List[Dict[str, Any]]) -> Dict[str, Any]:
-    holder = {}
-    for history, ds, k, vs in iter_many_dicts_recursively(*raw_statistics, history=[]):
-        prefix = "/".join(history)
-        vs = reduce(operator.add, vs)
-        holder[f"{prefix}_mean"] = np.mean(vs)
-        holder[f"{prefix}_max"] = np.max(vs)
-        holder[f"{prefix}_min"] = np.min(vs)
-    return holder
+    """Merge a list of rollout information here.
+
+    Args:
+        raw_statistics (List[Dict[str, Any]]): A list of dict, each element is a result dict.
+
+    Returns:
+        Dict[str, Any]: A merged dict.
+    """
+
+    results = {"total_timesteps": 0, "FPS": 0.0}
+    evaluation = []
+
+    for e in raw_statistics:
+        if "evaluation" in e:
+            evaluation.append(e.pop("evaluation"))
+
+        for k, v in e.items():
+            if k == "total_timesteps":
+                results[k] += v
+            elif k == "FPS":
+                results[k] += v
+            else:
+                raise ValueError(f"Unknow key: {k} / {v}")
+
+    if len(evaluation) > 0:
+        raw_eval_results = defaultdict(lambda: [])
+        for e in evaluation:
+            for k, v in e.items():
+                raw_eval_results[k].append(v)
+        eval_results = {}
+        for k, v in raw_eval_results.items():
+            eval_results.update(
+                {f"{k}_max": np.max(v), f"{k}_min": np.min(v), f"{k}_mean": np.mean(v)}
+            )
+        results["evaluation"] = eval_results
+    return results
+
+
+def log(message: str):
+    logger.log(settings.LOG_LEVEL, f"(rollout worker) {message}")
+
+
+def validate_agent_group(
+    agent_group: Dict[str, List[AgentID]],
+    full_keys: List[AgentID],
+    observation_spaces: Dict[AgentID, gym.Space],
+    action_spaces: Dict[AgentID, gym.Space],
+) -> None:
+    """Validate agent group, check spaces.
+
+    Args:
+        agent_group (Dict[str, List[AgentID]]): A dict, mapping from runtime ids to lists of agent ids.
+        full_keys (List[AgentID]): A list of original environment agent ids.
+        observation_spaces (Dict[AgentID, gym.Space]): Agent observation space dict.
+        action_spaces (Dict[AgentID, gym.Space]): Agent action space dict.
+
+    Raises:
+        RuntimeError: Agents in a same group should share the same observation space and action space.
+        NotImplementedError: _description_
+    """
+    for agents in agent_group.values():
+        select_obs_space = observation_spaces[agents[0]]
+        select_act_space = action_spaces[agents[0]]
+        for agent in agents[1:]:
+            assert type(select_obs_space) == type(observation_spaces[agent])
+            assert select_obs_space.shape == observation_spaces[agent].shape
+            assert type(select_act_space) == type(action_spaces[agent])
+            assert select_act_space.shape == action_spaces[agent].shape
+
+
+def default_rollout_callback(coordinator: ray.ObjectRef, results: Dict[str, Any]):
+    pass
+
+
+def default_simulate_callback(coordinator: ray.ObjectRef, results: Dict[str, Any]):
+    pass
+
+
+def validate_runtime_configs(configs: Dict[str, Any]):
+    """Validate runtime configuration.
+
+    Args:
+        configs (Dict[str, Any]): Raw runtime configuration
+
+    Raises:
+        AssertionError: Key not in configs
+    """
+
+    assert "fragment_length" in configs
+    assert "max_step" in configs
+    assert "num_eval_episodes" in configs
+    assert "num_threads" in configs
+    assert "num_env_per_thread" in configs
+    assert "num_eval_threads" in configs
+    assert "use_subproc_env" in configs
+    assert "batch_mode" in configs
+    assert "postprocessor_types" in configs
+    assert "eval_interval" in configs
 
 
 class BaseRolloutWorker(RemoteInterFace):
     def __init__(
         self,
-        worker_index: Any,
         env_desc: Dict[str, Any],
         agent_mapping_func: Callable,
         runtime_configs: Dict[str, Any],
-        experiment_config: Dict[str, Any],
+        log_dir: str,
+        experiment_tag: Any,
+        reverb_table_kwargs: Dict[str, Any],
+        rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
+        simulate_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
+        outer_inference_client=None,
+        outer_inference_server=None,
     ):
         """Create a instance for simulations, rollout and evaluation. This base class initializes \
             all necessary servers and workers for rollouts. Including remote agent interfaces, \
                 workers for simultaions.
 
-        :param worker_index: The assigned worker index.
-        :type worker_index: Any
-        :param env_desc: The environment description.
-        :type env_desc: Dict[str, Any]
-        :param agent_mapping_func: The agent mapping function, maps environment agents to runtime ids. \
-            It is shared among all workers.
-        :type agent_mapping_func: Callable
-        :param runtime_configs: The runtim configuraiton for the initialization of all workers.
-        :type runtime_configs: Dict[str, Any]
-        :param experiment_config: The experiment configuration, for the logging server connection.
-        :type experiment_config: Dict[str, Any]
+        Args:
+            env_desc (Dict[str, Any]): The environment description.
+            agent_mapping_func (Callable): The agent mapping function, maps environment agents to runtime ids. \
+                It is shared among all workers.
+            runtime_configs (Dict[str, Any]): Basic runtime configuration to control the rollout. Keys including
+            * `fragment_length`: int, how many steps for each data collection and broadcasting.
+            * `max_step`: int, the maximum step of each episode.
+            * `num_eval_episodes`: int, the number of epsiodes for each evaluation.
+            log_dir (str): Log directory.
+            experiment_tag (str): Experiment tag, to create a data table.
+            reverb_table_kwargs (Dict[str, Any]): Configuration to create reverb table.
+            rollout_callback (Callable[[ray.ObjectRef, Dict[str, Any]], Any], optional): Callback function for rollout task, users can determine how \
+                to cordinate with coordinator here. Defaults by None, indicating no coordination.
+            simulate_callback (Callable[[ray.ObjectRef, Dict[str, Any]], Any]): Callback function for simulation task, users can determine \
+                how to coordinate with coordinator here. Defaults by None, indicating no coordination.
         """
 
-        self._worker_index = worker_index
-        self._env_description = env_desc
-        self.global_step = 0
-
-        self._coordinator = None
-        self._parameter_server = None
-        self._offline_dataset = None
-        self._agents = env_desc["possible_agents"]
+        self.worker_indentifier = f"rolloutworker_{os.getpid()}"
 
         # map agents
         agent_group = defaultdict(lambda: [])
@@ -118,23 +204,40 @@ class BaseRolloutWorker(RemoteInterFace):
         runtime_agent_ids = set(runtime_agent_ids)
         agent_group = dict(agent_group)
 
+        # valid agent group
+        validate_agent_group(
+            agent_group,
+            full_keys=env_desc["possible_agents"],
+            observation_spaces=env_desc["observation_spaces"],
+            action_spaces=env_desc["action_spaces"],
+        )
+
+        self.env_description = env_desc
+        self.env_agents = env_desc["possible_agents"]
         self.runtime_agent_ids = runtime_agent_ids
         self.agent_group = agent_group
-        self.worker_runtime_configs = runtime_configs
+        self.worker_runtime_configs: Dict[str, Any] = runtime_configs
+
+        validate_runtime_configs(self.worker_runtime_configs)
+
+        self.coordinator = None
+        self.dataset_server = None
+        self._parameter_server = None
 
         self.init_servers()
+        self.inference_client_cls = outer_inference_client or InferenceClient
+        self.inference_server_cls = outer_inference_server or InferenceWorkerSet
         self.agent_interfaces = self.init_agent_interfaces(env_desc, runtime_agent_ids)
-        self.actor_pool = self.init_actor_pool(
+        self.actor_pool: ActorPool = self.init_actor_pool(
             env_desc, runtime_configs, agent_mapping_func
         )
-        self.logger = get_logger(
-            log_level=settings.LOG_LEVEL,
-            log_dir=settings.LOG_DIR,
-            name="rollout_worker_{}".format(os.getpid()),
-            remote=settings.USE_REMOTE_LOGGER,
-            mongo=settings.USE_MONGO_LOGGER,
-            **experiment_config,
-        )
+
+        self.log_dir = log_dir
+        self.rollout_callback = rollout_callback or default_rollout_callback
+        self.simulate_callback = simulate_callback or default_simulate_callback
+        self.tb_writer = tensorboard.SummaryWriter(log_dir=log_dir)
+        self.experiment_tag = experiment_tag
+        self.reverb_table_kwargs = reverb_table_kwargs
 
     def init_agent_interfaces(
         self, env_desc: Dict[str, Any], runtime_ids: Sequence[AgentID]
@@ -142,12 +245,12 @@ class BaseRolloutWorker(RemoteInterFace):
         """Initialize agent interfaces which is a dict of `InterfaceWorkerSet`. The keys in the \
             dict is generated from the given agent mapping function.
 
-        :param env_desc: Environment description.
-        :type env_desc: Dict[str, Any]
-        :param runtime_ids: Available runtime ids, generated with agent mapping function.
-        :type runtime_ids: Sequence[AgentID]
-        :return: A dict of agent interface.
-        :rtype: Dict[AgentID, Any]
+        Args:
+            env_desc (Dict[str, Any]): Environment description.
+            runtime_ids (Sequence[AgentID]): Available runtime ids, generated with agent mapping function.
+
+        Returns:
+            Dict[AgentID, Any]: A dict of `InferenceWorkerSet`, mapping from `runtime_ids` to `ray.ObjectRef(s)`
         """
 
         # interact with environment
@@ -162,7 +265,7 @@ class BaseRolloutWorker(RemoteInterFace):
             runtime_act_spaces[rid] = act_spaces[agents[0]]
 
         agent_interfaces = {
-            runtime_id: InferenceWorkerSet.remote(
+            runtime_id: self.inference_server_cls.remote(
                 agent_id=runtime_id,
                 observation_space=runtime_obs_spaces[runtime_id],
                 action_space=runtime_act_spaces[runtime_id],
@@ -183,19 +286,18 @@ class BaseRolloutWorker(RemoteInterFace):
         """Initialize an actor pool for the management of simulation tasks. Note the size of the \
             generated actor pool is determined by `num_threads + num_eval_threads`.
 
-        :param env_desc: Environment description.
-        :type env_desc: Dict[str, Any]
-        :param runtime_configs: Runtime configuraitons, the given keys in this configuration include
-            - `num_threads`: determines the size of this actor pool.
-            - `num_env_per_thread`: indicates how many environments will be created for each thread.
-            - `num_eval_threads`: determines how many threads will be created for the evaluation along the rollouts.
+        Args:
+            env_desc (Dict[str, Any]): Environment description.
+            runtime_configs (Dict[str, Any]): Runtime configuration, the given keys in this configuration \
+                include:
+                - `num_threads`: int, determines the size of this actor pool.
+                - `num_env_per_thread`: int, indicates how many environments will be created for each thread.
+                - `num_eval_threads`: int, determines how many threads will be created for the evaluation along the rollouts.
+            agent_mapping_func (Callable): Agent mapping function which maps environment agents \
+                to runtime ids, shared among all workers.
 
-        :type runtime_configs: Dict[str, Any]
-        :param agent_mapping_func: Agent mapping function which maps environment agents to runtime ids, shared \
-            among all workers.
-        :type agent_mapping_func: Callable
-        :return: An instance of `ActorPool`.
-        :rtype: ActorPool
+        Returns:
+            ActorPool: An instance of `ActorPool`.
         """
 
         num_threads = runtime_configs["num_threads"]
@@ -204,7 +306,7 @@ class BaseRolloutWorker(RemoteInterFace):
 
         actor_pool = ActorPool(
             [
-                InferenceClient.remote(
+                self.inference_client_cls.remote(
                     env_desc,
                     ray.get_actor(settings.OFFLINE_DATASET_ACTOR),
                     max_env_num=num_env_per_thread,
@@ -227,168 +329,120 @@ class BaseRolloutWorker(RemoteInterFace):
         retries = 100
         while True:
             try:
-                if self._coordinator is None:
-                    self._coordinator = ray.get_actor(settings.COORDINATOR_SERVER_ACTOR)
+                if self.coordinator is None:
+                    self.coordinator = ray.get_actor(settings.COORDINATOR_SERVER_ACTOR)
 
                 if self._parameter_server is None:
                     self._parameter_server = ray.get_actor(
                         settings.PARAMETER_SERVER_ACTOR
                     )
 
-                if self._offline_dataset is None:
-                    self._offline_dataset = ray.get_actor(
-                        settings.OFFLINE_DATASET_ACTOR
-                    )
-                self._status = Status.IDLE
+                if self.dataset_server is None:
+                    self.dataset_server = ray.get_actor(settings.OFFLINE_DATASET_ACTOR)
                 break
             except Exception as e:
                 retries -= 1
                 if retries == 0:
-                    self.logger.error("reached maximum retries")
                     raise RuntimeError(traceback.format_exc())
                 else:
-                    self.logger.warning(
-                        f"waiting for coordinator server initialization ... {self._worker_index}\n{traceback.format_exc()}"
+                    logger.log(
+                        logging.WARNING,
+                        f"waiting for coordinator server initialization ... {self.worker_indentifier}",
                     )
                     time.sleep(1)
 
-    def get_status(self):
-        return self._status
+    def rollout(
+        self,
+        runtime_strategy_specs: Dict[str, StrategySpec],
+        stopping_conditions: Dict[str, Any],
+        trainable_agents: List[AgentID] = None,
+    ):
+        """Run rollout procedure, collect data until meets the stopping conditions.
 
-    def set_status(self, status):
-        if status == self._status:
-            return Status.FAILED
-        else:
-            self._status = status
-            return Status.SUCCESS
+        NOTE: the data collection will be triggered only for trainable agents.
 
-    def rollout(self, task_desc: TaskDescription):
-        """Collect training data asynchronously and stop it until the evaluation results meet the stopping conditions"""
+        Args:
+            runtime_strategy_specs (Dict[str, StrategySpec]): A dict of strategy spec, mapping from runtime id to `StrategySpec`.
+            stopping_conditions (Dict[str, Any]): A dict of stopping conditions.
+            trainable_agents (List[AgentID], optional): A list of environment agent id. Defaults to None, which means all environment agents will be trainable.
+        """
 
-        stopper = get_stopper(task_desc.content.stopper)(
-            config=task_desc.content.stopper_config, tasks=None
-        )
-        merged_statics = {}
-        epoch = 0
-        print_every = 100
+        stopper = get_stopper(stopping_conditions)
+        trainable_agents = trainable_agents or self.env_agents
 
-        # create data table
-        trainable_pairs = task_desc.content.agent_involve_info.trainable_pairs
-        # map trainable to runtime
-        buffer_desc = {}
-        for rid in self.runtime_agent_ids:
-            pids = [
-                trainable_pairs[aid][0]
-                for aid in self.agent_group[rid]
-                if aid in trainable_pairs
-            ]
-            if len(pids) == 0:
-                continue
-            buffer_desc[rid] = BufferDescription(
-                env_id=self._env_description["config"][
-                    "env_id"
-                ],  # TODO(ziyu): this should be move outside "config"
-                agent_id=self.agent_group[rid],
-                policy_id=pids,
-                capacity=None,
-                sample_start_size=None,
+        ray.get(
+            self.dataset_server.create_table.remote(
+                name=self.experiment_tag,
+                reverb_server_kwargs={
+                    "tb_params_list": [{"name": agent} for agent in trainable_agents]
+                },
             )
-        for v in buffer_desc.values():
-            ray.get(self._offline_dataset.create_table.remote(v))
+        )
 
         runtime_configs_template = self.worker_runtime_configs.copy()
-        behavior_policy_mapping = {k: v[0] for k, v in trainable_pairs.items()}
         runtime_configs_template.update(
             {
                 "flag": "rollout",
-                "max_step": task_desc.content.max_step,
-                "policy_distribution": task_desc.content.policy_distribution,
-                "parameter_desc_dict": task_desc.content.agent_involve_info.meta_parameter_desc_dict,
-                "trainable_pairs": trainable_pairs,
-                "behavior_policies": behavior_policy_mapping,
+                "strategy_specs": runtime_strategy_specs,
+                "trainable_agents": trainable_agents,
                 "agent_group": self.agent_group,
-                "fragment_length": task_desc.content.fragment_length,
             }
         )
-        start = time.time()
-        total_num_frames = 0
-        while not stopper(merged_statics, global_step=epoch):
-            epoch_start = time.time()
-            holder, epoch_num_frames = self.step_rollout(
-                epoch, task_desc, buffer_desc, runtime_configs_template
-            )
-            total_num_frames += epoch_num_frames
-            epoch_end = time.time()
+        total_timesteps = 0
+        eval_results = {}
+        epoch = 0
 
-            if (epoch + 1) % print_every == 0:
-                Logger.info("\tepoch: %s (evaluation) %s", epoch, holder)
-            if self.logger.is_remote:
-                for k, v in holder.items():
-                    self.logger.send_scalar(
-                        tag="Evaluation/{}".format(k),
-                        content=v,
-                        global_step=epoch,
-                    )
-                self.logger.send_scalar(
-                    tag="Performance/rollout_FPS",
-                    content=epoch_num_frames / (epoch_end - epoch_start),
-                    global_step=epoch,
+        while True:
+            eval_step = (epoch + 1) % self.worker_runtime_configs["eval_interval"] == 0
+            results = self.step_rollout(
+                eval_step, self.experiment_tag, runtime_configs_template
+            )
+            total_timesteps += results["total_timesteps"]
+            eval_results = results.get("evaluation", None)
+
+            if eval_results is not None:
+                log(f"epoch: {epoch} [{eval_results}]")
+                write_to_tensorboard(
+                    self.tb_writer,
+                    eval_results,
+                    global_step=total_timesteps,
+                    prefix="Evaluation",
                 )
-                self.logger.send_scalar(
-                    tag="Performance/ave_rollout_FPS",
-                    content=total_num_frames / (epoch_end - start),
-                    global_step=epoch,
-                )
+
+            if stopper.should_stop(results):
+                break
             epoch += 1
 
-        rollout_feedback = RolloutFeedback(
-            worker_idx=self._worker_index,
-            agent_involve_info=task_desc.content.agent_involve_info,
-            statistics=holder,
-        )
-        self.callback(
-            Status.NORMAL, task_desc, rollout_feedback, role="rollout", relieve=True
-        )
+        self.rollout_callback(self.coordinator, results)
 
-    def simulate(self, task_desc: TaskDescription):
+    def simulate(self, runtime_strategy_specs_list: List[Dict[str, StrategySpec]]):
         """Handling simulation task."""
 
-        combinations = task_desc.content.policy_combinations
-        agent_involve_info = task_desc.content.agent_involve_info
-        raw_statistics = self.step_simulation(task_desc)
+        runtime_configs_template = self.worker_runtime_configs.copy()
+        runtime_configs_template.update(
+            {
+                "flag": "simulation",
+            }
+        )
 
-        for statistics, combination in zip(raw_statistics, combinations):
-            holder = _parse_rollout_info([statistics])
-            rollout_feedback = RolloutFeedback(
-                worker_idx=self._worker_index,
-                agent_involve_info=agent_involve_info,
-                statistics=holder,
-                policy_combination={k: p for k, (p, _) in combination.items()},
-            )
-            task_req = TaskRequest.from_task_desc(
-                task_desc=task_desc,
-                task_type=TaskType.UPDATE_PAYOFFTABLE,
-                content=rollout_feedback,
-            )
-            self._coordinator.request.remote(task_req)
-        self.set_status(Status.IDLE)
+        results: List[Dict[str, Any]] = self.step_simulation(
+            runtime_strategy_specs_list, runtime_configs_template
+        )
+
+        self.simulate_callback(self.coordinator, results)
 
     def step_rollout(
         self,
-        n_step: int,
-        task_desc: TaskDescription,
-        buffer_desc: BufferDescription,
+        eval_step: bool,
+        dataserver_entrypoint: str,
         runtime_configs: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         """The logic function to run rollout. Users must implment this method.
 
-        :param n_step: Indicates the rollout iteration.
-        :type n_step: int
-        :param task_desc: The instance of task description.
-        :type task_desc: TaskDescription
-        :param buffer_desc: The instance of buffer description
-        :type buffer_desc: BufferDescription
-        :param runtime_configs: Runtime configurations to control the amount of sampled data. Keys include:
+        Args:
+            eval_step (bool): Indicate evaluation or not.
+            buffer_desc (BufferDescription): The instance of buffer description, for data send.
+            runtime_configs (Dict[str, Any]): runtime_configs: Runtime configurations to control the amount of sampled data. Keys include:
             - `flag`: indicate the task type, the value is rollout.
             - `max_step`: indicates the maximum length of an episode.
             - `num_episodes`: indicates how many episodes will be collected.
@@ -402,92 +456,38 @@ class BaseRolloutWorker(RemoteInterFace):
                 governed by what runtime agent interface.
             - `fragment_length`: the maximum of collected data frames.
 
-        :type runtime_configs: Dict[str, Any]
-        :raises NotImplementedError: Not implemented error
-        :return: A list of dict which logs the rollout information.
-        :rtype: List[Dict[str, Any]]
+        Raises:
+            NotImplementedError: _description_
+
+        Returns:
+            List[Dict[str, Any]]: Evaluation results, could be empty.
         """
         raise NotImplementedError
 
-    def step_simulation(self, task_desc: TaskDescription) -> List[Dict[str, Any]]:
-        raise NotImplementedError
-
-    def callback(
+    def step_simulation(
         self,
-        status: Status,
-        task_desc: TaskDescription,
-        content: Any,
-        role: str,
-        relieve: bool,
-    ):
-        if role == "simulation":
-            task_req = TaskRequest.from_task_desc(
-                task_desc=task_desc,
-                task_type=TaskType.UPDATE_PAYOFFTABLE,
-                content=content,
-            )
-            self._coordinator.request.remote(task_req)
-        else:
-            if status is not Status.LOCKED:
-                parameter_desc_dict = (
-                    content.agent_involve_info.meta_parameter_desc_dict
-                )
-                for agent, (
-                    pid,
-                    _,
-                ) in content.agent_involve_info.trainable_pairs.items():
-                    parameter_desc = copy.copy(
-                        parameter_desc_dict[agent].parameter_desc_dict[pid]
-                    )
-                    parameter_desc.type = "parameter"
-                    parameter_desc.lock = True
-                    parameter_desc.data = (
-                        self.agent_interfaces[agent].policies[pid].state_dict()
-                    )
-                    _ = ray.get(self._parameter_server.push.remote(parameter_desc))
-                self._coordinator.request.remote(
-                    TaskRequest.from_task_desc(
-                        task_desc=task_desc,
-                        task_type=TaskType.EVALUATE,
-                        content=content,
-                    )
-                )
-        if relieve:
-            # unlock worker
-            self.set_status(Status.IDLE)
+        runtime_strategy_specs_list: List[Dict[str, StrategySpec]],
+        runtime_conigs_template: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """Logic function for running simulation of a list of strategy spec dict.
+
+        Args:
+            runtime_strategy_specs_list (List[Dict[str, StrategySpec]]): A list of strategy spec dict.
+            runtime_conigs_template (Dict[str, Any]): Runtime configuration template.
+
+        Raises:
+            NotImplementedError: Not implemented error.
+
+        Returns:
+            List[Dict[str, Any]]: A list of evaluation results, one for each strategy spec dict.
+        """
+        raise NotImplementedError
 
     def assign_episode_id(self):
-        return f"eps-{self._worker_index}-{time.time()}"
-
-    def ready_for_sample(self, policy_distribution=None):
-        """Reset policy behavior distribution.
-
-        :param policy_distribution: Dict[AgentID, Dict[PolicyID, float]], default by None
-        """
-
-        for aid, interface in self.agent_interfaces.items():
-            if policy_distribution is None or aid not in policy_distribution:
-                pass
-            else:
-                interface.set_behavior_dist(policy_distribution[aid])
-
-    def save_model(self):
-        """Save policy model to log directory."""
-
-        save_dir = os.path.join(
-            settings.LOG_DIR,
-            self._kwargs["exp_cfg"]["expr_group"],
-            self._kwargs["exp_cfg"]["expr_name"],
-            "models",
-        )
-        for aid, interface in self._agent_interfaces.items():
-            _save_dir = os.path.join(save_dir, aid)
-            interface.save(_save_dir)
+        return f"eps-{self.worker_indentifier}-{time.time()}"
 
     def close(self):
         """Terminate worker"""
-
-        # TODO(ming): store worker's state
-        self.logger.info(f"Worker: {self._worker_index} has been terminated.")
-        for agent in self.agent_interfaces.values():
-            agent.close()
+        # TODO(ming): shut down actor pool
+        # ray.kill(self.actor_pool)
+        pass

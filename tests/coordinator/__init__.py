@@ -13,6 +13,12 @@ from malib.utils.typing import (
 
 @ray.remote
 class FakeCoordinator:
+    def __init__(self):
+        print("fake coordinator created.")
+
+    def start(self):
+        return True
+
     def gen_simulation_task(self, task_request: TaskRequest, mathces: List):
         pass
 

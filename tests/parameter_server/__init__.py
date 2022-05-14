@@ -6,6 +6,12 @@ from malib.utils.typing import ParameterDescription, Status
 
 @ray.remote
 class FakeParameterServer:
+    def __init__(self):
+        print("fake parameterserver created.")
+
+    def start(self):
+        return True
+
     def pull(self, parameter_desc: ParameterDescription, keep_return: bool = False):
         status = Status.NORMAL
         return status, parameter_desc

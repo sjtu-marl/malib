@@ -22,37 +22,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import operator
+from typing import Dict, Any, List, Callable
 
-import numpy as np
+import ray
 
-from functools import reduce
-
-from malib.rollout.base_worker import BaseRolloutWorker
-from malib.utils.typing import (
-    Dict,
-    Any,
-    AgentID,
-    Any,
-    BufferDescription,
-    Dict,
-    List,
-    Callable,
-    TaskDescription,
-    Union,
-)
-from malib.utils.general import iter_many_dicts_recursively
-
-
-def _parse_rollout_info(raw_statistics: List[Dict[str, Any]]) -> Dict[str, Any]:
-    holder = {}
-    for history, ds, k, vs in iter_many_dicts_recursively(*raw_statistics, history=[]):
-        prefix = "/".join(history)
-        vs = reduce(operator.add, vs)
-        holder[f"{prefix}_mean"] = np.mean(vs)
-        holder[f"{prefix}_max"] = np.max(vs)
-        holder[f"{prefix}_min"] = np.min(vs)
-    return holder
+from malib.rollout.base_worker import BaseRolloutWorker, _parse_rollout_info
+from malib.common.strategy_spec import StrategySpec
 
 
 class RolloutWorker(BaseRolloutWorker):
@@ -60,26 +35,34 @@ class RolloutWorker(BaseRolloutWorker):
 
     def __init__(
         self,
-        worker_index: Any,
         env_desc: Dict[str, Any],
         agent_mapping_func: Callable,
         runtime_configs: Dict[str, Any],
-        experiment_config: Dict[str, Any],
+        log_dir: str,
+        experiment_tag: Any,
+        reverb_table_kwargs: Dict[str, Any],
+        rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
+        simulate_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
+        outer_inference_client=None,
+        outer_inference_server=None,
     ):
-        BaseRolloutWorker.__init__(
-            self,
-            worker_index,
+        super().__init__(
             env_desc,
             agent_mapping_func,
             runtime_configs,
-            experiment_config,
+            log_dir,
+            experiment_tag,
+            reverb_table_kwargs,
+            rollout_callback,
+            simulate_callback,
+            outer_inference_client=outer_inference_client,
+            outer_inference_server=outer_inference_server,
         )
 
     def step_rollout(
         self,
-        n_step: int,
-        task_desc: TaskDescription,
-        buffer_desc: Union[Dict[AgentID, BufferDescription], BufferDescription],
+        eval_step: bool,
+        dataserver_entrypoint: str,
         runtime_configs_template: Dict[str, Any],
     ):
         tasks = [
@@ -88,69 +71,53 @@ class RolloutWorker(BaseRolloutWorker):
         ]
 
         # add tasks for evaluation
-        eval_runtime_configs = runtime_configs_template.copy()
-        eval_runtime_configs["flag"] = "evaluation"
-        tasks.extend(
-            [
-                eval_runtime_configs
-                for _ in range(self.worker_runtime_configs["num_eval_threads"])
-            ]
-        )
+        if eval_step:
+            eval_runtime_configs = runtime_configs_template.copy()
+            eval_runtime_configs["flag"] = "evaluation"
+            tasks.extend(
+                [
+                    eval_runtime_configs
+                    for _ in range(self.worker_runtime_configs["num_eval_threads"])
+                ]
+            )
 
-        rets = self.actor_pool.map(
-            lambda a, task: a.run.remote(
-                agent_interfaces=self.agent_interfaces,
-                desc=task,
-                buffer_desc=buffer_desc,
-            ),
-            tasks,
-        )
-
-        stats_list = []
-        num_frames = 0
-        for ret in rets:
-            # we retrieve only results from evaluation/simulation actors.
-            if ret["task_type"] == "evaluation":
-                stats_list.append(ret["eval_info"])
-            num_frames += ret["total_fragment_length"]
-
-        holder = _parse_rollout_info(stats_list)
-
-        return holder, num_frames
-
-    def step_simulation(self, task_desc: TaskDescription):
-        # TODO(ming): has not been tested yet.
-        combinations = task_desc.content.policy_combinations
-        num_episodes = task_desc.content.num_episodes
-        policy_combinations = [
-            {k: p for k, (p, _) in comb.items()} for comb in combinations
+        rets = [
+            x
+            for x in self.actor_pool.map(
+                lambda a, task: a.run.remote(
+                    agent_interfaces=self.agent_interfaces,
+                    desc=task,
+                    dataserver_entrypoint=dataserver_entrypoint,
+                ),
+                tasks,
+            )
         ]
 
-        tasks = [
-            {
-                "num_episodes": num_episodes,
-                "behavior_policies": comb,
-                "flag": "simulation",
-            }
-            for comb in policy_combinations
+        parsed_results = _parse_rollout_info(rets)
+
+        return parsed_results
+
+    def step_simulation(
+        self,
+        runtime_strategy_specs_list: List[Dict[str, StrategySpec]],
+        runtime_configs_template: Dict[str, Any],
+    ):
+        tasks = []
+        for strategy_specs in runtime_strategy_specs_list:
+            task = runtime_configs_template.copy()
+            task["strategy_specs"] = strategy_specs
+            tasks.append(task)
+
+        rets = [
+            x
+            for x in self.actor_pool.map(
+                lambda a, task: a.run.remote(
+                    agent_interfaces=self.agent_interfaces,
+                    desc=task,
+                ),
+                tasks,
+            )
         ]
 
-        rets = self.actor_pool.map(
-            lambda a, task: a.run.remote(
-                agent_interfaces=self.agent_interfaces,
-                desc=task,
-                buffer_desc=None,
-            ),
-            tasks,
-        )
-
-        stats_list = []
-        for ret in rets:
-            stats_list.append(ret["eval_info"])
-        return stats_list
-
-    def close(self):
-        BaseRolloutWorker.close(self)
-        for actor in self.actors:
-            actor.stop.remote()
-            actor.__ray_terminate__.remote()
+        results = _parse_rollout_info(rets)
+        return results

@@ -61,11 +61,11 @@ class OfflineDataset:
         """
         return {"address": self.servers[table_name].port}
 
-    def create_table(self, table_name: str, reverb_server_kwargs: Dict[str, Any]):
+    def create_table(self, name: str, reverb_server_kwargs: Dict[str, Any]):
         """Create sub reverb server.
 
         Args:
-            table_name (str): Sub server name.
+            name (str): Sub server name.
             reverb_server_kwargs (Dict[str, Any]): Reverb server kwargs, keys including:
             - `port`: str, optional, the gRPC port string.
             - `checkpointer`: reverb.platform.default.CheckpointerBase, optional.
@@ -83,11 +83,11 @@ class OfflineDataset:
             - `signature`:
         """
 
-        if table_name not in self.servers:
+        if name not in self.servers:
             port = reverb_server_kwargs.get("port", None)
             checkpointer = reverb_server_kwargs.get("checkpointer", None)
             tb_params_list = reverb_server_kwargs["tb_params_list"]
-            self.servers[table_name] = reverb.Server(
+            self.servers[name] = reverb.Server(
                 tables=[
                     reverb.Table(
                         name=tb_params["name"],

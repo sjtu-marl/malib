@@ -17,8 +17,10 @@ from typing import Dict, Any, Tuple, Callable, Union, Sequence
 import gym
 import ray
 
+from reverb import Client
+
 from malib import settings
-from malib.utils.stoppers import get_stopper
+from malib.utils.stopping_conditions import get_stopper
 from malib.utils.typing import (
     PolicyID,
     ParameterDescription,
@@ -36,7 +38,6 @@ from malib.utils import errors
 from malib.utils.logger import Logger, get_logger, Log
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.trainer import Trainer
-from malib.backend.datapool.offline_dataset_server import Table
 
 
 AgentFeedback = namedtuple("AgentFeedback", "id, trainable_pairs, statistics")
