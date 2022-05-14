@@ -20,6 +20,7 @@ colorlog==6.6.0
 mujoco_py
 hiredis==2.0.0
 frozendict==2.3.0
+dm-tree==0.1.7
 black==22.3.0
 pytest
 sphinx

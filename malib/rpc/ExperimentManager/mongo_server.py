@@ -66,8 +66,8 @@ class MongoProfiler:
             )
             summary["aliveness"] = summary["heartbeat"][-1] - time.time()
             summary["cpu"] = np.round(np.array(summary["cpu"]), 1)
-            summary["mem"] = np.round(np.array(summary["mem"]) / (1024 ** 3), 1)
-            summary["gpu"] = np.round(np.array(summary["gpu"]) / (1024 ** 3), 1)
+            summary["mem"] = np.round(np.array(summary["mem"]) / (1024**3), 1)
+            summary["gpu"] = np.round(np.array(summary["gpu"]) / (1024**3), 1)
 
         return records
 
@@ -118,7 +118,7 @@ class MongoProfiler:
             summary["loaded"] = loaded_time / timestamps[-1]
             summary["time"] = np.round(np.array(timestamps) - self._start_time, 1)
             summary["data entry"] = np.round(np.array(entry_counts) / 1000, 1)
-            summary["exchange scale"] = np.round(np.array(entry_sizes) / (1024 ** 2), 1)
+            summary["exchange scale"] = np.round(np.array(entry_sizes) / (1024**2), 1)
 
             records[cid] = summary
 

@@ -1,6 +1,26 @@
-"""BaseRolloutWorker integrates a lots of task specified methods required by distributed execution.
-Users can implement and register their own rollout worker by inheriting from this class.
-"""
+# MIT License
+
+# Copyright (c) 2021 MARL @ SJTU
+
+# Author: Ming Zhou
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 import os
 import copy
@@ -422,7 +442,7 @@ class BaseRolloutWorker(RemoteInterFace):
                     parameter_desc.type = "parameter"
                     parameter_desc.lock = True
                     parameter_desc.data = (
-                        self._agent_interfaces[agent].policies[pid].state_dict()
+                        self.agent_interfaces[agent].policies[pid].state_dict()
                     )
                     _ = ray.get(self._parameter_server.push.remote(parameter_desc))
                 self._coordinator.request.remote(
@@ -445,7 +465,7 @@ class BaseRolloutWorker(RemoteInterFace):
         :param policy_distribution: Dict[AgentID, Dict[PolicyID, float]], default by None
         """
 
-        for aid, interface in self._agent_interfaces.items():
+        for aid, interface in self.agent_interfaces.items():
             if policy_distribution is None or aid not in policy_distribution:
                 pass
             else:
@@ -469,5 +489,5 @@ class BaseRolloutWorker(RemoteInterFace):
 
         # TODO(ming): store worker's state
         self.logger.info(f"Worker: {self._worker_index} has been terminated.")
-        for agent in self._agent_interfaces.values():
+        for agent in self.agent_interfaces.values():
             agent.close()

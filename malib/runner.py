@@ -41,30 +41,19 @@ def run(
 ):
     """Launch learning task.
 
-    :param group: Naming the experiment group
-    :type group: str
-    :param name: Specifying the experiment name
-    :type name: str
-    :param task_mode: Task mode, could be `marl` or `gt`
-    :type task_mode: str
-    :param env_description: Environment description
-    :type env_description: Dict[str, Any]
-    :param training: Training configuration
-    :type training: Dict[str, Any]
-    :param algorithms: Algorithm configuration
-    :type algorithms: Dict[str, Any]
-    :param rollout_worker: Rollout configuration for worker initialization
-    :type rollout_worker: Dict[str, Any]
-    :param agent_mapping_func: Agent mapping function, will determine which agent will be mapped into one learner, defaults to lambdaagent:agent
-    :type agent_mapping_func: LambdaType, optional
-    :param evaluation: Evaluation configuration, defaults to None
-    :type evaluation: Dict[str, Any], optional
-    :param global_evaluator: Specifying the global evaluator configuration, defaults to None
-    :type global_evaluator: Any, optional
-    :param dataset_config: Dataset configuration, defaults to None
-    :type dataset_config: Dict[str, Any], optional
-    :param parameter_server: Parameter server configuration, defaults to None
-    :type parameter_server: Dict[str, Any], optional
+    Args:
+        task_mode (str): Task mode, could be `gt` or `marl`.
+        env_description (Dict[str, Any]): Environment description.
+        training (Dict[str, Any]): Training description.
+        algorithms (Dict[str, Any]): A dict of algorithm description.
+        rollout_worker (Dict[str, Any]): Configuration of rollout worker.
+        group (str, optional): _description_. Defaults to "experiment".
+        name (str, optional): Case name. Defaults to str(time.time()).
+        agent_mapping_func (LambdaType, optional): Agent mapping function, for agent groupping. Defaults to lambdaagent:agent.
+        evaluation (Dict[str, Any], optional): Evaluation configuration. Defaults to dict().
+        global_evaluator (Any, optional): Global evaluation configuration. Defaults to None.
+        dataset_config (Dict[str, Any], optional): Dataset configuration. Defaults to dict().
+        parameter_server (Dict[str, Any], optional): Parameter server configuration. Defaults to dict().
     """
 
     config = locals()

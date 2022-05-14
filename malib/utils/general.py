@@ -1,12 +1,34 @@
+# MIT License
+
+# Copyright (c) 2021 MARL @ SJTU
+
+# Author: Ming Zhou
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 from typing import OrderedDict
 
 import torch
 import numpy as np
-import copy
 
 from malib import settings
 from malib.utils.typing import Dict, Callable, List, Tuple, Any
-from malib.envs import gen_env_desc
 
 
 def update_rollout_configs(
@@ -14,20 +36,22 @@ def update_rollout_configs(
 ) -> Dict[str, Any]:
     """Update default rollout configuration and return a new one.
 
-    :note: the keys in rollout configuration include
-        - num_threads, int, the total threads in a rollout worker to run simulations.
-        - num_env_per_thread, int.
-        - batch_mode, default by 'time_step'.
-        - post_processor_types, default by ['default'].
-        - use_subprov_env, default by False.
-        - num_eval_threads, default by 1.
+    Note:
+        the keys in rollout configuration include 
+        - `num_threads`: int, the total threads in a rollout worker to run simulations.
+        - `num_env_per_thread`: int, indicate how many environment will be created for \
+            each running thread.
+        - `batch_mode`: default by 'time_step'.
+        - `post_processor_types`: default by ['default'].
+        - `use_subprov_env`: use sub proc environment or not, default by False.
+        - `num_eval_threads`: the number of threads for evaluation, default by 1.
 
-    :param global_dict: The default global configuration.
-    :type global_dict: Dict[str, Any]
-    :param runtime_dict: The dict used to update the rollout configuration.
-    :type runtime_dict: Dict[str, Any]
-    :return: The new rollout configuration.
-    :rtype: Dict[str, Any]
+    Args:
+        global_dict (Dict[str, Any]): The default global configuration.
+        runtime_dict (Dict[str, Any]): The default global configuration.
+
+    Returns:
+        Dict[str, Any]: Updated rollout configuration.
     """
 
     new_instance = global_dict["rollout_worker"].copy()
@@ -109,9 +133,6 @@ def update_configs(runtime_config: Dict[str, Any]):
         "marl",
     ], "Illegal task mode: {}".format(runtime_config.get("task_mode"))
 
-    runtime_config["env_description"] = gen_env_desc(
-        runtime_config["env_description"]["creator"]
-    )(**runtime_config["env_description"]["config"])
     rollout_config = update_rollout_configs(settings.DEFAULT_CONFIG, runtime_config)
     env_description = runtime_config["env_description"]
     training_config = update_training_config(settings.DEFAULT_CONFIG, runtime_config)

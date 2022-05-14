@@ -1,28 +1,47 @@
+# MIT License
+
+# Copyright (c) 2021 MARL @ SJTU
+
+# Author: Ming Zhou
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 import traceback
 from collections import defaultdict
 from types import LambdaType
-from typing import Iterable, Sequence
 import ray
 import time
-import gym
 import os
 import numpy as np
 import gc
-import copy
 
 from ray.util.queue import Queue
 
 from malib import settings
-from malib.utils.logger import Logger, Log
+from malib.utils.logger import Log
 from malib.utils.typing import (
     AgentID,
     Any,
     BufferDescription,
     DataFrame,
     List,
-    PolicyID,
     Dict,
-    Status,
     BehaviorMode,
     Tuple,
     EnvID,
@@ -125,10 +144,6 @@ def process_env_rets(
                 "environment_ids": remain_env_ids,
             },
         )
-        # check batch size:
-        # pred_batch_size = list(dataframes[env_aid].data.values())[0].shape[0]
-        # for _k, _v in dataframes[env_aid].data.items():
-        #     assert _v.shape[0] == pred_batch_size, (_k, _v.shape, pred_batch_size)
 
     return replaced_holder, processed, dataframes
 
@@ -156,22 +171,11 @@ def process_policy_outputs(
 
             for k, v in data.items():
                 if k == EpisodeKey.RNN_STATE:
-                    # split to each environment
                     for i, env_id in enumerate(env_ids):
                         rets[env_id][k][agent] = [_v[i] for _v in v]
                 else:
-                    # if len(env_ids) == 1:
-                    #     if not isinstance(v, Iterable):
-                    #         v = [v]
-                    #     elif len(v.shape) == 0:
-                    #         v = v.reshape(-1)
-                    #         data[k] = v
-                    # try:
                     for env_id, _v in zip(env_ids, v):
                         rets[env_id][k][agent] = _v
-                    # except Exception as e:
-                    #     print("----------- ", type(v), v, env_ids)
-                    #     raise e
 
     # process action with action adapter
     env_actions: Dict[EnvID, Dict[AgentID, Any]] = env.action_adapter(rets)
@@ -284,15 +288,6 @@ class InferenceClient:
         reset: bool = False,
     ) -> Tuple[str, Dict[str, List]]:
 
-        # desc required:
-        #   flag,
-        #   behavior_policies,
-        #   policy_distribution (optional),
-        #   parameter_desc_dict
-        #   num_episodes,
-        #   max_step (optional)
-        #   postprocessor_types
-
         # reset timer, ready for monitor
         self.timer.clear()
         task_type = desc["flag"]
@@ -362,10 +357,8 @@ class InferenceClient:
                     fragment_length=client_runtime_config["fragment_length"],
                     max_step=client_runtime_config["max_step"],
                     custom_reset_config=client_runtime_config["custom_reset_config"],
-                    # trainable_mapping=client_runtime_config["trainable_mapping"],
                 )
 
-            # TODO(ming): process env returns here
             _, rets, dataframes = process_env_rets(rets, server_runtime_config)
             episodes = NewEpisodeDict(lambda env_id: Episode(None, env_id=env_id))
 
