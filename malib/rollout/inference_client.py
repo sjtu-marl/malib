@@ -415,7 +415,6 @@ def env_runner(
                 env_actions, processed_policy_outputs = process_policy_outputs(
                     policy_outputs, client.env
                 )
-                print(processed_policy_outputs)
                 episode_dict.record(processed_policy_outputs)
 
             with client.timer.time_avg("environment_step"):
