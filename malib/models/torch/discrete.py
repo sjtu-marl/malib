@@ -29,8 +29,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from malib.utils.data import to_torch
+
 from .net import MLP
-from .utils import to_torch
 
 
 class Actor(nn.Module):

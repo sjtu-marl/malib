@@ -1,132 +1,153 @@
+from typing import Dict, Any, Union
+
+import logging
+import os
+import copy
+
 import gym
 import torch
 import numpy as np
 
-from malib.utils.typing import DataTransferType, BehaviorMode, Dict, Any
+from torch import nn
+
 from malib.algorithm.common import misc
 from malib.algorithm.common.policy import Policy
-from malib.algorithm.common.model import get_model
-from malib.utils.episode import Episode
+
+from malib.models.torch import make_net
 
 
-class DQN(Policy):
+logger = logging.getLogger(__name__)
+
+
+class DQNPolicy(Policy):
     def __init__(
         self,
-        registered_name: str,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        model_config: Dict[str, Any] = None,
-        custom_config: Dict[str, Any] = None,
+        model_config: Dict[str, Any],
+        custom_config: Dict[str, Any],
+        is_fixed: bool = False,
+        replacement: Dict = None,
+    ):
+        super(DQNPolicy, self).__init__(
+            observation_space,
+            action_space,
+            model_config,
+            custom_config,
+            is_fixed,
+            replacement,
+        )
+
+        assert isinstance(action_space, gym.spaces.Discrete)
+
+        if replacement is not None:
+            self.critic = replacement["critic"]
+        else:
+            self.critic: nn.Module = make_net(
+                observation_space=observation_space,
+                action_space=action_space,
+                device=self.device,
+                net_type=model_config.get("net_type", None),
+                **model_config["config"]
+            )
+
+        self.use_cuda = self.custom_config.get("use_cuda", False)
+
+        if self.use_cuda:
+            self.critic = self.critic.to("cuda")
+
+        self._eps = 1.0
+
+        self.register_state(self._eps, "_eps")
+        self.register_state(self.critic, "critic")
+
+    @property
+    def eps(self) -> float:
+        return self._eps
+
+    @eps.setter
+    def eps(self, value: float):
+        self._eps = value
+
+    def compute_action(
+        self,
+        observation: torch.Tensor,
+        action_mask: Union[torch.Tensor, None],
+        hidden_state: Any,
+        evaluate: bool,
         **kwargs
     ):
-        super(DQN, self).__init__(
-            registered_name=registered_name,
-            observation_space=observation_space,
-            action_space=action_space,
-            model_config=model_config,
-            custom_config=custom_config,
-        )
+        """Compute action in rollout stage. Do not support vector mode yet.
 
-        assert isinstance(action_space, gym.spaces.Discrete), action_space
-
-        self._gamma = self.custom_config["gamma"]
-        self._eps_min = self.custom_config[
-            "eps_min"
-        ]  # custom_config.get("eps_min", 1e-2)
-        self._eps_max = self.custom_config[
-            "eps_max"
-        ]  # custom_config.get("eps_max", 1.0)
-        self._eps_decay = self.custom_config[
-            "eps_anneal_time"
-        ]  # custom_config.get("eps_decay", 2000)
-
-        self._model = get_model(self.model_config["critic"])(
-            observation_space, action_space, self.custom_config.get("use_cuda", False)
-        )
-        self._target_model = get_model(self.model_config["critic"])(
-            observation_space, action_space, self.custom_config.get("use_cuda", False)
-        )
-
-        self._step = 0
-
-        self.register_state(self._gamma, "_gamma")
-        self.register_state(self._eps_max, "_eps_max")
-        self.register_state(self._eps_min, "_eps_min")
-        self.register_state(self._eps_decay, "_eps_decay")
-        self.register_state(self._model, "critic")
-        self.register_state(self._target_model, "target_critic")
-        self.register_state(self._step, "_step")
-        self.set_critic(self._model)
-        self.target_critic = self._target_model
-
-        self.target_update()
-
-    def target_update(self):
-        with torch.no_grad():
-            misc.hard_update(self.target_critic, self.critic)
-
-    def _calc_eps(self):
-        # linear decay
-        return max(
-            self._eps_min,
-            self._eps_max
-            - (self._eps_max - self._eps_min) / self._eps_decay * self._step,
-        )
-        # return self._eps_min + (self._eps_max - self._eps_min) * np.exp(
-        #     -self._step / self._eps_decay
-        # )
-
-    def value_function(self, observation, **kwargs):
-        with torch.no_grad():
-            act_dist = np.asarray(kwargs["action_dist"])
-            state = self.preprocessor.transform(
-                observation, nested=(len(act_dist.shape) > 1)
-            )
-            values = self.critic(state)
-        return values.cpu().numpy().reshape(-1)
-
-    def compute_action(self, observation: DataTransferType, **kwargs):
-        """Compute action with one piece of observation. Behavior mode is used to do exploration/exploitation trade-off.
-
-        :param DataTransferType observation: Transformed observation in numpy.ndarray format.
-        :param dict kwargs: Optional dict-style arguments. {behavior_mode: ..., others: ...}
-        :return: A tuple of action, action distribution and extra_info.
+        Args:
+            observation (DataArray): The observation batched data with shape=(n_batch, *obs_shape).
+            action_mask (DataArray): The action mask batched with shape=(n_batch, *mask_shape).
+            evaluate (bool): Turn off exploration or not.
+            state (Any, Optional): The hidden state. Default by None.
         """
 
-        behavior = kwargs.get("behavior_mode", BehaviorMode.EXPLORATION)
-        logits = torch.softmax(self.critic(observation), dim=-1)
-
-        # do masking
-        if "action_mask" in kwargs and kwargs["action_mask"] is not None:
-            mask = torch.FloatTensor(kwargs["action_mask"]).to(logits.device)
-        else:
-            mask = torch.ones(logits.shape, device=logits.device, dtype=logits.dtype)
-        assert mask.shape == logits.shape, (mask.shape, logits.shape)
-
-        action_probs = misc.masked_softmax(logits, mask)
-        m = torch.distributions.Categorical(probs=action_probs)
-
-        if behavior == BehaviorMode.EXPLORATION:
-            if np.random.random() < self._calc_eps():
-                actions = m.sample()
-                return (
-                    actions.to("cpu").numpy().reshape((-1,) + self.action_space.shape),
-                    action_probs.detach().to("cpu").numpy(),
-                    kwargs[Episode.RNN_STATE],
-                )
-
-        actions = torch.argmax(action_probs, dim=-1)
-        return (
-            actions.detach().numpy().reshape((-1,) + self.action_space.shape),
-            action_probs.detach().to("cpu").numpy(),
-            kwargs[Episode.RNN_STATE],
+        observation = torch.as_tensor(
+            observation, device="cuda" if self.use_cuda else "cpu"
         )
 
-    def compute_actions(
-        self, observation: DataTransferType, **kwargs
-    ) -> DataTransferType:
-        raise NotImplementedError
-
-    def soft_update(self, tau=0.01):
         with torch.no_grad():
-            misc.soft_update(self.target_critic, self.critic, tau)
+            logits, state = self.critic(observation)
+
+            # do masking
+            if action_mask is not None:
+                mask = torch.FloatTensor(action_mask).to(logits.device)
+                action_probs = misc.masked_gumbel_softmax(logits, mask)
+                assert mask.shape == logits.shape, (mask.shape, logits.shape)
+            else:
+                action_probs = misc.gumbel_softmax(logits, hard=True)
+
+        if not evaluate:
+            if np.random.random() < self.eps:
+                action_probs = (
+                    np.ones((len(observation), self._action_space.n))
+                    / self._action_space.n
+                )
+                if action_mask is not None:
+                    legal_actions = np.array(
+                        [
+                            idx
+                            for idx in range(self._action_space.n)
+                            if action_mask[0][idx] > 0
+                        ],
+                        dtype=np.int32,
+                    )
+                    action = np.random.choice(legal_actions, len(observation))
+                else:
+                    action = np.random.choice(self._action_space.n, len(observation))
+                return action, action_probs, logits.cpu().numpy(), state
+
+        action = torch.argmax(action_probs, dim=-1).cpu().numpy()
+        return action, action_probs.cpu().numpy(), logits.cpy().numpy(), state
+
+    def parameters(self):
+        return {
+            "critic": self._critic.parameters(),
+        }
+
+    def value_function(
+        self, observation: torch.Tensor, evaluate: bool, **kwargs
+    ) -> np.ndarray:
+        states = torch.as_tensor(states, device="cuda" if self.use_cuda else "cpu")
+        values = self.critic(states).detach().cpu().numpy()
+        if action_mask is not None:
+            values[action_mask] = -1e9
+        return values
+
+    def reset(self, **kwargs):
+        pass
+
+    def save(self, path, global_step=0, hard: bool = False):
+        file_exist = os.path.exists(path)
+        if file_exist:
+            logger.warning("(dqn) ! detected existing mode with path: {}".format(path))
+        if (not file_exist) or hard:
+            torch.save(self._critic.state_dict(), path)
+
+    def load(self, path: str):
+        state_dict = torch.load(path, map_location="cuda" if self.use_cuda else "cpu")
+        self._critic.load_state_dict(state_dict)
