@@ -1,8 +1,8 @@
+from typing import Dict, Any, List, Tuple
 import gym
 
 from malib.envs.env import Environment
-from malib.utils.typing import Dict, Any, AgentID, List
-from malib.utils.episode import EpisodeKey
+from malib.utils.typing import AgentID
 
 
 class GymEnv(Environment):
@@ -33,19 +33,21 @@ class GymEnv(Environment):
     def action_spaces(self) -> Dict[AgentID, gym.Space]:
         return self._action_spaces
 
-    def time_step(self, actions: Dict[AgentID, Any]) -> Dict[str, Any]:
+    def time_step(
+        self, actions: Dict[AgentID, Any]
+    ) -> Tuple[
+        Dict[AgentID, Any],
+        Dict[AgentID, float],
+        Dict[AgentID, bool],
+        Dict[AgentID, Any],
+    ]:
         observations, rewards, dones, infos = self._env.step(
-            actions[self._default_agent][0]
+            actions[self._default_agent]
         )
 
         # agent done or achieving_max_step_done
         agent = self._default_agent
-        return {
-            EpisodeKey.NEXT_OBS: {agent: observations},
-            EpisodeKey.REWARD: {agent: rewards},
-            EpisodeKey.DONE: {agent: dones},
-            EpisodeKey.INFO: {agent: infos},
-        }
+        return {agent: observations}, {agent: rewards}, {agent: dones}, {agent: infos}
 
     def render(self, *args, **kwargs):
         self._env.render()
@@ -56,7 +58,7 @@ class GymEnv(Environment):
         )
 
         observation = self._env.reset()
-        return {EpisodeKey.CUR_OBS: {self._default_agent: observation}}
+        return {self._default_agent: observation}
 
     def close(self):
         pass

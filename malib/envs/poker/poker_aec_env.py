@@ -165,23 +165,17 @@ class PokerEnv(AECEnv):
         pass
 
 
-def env(**kwargs):
-    env = PokerEnv(**kwargs["scenario_configs"])
-    env = wrappers.CaptureStdoutWrapper(env)
-    env = wrappers.TerminateIllegalWrapper(env, illegal_reward=-1)
-    env = wrappers.AssertOutOfBoundsWrapper(env)
-    env = wrappers.OrderEnforcingWrapper(env)
-    env.is_sequential = True
-    env.extra_returns = []
-    # env = Environment.from_sequential_game(env, **kwargs)
-    # env._extra_returns = [Episode.ACTION_MASK]
-    return env
-
-
 class PokerParallelEnv(Environment):
     def __init__(self, **configs):
         super(PokerParallelEnv, self).__init__(**configs)
-        self.env = env(**configs)
+
+        env = PokerEnv(**configs)
+        env = wrappers.CaptureStdoutWrapper(env)
+        env = wrappers.TerminateIllegalWrapper(env, illegal_reward=-1)
+        env = wrappers.AssertOutOfBoundsWrapper(env)
+        env = wrappers.OrderEnforcingWrapper(env)
+
+        self.env = env
 
         self._observation_spaces = {
             aid: self.env.observation_space(aid) for aid in self.env.possible_agents
@@ -219,27 +213,10 @@ class PokerParallelEnv(Environment):
         self.cache_agent_done = {aid: False for aid in self.possible_agents}
         aid = next(iter(self.env.agent_iter(max_iter=self.max_step)))
         observation, reward, done, info = self.env.last()
-        action_mask = np.asarray(observation["action_mask"])
         self.cnt += 1
         self.cache_agent_done[aid] = done
 
-        rets = {}
-        # if self.cache_agent_done[aid]:
-        #     rets[EpisodeKey.NEXT_OBS] = {aid: observation}
-        rets[EpisodeKey.REWARD] = {aid: reward}
-
-        rets.update(
-            {
-                EpisodeKey.CUR_OBS: {aid: observation},
-                EpisodeKey.DONE: {
-                    aid: done,
-                    "__all__": all(self.cache_agent_done.values()),
-                },
-                EpisodeKey.INFO: {aid: info},
-                EpisodeKey.ACTION_MASK: {aid: action_mask},
-            }
-        )
-        return rets
+        return {aid: observation}  # , {aid: reward}, {aid: done}, {aid: info}
 
     def env_done_check(self, agent_dones: Dict[AgentID, bool]) -> bool:
         done = all(self.cache_agent_done.values())
@@ -260,21 +237,9 @@ class PokerParallelEnv(Environment):
         aid = next(iter(self.env.agent_iter(max_iter=self.max_step)))
 
         observation, reward, done, info = self.env.last()
-        action_mask = np.asarray(observation["action_mask"])
 
         self.cache_agent_done.update({aid: done})
-        rets = {EpisodeKey.CUR_OBS: {aid: observation}}
-        rets[EpisodeKey.DONE] = {aid: done}
-
-        rets.update(
-            {
-                EpisodeKey.REWARD: {aid: reward},
-                EpisodeKey.INFO: {aid: info},
-                EpisodeKey.ACTION_MASK: {aid: action_mask},
-            }
-        )
-
-        return rets
+        return {aid: observation}, {aid: reward}, {aid: done}, {aid: info}
 
     def close(self):
         self.env.close()

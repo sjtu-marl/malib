@@ -1,3 +1,5 @@
+from typing import Tuple, Callable, Dict, Any, Union, List
+
 import copy
 import gym
 import numpy as np
@@ -5,8 +7,7 @@ import numpy as np
 from gym import spaces
 from numpy.core.fromnumeric import mean
 
-from malib.utils.typing import AgentID, Callable, Dict, Any, Union, List
-from malib.utils.episode import EpisodeKey
+from malib.utils.typing import AgentID
 from malib.utils.preprocessor import get_preprocessor
 from malib.envs.env import Environment
 from malib.envs.gr_football.encoders import encoder_basic, rewarder_basic
@@ -22,11 +23,14 @@ except ImportError as e:
 class BaseGFootBall(Environment):
     metadata = {"render.modes": ["human"]}
 
-    def record_episode_info_step(self, rets):
-        super(BaseGFootBall, self).record_episode_info_step(rets)
+    def record_episode_info_step(self, observations, rewards, dones, infos):
+        super(BaseGFootBall, self).record_episode_info_step(
+            observations, rewards, dones, infos
+        )
 
-        reward = rets[EpisodeKey.REWARD]
-        info = list(rets[EpisodeKey.INFO].values())[0]
+        reward = rewards
+        info = list(infos.values())[0]
+
         self.custom_metrics["total_reward"] += mean(list(reward.values()))
         self.custom_metrics["win"] += info.get("win", 0.0)
         self.custom_metrics["score"] += info.get("score", 0.0)
@@ -104,7 +108,14 @@ class BaseGFootBall(Environment):
     def action_spaces(self) -> Dict[AgentID, gym.Space]:
         return self._action_spaces
 
-    def time_step(self, action_dict: Dict[AgentID, Any]):
+    def time_step(
+        self, action_dict: Dict[AgentID, Any]
+    ) -> Tuple[
+        Dict[AgentID, Any],
+        Dict[AgentID, float],
+        Dict[AgentID, bool],
+        Dict[AgentID, Any],
+    ]:
         action_list = []
         if self._include_GK and self._use_built_in_GK and self._num_left > 0:
             action_list.append(19)
@@ -150,21 +161,15 @@ class BaseGFootBall(Environment):
 
         info = self._wrap_list_to_dict(info)
 
-        rets = {
-            EpisodeKey.NEXT_OBS: self._get_obs(),
-            EpisodeKey.REWARD: reward,
-            EpisodeKey.DONE: done,
-            EpisodeKey.INFO: info,
-        }
         # If use the default feature encoder, the first num_action dimension is actually available action.
-        if self._repr_mode == "raw" and isinstance(
-            self._feature_encoder, encoder_basic.FeatureEncoder
-        ):
-            rets[EpisodeKey.ACTION_MASK] = {
-                k: v[:19] for k, v in rets[EpisodeKey.NEXT_OBS].items()
-            }
+        # if self._repr_mode == "raw" and isinstance(
+        #     self._feature_encoder, encoder_basic.FeatureEncoder
+        # ):
+        #     rets[EpisodeKey.ACTION_MASK] = {
+        #         k: v[:19] for k, v in rets[EpisodeKey.NEXT_OBS].items()
+        #     }
 
-        return rets
+        return self._get_obs(), reward, done, info
 
     def close(self):
         self._raw_env.close()
@@ -191,14 +196,14 @@ class BaseGFootBall(Environment):
         self.agents = self.possible_agents
         self.dones = dict(zip(self.agents, [False] * self.n_agents))
         self.scores = dict(zip(self.agents, [{"scores": [0.0]}] * self.n_agents))
-        rets = {EpisodeKey.CUR_OBS: self._get_obs()}
-        if self._repr_mode == "raw" and isinstance(
-            self._feature_encoder, encoder_basic.FeatureEncoder
-        ):
-            rets[EpisodeKey.ACTION_MASK] = {
-                k: v[: self._num_actions] for k, v in rets[EpisodeKey.CUR_OBS].items()
-            }
-        return rets
+        # rets = {EpisodeKey.CUR_OBS: self._get_obs()}
+        # if self._repr_mode == "raw" and isinstance(
+        #     self._feature_encoder, encoder_basic.FeatureEncoder
+        # ):
+        #     rets[EpisodeKey.ACTION_MASK] = {
+        #         k: v[: self._num_actions] for k, v in rets[EpisodeKey.CUR_OBS].items()
+        #     }
+        return self._get_obs()
 
     def _build_interacting_spaces(self):
         possible_agents = self.possible_agents

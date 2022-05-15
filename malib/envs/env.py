@@ -1,7 +1,9 @@
 from collections import defaultdict
+
 import uuid
 import gym
 import copy
+import numpy as np
 
 from malib.utils.typing import Dict, AgentID, List, Any, Union, Tuple
 from malib.utils.episode import EpisodeKey
@@ -36,16 +38,16 @@ class Environment:
         self._trainable_agents = None
         self._configs = configs
 
-    def record_episode_info_step(self, rets):
+    def record_episode_info_step(self, observations, rewards, dones, infos):
         reward_ph = self.episode_metrics["reward"]
         step_ph = self.episode_metrics["agent_step"]
-        for aid, r in rets[EpisodeKey.REWARD].items():
+        for aid, r in rewards.items():
             if aid not in reward_ph:
                 reward_ph[aid] = []
                 step_ph[aid] = 0
             reward_ph[aid].append(r)
             step_ph[aid] += 1
-        self.episode_meta_info["env_done"] = rets[EpisodeKey.DONE]["__all__"]
+        self.episode_meta_info["env_done"] = dones["__all__"]
         self.episode_metrics["env_step"] += 1
 
     @property
@@ -100,16 +102,46 @@ class Environment:
         done2 = self.cnt >= self.max_step > 0
         return done1 or done2
 
-    # @record_episode_info
-    def step(self, actions: Dict[AgentID, Any]):
+    def step(
+        self, actions: Dict[AgentID, Any]
+    ) -> Tuple[
+        Dict[AgentID, Any],
+        Dict[AgentID, float],
+        Dict[AgentID, bool],
+        Dict[AgentID, Any],
+        Dict[AgentID, np.ndarray],
+    ]:
         self.cnt += 1
         rets = self.time_step(actions)
-        rets[EpisodeKey.DONE]["__all__"] = self.env_done_check(rets[EpisodeKey.DONE])
-        self.record_episode_info_step(rets)
+        rets[2]["__all__"] = self.env_done_check(rets[EpisodeKey.DONE])
+        self.record_episode_info_step(*rets)
+        observations = rets[0]
+        action_masks = {}
+        for agent, obs in observations.items():
+            if isinstance(obs, dict) and "action_mask" in obs:
+                action_masks[agent] = np.asarray(obs["action_mask"], dtype=np.float32)
+        rets = rets + (action_masks,)
         return rets
 
-    def time_step(self, actions: Dict[AgentID, Any]):
-        """Step inner environment with given agent actions"""
+    def time_step(
+        self, actions: Dict[AgentID, Any]
+    ) -> Tuple[
+        Dict[AgentID, Any],
+        Dict[AgentID, float],
+        Dict[AgentID, bool],
+        Dict[AgentID, Any],
+    ]:
+        """Environment stepping logic.
+
+        Args:
+            actions (Dict[AgentID, Any]): Agent action dict.
+
+        Raises:
+            NotImplementedError: Not implmeneted error
+
+        Returns:
+            Tuple[Dict[AgentID, Any], Dict[AgentID, float], Dict[AgentID, bool], Dict[AgentID, Any]]: A 4-tuples, listed as (observations, rewards, dones, infos)
+        """
 
         raise NotImplementedError
 

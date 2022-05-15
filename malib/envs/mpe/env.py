@@ -43,12 +43,7 @@ class MPE(Environment):
         # for agent, action in actions.items():
         #     assert self.action_spaces[agent].contains(action), f"Action is not in space: {action} with type={type(action)}"
         observations, rewards, dones, infos = self._env.step(actions)
-        return {
-            EpisodeKey.NEXT_OBS: observations,
-            EpisodeKey.REWARD: rewards,
-            EpisodeKey.DONE: dones,
-            EpisodeKey.INFO: infos,
-        }
+        return observations, rewards, dones, infos
 
     def render(self, *args, **kwargs):
         self._env.render()
@@ -63,4 +58,4 @@ class MPE(Environment):
             max_step=max_step, custom_reset_config=custom_reset_config
         )
         observations = self._env.reset()
-        return {EpisodeKey.CUR_OBS: observations}
+        return observations
