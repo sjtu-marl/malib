@@ -27,10 +27,7 @@ def process_env_rets(
         Dict[AgentID, DataFrame]: _description_
     """
 
-    processed = {}
     dataframes = {}
-    replaced_holder = {}
-    remain_env_ids = []
     preprocessor = server_runtime_config["preprocessor"]
 
     agent_obs_list = defaultdict(lambda: [])
@@ -39,18 +36,25 @@ def process_env_rets(
 
     all_agents = set()
     for env_id, ret in env_rets.items():
+        # obs, action_mask, reward, done, info
         # process obs
+        if len(ret) > 2:
+            # check done
+            all_done = ret[3]["__all__"]
+            if all_done:
+                continue
+            else:
+                ret[3].pop("__all__")
+                for agent, done in ret[3]:
+                    agent_dones_list[agent].append(done)
+        else:
+            for agent in agents:
+                agent_dones_list[agent].append(False)
         for agent, raw_obs in ret[0]:
             agent_obs_list[agent].append(preprocessor[agent].transform(raw_obs))
         agents = list(ret[0].keys())
         all_agents.update(agents)
-        if len(ret) > 2:
-            for agent, done in ret[2]:
-                agent_dones_list[agent].append(done)
-        else:
-            for agent in agents:
-                agent_dones_list[agent].append(False)
-        for agent, action_mask in ret[-1]:
+        for agent, action_mask in ret[1]:
             agent_action_mask_list[agent].append(action_mask)
 
     for agent in all_agents:
