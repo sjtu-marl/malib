@@ -155,6 +155,7 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
                     )
                     (
                         rets[Episode.ACTION],
+                        rets[Episode.ACTION_LOGITS],
                         rets[Episode.ACTION_DIST],
                         rets[Episode.RNN_STATE],
                     ) = policy.compute_action(observation=observation, **kwargs)

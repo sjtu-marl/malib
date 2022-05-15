@@ -14,7 +14,8 @@ class Episode:
     NEXT_ACTION_MASK = "next_action_mask"
     REWARD = "reward"
     DONE = "done"
-    ACTION_DIST = "action_logits"
+    ACTION_LOGITS = "action_logits"
+    ACTION_DIST = "action_dist"
     INFO = "infos"
 
     # optional
