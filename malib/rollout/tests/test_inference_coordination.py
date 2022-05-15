@@ -31,7 +31,9 @@ def test_inference_coordination(max_env_num: int):
     offline_dataset_server = OfflineDataset.options(
         name=settings.OFFLINE_DATASET_ACTOR
     ).remote(table_capacity=100)
-    parameter_server = ParameterServer.options(name=settings.PARAMETER_SERVER_ACTOR).remote()
+    parameter_server = ParameterServer.options(
+        name=settings.PARAMETER_SERVER_ACTOR
+    ).remote()
 
     client = InferenceClient(
         env_desc=env_desc,

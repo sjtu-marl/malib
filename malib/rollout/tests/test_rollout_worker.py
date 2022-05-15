@@ -174,7 +174,7 @@ def test_rollout_worker(agent_mapping_func: LambdaType):
                     "action_space": runtime_act_spaces[rid],
                     "custom_config": {},
                     "model_config": {},
-                }
+                },
             },
         )
         for rid in rolloutworker.runtime_agent_ids
