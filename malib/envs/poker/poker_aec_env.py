@@ -12,7 +12,7 @@ from pettingzoo.utils.env import AECEnv
 from open_spiel.python.rl_environment import Environment as OPEN_SPIEL_ENV, TimeStep
 
 from malib.utils.typing import Dict, AgentID, Any, Union
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 from malib.envs.env import Environment
 
 

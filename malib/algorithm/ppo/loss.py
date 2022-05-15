@@ -5,7 +5,7 @@ from typing import Dict, Tuple, Any
 from torch.distributions import Categorical, Normal
 
 from malib.algorithm.common.loss_func import LossFunc
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 from malib.utils.typing import TrainingMetric
 
 
@@ -52,16 +52,16 @@ class PPOLoss(LossFunc):
 
     def loss_compute(self, batch) -> Dict[str, Any]:
 
-        rewards = batch[EpisodeKey.REWARD]
+        rewards = batch[Episode.REWARD]
         if self.policy._discrete_action:
-            actions = batch[EpisodeKey.ACTION].reshape(-1).long()
+            actions = batch[Episode.ACTION].reshape(-1).long()
         else:
-            actions = batch[EpisodeKey.ACTION].long()
+            actions = batch[Episode.ACTION].long()
 
-        cur_obs = batch[EpisodeKey.CUR_OBS]
-        next_obs = batch[EpisodeKey.NEXT_OBS]
-        dones = batch[EpisodeKey.DONE]
-        pi = batch[EpisodeKey.ACTION_DIST]
+        cur_obs = batch[Episode.CUR_OBS]
+        next_obs = batch[Episode.NEXT_OBS]
+        dones = batch[Episode.DONE]
+        pi = batch[Episode.ACTION_DIST]
 
         cliprange = self._params["cliprange"]
         grad_cliprange = self._params["grad_norm_clipping"]

@@ -7,7 +7,7 @@ import numpy as np
 from torch.distributions import Categorical, Normal
 
 from malib.algorithm.common.policy import Policy
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 from malib.utils.typing import DataTransferType, Dict, Tuple, BehaviorMode
 from malib.algorithm.common.model import get_model
 from malib.algorithm.common import misc
@@ -106,7 +106,7 @@ class DiscreteSAC(Policy):
         return (
             actions.cpu().numpy(),
             action_probs.detach().cpu().numpy(),
-            kwargs[EpisodeKey.RNN_STATE],
+            kwargs[Episode.RNN_STATE],
         )
 
     def compute_actions_by_target_actor(

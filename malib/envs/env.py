@@ -6,7 +6,7 @@ import copy
 import numpy as np
 
 from malib.utils.typing import Dict, AgentID, List, Any, Union, Tuple
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 
 
 def record_episode_info(func):
@@ -113,7 +113,7 @@ class Environment:
     ]:
         self.cnt += 1
         rets = self.time_step(actions)
-        rets[2]["__all__"] = self.env_done_check(rets[EpisodeKey.DONE])
+        rets[2]["__all__"] = self.env_done_check(rets[Episode.DONE])
         self.record_episode_info_step(*rets)
         observations = rets[0]
         action_masks = {}
@@ -275,14 +275,14 @@ class GroupWrapper(Wrapper):
             max_step=max_step, custom_reset_config=custom_reset_config
         )
         # add CUR_STATE
-        rets[EpisodeKey.CUR_STATE] = self.build_state_from_observation(
-            rets[EpisodeKey.CUR_OBS]
+        rets[Episode.CUR_STATE] = self.build_state_from_observation(
+            rets[Episode.CUR_OBS]
         )
         return rets
 
     def time_step(self, actions: Dict[AgentID, Any]):
         rets = super(GroupWrapper, self).time_step(actions)
-        rets[EpisodeKey.NEXT_STATE] = self.build_state_from_observation(
-            rets[EpisodeKey.NEXT_OBS]
+        rets[Episode.NEXT_STATE] = self.build_state_from_observation(
+            rets[Episode.NEXT_OBS]
         )
         return rets

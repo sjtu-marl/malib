@@ -165,8 +165,8 @@ class BaseGFootBall(Environment):
         # if self._repr_mode == "raw" and isinstance(
         #     self._feature_encoder, encoder_basic.FeatureEncoder
         # ):
-        #     rets[EpisodeKey.ACTION_MASK] = {
-        #         k: v[:19] for k, v in rets[EpisodeKey.NEXT_OBS].items()
+        #     rets[Episode.ACTION_MASK] = {
+        #         k: v[:19] for k, v in rets[Episode.NEXT_OBS].items()
         #     }
 
         return self._get_obs(), reward, done, info
@@ -196,12 +196,12 @@ class BaseGFootBall(Environment):
         self.agents = self.possible_agents
         self.dones = dict(zip(self.agents, [False] * self.n_agents))
         self.scores = dict(zip(self.agents, [{"scores": [0.0]}] * self.n_agents))
-        # rets = {EpisodeKey.CUR_OBS: self._get_obs()}
+        # rets = {Episode.CUR_OBS: self._get_obs()}
         # if self._repr_mode == "raw" and isinstance(
         #     self._feature_encoder, encoder_basic.FeatureEncoder
         # ):
-        #     rets[EpisodeKey.ACTION_MASK] = {
-        #         k: v[: self._num_actions] for k, v in rets[EpisodeKey.CUR_OBS].items()
+        #     rets[Episode.ACTION_MASK] = {
+        #         k: v[: self._num_actions] for k, v in rets[Episode.CUR_OBS].items()
         #     }
         return self._get_obs()
 
@@ -376,14 +376,10 @@ def ParameterSharing(
                 return {k: reduce_func(v) for k, v in x_dict.items()}
 
             rets = {k: f(v, np.vstack) for k, v in rets.items()}
-            rets[EpisodeKey.CUR_STATE] = self._build_state_from_obs(
-                rets[EpisodeKey.CUR_OBS]
-            )
+            rets[Episode.CUR_STATE] = self._build_state_from_obs(rets[Episode.CUR_OBS])
 
-            if EpisodeKey.ACTION_MASK in rets:
-                rets[EpisodeKey.ACTION_MASK] = f(
-                    rets[EpisodeKey.ACTION_MASK], np.vstack
-                )
+            if Episode.ACTION_MASK in rets:
+                rets[Episode.ACTION_MASK] = f(rets[Episode.ACTION_MASK], np.vstack)
 
             return rets
 
@@ -409,27 +405,27 @@ def ParameterSharing(
                 return {k: reduce_func(v) for k, v in x_dict.items()}
 
             (obs, reward, done, info) = (
-                f(rets[EpisodeKey.NEXT_OBS], np.vstack),
-                f(rets[EpisodeKey.REWARD], np.vstack),
-                f(rets[EpisodeKey.DONE], np.vstack),
-                f(rets[EpisodeKey.INFO], lambda x: x[0]),
+                f(rets[Episode.NEXT_OBS], np.vstack),
+                f(rets[Episode.REWARD], np.vstack),
+                f(rets[Episode.DONE], np.vstack),
+                f(rets[Episode.INFO], lambda x: x[0]),
             )
-            done["__all__"] = rets[EpisodeKey.DONE]["__all__"]
+            done["__all__"] = rets[Episode.DONE]["__all__"]
 
             for aid, action in action_dict.items():
                 info[aid]["num_pass"] = np.logical_and(action <= 11, action >= 9).sum()
                 info[aid]["num_shot"] = (action == 12).sum()
 
             res = {
-                EpisodeKey.NEXT_OBS: obs,
-                EpisodeKey.NEXT_STATE: self._build_state_from_obs(obs),
-                EpisodeKey.REWARD: reward,
-                EpisodeKey.DONE: done,
-                EpisodeKey.INFO: info,
+                Episode.NEXT_OBS: obs,
+                Episode.NEXT_STATE: self._build_state_from_obs(obs),
+                Episode.REWARD: reward,
+                Episode.DONE: done,
+                Episode.INFO: info,
             }
 
-            if EpisodeKey.ACTION_MASK in rets:
-                res[EpisodeKey.ACTION_MASK] = f(rets[EpisodeKey.ACTION_MASK], np.vstack)
+            if Episode.ACTION_MASK in rets:
+                res[Episode.ACTION_MASK] = f(rets[Episode.ACTION_MASK], np.vstack)
 
             return res
 
@@ -448,8 +444,8 @@ def ParameterSharing(
 
         def record_episode_info_step(self, rets):
             super().record_episode_info_step(rets)
-            reward = rets[EpisodeKey.REWARD]
-            info = rets[EpisodeKey.INFO]
+            reward = rets[Episode.REWARD]
+            info = rets[Episode.INFO]
 
             for aid in reward:
                 self.custom_metrics[aid]["total_reward"] += reward[aid].sum()

@@ -36,7 +36,7 @@ from malib.utils.typing import (
     Union,
 )
 from malib.utils.logger import Log
-from malib.utils.episode import Episode, NewEpisodeDict, EpisodeKey
+from malib.utils.episode import Episode, NewEpisodeDict, Episode
 from malib.rollout.postprocessor import get_postprocessor
 from malib.envs.vector_env import VectorEnv, SubprocVecEnv
 from malib.envs.agent_interface import AgentInterface
@@ -77,23 +77,23 @@ def _process_environment_returns(
         filtered_env_output = filtered_env_outputs[env_id]
 
         for k, ret in rets.items():
-            if k in [EpisodeKey.CUR_OBS, EpisodeKey.NEXT_OBS]:
+            if k in [Episode.CUR_OBS, Episode.NEXT_OBS]:
                 output = {
                     aid: agent_interfaces[aid].transform_observation(
                         observation=obs, state=None
                     )["obs"]
                     for aid, obs in ret.items()
                 }
-                if k == EpisodeKey.NEXT_OBS:
-                    if EpisodeKey.CUR_OBS not in filtered_env_output:
-                        filtered_env_output[EpisodeKey.CUR_OBS] = output
-                    policy_input[EpisodeKey.CUR_OBS] = output
-            elif k == EpisodeKey.NEXT_STATE:
-                if EpisodeKey.CUR_STATE not in filtered_env_output:
-                    filtered_env_output[EpisodeKey.CUR_STATE] = ret
-                policy_input[EpisodeKey.CUR_STATE] = ret
+                if k == Episode.NEXT_OBS:
+                    if Episode.CUR_OBS not in filtered_env_output:
+                        filtered_env_output[Episode.CUR_OBS] = output
+                    policy_input[Episode.CUR_OBS] = output
+            elif k == Episode.NEXT_STATE:
+                if Episode.CUR_STATE not in filtered_env_output:
+                    filtered_env_output[Episode.CUR_STATE] = ret
+                policy_input[Episode.CUR_STATE] = ret
             else:
-                if k == EpisodeKey.DONE:
+                if k == Episode.DONE:
                     done = ret["__all__"]
                     drop = done
                     drop_env_ids.append(env_id)
@@ -106,9 +106,9 @@ def _process_environment_returns(
         if not drop:
             policy_inputs[env_id] = policy_input
             # we transfer DONE key as a signal for some masking behaviors
-            if EpisodeKey.DONE not in policy_input:
+            if Episode.DONE not in policy_input:
                 policy_input = {
-                    EpisodeKey.DONE: dict.fromkeys(rets[EpisodeKey.CUR_OBS], False)
+                    Episode.DONE: dict.fromkeys(rets[Episode.CUR_OBS], False)
                 }
 
     return policy_inputs, filtered_env_outputs, drop_env_ids
@@ -133,12 +133,12 @@ def _do_policy_eval(
     for env_id in env_ids:
         env_episode = episodes[env_id]
         # for agent_id, interface in agent_interfaces.items():
-        env_agent_ids.append(list(policy_inputs[env_id][EpisodeKey.CUR_OBS].keys()))
-        for agent_id in policy_inputs[env_id][EpisodeKey.CUR_OBS].keys():
+        env_agent_ids.append(list(policy_inputs[env_id][Episode.CUR_OBS].keys()))
+        for agent_id in policy_inputs[env_id][Episode.CUR_OBS].keys():
             interface = agent_interfaces[agent_id]
-            if len(env_episode[EpisodeKey.RNN_STATE][agent_id]) < 1:
-                obs_shape = policy_inputs[env_id][EpisodeKey.CUR_OBS][agent_id].shape
-                env_episode[EpisodeKey.RNN_STATE][agent_id].append(
+            if len(env_episode[Episode.RNN_STATE][agent_id]) < 1:
+                obs_shape = policy_inputs[env_id][Episode.CUR_OBS][agent_id].shape
+                env_episode[Episode.RNN_STATE][agent_id].append(
                     interface.get_initial_state(
                         batch_size=None if len(obs_shape) == 1 else obs_shape[0]
                     )
@@ -147,11 +147,11 @@ def _do_policy_eval(
                 # FIXME(ming): maybe wrong in some cases, I didn't load it yet.
                 last_done = np.zeros(obs_shape[:-1])
             else:
-                last_done = env_episode[EpisodeKey.DONE][agent_id][-1]
-            last_rnn_state = env_episode[EpisodeKey.RNN_STATE][agent_id][-1]
-            agent_wise_inputs[agent_id][EpisodeKey.RNN_STATE].append(last_rnn_state)
+                last_done = env_episode[Episode.DONE][agent_id][-1]
+            last_rnn_state = env_episode[Episode.RNN_STATE][agent_id][-1]
+            agent_wise_inputs[agent_id][Episode.RNN_STATE].append(last_rnn_state)
             # rnn mask dependences on done or not
-            agent_wise_inputs[agent_id][EpisodeKey.DONE].append(last_done)
+            agent_wise_inputs[agent_id][Episode.DONE].append(last_done)
 
         for k, agent_v in policy_inputs[env_id].items():
             for agent_id, v in agent_v.items():
@@ -165,9 +165,9 @@ def _do_policy_eval(
         ) = interface.compute_action(**inputs)
 
     return {
-        EpisodeKey.ACTION: actions,
-        EpisodeKey.ACTION_DIST: action_dists,
-        EpisodeKey.RNN_STATE: next_rnn_state,
+        Episode.ACTION: actions,
+        Episode.ACTION_DIST: action_dists,
+        Episode.RNN_STATE: next_rnn_state,
     }, dict(zip(env_ids, env_agent_ids))
 
 
@@ -180,7 +180,7 @@ def _process_policy_outputs(
     """Proceses the policy returns. Here we convert the policy return to legal environment step inputs."""
 
     assert (
-        EpisodeKey.ACTION in policy_outputs and EpisodeKey.ACTION_DIST in policy_outputs
+        Episode.ACTION in policy_outputs and Episode.ACTION_DIST in policy_outputs
     ), "`action` and `action_prob` are required in the policy outputs, please check the return of `_do_policy_eval`: {}".format(
         list(policy_outputs.keys())
     )
@@ -191,7 +191,7 @@ def _process_policy_outputs(
         for k, agent_v in policy_outputs.items():
             for aid in agent_ids:
                 _v = agent_v[aid]
-                if k == EpisodeKey.RNN_STATE:
+                if k == Episode.RNN_STATE:
                     # for environment each.
                     detached[k][aid] = [next(__v) for __v in _v]
                 else:

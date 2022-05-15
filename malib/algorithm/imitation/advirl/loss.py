@@ -8,7 +8,7 @@ from typing import Dict, Tuple, Any
 from torch.distributions import Categorical, Normal
 
 from malib.algorithm.common.loss_func import LossFunc
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 from malib.utils.typing import TrainingMetric
 
 
@@ -86,12 +86,12 @@ class AdvIRLLoss(LossFunc):
         )
         cast_to_tensor = lambda x: FloatTensor(x.copy())
 
-        expert_cur_obs = expert_batch[EpisodeKey.CUR_OBS]
-        expert_actions = expert_batch[EpisodeKey.ACTION]
+        expert_cur_obs = expert_batch[Episode.CUR_OBS]
+        expert_actions = expert_batch[Episode.ACTION]
         expert_disc_input = torch.cat([expert_cur_obs, expert_actions], dim=-1)
 
-        agent_cur_obs = agent_batch[EpisodeKey.CUR_OBS]
-        agent_actions = agent_batch[EpisodeKey.ACTION]
+        agent_cur_obs = agent_batch[Episode.CUR_OBS]
+        agent_actions = agent_batch[Episode.ACTION]
         agent_disc_input = torch.cat([agent_cur_obs, agent_actions], dim=-1)
 
         disc_input = torch.cat([expert_disc_input, agent_disc_input], dim=0)

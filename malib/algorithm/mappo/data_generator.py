@@ -3,7 +3,7 @@ from typing import Dict
 import torch
 import numpy as np
 from malib.algorithm.mappo.vtrace import compute_vtrace
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 
 
 def get_part_data_from_batch(batch_data, idx):
@@ -19,10 +19,10 @@ def compute_return(policy, batch, mode="gae"):
     gamma, gae_lambda = cm_cfg["gamma"], cm_cfg["gae"]["gae_lambda"]
     values, rewards, dones = (
         # FIXME(ziyu): for debugging
-        np.zeros_like(batch[EpisodeKey.REWARD]),
-        # batch[EpisodeKey.STATE_VALUE],
-        batch[EpisodeKey.REWARD],
-        batch[EpisodeKey.DONE],
+        np.zeros_like(batch[Episode.REWARD]),
+        # batch[Episode.STATE_VALUE],
+        batch[Episode.REWARD],
+        batch[Episode.DONE],
     )
     if cm_cfg["use_popart"]:
         values = policy.value_normalizer.denormalize(values)
@@ -32,13 +32,13 @@ def compute_return(policy, batch, mode="gae"):
     elif mode == "vtrace":
         return compute_vtrace(
             policy,
-            batch[EpisodeKey.CUR_OBS],
+            batch[Episode.CUR_OBS],
             rewards,
             values,
             dones,
             batch["rnn_state_0"],
-            batch[EpisodeKey.ACTION],
-            batch[EpisodeKey.ACTION_DIST],
+            batch[Episode.ACTION],
+            batch[Episode.ACTION_DIST],
             gamma,
             cm_cfg["vtrace"]["clip_rho_threshold"],
             cm_cfg["vtrace"]["clip_pg_rho_threshold"],
@@ -66,7 +66,7 @@ def compute_gae(value, reward, done, gamma, gae_lambda):
 
 def simple_data_generator(batch, num_mini_batch, device):
     # XXX(ziyu): if we put all data on GPUs, mini-batch cannot work when we don't have enough GPU memory
-    batch_size, _ = batch[EpisodeKey.CUR_OBS].shape
+    batch_size, _ = batch[Episode.CUR_OBS].shape
 
     mini_batch_size = batch_size // num_mini_batch
 
@@ -93,7 +93,7 @@ def recurrent_generator(data, num_mini_batch, rnn_data_chunk_length, device):
             batch[k] = _cast(batch[k])
         else:
             batch[k] = batch[k].permute(1, 2, 0, 3, 4).reshape(-1, *batch[k].shape[3:])
-    batch_size, _ = batch[EpisodeKey.CUR_OBS].shape
+    batch_size, _ = batch[Episode.CUR_OBS].shape
 
     data_chunks = batch_size // rnn_data_chunk_length  # [C=r*T*M/L]
     mini_batch_size = data_chunks // num_mini_batch

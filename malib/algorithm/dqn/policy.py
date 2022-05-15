@@ -6,7 +6,7 @@ from malib.utils.typing import DataTransferType, BehaviorMode, Dict, Any
 from malib.algorithm.common import misc
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.model import get_model
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 
 
 class DQN(Policy):
@@ -112,14 +112,14 @@ class DQN(Policy):
                 return (
                     actions.to("cpu").numpy().reshape((-1,) + self.action_space.shape),
                     action_probs.detach().to("cpu").numpy(),
-                    kwargs[EpisodeKey.RNN_STATE],
+                    kwargs[Episode.RNN_STATE],
                 )
 
         actions = torch.argmax(action_probs, dim=-1)
         return (
             actions.detach().numpy().reshape((-1,) + self.action_space.shape),
             action_probs.detach().to("cpu").numpy(),
-            kwargs[EpisodeKey.RNN_STATE],
+            kwargs[Episode.RNN_STATE],
         )
 
     def compute_actions(

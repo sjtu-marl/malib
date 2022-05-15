@@ -1,6 +1,6 @@
 # """A VecEnv that uses subprocesses for each underlying environment"""
 
-# from malib.utils.episode import EpisodeKey
+# from malib.utils.episode import Episode
 # from malib.utils.typing import Dict, AgentID, Any, List, Tuple
 
 # from typing import Dict, Sequence, Optional, List, Union
@@ -69,7 +69,7 @@
 #             cmd, data = remote.recv()
 #             if cmd == "step":
 #                 rets = env.step(data)
-#                 done, info = rets[EpisodeKey.DONE], rets[EpisodeKey.INFO]
+#                 done, info = rets[Episode.DONE], rets[Episode.INFO]
 #                 if all([d.all() for d in done.values()]):
 #                     # save final observation where user can get it, then reset
 #                     info["episode_info"] = env.episode_info
@@ -209,8 +209,8 @@
 #         self.waiting = False
 #         feed_back_needed = []
 #         for res in results:
-#             if any(d.any() for d in res[EpisodeKey.DONE].values()):
-#                 self.episode_infos.append(res[EpisodeKey.INFO]["episode_info"])
+#             if any(d.any() for d in res[Episode.DONE].values()):
+#                 self.episode_infos.append(res[Episode.INFO]["episode_info"])
 #         return _merge_list(results)
 
 #     def seed(self, seed=None):

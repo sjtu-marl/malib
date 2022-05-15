@@ -5,7 +5,7 @@ import uuid
 import ray
 
 from malib.utils.typing import Dict, AgentID, Any, List, EnvID, Union
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 from .vector_env import VectorEnv, SubprocVecEnv
 
 
@@ -55,7 +55,7 @@ class AsyncVectorEnv(VectorEnv):
             ret = self._delay_step(env_id, _actions)
             if ret is None:
                 continue
-            env_done = ret[EpisodeKey.DONE]["__all__"]
+            env_done = ret[Episode.DONE]["__all__"]
             env = self.active_envs[env_id]
 
             self._update_step_cnt()
@@ -139,7 +139,7 @@ class AsyncSubProcVecEnv(SubprocVecEnv):
         rets = ray.get(self.pending_tasks)
         rets = ChainMap(*rets)
         for env_id, ret in rets.items():
-            env_done = ret[EpisodeKey.DONE]["__all__"]
+            env_done = ret[Episode.DONE]["__all__"]
             env = self.active_envs[env_id]
 
             self._update_step_cnt()

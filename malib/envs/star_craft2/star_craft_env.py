@@ -7,7 +7,7 @@ from smac.env import StarCraft2Env as sc_env
 from malib.envs import Environment
 from malib.envs.env import GroupWrapper
 from malib.utils.typing import Dict, AgentID, Any, List, Union
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 
 
 agents_list = {
@@ -221,8 +221,8 @@ class SC2Env(Environment):
             for i, aid in enumerate(self.possible_agents)
         }
         return {
-            EpisodeKey.CUR_OBS: obs,
-            EpisodeKey.ACTION_MASK: {
+            Episode.CUR_OBS: obs,
+            Episode.ACTION_MASK: {
                 aid: _obs["action_mask"] for aid, _obs in obs.items()
             },
         }
@@ -251,14 +251,14 @@ class SC2Env(Environment):
 
         return {
             # {aid: next_state for aid in next_obs_dict},
-            EpisodeKey.NEXT_OBS: next_obs_dict,
-            EpisodeKey.ACTION_MASK: {
+            Episode.NEXT_OBS: next_obs_dict,
+            Episode.ACTION_MASK: {
                 aid: _next_obs["action_mask"]
                 for aid, _next_obs in next_obs_dict.items()
             },
-            EpisodeKey.REWARD: rew_dict,
-            EpisodeKey.DONE: done_dict,
-            # EpisodeKey.INFO: info_dict,
+            Episode.REWARD: rew_dict,
+            Episode.DONE: done_dict,
+            # Episode.INFO: info_dict,
         }
 
     def close(self):

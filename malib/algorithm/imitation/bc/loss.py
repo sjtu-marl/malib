@@ -5,7 +5,7 @@ from typing import Dict, Tuple, Any
 from torch.distributions import Categorical, Normal
 
 from malib.algorithm.common.loss_func import LossFunc
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 from malib.utils.typing import TrainingMetric
 
 
@@ -49,9 +49,9 @@ class BCLoss(LossFunc):
     def loss_compute(self, batch) -> Dict[str, Any]:
         # empty loss
         self.loss = []
-        actions = batch[EpisodeKey.ACTION]
+        actions = batch[Episode.ACTION]
 
-        probs = self.policy.actor(batch[EpisodeKey.CUR_OBS])
+        probs = self.policy.actor(batch[Episode.CUR_OBS])
         if isinstance(probs, tuple):
             distri = Normal(*probs)
             mu = probs[0]

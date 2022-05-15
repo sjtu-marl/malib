@@ -8,7 +8,7 @@ import numpy as np
 from torch import nn
 
 from malib.utils.typing import DataTransferType, Tuple, Any, Dict, EpisodeID, List
-from malib.utils.episode import Episode, EpisodeKey
+from malib.utils.episode import Episode, Episode
 
 from malib.algorithm.common.model import get_model
 from malib.algorithm.common.policy import Policy
@@ -29,7 +29,7 @@ def shape_adjusting(wrapped, instance, args, kwargs):
         reshape it to (n_rollout_threads * n_agent, ...)
     """
     offset = len(instance.preprocessor.shape)
-    original_shape_pre = kwargs[EpisodeKey.CUR_OBS].shape[:-offset]
+    original_shape_pre = kwargs[Episode.CUR_OBS].shape[:-offset]
     num_shape_ahead = len(original_shape_pre)
 
     def adjust_fn(x):
@@ -142,17 +142,17 @@ class MAPPO(Policy):
 
     @shape_adjusting
     def compute_action(self, observation, **kwargs):
-        actor_rnn_states, critic_rnn_states = kwargs[EpisodeKey.RNN_STATE]
+        actor_rnn_states, critic_rnn_states = kwargs[Episode.RNN_STATE]
 
-        rnn_masks = kwargs.get(EpisodeKey.DONE, False)
+        rnn_masks = kwargs.get(Episode.DONE, False)
         logits, actor_rnn_states = self.actor(
             observation.copy(), actor_rnn_states.copy(), rnn_masks
         )
         actor_rnn_states = actor_rnn_states.detach().cpu().numpy()
-        if EpisodeKey.ACTION_MASK in kwargs:
-            illegal_action_mask = torch.FloatTensor(
-                1 - kwargs[EpisodeKey.ACTION_MASK]
-            ).to(logits.device)
+        if Episode.ACTION_MASK in kwargs:
+            illegal_action_mask = torch.FloatTensor(1 - kwargs[Episode.ACTION_MASK]).to(
+                logits.device
+            )
             assert illegal_action_mask.max() == 1 and illegal_action_mask.min() == 0, (
                 illegal_action_mask.max(),
                 illegal_action_mask.min(),
@@ -163,9 +163,9 @@ class MAPPO(Policy):
 
         # extra_info["action_probs"] = action_prob
         action = dist.sample().cpu().numpy()
-        if EpisodeKey.CUR_STATE in kwargs and kwargs[EpisodeKey.CUR_STATE] is not None:
+        if Episode.CUR_STATE in kwargs and kwargs[Episode.CUR_STATE] is not None:
             value, critic_rnn_states = self.critic(
-                kwargs[EpisodeKey.CUR_STATE].copy(), critic_rnn_states.copy(), rnn_masks
+                kwargs[Episode.CUR_STATE].copy(), critic_rnn_states.copy(), rnn_masks
             )
             critic_rnn_states = critic_rnn_states.detach().cpu().numpy()
 
@@ -174,13 +174,13 @@ class MAPPO(Policy):
     @shape_adjusting
     def value_function(self, *args, **kwargs):
         # FIXME(ziyu): adjust shapes
-        state = kwargs[EpisodeKey.CUR_STATE]
-        rnn_state_key_for_train = f"{EpisodeKey.RNN_STATE}_1"
+        state = kwargs[Episode.CUR_STATE]
+        rnn_state_key_for_train = f"{Episode.RNN_STATE}_1"
         if rnn_state_key_for_train in kwargs:
             critic_rnn_state = kwargs[rnn_state_key_for_train]
         else:
-            critic_rnn_state = kwargs[EpisodeKey.RNN_STATE][1]
-        rnn_mask = kwargs.get(EpisodeKey.DONE, False)
+            critic_rnn_state = kwargs[Episode.RNN_STATE][1]
+        rnn_mask = kwargs.get(Episode.DONE, False)
         with torch.no_grad():
             value, _ = self.critic(state.copy(), critic_rnn_state.copy(), rnn_mask)
         return value.cpu().numpy()

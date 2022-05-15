@@ -4,7 +4,7 @@ import gym
 from malib.algorithm.common import misc
 from malib.algorithm.common.loss_func import LossFunc
 from malib.algorithm.mappo.utils import huber_loss, mse_loss, PopArt
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 from malib.algorithm.common.model import get_model
 
 
@@ -81,17 +81,17 @@ class MAPPOLoss(LossFunc):
             critic_rnn_states_batch,
             dones_batch,
         ) = (
-            sample[EpisodeKey.CUR_STATE],
-            sample[EpisodeKey.CUR_OBS],
-            sample[EpisodeKey.ACTION].long(),
-            sample[EpisodeKey.STATE_VALUE],
+            sample[Episode.CUR_STATE],
+            sample[Episode.CUR_OBS],
+            sample[Episode.ACTION].long(),
+            sample[Episode.STATE_VALUE],
             sample["return"],
             None,  # cast(sample["active_mask"]),
-            sample[EpisodeKey.ACTION_DIST],
-            sample[EpisodeKey.ACTION_MASK],
-            sample[f"{EpisodeKey.RNN_STATE}_0"],
-            sample[f"{EpisodeKey.RNN_STATE}_1"],
-            sample[EpisodeKey.DONE],
+            sample[Episode.ACTION_DIST],
+            sample[Episode.ACTION_MASK],
+            sample[f"{Episode.RNN_STATE}_0"],
+            sample[f"{Episode.RNN_STATE}_1"],
+            sample[Episode.DONE],
         )
         # for k, v in sample.items():
         #     print(f"{k}: {v.shape}")

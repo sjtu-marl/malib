@@ -24,7 +24,7 @@ from malib.utils.typing import (
 )
 
 from malib.envs import Environment
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 
 
 class VectorEnv:
@@ -175,7 +175,7 @@ class VectorEnv:
         # FIXME(ming): (keyerror, sometimes) the env_id in actions is not an active environment.
         for env_id, _actions in actions.items():
             ret = active_envs[env_id].step(_actions)
-            env_done = ret[EpisodeKey.DONE]["__all__"]
+            env_done = ret[Episode.DONE]["__all__"]
             env = self.active_envs[env_id]
             self._update_step_cnt()
             if env_done:
@@ -398,7 +398,7 @@ class SubprocVecEnv(VectorEnv):
         # FIXME(ming): (runtime error, sometimes) dictionary changed size during iteration
         dead_envs = []
         for env_id, _ret in rets.items():
-            dones = _ret[EpisodeKey.DONE]
+            dones = _ret[Episode.DONE]
             env_done = any(dones.values())
             if env_done:
                 # reset and assign a new runtime

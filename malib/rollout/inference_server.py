@@ -30,7 +30,7 @@ from malib.utils.typing import (
 )
 from malib.algorithm import get_algorithm_space
 from malib.algorithm.common.policy import Policy
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 
 
 RuntimeHandler = namedtuple("RuntimeHandler", "sender,recver,runtime_config,rnn_states")
@@ -212,10 +212,10 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
                     policy: Policy = self.policies[data_frame.identifier][policy_id]
                     kwargs = {**data_frame.data, **data_frame.runtime_config}
                     batch_size = len(kwargs["environment_ids"])
-                    assert EpisodeKey.CUR_OBS in kwargs, kwargs.keys()
-                    observation = kwargs.pop(EpisodeKey.CUR_OBS)
-                    # if EpisodeKey.RNN_STATE not in kwargs:
-                    kwargs[EpisodeKey.RNN_STATE] = _get_initial_states(
+                    assert Episode.CUR_OBS in kwargs, kwargs.keys()
+                    observation = kwargs.pop(Episode.CUR_OBS)
+                    # if Episode.RNN_STATE not in kwargs:
+                    kwargs[Episode.RNN_STATE] = _get_initial_states(
                         self,
                         runtime_id,
                         observation,
@@ -223,18 +223,18 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
                         identifier=data_frame.identifier,
                     )
                     (
-                        rets[EpisodeKey.ACTION],
-                        rets[EpisodeKey.ACTION_DIST],
-                        rets[EpisodeKey.RNN_STATE],
+                        rets[Episode.ACTION],
+                        rets[Episode.ACTION_DIST],
+                        rets[Episode.RNN_STATE],
                     ) = policy.compute_action(observation=observation, **kwargs)
                     # compute state value
-                    rets[EpisodeKey.STATE_VALUE] = policy.value_function(
+                    rets[Episode.STATE_VALUE] = policy.value_function(
                         observation=observation,
-                        action_dist=rets[EpisodeKey.ACTION_DIST].copy(),
+                        action_dist=rets[Episode.ACTION_DIST].copy(),
                         **kwargs
                     )
                     for k, v in rets.items():
-                        if k == EpisodeKey.RNN_STATE:
+                        if k == Episode.RNN_STATE:
                             continue
                         if len(v.shape) < 1:
                             rets[k] = v.reshape(-1)
@@ -253,7 +253,7 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
                     _update_initial_states(
                         self,
                         runtime_id,
-                        rets[EpisodeKey.RNN_STATE],
+                        rets[Episode.RNN_STATE],
                         identifier=data_frame.identifier,
                     )
                     # print("done for compute action")

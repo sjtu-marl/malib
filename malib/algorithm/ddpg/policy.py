@@ -11,7 +11,7 @@ from malib.utils.typing import DataTransferType, Dict, Tuple, BehaviorMode, List
 from malib.algorithm.common.model import get_model
 from malib.utils.preprocessor import get_preprocessor
 from malib.algorithm.common import misc
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 
 
 class DDPG(Policy):
@@ -117,7 +117,7 @@ class DDPG(Policy):
                         requires_grad=False,
                     )
                 act = pi
-        rnn_state = kwargs[EpisodeKey.RNN_STATE]
+        rnn_state = kwargs[Episode.RNN_STATE]
         return act.numpy(), pi.numpy(), rnn_state
 
     def compute_actions_by_target_actor(

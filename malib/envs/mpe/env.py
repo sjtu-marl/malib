@@ -3,7 +3,7 @@ import gym
 
 from malib.envs.env import Environment
 from malib.utils.typing import Dict, Any, AgentID, List, Union
-from malib.utils.episode import Episode, EpisodeKey
+from malib.utils.episode import Episode, Episode
 
 
 class MPE(Environment):

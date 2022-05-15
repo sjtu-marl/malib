@@ -5,7 +5,7 @@ from typing import Dict, Any
 from torch.distributions import Independent, Normal
 
 from malib.algorithm.common.loss_func import LossFunc
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 
 
 class SACLoss(LossFunc):
@@ -43,11 +43,11 @@ class SACLoss(LossFunc):
         self.loss = []
 
         # total loss = policy_gradient_loss - entropy * entropy_coefficient + value_coefficient * value_loss
-        rewards = batch[EpisodeKey.REWARD].view(-1, 1)
-        actions = batch[EpisodeKey.ACTION]
-        cur_obs = batch[EpisodeKey.CUR_OBS]
-        next_obs = batch[EpisodeKey.NEXT_OBS]
-        dones = batch[EpisodeKey.DONE].view(-1, 1)
+        rewards = batch[Episode.REWARD].view(-1, 1)
+        actions = batch[Episode.ACTION]
+        cur_obs = batch[Episode.CUR_OBS]
+        next_obs = batch[Episode.NEXT_OBS]
+        dones = batch[Episode.DONE].view(-1, 1)
         alpha = self._params["sac_alpha"]
         gamma = self.policy.custom_config["gamma"]
         action_squash = self.policy.action_squash

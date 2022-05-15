@@ -5,7 +5,7 @@ from torch.nn import functional as F
 from malib.algorithm.common import misc
 from malib.utils.typing import Dict, Any
 from malib.algorithm.common.loss_func import LossFunc
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 from malib.algorithm.dqn.policy import DQN
 
 
@@ -66,18 +66,18 @@ class QMIXLoss(LossFunc):
 
     def loss_compute(self, batch) -> Dict[str, Any]:
         self.loss = []
-        state = list(batch.values())[0][EpisodeKey.CUR_STATE]
-        next_state = list(batch.values())[0][EpisodeKey.NEXT_STATE]
-        rewards = list(batch.values())[0][EpisodeKey.REWARD].view(-1, 1)
-        dones = list(batch.values())[0][EpisodeKey.DONE].view(-1, 1)
+        state = list(batch.values())[0][Episode.CUR_STATE]
+        next_state = list(batch.values())[0][Episode.NEXT_STATE]
+        rewards = list(batch.values())[0][Episode.REWARD].view(-1, 1)
+        dones = list(batch.values())[0][Episode.DONE].view(-1, 1)
         # print({k: v.shape for k, v in list(batch.values())[0].items()})
         # ================= handle for each agent ====================================
         q_vals, next_max_q_vals = [], []
         for env_agent_id in self.agents:
             _batch = batch[env_agent_id]
-            obs = _batch[EpisodeKey.CUR_OBS]
-            next_obs = _batch[EpisodeKey.NEXT_OBS]
-            act = _batch[EpisodeKey.ACTION].long()
+            obs = _batch[Episode.CUR_OBS]
+            next_obs = _batch[Episode.NEXT_OBS]
+            act = _batch[Episode.ACTION].long()
             if "next_action_mask" in _batch:
                 next_action_mask = _batch["next_action_mask"]
             else:

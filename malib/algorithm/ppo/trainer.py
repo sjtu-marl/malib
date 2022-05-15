@@ -8,7 +8,7 @@ from torch.distributions.kl import kl_divergence
 from torch.utils.data import Dataset, DataLoader
 
 from malib.utils.typing import Dict, Any
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 from malib.algorithm.common.trainer import Trainer
 from malib.algorithm.common.misc import vtrace, MaskedCategorical
 from malib.algorithm.common.model import get_model
@@ -145,13 +145,13 @@ class PPOLoss:
 
 class CustomDataset(Dataset):
     def __init__(self, batch: Dict[str, np.ndarray], flatten: bool = False) -> None:
-        self.states = batch[EpisodeKey.CUR_OBS]
-        self.actions = batch[EpisodeKey.ACTION]
-        self.action_masks = batch[EpisodeKey.ACTION_MASK]
-        self.action_probs = batch[EpisodeKey.ACTION_DIST]
-        self.rewards = batch[EpisodeKey.REWARD]
-        self.dones = batch[EpisodeKey.DONE]
-        self.next_states = batch[EpisodeKey.NEXT_OBS]
+        self.states = batch[Episode.CUR_OBS]
+        self.actions = batch[Episode.ACTION]
+        self.action_masks = batch[Episode.ACTION_MASK]
+        self.action_probs = batch[Episode.ACTION_DIST]
+        self.rewards = batch[Episode.REWARD]
+        self.dones = batch[Episode.DONE]
+        self.next_states = batch[Episode.NEXT_OBS]
 
         # print(
         #     "dataset shape check:",
@@ -271,12 +271,12 @@ class PPOTrainer(Trainer):
                     batch[k] = v.reshape(-1, *v.shape[3:])
                 else:
                     batch[k] = v.reshape(-1, *v.shape[2:])
-            if k == EpisodeKey.ACTION:
+            if k == Episode.ACTION:
                 batch[k] = torch.LongTensor(batch[k].copy()).to(self.policy.device)
             else:
                 batch[k] = torch.FloatTensor(batch[k].copy()).to(self.policy.device)
             # print("--- shape:", batch[k].shape)
-        batch_size = batch[EpisodeKey.CUR_OBS].shape[0]  # num of data point
+        batch_size = batch[Episode.CUR_OBS].shape[0]  # num of data point
         mini_batch_size = batch_size // self.training_config["mini_batch"]
 
         # print(

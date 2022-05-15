@@ -3,7 +3,7 @@ import torch
 import gym
 
 from malib.algorithm.common.policy import Policy
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 from malib.utils.typing import DataTransferType, Any, List, Tuple
 from malib.algorithm.common.model import get_model
 
@@ -44,7 +44,7 @@ class RandomPolicy(Policy):
     def compute_action(
         self, observation: DataTransferType, **kwargs
     ) -> Tuple[DataTransferType, DataTransferType, List[DataTransferType]]:
-        actor_rnn_state, critic_rnn_state = kwargs[EpisodeKey.RNN_STATE]
+        actor_rnn_state, critic_rnn_state = kwargs[Episode.RNN_STATE]
         # assert len(actor_rnn_state) == len(critic_rnn_state) == len(observation)
         logits = torch.softmax(self.actor(observation), dim=-1)
         if isinstance(self.action_space, gym.spaces.Discrete):
@@ -83,7 +83,7 @@ class RandomPolicy(Policy):
         ]
 
     def value_function(self, *args, **kwargs):
-        shape = kwargs[EpisodeKey.CUR_OBS].shape
+        shape = kwargs[Episode.CUR_OBS].shape
         return np.zeros(shape=(shape[0], 1))
 
     def train(self):

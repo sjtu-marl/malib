@@ -5,7 +5,7 @@ from typing import Dict, Any
 from torch.distributions import Categorical
 
 from malib.algorithm.common.loss_func import LossFunc
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 
 
 class DiscreteSACLoss(LossFunc):
@@ -76,11 +76,11 @@ class DiscreteSACLoss(LossFunc):
         )
 
         # total loss = policy_gradient_loss - entropy * entropy_coefficient + value_coefficient * value_loss
-        rewards = batch[EpisodeKey.REWARD]
-        actions = batch[EpisodeKey.ACTION].long()
-        cur_obs = batch[EpisodeKey.CUR_OBS]
-        next_obs = batch[EpisodeKey.NEXT_OBS]
-        dones = batch[EpisodeKey.DONE]
+        rewards = batch[Episode.REWARD]
+        actions = batch[Episode.ACTION].long()
+        cur_obs = batch[Episode.CUR_OBS]
+        next_obs = batch[Episode.NEXT_OBS]
+        dones = batch[Episode.DONE]
         cliprange = self._params["grad_norm_clipping"]
         alpha = self.policy._alpha
         gamma = self.policy.custom_config["gamma"]

@@ -22,34 +22,29 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from argparse import Namespace
 from typing import Type, Union, Any, List, Dict, Tuple
 from types import LambdaType
 from collections import defaultdict
 
-import time
 import os
 import gc
-import traceback
 
 import ray
-import numpy as np
 import reverb
 
 from ray.util.queue import Queue
 from reverb.client import Writer as ReverbWriter
 
-from malib import settings
 from malib.remote.interface import RemoteInterFace
-from malib.utils.logger import Log
 from malib.utils.typing import (
     AgentID,
-    BufferDescription,
     DataFrame,
     BehaviorMode,
     EnvID,
 )
 from malib.utils.general import iter_many_dicts_recursively
-from malib.utils.episode import Episode, EpisodeKey, NewEpisodeDict
+from malib.utils.episode import Episode, Episode, NewEpisodeDict
 from malib.utils.preprocessor import get_preprocessor
 from malib.utils.timing import Timing
 from malib.envs.vector_env import VectorEnv
@@ -83,116 +78,6 @@ def recieve(queue: Dict[str, Queue]) -> Dict[AgentID, DataFrame]:
     for runtime_id, v in queue.items():
         rets[runtime_id] = v.get_nowait()
     return rets
-
-
-def process_env_rets(
-    env_rets: Dict[EnvID, Dict[str, Dict[AgentID, Any]]],
-    server_runtime_config: Dict[str, Any],
-) -> Dict[AgentID, DataFrame]:
-    """Process environment returns, generally, for the observation transformation.
-
-    :param env_rets: A dict of environment returns.
-    :type env_rets: Dict[str, Any]
-    :return: A dict of environmen returns, which is washed.
-    :rtype: Dict[str, Any]
-    """
-
-    processed = {}
-    dataframes = {}
-    replaced_holder = {}
-    remain_env_ids = []
-    preprocessor = server_runtime_config["preprocessor"]
-
-    for env_id, ret in env_rets.items():
-        processed[env_id] = {}
-        replaced_holder[env_id] = {}
-
-        dframe_jump = any(ret.get(EpisodeKey.DONE, {"default": False}).values())
-        if not dframe_jump:
-            remain_env_ids.append(env_id)
-
-        for k, agent_v in ret.items():
-            processed[env_id][k] = {}
-
-            dk = k  # key for dataframes
-            if k == EpisodeKey.DONE:
-                agent_v.pop("__all__")
-            for agent, _v in agent_v.items():
-                if not dframe_jump and (agent not in dataframes):
-                    dataframes[agent] = defaultdict(lambda: [])
-                if k in [EpisodeKey.CUR_OBS, EpisodeKey.NEXT_OBS]:
-                    dk = EpisodeKey.CUR_OBS
-                    _v = preprocessor[agent].transform(_v)
-                elif k in [EpisodeKey.CUR_STATE, EpisodeKey.NEXT_STATE]:
-                    dk = EpisodeKey.CUR_STATE
-                elif k in [EpisodeKey.ACTION_MASK, EpisodeKey.NEXT_ACTION_MASK]:
-                    dk = EpisodeKey.ACTION_MASK
-                if dk not in replaced_holder[env_id]:
-                    replaced_holder[env_id][dk] = {}
-
-                if not dframe_jump:
-                    dataframes[agent][dk].append(_v)
-                    replaced_holder[env_id][dk][agent] = _v
-                processed[env_id][k][agent] = _v
-
-    # pack to data frame
-    for env_aid in dataframes.keys():
-        dataframes[env_aid] = DataFrame(
-            identifier=env_aid,
-            data={_k: np.stack(_v).squeeze() for _k, _v in dataframes[env_aid].items()},
-            runtime_config={
-                "behavior_mode": server_runtime_config["behavior_mode"],
-                "environment_ids": remain_env_ids,
-            },
-        )
-
-    return replaced_holder, processed, dataframes
-
-
-def process_policy_outputs(
-    raw_output: Dict[str, List[DataFrame]], env: VectorEnv
-) -> Tuple[None, Dict[EnvID, Dict[str, Dict[AgentID, Any]]]]:
-    """Processing policy outputs for each agent.
-
-    :param raw_output: A dict of raw policy output, mapping from agent to a data frame which is bound to a remote inference server.
-    :type raw_output: Dict[AgentID, DataFrame]
-    :return: A dict of dict, mapping from episode key to a cleaned agent dict
-    :rtype: Dict[str, Dict[AgentID, Any]]
-    """
-
-    rets = defaultdict(lambda: defaultdict(lambda: {}))  # env_id, str, agent, any
-    for dataframes in raw_output.values():
-        # data should be a dict of agent value
-        for dataframe in dataframes:
-            agent = dataframe.identifier
-            data = dataframe.data
-            env_ids = dataframe.runtime_config["environment_ids"]
-
-            assert isinstance(data, dict)
-
-            for k, v in data.items():
-                if k == EpisodeKey.RNN_STATE:
-                    for i, env_id in enumerate(env_ids):
-                        rets[env_id][k][agent] = [_v[i] for _v in v]
-                else:
-                    for env_id, _v in zip(env_ids, v):
-                        rets[env_id][k][agent] = _v
-
-    # process action with action adapter
-    env_actions: Dict[EnvID, Dict[AgentID, Any]] = env.action_adapter(rets)
-
-    return env_actions, rets
-
-
-def merge_env_rets(rets, next_rets):
-    r: Dict[EnvID, Dict] = {}
-    for e in [rets, next_rets]:
-        for env_id, ret in e.items():
-            if env_id not in r:
-                r[env_id] = ret
-            else:
-                r[env_id].update(ret)
-    return r
 
 
 def postprocessing(episodes, postprocessor_types, policies=None):
@@ -307,30 +192,15 @@ class InferenceClient(RemoteInterFace):
         self.timer.clear()
         task_type = desc["flag"]
 
-        mapped_parameter_desc_dict = {}
-        for rid in agent_interfaces.keys():
-            agents = self.agent_group[rid]
-            # random choice
-            mapped_parameter_desc_dict[rid] = {
-                aid: desc["parameter_desc_dict"][aid] for aid in agents
+        server_runtime_config = desc.copy()
+        server_runtime_config.update(
+            {
+                "sample_mode": "once",
+                # TODO(ming): move to policy
+                "preprocessor": self.preprocessor,
             }
-
-        server_runtime_config = {
-            "behavior_mode": None,
-            # a mapping, from agent to pid
-            "main_behavior_policies": desc["behavior_policies"],
-            "sample_mode": "once",
-            "preprocessor": self.preprocessor,
-        }
-
-        client_runtime_config = {
-            "max_step": desc["max_step"],
-            "fragment_length": desc["fragment_length"],
-            "custom_reset_config": None,
-            "trainable_mapping": desc["behavior_policies"]
-            if task_type == "rollout"
-            else None,
-        }
+        )
+        request = Namespace(**desc)
 
         if task_type == "rollout":
             server_runtime_config["behavior_mode"] = BehaviorMode.EXPLORATION
@@ -377,68 +247,5 @@ class InferenceClient(RemoteInterFace):
         else:
             reverb_writer: ReverbWriter = None
 
-        try:
-            with self.timer.timeit("environment_reset"):
-                rets = self.env.reset(
-                    fragment_length=client_runtime_config["fragment_length"],
-                    max_step=client_runtime_config["max_step"],
-                    custom_reset_config=client_runtime_config["custom_reset_config"],
-                )
-
-            _, rets, dataframes = process_env_rets(rets, server_runtime_config)
-            episodes = NewEpisodeDict(lambda env_id: Episode(None, env_id=env_id))
-
-            start = time.time()
-            while not self.env.is_terminated():
-                with self.timer.time_avg("policy_step"):
-                    grouped_data_frames = defaultdict(lambda: [])
-                    for agent, dataframe in dataframes.items():
-                        # map runtime to agent
-                        runtime_id = self.training_agent_mapping(agent)
-                        grouped_data_frames[runtime_id].append(dataframe)
-                    for runtime_id, _send_queue in self.send_queue.items():
-                        _send_queue.put_nowait(grouped_data_frames[runtime_id])
-                    policy_outputs = recieve(self.recv_queue)
-                    env_actions, policy_outputs = process_policy_outputs(
-                        policy_outputs, self.env
-                    )
-
-                with self.timer.time_avg("environment_step"):
-                    next_rets = self.env.step(env_actions)
-                    assert len(next_rets) > 0, env_actions
-                    # merge RNN states here
-                    rets_holder, next_rets, next_dataframes = process_env_rets(
-                        next_rets, server_runtime_config
-                    )
-                    env_rets = merge_env_rets(rets, next_rets)
-                assert len(env_rets) > 0
-                # episodes.record(policy_outputs, env_rets)
-                if reverb_writer is not None:
-                    reverb_writer.append()
-                # update next keys
-                rets = rets_holder
-                dataframes = next_dataframes
-            end = time.time()
-            rollout_info = self.env.collect_info()
-        except Exception as e:
-            traceback.print_exc()
-            raise e
-
-        ph = list(rollout_info.values())
-
-        holder = {}
-        for history, ds, k, vs in iter_many_dicts_recursively(*ph, history=[]):
-            arr = [np.sum(_vs) for _vs in vs]
-            prefix = "/".join(history)
-            holder[prefix] = np.mean(arr)
-
-        performance = self.timer.todict()
-        performance["FPS"] = self.env.batched_step_cnt / (end - start)
-        res = {
-            "task_type": task_type,
-            "total_timesteps": self.env.batched_step_cnt,
-            "performance": performance,
-        }
-        if task_type in ["evaluation", "simulation"]:
-            res["evaluation"] = holder
+        results = self.env_runner(collect_backend=reverb_writer)
         return res

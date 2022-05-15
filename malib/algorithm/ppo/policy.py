@@ -11,7 +11,7 @@ from torch.nn import functional as F
 from torch.distributions import Categorical, Normal
 
 from malib.utils.typing import BehaviorMode, Tuple, DataTransferType, Dict, Any, List
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 from malib.algorithm.common.model import get_model
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common import misc
@@ -107,7 +107,7 @@ class PPO(Policy):
             return (
                 actions.numpy(),
                 pi.numpy(),
-                kwargs[EpisodeKey.RNN_STATE],
+                kwargs[Episode.RNN_STATE],
             )
         except Exception as e:
             traceback.print_exc()
@@ -132,12 +132,12 @@ class PPO(Policy):
     # def compute_advantage(self, batch: Dict[str, Any]):
     #     # td_value - value
     #     cast = lambda x: torch.from_numpy(x.copy()) if isinstance(x, np.ndarray) else x
-    #     next_value = self.critic(cast(batch[EpisodeKey.NEXT_OBS]))
+    #     next_value = self.critic(cast(batch[Episode.NEXT_OBS]))
     #     td_value = (
-    #         cast(batch[EpisodeKey.REWARD])
-    #         + self.gamma * (1.0 - cast(batch[EpisodeKey.DONE]).float()) * next_value
+    #         cast(batch[Episode.REWARD])
+    #         + self.gamma * (1.0 - cast(batch[Episode.DONE]).float()) * next_value
     #     )
-    #     value = self.critic(cast(batch[EpisodeKey.CUR_OBS]))
+    #     value = self.critic(cast(batch[Episode.CUR_OBS]))
     #     adv = td_value - value
     #     return adv
 

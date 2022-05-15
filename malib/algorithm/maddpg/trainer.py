@@ -1,5 +1,5 @@
 from malib.algorithm.common.trainer import Trainer
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 from .loss import MADDPGLoss
 
 
@@ -32,7 +32,7 @@ class MADDPGTrainer(Trainer):
                 batch[aid][
                     "next_act_by_target"
                 ] = policy.compute_actions_by_target_actor(
-                    batch[aid][EpisodeKey.NEXT_OBS].copy()
+                    batch[aid][Episode.NEXT_OBS].copy()
                 ).detach()
 
         return batch

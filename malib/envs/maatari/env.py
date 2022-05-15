@@ -4,7 +4,7 @@ import gym
 
 from malib.envs import Environment
 from malib.utils.typing import Dict, Any, Sequence, AgentID, List
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 
 
 def nested_env_creator(ori_creator: type, wrappers: Sequence[Dict]) -> type:
@@ -70,10 +70,10 @@ class MAAtari(Environment):
     def time_step(self, actions: Dict[AgentID, Any]):
         observations, rewards, dones, infos = self._env.step(actions)
         return {
-            EpisodeKey.NEXT_OBS: observations,
-            EpisodeKey.REWARD: rewards,
-            EpisodeKey.DONE: dones,
-            EpisodeKey.INFO: infos,
+            Episode.NEXT_OBS: observations,
+            Episode.REWARD: rewards,
+            Episode.DONE: dones,
+            Episode.INFO: infos,
         }
 
     def render(self, *args, **kwargs):
@@ -83,7 +83,7 @@ class MAAtari(Environment):
         super(MAAtari, self).reset(*args, **kwargs)
 
         observations = self._env.reset()
-        return {EpisodeKey.CUR_OBS: observations}
+        return {Episode.CUR_OBS: observations}
 
     def close(self):
         return self._env.close()

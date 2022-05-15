@@ -6,9 +6,7 @@ from malib.utils.logger import Logger
 from malib.utils.typing import AgentID, EnvID, Dict, Any, PolicyID, List
 
 
-class EpisodeKey:
-    """Unlimited buffer"""
-
+class Episode:
     CUR_OBS = "observation"
     NEXT_OBS = "next_observation"
     ACTION = "action"
@@ -36,14 +34,11 @@ class EpisodeKey:
     # model states
     RNN_STATE = "rnn_state"
 
-
-class Episode:
-    def __init__(self, behavior_policies: Dict[AgentID, PolicyID], env_id: str):
-        self.policy_mapping = behavior_policies
-        self.env_id = env_id
-
+    def __init__(self, agents, processors):
+        self.processors = processors
         # self.agent_entry = defaultdict(lambda: {aid: [] for aid in self.policy_mapping})
-        self.agent_entry = defaultdict(lambda: defaultdict(lambda: []))
+        self.agents = agents
+        self.agent_entry = {agent: defaultdict(lambda: []) for agent in self.agents}
 
     def __getitem__(self, __k: str) -> Dict[AgentID, List]:
         return self.agent_entry[__k]
@@ -51,47 +46,41 @@ class Episode:
     def __setitem__(self, __k: str, v: Dict[AgentID, List]) -> None:
         self.agent_entry[__k] = v
 
-    def to_numpy(
-        self, batch_mode: str = "time_step", filter: List[AgentID] = None
-    ) -> Dict[AgentID, Dict[str, np.ndarray]]:
-        """Convert episode to numpy array-like data.
+    def record(self, env_rets: Dict[str, Any]):
+        for i, key in enumerate(
+            [
+                Episode.CUR_OBS,
+                Episode.ACTION_MASK,
+                Episode.REWARD,
+                Episode.DONE,
+                Episode.INFO,
+            ]
+        ):
+            if len(env_rets) < i - 1:
+                break
+            for agent, _v in env_rets[i]:
+                self.agent_entry[agent][key].append(_v)
 
-        :param batch_mode: Determine the mechanism of data aggregation, defaults to "time_step"
-        :type batch_mode: str, optional
-        :param filter: Agent id filter, defaults to None, means no filter
-        :type filter: List[AgentID], optional
-        :return: A dict of agent numpy
-        :rtype: Dict[str, Dict[AgentID, np.ndarray]]
-        """
+    def to_numpy(self) -> Dict[AgentID, Dict[str, np.ndarray]]:
+        """Convert episode to numpy array-like data."""
 
-        res = defaultdict(lambda: {})
-
-        for ek, agent_v in self.agent_entry.items():
-            _filter = filter or list(agent_v.keys())
-            for agent_id in _filter:
-                v = agent_v[agent_id]
-                if ek == EpisodeKey.RNN_STATE:
-                    if len(v) == 0 or len(v[0]) == 0:
-                        continue
-                    tmp = [
-                        np.stack([np.zeros_like(r[0], dtype=np.float32)] + list(r[:-1]))
-                        for r in list(zip(*v))
-                    ]
-                    if batch_mode == "episode":
-                        tmp = [np.expand_dims(r.squeeze(), axis=0) for r in tmp]
-                    res[agent_id].update(
-                        {f"{ek}_{i}": _tmp.squeeze() for i, _tmp in enumerate(tmp)}
-                    )
+        res = {}
+        for agent, agent_trajectory in self.agent_entry.items():
+            tmp = {}
+            for k, v in agent_trajectory.items():
+                if k == Episode.CUR_OBS:
+                    # move to next obs
+                    tmp[Episode.NEXT_OBS] = np.asarray(v[1:])
+                    tmp[Episode.CUR_OBS] = np.asarray(v[:-1])
+                elif k == Episode.CUR_STATE:
+                    # move to next state
+                    tmp[Episode.NEXT_STATE] = np.asarray(v[1:])
+                    tmp[Episode.CUR_STATE] = np.asarray(v[:-1])
+                elif k == Episode.INFO:
+                    continue
                 else:
-                    if len(v) == 0:
-                        return {}
-                    tmp = np.asarray(v, dtype=np.float32)
-                    # if ek == "action_logits":
-                    #     print("------------", tmp.shape)
-                    if batch_mode == "episode":
-                        res[agent_id][ek] = np.expand_dims(tmp.squeeze(), axis=0)
-                    else:
-                        res[agent_id][ek] = tmp.squeeze()
+                    tmp[k] = np.asarray(v)
+            res[agent] = tmp
         return dict(res)
 
 
@@ -103,50 +92,17 @@ class NewEpisodeDict(defaultdict):
             ret = self[env_id] = self.default_factory(env_id)
             return ret
 
-    def record(
-        self, policy_outputs, env_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]
-    ):
-        for env_id, policy_output in policy_outputs.items():
-            # assert EpisodeKey.CUR_OBS in env_outputs[env_id], env_output[env_id].keys()
-            for k, v in policy_output.items():
-                agent_slot = self[env_id][k]
-                for aid, _v in v.items():
-                    # assert aid in agent_slot, agent_slot
-                    agent_slot[aid].append(_v)
-        # we must split the for-loop here, in the case of async vec_env, the keys in env_outputs maybe different
-        # from keys in policy_outputs,
-        # print("------ env ouputs:", {eid: {k: {ak: _v.shape if isinstance(_v, np.ndarray) else _v for ak, _v in v.items()} for k, v in _env_output.items()} for eid, _env_output in env_outputs.items()})
+    def record(self, env_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]):
         for env_id, env_output in env_outputs.items():
-            for k, v in env_output.items():
-                if k == "infos":
-                    continue
-                agent_slot = self[env_id][k]
-                for aid, _v in v.items():
-                    agent_slot[aid].append(_v)
+            self[env_id].record(env_output)
 
-    def to_numpy(
-        self, batch_mode: str = "time_step", filter: List[AgentID] = None
-    ) -> Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]:
-        """Lossy data transformer, which converts a dict of episode to a dict of numpy array like. (some episode may be empty)
-
-        :param batch_mode: Determine the mechnism for data aggregation, defaults to "time_step"
-        :type batch_mode: str, optional
-        :param filter: Agent filter, defaults to None
-        :type filter: List[AgentID], optional
-        :return: A dict of dict, mapping from runtime environment id to a numpy dict.
-        :rtype: Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]
-        """
+    def to_numpy(self) -> Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]:
+        """Lossy data transformer, which converts a dict of episode to a dict of numpy array like. (some episode may be empty)"""
 
         res = {}
         for k, v in self.items():
-            tmp: Dict[AgentID, Dict[str, np.ndarray]] = v.to_numpy(batch_mode, filter)
-            # print("agent episode shape check:", {agent: {_k: _v.shape for _k, _v in agent_v.items()} for agent, agent_v in tmp.items()})
+            tmp: Dict[AgentID, Dict[str, np.ndarray]] = v.to_numpy()
             if len(tmp) == 0:
                 continue
             res[k] = tmp
-        a = len(res)
-        b = len(self.items())
-        Logger.debug(
-            "{} valid episode out of {} episodes (%{})".format(a, b, a / b * 100.0)
-        )
         return res
