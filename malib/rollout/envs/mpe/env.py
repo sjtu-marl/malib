@@ -1,7 +1,7 @@
 import importlib
 import gym
 
-from malib.envs.env import Environment
+from malib.rollout.envs.env import Environment
 from malib.utils.typing import Dict, Any, AgentID, List, Union
 from malib.utils.episode import Episode, Episode
 

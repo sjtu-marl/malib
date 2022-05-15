@@ -32,7 +32,7 @@ import ray
 
 from ray.actor import ActorHandle
 
-from malib.utils.logger import Logger
+from malib.utils.logging import Logger
 from malib.utils.typing import (
     Dict,
     AgentID,
@@ -42,7 +42,7 @@ from malib.utils.typing import (
     PolicyID,
     Callable,
 )
-from malib.envs import Environment
+from malib.rollout.envs import Environment
 from malib.utils.episode import Episode
 
 

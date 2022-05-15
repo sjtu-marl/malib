@@ -9,8 +9,8 @@ from numpy.core.fromnumeric import mean
 
 from malib.utils.typing import AgentID
 from malib.utils.preprocessor import get_preprocessor
-from malib.envs.env import Environment
-from malib.envs.gr_football.encoders import encoder_basic, rewarder_basic
+from malib.rollout.envs.env import Environment
+from malib.rollout.envs.gr_football.encoders import encoder_basic, rewarder_basic
 
 try:
     from gfootball import env as raw_grf_env

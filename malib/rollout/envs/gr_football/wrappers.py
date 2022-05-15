@@ -3,7 +3,7 @@ import numpy as np
 
 from malib.utils.typing import Callable, AgentID, Any, Dict
 
-from malib.envs.env import GroupWrapper
+from malib.rollout.envs.env import GroupWrapper
 
 
 def GroupedGFBall(base_env, parameter_sharing_func: Callable):

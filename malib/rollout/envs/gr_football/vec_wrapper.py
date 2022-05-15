@@ -363,8 +363,8 @@
 #     # print(action_split)
 #     # print("="*40)
 #     # print(_merge_list(action_split))
-#     from malib.envs.gr_football import default_config
-#     from malib.envs.gr_football import BaseGFootBall, ParameterSharingWrapper
+#     from malib.rollout.envs.gr_football import default_config
+#     from malib.rollout.envs.gr_football import BaseGFootBall, ParameterSharingWrapper
 
 #     def env_fn():
 #         env = BaseGFootBall(**default_config)

@@ -2,7 +2,7 @@ import importlib
 import supersuit
 import gym
 
-from malib.envs import Environment
+from malib.rollout.envs import Environment
 from malib.utils.typing import Dict, Any, Sequence, AgentID, List
 from malib.utils.episode import Episode
 

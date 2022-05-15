@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Tuple
 import gym
 
-from malib.envs.env import Environment
+from malib.rollout.envs.env import Environment
 from malib.utils.typing import AgentID
 
 

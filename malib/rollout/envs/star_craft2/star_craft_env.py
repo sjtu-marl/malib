@@ -4,8 +4,8 @@ import gym
 from gym import spaces
 from smac.env import StarCraft2Env as sc_env
 
-from malib.envs import Environment
-from malib.envs.env import GroupWrapper
+from malib.rollout.envs import Environment
+from malib.rollout.envs.env import GroupWrapper
 from malib.utils.typing import Dict, AgentID, Any, List, Union
 from malib.utils.episode import Episode
 
