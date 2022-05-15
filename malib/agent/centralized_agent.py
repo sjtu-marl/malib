@@ -7,7 +7,6 @@ from copy import deepcopy
 import gym
 
 from malib.algorithm import get_algorithm_space
-from malib.utils import metrics
 from malib.utils.typing import (
     BufferDescription,
     Dict,

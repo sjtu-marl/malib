@@ -23,7 +23,6 @@ from malib.utils.typing import (
     ParameterDescription,
     MetricEntry,
 )
-from malib.utils import metrics
 from malib.agent.indepdent_agent import IndependentAgent
 
 

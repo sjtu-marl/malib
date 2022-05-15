@@ -211,7 +211,7 @@ class Policy(metaclass=ABCMeta):
                 res[k] = v.state_dict()
         return res
 
-    def load_state(self, state_dict: Dict[str, Any]) -> None:
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         """Load state dict outside.
 
         Note that the keys in `state_dict` should be existed in state handler.

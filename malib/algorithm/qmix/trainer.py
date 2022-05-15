@@ -9,7 +9,7 @@ from malib.algorithm.qmix.loss import QMIXLoss
 from malib.utils.preprocessor import Preprocessor, get_preprocessor
 
 from malib.utils.typing import AgentID, Dict
-from malib.utils.logger import Logger
+from malib.utils.logging import Logger
 
 
 class QMIXTrainer(Trainer):

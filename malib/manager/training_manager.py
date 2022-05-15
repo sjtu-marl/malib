@@ -13,7 +13,7 @@ from malib import settings
 from malib.agent import get_training_agent
 from malib.agent.agent_interface import AgentFeedback, AgentTaggedFeedback
 from malib.gt.algos.exploitability import measure_exploitability
-from malib.utils.logger import Log, Logger
+from malib.utils.logging import Log, Logger
 from malib.utils.typing import (
     List,
     Tuple,

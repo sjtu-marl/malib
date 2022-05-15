@@ -35,7 +35,7 @@ from malib.utils.typing import (
     List,
 )
 from malib.utils import errors
-from malib.utils.logger import Logger, get_logger, Log
+from malib.utils.logging import Logger
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.trainer import Trainer
 
@@ -438,7 +438,6 @@ class AgentInterface(metaclass=ABCMeta):
     def runtime_id(self):
         return self._runtime_id
 
-    @Log.method_timer(enable=settings.PROFILING)
     def train(self, task_desc: TaskDescription, training_config: Dict[str, Any] = None):
         """Handling training task with a given task description.
 

@@ -4,6 +4,7 @@ subprocess). It is responsible for the resources management of worker instances,
 will be assigned with rollout tasks sent from the `CoordinatorServer`.
 """
 
+from typing import Dict, Tuple, Any, Callable
 import hashlib
 import time
 
@@ -15,12 +16,7 @@ from malib.utils.typing import (
     TaskDescription,
     TaskRequest,
     Status,
-    Tuple,
-    Dict,
-    Any,
-    Callable,
 )
-from malib.utils.logger import Logger
 
 
 def _get_worker_hash_idx(idx):
