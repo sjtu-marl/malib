@@ -7,13 +7,13 @@ import ray
 
 from malib import settings
 from malib.common.strategy_spec import StrategySpec
-from malib.envs import dummy_env
 from malib.algorithm.dqn import DQN
 from malib.algorithm.random import RandomPolicy
+from malib.rollout.envs import dummy_env
 from malib.rollout.inference_client import InferenceClient
 from malib.rollout.inference_server import InferenceWorkerSet
-from malib.backend.datapool.offline_dataset_server import OfflineDataset
-from malib.backend.datapool.parameter_server import ParameterServer
+from malib.backend.offline_dataset_server import OfflineDataset
+from malib.backend.parameter_server import ParameterServer
 
 
 @pytest.mark.parametrize("max_env_num", [1])
@@ -31,11 +31,7 @@ def test_inference_coordination(max_env_num: int):
     offline_dataset_server = OfflineDataset.options(
         name=settings.OFFLINE_DATASET_ACTOR
     ).remote(table_capacity=100)
-    parameter_server = (
-        ParameterServer.as_remote()
-        .options(name=settings.PARAMETER_SERVER_ACTOR)
-        .remote()
-    )
+    parameter_server = ParameterServer.options(name=settings.PARAMETER_SERVER_ACTOR).remote()
 
     client = InferenceClient(
         env_desc=env_desc,
@@ -86,6 +82,7 @@ def test_inference_coordination(max_env_num: int):
 
     strategy_specs = {
         runtime_id: StrategySpec(
+            identifier=runtime_id,
             policy_ids=policy_ids,
             meta_data={
                 "prob_list": prob_list,

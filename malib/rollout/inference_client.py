@@ -41,11 +41,11 @@ from reverb.client import Writer as ReverbWriter
 
 from malib.utils.typing import AgentID, DataFrame, EnvID, BehaviorMode
 from malib.utils.episode import Episode, NewEpisodeDict
-from malib.utils.preprocessor import get_preprocessor
+from malib.utils.preprocessor import Preprocessor, get_preprocessor
 from malib.utils.timing import Timing
 from malib.remote.interface import RemoteInterFace
-from malib.envs.vector_env import VectorEnv
-from malib.envs.async_vector_env import AsyncVectorEnv, AsyncSubProcVecEnv
+from malib.rollout.envs.vector_env import VectorEnv
+from malib.rollout.envs.async_vector_env import AsyncVectorEnv, AsyncSubProcVecEnv
 from malib.rollout.postprocessor import get_postprocessor
 from malib.rollout.inference_server import InferenceWorkerSet
 
@@ -139,15 +139,15 @@ def process_policy_outputs(
             for k, v in data.items():
                 if k == Episode.RNN_STATE:
                     for i, env_id in enumerate(env_ids):
-                        rets[env_id][k][agent] = [_v[i] for _v in v]
+                        rets[env_id][agent][k] = [_v[i] for _v in v]
                 else:
                     for env_id, _v in zip(env_ids, v):
-                        rets[env_id][k][agent] = _v
+                        rets[env_id][agent][k] = _v
 
     # process action with action adapter
     env_actions: Dict[EnvID, Dict[AgentID, Any]] = env.action_adapter(rets)
 
-    return env_actions
+    return env_actions, rets
 
 
 def merge_env_rets(rets, next_rets):
@@ -241,7 +241,7 @@ class InferenceClient(RemoteInterFace):
         env_cls = env_desc["creator"]
         env_config = env_desc["config"]
 
-        self.preprocessor = {
+        self.preprocessor: Dict[str, Preprocessor] = {
             agent: get_preprocessor(obs_spaces[agent])(obs_spaces[agent])
             for agent in env_desc["possible_agents"]
         }
@@ -294,7 +294,18 @@ class InferenceClient(RemoteInterFace):
         desc: Dict[str, Any],
         dataserver_entrypoint: str = None,
         reset: bool = False,
-    ) -> Union[List, Dict]:
+    ) -> Dict[str, Any]:
+        """Run environment runner to collect training data or pure simulation.
+
+        Args:
+            agent_interfaces (Dict[AgentID, InferenceWorkerSet]): A dict of agent interface server.
+            desc (Dict[str, Any]): Task description.
+            dataserver_entrypoint (str, optional): Dataserver entrypoint, actually a reverb server name. Defaults to None.
+            reset (bool, optional): Reset connection if existing connect detected. Defaults to False.
+
+        Returns:
+            Dict[str, Any]: Simulation results.
+        """
 
         # reset timer, ready for monitor
         self.timer.clear()
@@ -401,7 +412,11 @@ def env_runner(
                 for runtime_id, _send_queue in client.send_queue.items():
                     _send_queue.put_nowait(grouped_data_frames[runtime_id])
                 policy_outputs = recieve(client.recv_queue)
-                env_actions = process_policy_outputs(policy_outputs, client.env)
+                env_actions, processed_policy_outputs = process_policy_outputs(
+                    policy_outputs, client.env
+                )
+                print(processed_policy_outputs)
+                episode_dict.record(processed_policy_outputs)
 
             with client.timer.time_avg("environment_step"):
                 env_rets = client.env.step(env_actions)
@@ -412,7 +427,9 @@ def env_runner(
 
         if collect_backend is not None:
             # episode_id: agent_id: dict_data
-            collect_backend(episodes=episode_dict.to_numpy())
+            episodes = episode_dict.to_numpy()
+            # print("episodes:", episode_dict.to_numpy())
+            collect_backend(episodes=episodes)
         end = time.time()
         rollout_info = client.env.collect_info()
     except Exception as e:
@@ -423,16 +440,5 @@ def env_runner(
     performance["FPS"] = client.env.batched_step_cnt / (end - start)
 
     res = list(rollout_info.values())
+    # TODO(ming): merge information?
     return res
-    # for history, ds, k, vs in iter_many_dicts_recursively(*ph, history=[]):
-    #     arr = [np.sum(_vs) for _vs in vs]
-    #     prefix = "/".join(history)
-    #     holder[prefix] = np.mean(arr)
-
-    # res = {
-    #     "task_type": task_type,
-    #     "total_timesteps": client.env.batched_step_cnt,
-    #     "performance": performance,
-    # }
-    # if task_type in ["evaluation", "simulation"]:
-    #     res["evaluation"] = holder

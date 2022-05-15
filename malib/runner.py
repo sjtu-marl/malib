@@ -7,7 +7,7 @@ import ray
 from malib import settings
 from malib.utils.typing import Dict, Any, List
 from malib.utils import logger
-from malib.utils.logger import Logger
+from malib.utils.logging import Logger
 from malib.utils.general import update_configs
 
 
@@ -69,8 +69,8 @@ def run(
 
     try:
         from malib.backend.coordinator.task import CoordinatorServer
-        from malib.backend.datapool.offline_dataset_server import OfflineDataset
-        from malib.backend.datapool.parameter_server import ParameterServer
+        from malib.backend.offline_dataset_server import OfflineDataset
+        from malib.backend.parameter_server import ParameterServer
 
         try:
             start_ray_info = ray.init(address="auto")

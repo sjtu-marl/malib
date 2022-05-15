@@ -1,12 +1,11 @@
 from typing import Any, List, Dict
 from functools import reduce
 from operator import mul
-from collections import defaultdict, namedtuple
+from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 
 import os
-import time
-import threading
 import traceback
 
 import pickle as pkl
@@ -16,10 +15,11 @@ import gym
 from ray.util.queue import Queue
 
 from malib import settings
-from malib.common.strategy_spec import StrategySpec
 from malib.utils.typing import AgentID, DataFrame
-from malib.algorithm.common.policy import Policy
 from malib.utils.episode import Episode
+from malib.common.strategy_spec import StrategySpec
+from malib.algorithm.common.policy import Policy
+from malib.backend.parameter_server import ParameterServer
 
 
 RuntimeHandler = namedtuple("RuntimeHandler", "sender,recver,runtime_config,rnn_states")
@@ -32,7 +32,7 @@ class InferenceWorkerSet:
         agent_id: AgentID,
         observation_space: gym.Space,
         action_space: gym.Space,
-        parameter_server: Any,
+        parameter_server: ParameterServer,
         governed_agents: List[AgentID],
         force_weight_update: bool = False,
     ) -> None:
@@ -41,16 +41,13 @@ class InferenceWorkerSet:
         self.action_space = action_space
         self.parameter_server = parameter_server
 
-        self.parameter_desc = []
-        self.parameter_version: List[int] = []
-
         self.thread_pool = ThreadPoolExecutor()
-        self.parameter_buffer_lock = threading.Lock()
-        self.parameter_buffer = defaultdict(lambda: None)
         self.governed_agents = governed_agents
-        self.policies = {aid: {} for aid in governed_agents}
+        self.policies: Dict[str, Policy] = {}
+        self.strategy_spec_dict: Dict[str, StrategySpec] = {}
 
         self.runtime: Dict[int, RuntimeHandler] = {}
+        self.parameter_buffer_lock = Lock()
         self.thread_pool.submit(_update_weights, self, force_weight_update)
 
     def shutdown(self):
@@ -102,10 +99,10 @@ class InferenceWorkerSet:
 
     def _update_policies(self, strategy_spec: StrategySpec, agent_id: AgentID):
         for strategy_spec_pid in strategy_spec.policy_ids:
-            if strategy_spec_pid not in self.policies[agent_id]:
+            policy_id = f"{strategy_spec.id}/{strategy_spec_pid}"
+            if policy_id not in self.policies:
                 policy = strategy_spec.gen_policy()
-                self.policies[agent_id][strategy_spec_pid] = policy
-                self.parameter_version.append(-1)
+                self.policies[policy_id] = policy
 
 
 def _get_initial_states(self, runtime_id, observation, policy: Policy, identifier):
@@ -141,8 +138,10 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
             send_data_frames = []
             with self.parameter_buffer_lock:
                 for data_frame in data_frames:
-                    policy_id = strategy_specs[data_frame.identifier].sample()
-                    policy: Policy = self.policies[data_frame.identifier][policy_id]
+                    spec = strategy_specs[data_frame.identifier]
+                    spec_policy_id = spec.sample()
+                    policy_id = f"{spec.id}/{spec_policy_id}"
+                    policy: Policy = self.policies[policy_id]
                     kwargs = {**data_frame.data, **data_frame.runtime_config}
                     batch_size = len(kwargs["environment_ids"])
                     assert Episode.CUR_OBS in kwargs, kwargs.keys()
@@ -163,7 +162,7 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
                     rets[Episode.STATE_VALUE] = policy.value_function(
                         observation=observation,
                         action_dist=rets[Episode.ACTION_DIST].copy(),
-                        **kwargs
+                        **kwargs,
                     )
                     for k, v in rets.items():
                         if k == Episode.RNN_STATE:
@@ -195,7 +194,16 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
         raise e
 
 
-def _update_weights(self: InferenceWorkerSet, force: bool = False) -> None:
-    """Update weights for agent interface."""
-    time.sleep(1)
-    print("update weights ...")
+def _update_weights(inference_server: InferenceWorkerSet, force: bool = False) -> None:
+    while True:
+        for strategy_spec in inference_server.strategy_spec_dict.values():
+            for spec_policy_id in strategy_spec.policy_ids:
+                policy_id = f"{strategy_spec.id}/{policy_id}"
+                if policy_id in inference_server.policies:
+                    weights = ray.get(
+                        inference_server.parameter_server.get_weights.remote(
+                            spec_id=strategy_spec.id, spec_policy_id=spec_policy_id
+                        )
+                    )
+                    if weights is not None:
+                        inference_server.policies[policy_id].load_state_dict(weights)

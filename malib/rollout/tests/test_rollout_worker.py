@@ -1,5 +1,6 @@
 from types import LambdaType
 from typing import Any, List, Dict
+from collections import defaultdict
 from unittest import mock
 
 import time
@@ -15,11 +16,11 @@ from ray.util.queue import Queue
 
 from malib import settings
 from malib.utils.typing import AgentID
+from malib.rollout.envs import dummy_env
 from malib.common.strategy_spec import StrategySpec
-from malib.envs import dummy_env
-
-from tests.dataset import FakeDataServer
-from tests.parameter_server import FakeParameterServer
+from malib.algorithm.random import RandomPolicy
+from malib.backend.offline_dataset_server import OfflineDataset
+from malib.backend.parameter_server import ParameterServer
 from tests.coordinator import FakeCoordinator
 
 
@@ -109,16 +110,18 @@ def test_rollout_worker(agent_mapping_func: LambdaType):
     if not ray.is_initialized():
         ray.init()
     c = FakeCoordinator.options(name=settings.COORDINATOR_SERVER_ACTOR).remote()
-    d = FakeDataServer.options(name=settings.OFFLINE_DATASET_ACTOR).remote()
-    p = FakeParameterServer.options(name=settings.PARAMETER_SERVER_ACTOR).remote()
+    d = OfflineDataset.options(name=settings.OFFLINE_DATASET_ACTOR).remote(100)
+    p = ParameterServer.options(name=settings.PARAMETER_SERVER_ACTOR).remote()
     ray.get([c.start.remote(), d.start.remote(), p.start.remote()])
 
     from malib.rollout.rollout_worker import RolloutWorker
 
     print("mock done")
 
+    env_desc = dummy_env.env_desc_gen()
+
     rolloutworker = RolloutWorker(
-        env_desc=dummy_env.env_desc_gen(),
+        env_desc=env_desc,
         agent_mapping_func=agent_mapping_func,
         runtime_configs=dict(
             fragment_length=100,
@@ -139,9 +142,41 @@ def test_rollout_worker(agent_mapping_func: LambdaType):
         outer_inference_client=MockedInferenceClient,
     )
 
+    runtime_obs_spaces = {}
+    runtime_act_spaces = {}
+    obs_spaces = env_desc["observation_spaces"]
+    act_spaces = env_desc["action_spaces"]
+
+    # map agents
+    agent_group = defaultdict(lambda: [])
+    runtime_agent_ids = []
+    for agent in env_desc["possible_agents"]:
+        runtime_id = agent_mapping_func(agent)
+        agent_group[runtime_id].append(agent)
+        runtime_agent_ids.append(runtime_id)
+    runtime_agent_ids = set(runtime_agent_ids)
+    agent_group = dict(agent_group)
+
+    for rid, agents in agent_group.items():
+        runtime_obs_spaces[rid] = obs_spaces[agents[0]]
+        runtime_act_spaces[rid] = act_spaces[agents[0]]
+
     # step rollout
     runtime_strategy_specs = {
-        rid: StrategySpec(policy_ids=["dummy"])
+        rid: StrategySpec(
+            identifier=rid,
+            policy_ids=["dummy"],
+            meta_data={
+                "policy_cls": RandomPolicy,
+                "experiment_tag": experiment_tag,
+                "kwargs": {
+                    "observation_space": runtime_obs_spaces[rid],
+                    "action_space": runtime_act_spaces[rid],
+                    "custom_config": {},
+                    "model_config": {},
+                }
+            },
+        )
         for rid in rolloutworker.runtime_agent_ids
     }
     stopping_conditions = {
