@@ -14,7 +14,7 @@ from malib.utils.typing import (
     SimulationDescription,
     AgentInvolveInfo,
 )
-from malib.utils.logger import Logger
+from malib.utils.logging import Logger
 from malib.evaluator import get_evaluator, Evaluator
 from malib.manager.rollout_worker_manager import RolloutWorkerManager
 from malib.manager.training_manager import TrainingManager

@@ -4,7 +4,7 @@ import copy
 from dataclasses import dataclass, field
 from collections import defaultdict
 
-from malib.utils.logger import Logger
+from malib.utils.logging import Logger
 from malib.utils.typing import (
     TaskDescription,
     TaskRequest,
