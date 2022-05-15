@@ -23,15 +23,13 @@
 # SOFTWARE.
 
 from typing import Dict, Any
-from typing_extensions import ParamSpecKwargs
 
 import logging
 import ray
 import reverb
 
 from malib import settings
-from malib.utils.general import BufferDict, iter_many_dicts_recursively
-from malib.utils.typing import BufferDescription, PolicyID, AgentID
+from malib.utils.typing import PolicyID, AgentID
 
 
 logger = logging.getLogger(__name__)

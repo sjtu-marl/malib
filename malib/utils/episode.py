@@ -1,9 +1,9 @@
+from typing import Dict, Any, List, Sequence
 from collections import defaultdict
 
 import numpy as np
-from malib.utils.logger import Logger
 
-from malib.utils.typing import AgentID, EnvID, Dict, Any, PolicyID, List
+from malib.utils.typing import AgentID, EnvID, PolicyID
 
 
 class Episode:
@@ -46,7 +46,7 @@ class Episode:
     def __setitem__(self, __k: str, v: Dict[AgentID, List]) -> None:
         self.agent_entry[__k] = v
 
-    def record(self, env_rets: Dict[str, Any]):
+    def record(self, env_rets: Sequence[Dict[AgentID, Any]]):
         for i, key in enumerate(
             [
                 Episode.CUR_OBS,
@@ -56,9 +56,11 @@ class Episode:
                 Episode.INFO,
             ]
         ):
-            if len(env_rets) < i - 1:
+            if len(env_rets) < i + 1:
                 break
-            for agent, _v in env_rets[i]:
+            for agent, _v in env_rets[i].items():
+                if agent == "__all__":
+                    continue
                 self.agent_entry[agent][key].append(_v)
 
     def to_numpy(self) -> Dict[AgentID, Dict[str, np.ndarray]]:
@@ -89,10 +91,10 @@ class NewEpisodeDict(defaultdict):
         if self.default_factory is None:
             raise KeyError(env_id)
         else:
-            ret = self[env_id] = self.default_factory(env_id)
+            ret = self[env_id] = self.default_factory()
             return ret
 
-    def record(self, env_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]):
+    def record(self, env_outputs: Dict[EnvID, Sequence[Dict[AgentID, Any]]]):
         for env_id, env_output in env_outputs.items():
             self[env_id].record(env_output)
 

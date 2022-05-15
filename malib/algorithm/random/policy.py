@@ -54,7 +54,7 @@ class RandomPolicy(Policy):
         if "legal_moves" in kwargs:
             mask = torch.zeros_like(logits)
             mask[kwargs["legal_moves"]] = 1
-        elif "action_mask" in kwargs:
+        elif kwargs.get("action_mask") is not None:
             mask = torch.FloatTensor(kwargs["action_mask"])
         else:
             mask = torch.ones_like(logits)

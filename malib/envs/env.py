@@ -106,21 +106,21 @@ class Environment:
         self, actions: Dict[AgentID, Any]
     ) -> Tuple[
         Dict[AgentID, Any],
+        Dict[AgentID, np.ndarray],
         Dict[AgentID, float],
         Dict[AgentID, bool],
         Dict[AgentID, Any],
-        Dict[AgentID, np.ndarray],
     ]:
         self.cnt += 1
-        rets = self.time_step(actions)
-        rets[2]["__all__"] = self.env_done_check(rets[Episode.DONE])
+        rets = list(self.time_step(actions))
+        rets[2]["__all__"] = self.env_done_check(rets[2])
         self.record_episode_info_step(*rets)
         observations = rets[0]
         action_masks = {}
         for agent, obs in observations.items():
             if isinstance(obs, dict) and "action_mask" in obs:
                 action_masks[agent] = np.asarray(obs["action_mask"], dtype=np.float32)
-        rets = rets + (action_masks,)
+        rets = tuple([rets[0], action_masks] + rets[1:])
         return rets
 
     def time_step(

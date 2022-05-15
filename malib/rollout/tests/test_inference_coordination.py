@@ -8,11 +8,12 @@ import ray
 from malib import settings
 from malib.common.strategy_spec import StrategySpec
 from malib.envs import dummy_env
+from malib.algorithm.dqn import DQN
+from malib.algorithm.random import RandomPolicy
 from malib.rollout.inference_client import InferenceClient
 from malib.rollout.inference_server import InferenceWorkerSet
-
-from tests.dataset import FakeDataServer
-from tests.parameter_server import FakeParameterServer
+from malib.backend.datapool.offline_dataset_server import OfflineDataset
+from malib.backend.datapool.parameter_server import ParameterServer
 
 
 @pytest.mark.parametrize("max_env_num", [1])
@@ -27,12 +28,14 @@ def test_inference_coordination(max_env_num: int):
     if not ray.is_initialized():
         ray.init()
 
-    offline_dataset_server = FakeDataServer.options(
+    offline_dataset_server = OfflineDataset.options(
         name=settings.OFFLINE_DATASET_ACTOR
-    ).remote()
-    parameter_server = FakeParameterServer.options(
-        name=settings.PARAMETER_SERVER_ACTOR
-    ).remote()
+    ).remote(table_capacity=100)
+    parameter_server = (
+        ParameterServer.as_remote()
+        .options(name=settings.PARAMETER_SERVER_ACTOR)
+        .remote()
+    )
 
     client = InferenceClient(
         env_desc=env_desc,
@@ -75,25 +78,47 @@ def test_inference_coordination(max_env_num: int):
         for runtime_id in runtime_ids
     }
 
-    dataserver_entrypoint = f"test_inference_coordination_{time.time()}"
-
     policy_ids = ["dummy_0"]
     prob_list = [1.0]
+
+    experiment_tag = f"test_inference_coordination_{time.time()}"
+    dataserver_entrypoint = experiment_tag
 
     strategy_specs = {
         runtime_id: StrategySpec(
             policy_ids=policy_ids,
-            meta_data={"prob_list": prob_list, "experiment_tag": experiment_tag},
+            meta_data={
+                "prob_list": prob_list,
+                "experiment_tag": experiment_tag,
+                "policy_cls": RandomPolicy,
+                "kwargs": {
+                    "registered_name": "random",
+                    "observation_space": runtime_obs_spaces[runtime_id],
+                    "action_space": runtime_act_spaces[runtime_id],
+                    "model_config": {},
+                    "custom_config": {},
+                    "others": {},
+                },
+            },
         )
         for runtime_id in runtime_agent_ids
     }
+
+    trainable_agents = env_agents
+    # create table
+    offline_dataset_server.create_table.remote(
+        name=dataserver_entrypoint,
+        reverb_server_kwargs={
+            "tb_params_list": [{"name": agent} for agent in trainable_agents]
+        },
+    )
 
     client.run(
         agent_interfaces=servers,
         desc=dict(
             flag="rollout",
             strategy_specs=strategy_specs,
-            trainable_agents=env_agents,
+            trainable_agents=trainable_agents,
             agent_group=agent_group,
             fragment_length=100,
             max_step=10,

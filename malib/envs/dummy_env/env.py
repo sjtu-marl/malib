@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union
 
 import gym
 
@@ -29,7 +29,25 @@ class DummyEnv(Environment):
         return {agent: self.observation_space for agent in self.possible_agents}
 
     def time_step(self, actions: Dict[AgentID, Any]):
-        return {}
+        observations = {
+            agent: obs_space.sample()
+            for agent, obs_space in self.observation_spaces.items()
+        }
+        rewards = {agent: 0.0 for agent in self.possible_agents}
+        done = self.cnt >= self.max_step
+        dones = dict.fromkeys(self.possible_agents, done)
+        infos = dict.fromkeys(self.possible_agents, {})
+        return observations, rewards, dones, infos
 
     def close(self):
         pass
+
+    def reset(
+        self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
+    ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
+        super().reset(max_step, custom_reset_config)
+        observations = {
+            agent: obs_space.sample()
+            for agent, obs_space in self.observation_spaces.items()
+        }
+        return (observations,)
