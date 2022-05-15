@@ -3,7 +3,7 @@ from collections import defaultdict
 
 import numpy as np
 
-from malib.utils.typing import AgentID, EnvID, PolicyID
+from malib.utils.typing import AgentID, EnvID
 
 
 class Episode:
@@ -14,9 +14,7 @@ class Episode:
     NEXT_ACTION_MASK = "next_action_mask"
     REWARD = "reward"
     DONE = "done"
-    # XXX(ziyu): Change to 'logits' for numerical issues.
     ACTION_DIST = "action_logits"
-    # XXX(ming): seems useless
     INFO = "infos"
 
     # optional

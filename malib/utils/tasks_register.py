@@ -12,7 +12,7 @@
 import enum
 from functools import wraps
 
-from malib.utils.logger import Logger
+from malib.utils.logging import Logger
 from malib.utils.typing import TaskType, Dict
 from malib.utils.errors import RegisterFailure
 
