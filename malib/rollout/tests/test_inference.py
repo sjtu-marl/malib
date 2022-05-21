@@ -35,12 +35,22 @@ def test_inference_coordination(max_env_num: int):
     if not ray.is_initialized():
         ray.init()
 
-    offline_dataset_server = OfflineDataset.options(
-        name=settings.OFFLINE_DATASET_ACTOR
-    ).remote(table_capacity=100)
-    parameter_server = ParameterServer.options(
-        name=settings.PARAMETER_SERVER_ACTOR
-    ).remote()
+    try:
+        offline_dataset_server = OfflineDataset.options(
+            name=settings.OFFLINE_DATASET_ACTOR
+        ).remote(table_capacity=100)
+    except ValueError:
+        print("detected existing offline dataset server")
+
+    try:
+        parameter_server = ParameterServer.options(
+            name=settings.PARAMETER_SERVER_ACTOR
+        ).remote()
+    except ValueError:
+        print("detected exisitng parameter server")
+
+    offline_dataset_server = ray.get_actor(settings.OFFLINE_DATASET_ACTOR)
+    parameter_server = ray.get_actor(settings.PARAMETER_SERVER_ACTOR)
 
     client = InferenceClient(
         env_desc=env_desc,

@@ -139,6 +139,8 @@ def process_policy_outputs(
             for k, v in data.items():
                 if k == Episode.RNN_STATE:
                     for i, env_id in enumerate(env_ids):
+                        if v is None:
+                            continue
                         rets[env_id][agent][k] = [_v[i] for _v in v]
                 else:
                     for env_id, _v in zip(env_ids, v):
@@ -318,6 +320,7 @@ class InferenceClient(RemoteInterFace):
                 "sample_mode": "once",
                 # TODO(ming): move to policy
                 "preprocessor": self.preprocessor,
+                "evaluate": task_type != "rollout",
             }
         )
         request = Namespace(**desc)

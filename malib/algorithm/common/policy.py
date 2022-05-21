@@ -36,7 +36,6 @@ class Policy(metaclass=ABCMeta):
     ):
         _locals = locals()
         _locals.pop("self")
-        _locals.pop("replacement")
         self._init_args = _locals
         self._observation_space = observation_space
         self._action_space = action_space
@@ -174,6 +173,9 @@ class Policy(metaclass=ABCMeta):
             self._state_handler_dict.pop(name)
             print(f"Deregister state tagged with: {name}")
 
+    def get_initial_state(self, batch_size: int = None):
+        return None
+
     @property
     def preprocessor(self):
         return self._preprocessor
@@ -183,8 +185,8 @@ class Policy(metaclass=ABCMeta):
         self,
         observation: torch.Tensor,
         action_mask: Union[torch.Tensor, None],
-        hidden_state: Any,
         evaluate: bool,
+        hidden_state: Any = None,
         **kwargs,
     ) -> Tuple[Action, ActionDist, Logits, Any]:
         pass

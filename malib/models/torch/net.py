@@ -129,6 +129,8 @@ class MLP(nn.Module):
         self.model = nn.Sequential(*model)
 
     def forward(self, obs: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
+        if not isinstance(obs, torch.Tensor):
+            obs = obs.copy()  # avoid not-writable warning here
         if self.device is not None:
             obs = torch.as_tensor(
                 obs,

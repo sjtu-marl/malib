@@ -1,4 +1,4 @@
-from typing import Any, Tuple, Optional, Union, Dict
+from typing import Any, Tuple, Union, Dict
 
 import numpy as np
 import torch
@@ -9,6 +9,8 @@ from torch import nn
 from malib.models.torch import net, discrete, continuous
 from malib.algorithm.common import misc
 from malib.algorithm.common.policy import Policy, Action, ActionDist, Logits
+from malib.utils.general import merge_dicts
+from .config import DEFAULT_CONFIG
 
 
 class PGPolicy(Policy):
@@ -33,6 +35,12 @@ class PGPolicy(Policy):
             NotImplementedError: Does not support other action space type settings except Box and Discrete.
             TypeError: Unexpected action space.
         """
+
+        # update model_config with default ones
+        model_config = merge_dicts(DEFAULT_CONFIG["model_config"].copy(), model_config)
+        custom_config = merge_dicts(
+            DEFAULT_CONFIG["custom_config"].copy(), custom_config
+        )
 
         super().__init__(
             observation_space, action_space, model_config, custom_config, **kwargs
@@ -75,14 +83,14 @@ class PGPolicy(Policy):
     def value_function(self, observation: torch.Tensor, evaluate: bool, **kwargs):
         """Compute values of critic."""
 
-        raise np.zeros_like((observation.shape[0],), dtype=np.float32)
+        return np.zeros((observation.shape[0],), dtype=np.float32)
 
     def compute_action(
         self,
         observation: torch.Tensor,
         action_mask: Union[torch.Tensor, None],
-        hidden_state: Any,
         evaluate: bool,
+        hidden_state: Any = None,
         **kwargs
     ) -> Tuple[Action, ActionDist, Logits, Any]:
         with torch.no_grad():
@@ -100,9 +108,9 @@ class PGPolicy(Policy):
                 act = dist.sample()
             probs = dist.prob().cpu().numpy()
 
-        logits = (logits.cpu().numpy(),)
-        action = (act.cpu().numpy(),)
-        action_dist = (probs,)
+        logits = logits.cpu().numpy()
+        action = act.cpu().numpy()
+        action_dist = probs
         state = hidden
 
         return action, action_dist, logits, state
