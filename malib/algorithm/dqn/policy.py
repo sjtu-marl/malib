@@ -12,8 +12,10 @@ from torch import nn
 
 from malib.algorithm.common import misc
 from malib.algorithm.common.policy import Policy
-
 from malib.models.torch import make_net
+from malib.utils.general import merge_dicts
+
+from .config import DEFAULT_CONFIG
 
 
 logger = logging.getLogger(__name__)
@@ -26,30 +28,27 @@ class DQNPolicy(Policy):
         action_space: gym.spaces.Space,
         model_config: Dict[str, Any],
         custom_config: Dict[str, Any],
-        is_fixed: bool = False,
-        replacement: Dict = None,
+        **kwargs
     ):
+        model_config = merge_dicts(DEFAULT_CONFIG["model_config"].copy(), model_config)
+        custom_config = merge_dicts(DEFAULT_CONFIG["custom_config"].copy(), custom_config)
+
         super(DQNPolicy, self).__init__(
             observation_space,
             action_space,
             model_config,
             custom_config,
-            is_fixed,
-            replacement,
+            **kwargs
         )
 
         assert isinstance(action_space, gym.spaces.Discrete)
-
-        if replacement is not None:
-            self.critic = replacement["critic"]
-        else:
-            self.critic: nn.Module = make_net(
-                observation_space=observation_space,
-                action_space=action_space,
-                device=self.device,
-                net_type=model_config.get("net_type", None),
-                **model_config["config"]
-            )
+        self.critic: nn.Module = make_net(
+            observation_space=observation_space,
+            action_space=action_space,
+            device=self.device,
+            net_type=model_config.get("net_type", None),
+            **model_config["config"]
+        )
 
         self.use_cuda = self.custom_config.get("use_cuda", False)
 
@@ -73,8 +72,8 @@ class DQNPolicy(Policy):
         self,
         observation: torch.Tensor,
         action_mask: Union[torch.Tensor, None],
-        hidden_state: Any,
         evaluate: bool,
+        hidden_state: Any = None,
         **kwargs
     ):
         """Compute action in rollout stage. Do not support vector mode yet.

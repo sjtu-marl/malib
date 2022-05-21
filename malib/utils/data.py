@@ -188,7 +188,7 @@ def _nstep_return(
     return target_q.reshape(target_shape)
 
 
-class EpisodeHandler:
+class Postprocessor:
     @staticmethod
     def gae_return(
         state_value,
@@ -234,7 +234,7 @@ class EpisodeHandler:
         if gae_lambda == 0:
             returns = rew + gamma * next_state_value
         else:
-            advantage = EpisodeHandler.gae_return(
+            advantage = Postprocessor.gae_return(
                 state_value,
                 next_state_value,
                 rew,

@@ -9,9 +9,10 @@ from torch import optim
 from torch import nn
 from torch.nn import functional as F
 
+from malib.utils.typing import Sequence, AgentID
 from malib.utils.data import to_torch
 from malib.algorithm.common.trainer import Trainer
-from malib.utils.data import EpisodeHandler
+from malib.utils.data import Postprocessor
 
 
 class A2CTrainer(Trainer):
@@ -26,7 +27,7 @@ class A2CTrainer(Trainer):
         self.lr_scheduler: torch.optim.lr_scheduler.LambdaLR = None
         self.ret_rms = None
 
-    def process_fn(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+    def post_process(self, batch: Dict[str, Any], agent_filter: Sequence[AgentID]) -> Dict[str, Any]:
         state_value, next_state_value = [], []
         with torch.no_grad():
             for minibatch in batch.split(
@@ -52,7 +53,7 @@ class A2CTrainer(Trainer):
             state_value = state_value * np.sqrt(self.ret_rms.var + eps)
             next_state_value = next_state_value * np.sqrt(self.ret_rms.var + eps)
 
-        unnormalized_returns, advantages = EpisodeHandler.compute_episodic_return(
+        unnormalized_returns, advantages = Postprocessor.compute_episodic_return(
             batch,
             state_value,
             next_state_value,
@@ -76,8 +77,7 @@ class A2CTrainer(Trainer):
         )
         return batch
 
-    def train(self, batch: Dict[str, Any]) -> Dict[str, float]:
-        batch = self.process_fn(batch)
+    def train(self, batch: Dict[str, torch.Tensor]) -> Dict[str, float]:
         batch = Namespace(
             **{k: to_torch(v, device=self.policy.device) for k, v in batch.items()}
         )

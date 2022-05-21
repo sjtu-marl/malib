@@ -1,5 +1,5 @@
 from argparse import Namespace
-from typing import Type, Dict, Any
+from typing import Type, Dict, Any, Sequence
 
 import torch
 import numpy as np
@@ -7,6 +7,8 @@ import numpy as np
 from torch import optim
 
 from malib.algorithm.common.trainer import Trainer
+from malib.utils.data import Postprocessor
+from malib.utils.typing import AgentID
 
 
 class PGTrainer(Trainer):
@@ -17,10 +19,10 @@ class PGTrainer(Trainer):
         self.lr_scheduler: torch.optim.lr_scheduler.LambdaLR = None
         self.ret_rms = None
 
-    def process_fn(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+    def post_process(self, batch: Dict[str, Any], agent_filter: Sequence[AgentID]) -> Dict[str, Any]:
 
         # v_s_ = np.full(indices.shape, self.ret_rms.mean)
-        unnormalized_returns, _ = EpisodeHandler.compute_episodic_return(
+        unnormalized_returns, _ = Postprocessor.compute_episodic_return(
             batch, gamma=self.training_config["gamma"], gae_lambda=1.0
         )
 
@@ -34,11 +36,10 @@ class PGTrainer(Trainer):
         batch["logits"], _ = self.policy.actor(
             batch.observation, state=batch.get("state", None)
         )
-        batch.to_torch(device=self.policy.device)
         return batch
 
     def train(self, batch: Dict[str, torch.Tensor]) -> Dict[str, Any]:
-        batch = Namespace(**self.process_fn(batch))
+        batch = Namespace(**batch)
         self.optimizer.zero_grad()
         logits = batch.logits
         dist = self.policy.dist_fn.proba_distribution(logits)

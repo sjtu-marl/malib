@@ -34,7 +34,7 @@ External environments are integrated in MALib, such as [StarCraftII](https://git
 ```python
 """PSRO with PPO for Leduc Holdem"""
 
-from malib.envs.poker import poker_aec_env as leduc_holdem
+from malib.rollout.envs.poker import poker_aec_env as leduc_holdem
 from malib.runner import run
 from malib.rollout import rollout_func
 

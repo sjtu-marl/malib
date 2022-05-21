@@ -1,5 +1,5 @@
 from argparse import Namespace
-from typing import Any, Tuple, Dict
+from typing import Any, Tuple, Dict, Sequence
 
 import copy
 
@@ -22,8 +22,6 @@ class DQNTrainer(Trainer):
         total_timesteps = self._training_config["total_timesteps"]
         exploration_final_eps = self._training_config["exploration_final_eps"]
         self.fixed_eps = self._training_config.get("pretrain_eps")
-        self.pretrain_mode = False
-        self._learning_mode = "off_policy"
 
         self.exploration = LinearSchedule(
             schedule_timesteps=int(exploration_fraction * total_timesteps),
@@ -37,10 +35,7 @@ class DQNTrainer(Trainer):
             self.policy.critic.parameters(), lr=self.training_config["critic_lr"]
         )
 
-    def set_pretrain(self, pmode=True):
-        self.pretrain_mode = pmode
-
-    def process_fn(self) -> Dict[AgentID, Dict[str, np.ndarray]]:
+    def post_process(self, batch: Dict[str, Any], agent_filter: Sequence[AgentID]) -> Dict[str, np.ndarray]:
         policy = self.policy.to(
             "cuda" if self.policy.custom_config.get("use_cuda", False) else "cpu",
             use_copy=False,
@@ -51,12 +46,13 @@ class DQNTrainer(Trainer):
             update_param_noise_threshold = 0.0
         else:
             update_eps = 0.0
-        if self.pretrain_mode and self.fixed_eps is not None:
+        if self.fixed_eps is not None:
             policy.eps = self.fixed_eps
         else:
             policy.eps = update_eps
+        return batch
 
-    def train(self, batch: Dict[str, Any]):
+    def train(self, batch: Dict[str, torch.Tensor]):
         batch = {k: to_torch(v) for k, v in batch.items()}
         batch = Namespace(**batch)
         state_action_values, _ = self.policy.critic(batch.observation)
