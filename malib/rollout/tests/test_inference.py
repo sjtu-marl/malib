@@ -7,7 +7,6 @@ import ray
 
 from malib import settings
 from malib.common.strategy_spec import StrategySpec
-from malib.algorithm.dqn import DQN
 from malib.algorithm.random import RandomPolicy
 from malib.rollout.envs import dummy_env
 from malib.rollout.inference_client import InferenceClient
@@ -16,8 +15,16 @@ from malib.backend.offline_dataset_server import OfflineDataset
 from malib.backend.parameter_server import ParameterServer
 
 
-@pytest.mark.parametrize("max_env_num", [1])
+@pytest.mark.parametrize("max_env_num", [1, 2])
 def test_inference_coordination(max_env_num: int):
+    """Test infrence coordination with Dummy environment. The coordination concentrates on data collection, broadcasting \
+        and action compute with centralized inference server.
+    """
+
+    # Not determined yet:
+    #   1. different agent mapping func
+    #   2. remote inference client (we create this case with local client)
+
     env_desc = dummy_env.env_desc_gen()
     agent_map_func = lambda agent: agent
     tmp_env = env_desc["creator"](**env_desc["config"])
@@ -124,3 +131,9 @@ def test_inference_coordination(max_env_num: int):
         ),
         dataserver_entrypoint=dataserver_entrypoint,
     )
+
+
+def test_inference_server():
+    # Things not be determined yet:
+    #   1. validate the correctness of strategyspec's behavior
+    pass
