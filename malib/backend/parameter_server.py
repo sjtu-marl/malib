@@ -25,7 +25,6 @@
 from typing import Dict, Any, Sequence
 from threading import Lock
 
-import time
 import logging
 
 import ray
@@ -103,20 +102,47 @@ class ParameterServer:
     def apply_gradients(self, table_name: str, gradients: Sequence[Any]):
         self.tables[table_name].apply_gradients(*gradients)
 
-    def get_weights(self, spec_id: str, spec_policy_id: str):
-        table_name = f"{spec_id}/{spec_policy_id}"
-        return self.tables[table_name].get_weights()
+    def get_weights(self, spec_id: str, spec_policy_id: str) -> Dict[str, Any]:
+        """Request for weight retrive, return a dict includes keys: `spec_id`, `spec_policy_id` and `weights`.
 
-    def set_weights(self, table_name: str, state_dict: Dict[str, Any]):
+        Args:
+            spec_id (str): Strategy spec id.
+            spec_policy_id (str): Related policy id.
+
+        Returns:
+            Dict[str, Any]: A dict.
+        """
+
+        table_name = f"{spec_id}/{spec_policy_id}"
+        return {
+            "spec_id": spec_id,
+            "spec_policy_id": spec_policy_id,
+            "weights": self.tables[table_name].get_weights(),
+        }
+
+    def set_weights(
+        self, spec_id: str, spec_policy_id: str, state_dict: Dict[str, Any]
+    ):
+        table_name = f"{spec_id}/{spec_policy_id}"
         self.tables[table_name].set_weights(state_dict)
 
     def create_table(self, strategy_spec: StrategySpec) -> str:
+        """Create parameter table with given strategy spec. This function will traverse existing policy \
+            id in this spec, then generate table for policy ids which have no cooresponding tables.
+
+        Args:
+            strategy_spec (StrategySpec): A startegy spec instance.
+
+        Returns:
+            str: Table name.
+        """
+
         with self.lock:
             for policy_id in strategy_spec.policy_ids:
                 table_name = f"{strategy_spec.id}/{policy_id}"
                 if table_name in self.tables:
                     continue
-                meta_data = strategy_spec.get_meta_data().copy()
+                meta_data = strategy_spec.get_meta_data()["kwargs"].copy()
                 self.tables[table_name] = Table(
                     meta_data["model_config"], meta_data.get("optim_config")
                 )

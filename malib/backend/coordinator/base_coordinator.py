@@ -4,8 +4,8 @@ import ray
 
 from malib.remote.interface import RemoteInterFace
 from malib.utils.typing import Dict
-from malib.manager.rollout_worker_manager import RolloutWorkerManager
-from malib.manager.training_manager import TrainingManager
+from malib.rollout.manager import RolloutWorkerManager
+from malib.agent.manager import TrainingManager
 
 
 class BaseCoordinator(RemoteInterFace):

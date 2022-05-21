@@ -22,7 +22,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Any
+import threading
+from typing import Dict, Any, List
 
 import logging
 import ray
@@ -43,13 +44,19 @@ def log(message: str):
 class OfflineDataset:
     def __init__(self, table_capacity: int):
         self.servers: Dict[str, reverb.Server] = {}
+        self.tb_params_list_dict: Dict[str, Dict[str, Any]] = {}
         self.capacity = table_capacity
+        self.lock = threading.Lock()
 
     def start(self):
         pass
 
     def get_port(self, table_name: str):
-        return self.servers[table_name].port
+        with self.lock:
+            if table_name in self.servers:
+                return self.servers[table_name].port
+            else:
+                return None
 
     def get_client_kwargs(self, table_name: str) -> Dict[str, Any]:
         """Retrieve reverb client kwargs.
@@ -60,7 +67,14 @@ class OfflineDataset:
         Returns:
             Dict[str, Any]: _description_
         """
-        return {"address": self.servers[table_name].port}
+
+        with self.lock:
+            if table_name in self.servers:
+                server = self.servers[table_name]
+                table_list = self.tables[table_name]
+                return {"address": server.port, "table_list": table_list}
+            else:
+                return {"address": None, "table_list": None}
 
     def create_table(self, name: str, reverb_server_kwargs: Dict[str, Any]):
         """Create sub reverb server.
@@ -84,29 +98,33 @@ class OfflineDataset:
             - `signature`:
         """
 
-        if name not in self.servers:
-            port = reverb_server_kwargs.get("port", None)
-            checkpointer = reverb_server_kwargs.get("checkpointer", None)
-            tb_params_list = reverb_server_kwargs["tb_params_list"]
-            self.servers[name] = reverb.Server(
-                tables=[
-                    reverb.Table(
-                        name=tb_params["name"],
-                        sampler=tb_params.get("sampler", reverb.selectors.Uniform()),
-                        remover=tb_params.get("remover", reverb.selectors.Fifo()),
-                        max_size=tb_params.get("max_size", self.capacity),
-                        rate_limiter=tb_params.get(
-                            "rate_limiter", reverb.rate_limiters.MinSize(1)
-                        ),
-                        max_times_sampled=tb_params.get("max_times_sampled", 0),
-                        extensions=tb_params.get("extension", ()),
-                        signature=tb_params.get("signature", None),
-                    )
-                    for tb_params in tb_params_list
-                ],
-                port=port,
-                checkpointer=checkpointer,
-            )
+        with self.lock:
+            if name not in self.servers:
+                port = reverb_server_kwargs.get("port", None)
+                checkpointer = reverb_server_kwargs.get("checkpointer", None)
+                tb_params_list = reverb_server_kwargs["tb_params_list"]
+                self.servers[name] = reverb.Server(
+                    tables=[
+                        reverb.Table(
+                            name=tb_params["name"],
+                            sampler=tb_params.get(
+                                "sampler", reverb.selectors.Uniform()
+                            ),
+                            remover=tb_params.get("remover", reverb.selectors.Fifo()),
+                            max_size=tb_params.get("max_size", self.capacity),
+                            rate_limiter=tb_params.get(
+                                "rate_limiter", reverb.rate_limiters.MinSize(1)
+                            ),
+                            max_times_sampled=tb_params.get("max_times_sampled", 0),
+                            extensions=tb_params.get("extension", ()),
+                            signature=tb_params.get("signature", None),
+                        )
+                        for tb_params in tb_params_list
+                    ],
+                    port=port,
+                    checkpointer=checkpointer,
+                )
+                self.tb_params_list_dict[name] = tb_params_list
 
     def load_from_dataset(
         self,

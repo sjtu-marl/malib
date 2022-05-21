@@ -16,8 +16,8 @@ from malib.utils.typing import (
 )
 from malib.utils.logging import Logger
 from malib.evaluator import get_evaluator, Evaluator
-from malib.manager.rollout_worker_manager import RolloutWorkerManager
-from malib.manager.training_manager import TrainingManager
+from malib.rollout.manager import RolloutWorkerManager
+from malib.agent.manager import TrainingManager
 from malib.evaluator.utils.payoff_manager import PayoffManager
 from malib.backend.coordinator.base_coordinator import BaseCoordinator
 

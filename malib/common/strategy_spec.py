@@ -47,10 +47,40 @@ class StrategySpec:
         self.meta_data = meta_data
         self.num_policy = len(policy_ids)
 
+    def register_policy_id(self, policy_id: PolicyID):
+        """Register new policy id, and preset prob as 0.
+
+        Args:
+            policy_id (PolicyID): Policy id to register.
+        """
+
+        assert policy_id not in self.policy_ids, (policy_id, self.policy_ids)
+        self.policy_ids = self.policy_ids + (policy_id,)
+
+        if "prob_list" in self.meta_data:
+            self.meta_data["prob_list"].append(0.0)
+
+    def update_prob_list(self, policy_probs: Dict[PolicyID, float]):
+        """Update prob list with given policy probs dict.
+
+        Args:
+            policy_probs (Dict[PolicyID, float]): A dict that indicates which policy probs should be updated.
+        """
+
+        if "prob_list" not in self.meta_data:
+            self.meta_data["prob_list"] = [0.0] * len(self.policy_ids)
+        for pid, prob in policy_probs.items():
+            idx = self.policy_ids.index(pid)
+            self.meta_data["prob_list"][idx] = prob
+        assert np.isclose(self.meta_data["prob_list"], 1.0), (
+            self.meta_data["prob_list"],
+            sum(self.meta_data["prob_list"]),
+        )
+
     def get_meta_data(self) -> Dict[str, Any]:
         return self.meta_data
 
-    def gen_policy(self):
+    def gen_policy(self) -> Policy:
         policy_cls: Type[Policy] = self.meta_data["policy_cls"]
         plist = self.meta_data["kwargs"]
         plist = Namespace(**plist)
@@ -64,11 +94,12 @@ class StrategySpec:
         )
 
     def sample(self) -> PolicyID:
-        """Sample a policy instance.
+        """Sample a policy instance. Use uniform sample if there is no presetted prob list in meta data.
 
         Returns:
-            Policy: Policy instance
+            PolicyID: A sampled policy id.
         """
+
         prob_list = self.meta_data.get(
             "prob_list", [1 / self.num_policy] * self.num_policy
         )
