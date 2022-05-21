@@ -31,13 +31,14 @@ import ray
 
 from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
+from malib.utils.exploitability import measure_exploitability
 from malib.agent import get_training_agent
 from malib.agent.agent_interface import AgentInterface
 from malib.common.strategy_spec import StrategySpec
-from malib.gt.algos.exploitability import measure_exploitability
+from malib.common.manager import Manager
 
 
-class TrainingManager:
+class TrainingManager(Manager):
     def __init__(
         self,
         algorithms: Dict[str, Any],
@@ -61,6 +62,8 @@ class TrainingManager:
             log_dir (str): Directory for logging.
             remote_mode (bool, Optional): Init agent interfaces as remote actor or not. Default is True.
         """
+
+        super().__init__()
 
         # interface config give the agent type used here and the group mapping if needed
         agent_groups = defaultdict(lambda: set())
@@ -105,7 +108,6 @@ class TrainingManager:
         self._agent_mapping_func = agent_mapping_func
         self._interfaces = interfaces
         self._remote_mode = remote_mode
-        self._pending_training_tasks = []
         self._thread_pool = ThreadPoolExecutor(max_workers=len(interfaces))
 
         Logger.info(
@@ -123,7 +125,7 @@ class TrainingManager:
         return self._agent_groups
 
     def add_policies(
-        self, interface_ids: Sequence[str], n: Union[int, Dict[str, int]] = 1
+        self, interface_ids: Sequence[str] = None, n: Union[int, Dict[str, int]] = 1
     ) -> Dict[str, Type[StrategySpec]]:
         """Notify interface `interface_id` add `n` policies and return the newest strategy spec.
 
@@ -134,6 +136,9 @@ class TrainingManager:
         Returns:
             Dict[str, Type[StrategySpec]]: A dict of strategy specs, maps from runtime ids to strategy specs.
         """
+
+        if interface_ids is None:
+            interface_ids = list(self._interfaces.keys())
 
         assert isinstance(interface_ids, (List, Tuple, Set)), type(interface_ids)
 
@@ -160,12 +165,10 @@ class TrainingManager:
 
         if self._remote_mode:
             for interface in self._interfaces.values():
-                self._pending_training_tasks.append(interface.train.remote())
+                self.pending_tasks.append(interface.train.remote())
         else:
             for interface in self._interfaces.values():
-                self._pending_training_tasks.append(
-                    self._thread_pool.submit(interface.train)
-                )
+                self.pending_tasks.append(self._thread_pool.submit(interface.train))
 
     def terminate(self) -> None:
         """Terminate all training actors."""

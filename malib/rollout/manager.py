@@ -10,13 +10,10 @@ import time
 
 import ray
 
+from ray.util import ActorPool
 
+from malib.common.manager import Manager
 from malib.rollout.rollout_worker import RolloutWorker
-from malib.utils.typing import (
-    TaskDescription,
-    TaskRequest,
-    Status,
-)
 
 
 def _get_worker_hash_idx(idx):
@@ -25,7 +22,7 @@ def _get_worker_hash_idx(idx):
     return hash_coding.hexdigest()
 
 
-class RolloutWorkerManager:
+class RolloutWorkerManager(Manager):
     def __init__(
         self,
         num_worker: int,
@@ -42,6 +39,8 @@ class RolloutWorkerManager:
         :param Dict[str,Any] env_desc: Environment description, to create environment instances.
         :param Dict[str,Any] exp_cfg: Experiment description.
         """
+
+        super().__init__()
 
         rollout_worker_cls = RolloutWorker
         worker_cls = rollout_worker_cls.as_remote(
@@ -64,54 +63,37 @@ class RolloutWorkerManager:
             )
 
         self._workers: Dict[str, ray.actor] = workers
-        Logger.info(
-            f"RolloutWorker manager launched, {len(self._workers)} rollout worker(s) alives."
-        )
+        self._actor_pool = ActorPool(self._workers)
 
-    def retrieve_information(self, task_request: TaskRequest) -> TaskRequest:
-        """Retrieve information from other agent interface. Default do nothing and return the original task request.
-
-        :param TaskRequest task_request: A task request from `CoordinatorServer`.
-        :return: A task request
-        """
-
-        return task_request
-
-    def get_idle_worker(self) -> Tuple[str, RolloutWorker]:
-        """Wait until an idle worker is available.
-
-        :return: A tuple of worker index and worker.
-        """
-
-        status = Status.FAILED
-        worker_idx, worker = None, None
-        while status == Status.FAILED:
-            for idx, t in self._workers.items():
-                wstatus = ray.get(t.get_status.remote())
-                if wstatus == Status.IDLE:
-                    status = ray.get(t.set_status.remote(Status.LOCKED))
-                if status == Status.SUCCESS:
-                    worker_idx = idx
-                    worker = t
-                    break
-        return worker_idx, worker
-
-    def simulate(self, task_desc: TaskDescription, worker_idx=None):
+    def simulate(self, task_list):
         """Parse simulation task and dispatch it to available workers"""
 
-        worker_idx, worker = self.get_idle_worker()
-        worker.simulate.remote(task_desc)
+        self._actor_pool.map(
+            lambda actor, task: actor.simulate.remote(
+                runtime_strategy_specs=task.strategy_specs,
+                stopping_conditions=task.stopping_conditions,
+                trainable_agents=task.trainable_agents,
+            ),
+            task_list,
+        )
 
-    def rollout(self, task_desc: TaskDescription) -> None:
-        """Parse rollout task and dispatch it to available worker.
+    def rollout(self, task_list) -> None:
+        """Start rollout task without blocking"""
 
-        :param TaskDescription task_desc: A task description.
-        :return: None
-        """
+        self._actor_pool.map(
+            lambda actor, task: actor.rollout.remote(
+                runtime_strategy_specs=task.strategy_specs,
+                stopping_conditions=task.stopping_conditions,
+                trainable_agents=task.trainable_agents,
+            ),
+            task_list,
+        )
 
-        # split into several sub tasks rollout
-        worker_idx, worker = self.get_idle_worker()
-        worker.rollout.remote(task_desc)
+    def wait(self):
+        while not self._actor_pool.has_free():
+            if self._force_stop:
+                self.terminate()
+                break
 
     def terminate(self):
         """Stop all remote workers"""

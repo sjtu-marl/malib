@@ -1,15 +1,37 @@
-# -*- coding: utf-8 -*-
+# MIT License
 
+# Copyright (c) 2021 MARL @ SJTU
+
+# Author: Ming Zhou
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+from typing import List, Union, Sequence, Dict, Tuple, Any
 import copy
 import itertools
 import logging
-from typing import List, Union, Sequence, Dict, Tuple, Any
 
 import nashpy as nash
 import numpy as np
 
-from malib.evaluator.utils.payoff_table import PayoffTable
-from malib.utils.notations import deprecated
+from dataclasses import dataclass
+
 from malib.utils.typing import (
     AgentID,
     RolloutFeedback,
@@ -117,11 +139,87 @@ class DefaultSolver:
             return self.alpharank(payoffs_seq)
 
 
+@dataclass
+class PayoffTable:
+    identify: AgentID
+    agents: Sequence[AgentID]
+    table: Any = None
+    simulation_flag: Any = None
+
+    def __post_init__(self):
+        # record policy idx
+        self._policy_idx = {agent: {} for agent in self.agents}
+        self.table = np.zeros([0] * len(self.agents), dtype=np.float32)
+        self.simulation_flag = np.zeros([0] * len(self.agents), dtype=bool)
+
+    def __getitem__(self, key: Dict[str, Sequence[PolicyID]]) -> np.ndarray:
+        """Return a sub matrix"""
+        idx = self._get_combination_index(key)
+        item = self.table[idx]
+        return item
+
+    def __setitem__(self, key: Dict[AgentID, Sequence[PolicyID]], value: float):
+        idx = self._get_combination_index(key)
+        self.table[idx] = value
+
+    def is_simulation_done(
+        self, population_mapping: Dict[str, Sequence[PolicyID]]
+    ) -> bool:
+        """Check whether all simulations have been done"""
+
+        idx = self._get_combination_index(population_mapping)
+        return np.alltrue(self.simulation_flag[idx])
+
+    def set_simulation_done(self, population_mapping: Dict[str, Sequence[PolicyID]]):
+        idx = self._get_combination_index(population_mapping)
+        self.simulation_flag[idx] = True
+
+    def expand_table(self, pad_info):
+        """Expand payoff table"""
+
+        # head and tail
+
+        if not any(self.table.shape):
+            pad_info = [(0, 1)] * len(self.agents)
+        self.table = np.pad(self.table, pad_info)
+        self.simulation_flag = np.pad(self.simulation_flag, pad_info)
+
+    def _get_combination_index(
+        self, policy_combination: Dict[AgentID, Sequence[PolicyID]]
+    ) -> Tuple:
+        """Return combination index, if doesn't exist, expand it"""
+        res = []
+        expand_flag = False
+        pad_info = []
+        for agent in self.agents:
+            idx = []
+            policy_seq = policy_combination[agent]
+            if isinstance(policy_seq, str):
+                policy_seq = [policy_seq]
+
+            new_policy_add_num = 0
+            for p in policy_seq:
+                if self._policy_idx[agent].get(p) is None:
+                    expand_flag = True
+                    self._policy_idx[agent][p] = len(self._policy_idx[agent])
+                    new_policy_add_num += 1
+                idx.append(self._policy_idx[agent][p])
+            pad_info.append((0, new_policy_add_num))
+            res.append(idx)
+        if expand_flag:
+            self.expand_table(pad_info)
+        return np.ix_(*res)
+
+    def get_combination_index(
+        self, policy_combination: Dict[AgentID, Sequence[PolicyID]]
+    ) -> Tuple:
+        return self._get_combination_index(policy_combination)
+
+
 class PayoffManager:
     def __init__(
         self,
         agent_names: Sequence,
-        exp_cfg: Dict[str, Any],
         solve_method="fictitious_play",
     ):
         """Create a payoff manager with agent names
@@ -160,6 +258,9 @@ class PayoffManager:
     @property
     def equilibrium(self):
         return self._equilibrium
+
+    def expand(self, brs: Dict[str, List[PolicyID]]):
+        raise NotImplementedError
 
     def check_done(self, population_mapping: Dict):
         """Check whether all payoff values have been updated, a population_mapping
