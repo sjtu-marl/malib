@@ -19,7 +19,9 @@ class PGTrainer(Trainer):
         self.lr_scheduler: torch.optim.lr_scheduler.LambdaLR = None
         self.ret_rms = None
 
-    def post_process(self, batch: Dict[str, Any], agent_filter: Sequence[AgentID]) -> Dict[str, Any]:
+    def post_process(
+        self, batch: Dict[str, Any], agent_filter: Sequence[AgentID]
+    ) -> Dict[str, Any]:
 
         # v_s_ = np.full(indices.shape, self.ret_rms.mean)
         unnormalized_returns, _ = Postprocessor.compute_episodic_return(

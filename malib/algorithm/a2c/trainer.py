@@ -27,7 +27,9 @@ class A2CTrainer(Trainer):
         self.lr_scheduler: torch.optim.lr_scheduler.LambdaLR = None
         self.ret_rms = None
 
-    def post_process(self, batch: Dict[str, Any], agent_filter: Sequence[AgentID]) -> Dict[str, Any]:
+    def post_process(
+        self, batch: Dict[str, Any], agent_filter: Sequence[AgentID]
+    ) -> Dict[str, Any]:
         state_value, next_state_value = [], []
         with torch.no_grad():
             for minibatch in batch.split(

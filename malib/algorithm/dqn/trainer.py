@@ -35,7 +35,9 @@ class DQNTrainer(Trainer):
             self.policy.critic.parameters(), lr=self.training_config["critic_lr"]
         )
 
-    def post_process(self, batch: Dict[str, Any], agent_filter: Sequence[AgentID]) -> Dict[str, np.ndarray]:
+    def post_process(
+        self, batch: Dict[str, Any], agent_filter: Sequence[AgentID]
+    ) -> Dict[str, np.ndarray]:
         policy = self.policy.to(
             "cuda" if self.policy.custom_config.get("use_cuda", False) else "cpu",
             use_copy=False,

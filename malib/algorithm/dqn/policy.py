@@ -31,14 +31,12 @@ class DQNPolicy(Policy):
         **kwargs
     ):
         model_config = merge_dicts(DEFAULT_CONFIG["model_config"].copy(), model_config)
-        custom_config = merge_dicts(DEFAULT_CONFIG["custom_config"].copy(), custom_config)
+        custom_config = merge_dicts(
+            DEFAULT_CONFIG["custom_config"].copy(), custom_config
+        )
 
         super(DQNPolicy, self).__init__(
-            observation_space,
-            action_space,
-            model_config,
-            custom_config,
-            **kwargs
+            observation_space, action_space, model_config, custom_config, **kwargs
         )
 
         assert isinstance(action_space, gym.spaces.Discrete)
