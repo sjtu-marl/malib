@@ -2,7 +2,7 @@ import random
 import numpy as np
 import gym
 
-from typing import List
+from typing import List, Dict, Any, Union
 
 from gym import spaces
 
@@ -11,8 +11,7 @@ from pettingzoo.utils.env import AECEnv
 
 from open_spiel.python.rl_environment import Environment as OPEN_SPIEL_ENV, TimeStep
 
-from malib.utils.typing import Dict, AgentID, Any, Union
-from malib.utils.episode import Episode
+from malib.utils.typing import AgentID
 from malib.rollout.envs.env import Environment
 
 

@@ -1,4 +1,4 @@
-from malib.utils.typing import Dict
+from typing import Dict
 
 from .star_craft_env import StatedSC2
 

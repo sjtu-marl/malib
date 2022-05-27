@@ -23,11 +23,11 @@
 # SOFTWARE.
 
 import enum
-from typing import List
+from typing import List, Dict, Union, Callable
 import numpy as np
 import scipy.signal
 
-from malib.utils.typing import AgentID, Dict, PolicyID, Union, Callable
+from malib.utils.typing import AgentID, PolicyID
 from malib.utils.episode import Episode, Episode
 from malib.algorithm.common.policy import Policy
 

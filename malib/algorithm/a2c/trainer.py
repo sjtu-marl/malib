@@ -1,5 +1,5 @@
 from argparse import Namespace
-from typing import Dict, Any
+from typing import Dict, Any, Sequence
 
 import itertools
 import numpy as np
@@ -9,7 +9,7 @@ from torch import optim
 from torch import nn
 from torch.nn import functional as F
 
-from malib.utils.typing import Sequence, AgentID
+from malib.utils.typing import AgentID
 from malib.utils.data import to_torch
 from malib.algorithm.common.trainer import Trainer
 from malib.utils.data import Postprocessor

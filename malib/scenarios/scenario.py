@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Union
+from typing import Callable, Union, Dict
 from copy import deepcopy
 
 
@@ -39,7 +39,7 @@ class RayScenario(Scenario, ABC):
         ray_cluster_cpus: Union[int, float],
         ray_cluster_gpus: Union[int, float],
         ray_object_store_memory_cap_gigabytes: Union[int, float],
-        ray_should_log_result_filter: Callable[[ResultDict], bool],
+        ray_should_log_result_filter: Callable[[Dict], bool],
     ):
         super().__init__(name=name)
         self.ray_cluster_cpus = ray_cluster_cpus

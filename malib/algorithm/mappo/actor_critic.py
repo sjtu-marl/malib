@@ -6,7 +6,6 @@ from torch.nn.modules import rnn
 from malib.utils.typing import List
 from malib.utils.preprocessor import get_preprocessor
 
-from malib.algorithm.common.model import get_model
 from malib.algorithm.mappo.utils import RNNLayer, init_fc_weights
 
 
@@ -20,12 +19,13 @@ class RNNNet(nn.Module):
         initialization,
     ):
         super().__init__()
-        self.base = get_model(model_config)(
-            observation_space,
-            None,
-            custom_config.get("use_cuda", False),
-            use_feature_normalization=custom_config["use_feature_normalization"],
-        )
+        self.base = None
+        # get_model(model_config)(
+        #     observation_space,
+        #     None,
+        #     custom_config.get("use_cuda", False),
+        #     use_feature_normalization=custom_config["use_feature_normalization"],
+        # )
         fc_last_hidden = model_config["layers"][-1]["units"]
 
         act_dim = act_dim = get_preprocessor(action_space)(action_space).size

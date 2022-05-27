@@ -1,10 +1,11 @@
 from collections import defaultdict
-from typing import ChainMap
+from typing import ChainMap, Dict, Any, List, Union
+
 import gym
 import uuid
 import ray
 
-from malib.utils.typing import Dict, AgentID, Any, List, EnvID, Union
+from malib.utils.typing import AgentID, EnvID
 from malib.utils.episode import Episode
 from .vector_env import VectorEnv, SubprocVecEnv
 

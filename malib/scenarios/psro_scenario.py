@@ -22,7 +22,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import List, Dict
+from types import LambdaType
+from typing import List, Dict, Any
 
 from malib.utils.typing import AgentID
 from malib.utils.stopping_conditions import get_stopper
@@ -32,6 +33,29 @@ from malib.common.payoff_manager import PayoffManager
 from malib.common.strategy_spec import StrategySpec
 from malib.scenarios import Scenario
 from malib.scenarios.marl_scenario import execution_plan as marl_execution_plan
+
+
+class PSROScenario(Scenario):
+    def __init__(
+        self,
+        name: str,
+        log_dir: str,
+        algorithms: Dict[str, Any],
+        env_description: Dict[str, Any],
+        rollout_config: Dict[str, Any],
+        training_config: Dict[str, Any],
+        global_stopping_conditions: Dict[str, Any],
+        agent_mapping_func: LambdaType = lambda agent: agent,
+        num_worker: int = 1,
+    ):
+        super().__init__(name)
+        self.algortihms = algorithms
+        self.log_dir = log_dir
+        self.env_desc = env_description
+        self.rollout_config = rollout_config
+        self.agent_mapping_func = agent_mapping_func
+        self.num_worker = num_worker
+        self.global_stopping_conditions = global_stopping_conditions
 
 
 def simulate(
@@ -57,7 +81,7 @@ def execution_plan(scenario: Scenario):
     rollout_manager = RolloutWorkerManager(
         num_worker=scenario.num_worker,
         agent_mapping_func=scenario.agent_mapping_func,
-        rollout_configs=scenario.rollout_configs,
+        rollout_configs=scenario.rollout_config,
         env_desc=scenario.env_desc,
         log_dir=scenario.log_dir,
     )

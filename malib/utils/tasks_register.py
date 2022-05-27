@@ -22,10 +22,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from typing import Dict
+
 import enum
 
 from malib.utils.logging import Logger
-from malib.utils.typing import Dict
 from malib.utils.errors import RegisterFailure
 
 

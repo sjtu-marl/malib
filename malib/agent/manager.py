@@ -32,7 +32,6 @@ import ray
 from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
 from malib.utils.exploitability import measure_exploitability
-from malib.agent import get_training_agent
 from malib.agent.agent_interface import AgentInterface
 from malib.common.strategy_spec import StrategySpec
 from malib.common.manager import Manager
@@ -41,6 +40,7 @@ from malib.common.manager import Manager
 class TrainingManager(Manager):
     def __init__(
         self,
+        experiment_tag: str,
         algorithms: Dict[str, Any],
         env_desc: Dict[str, Any],
         agent_mapping_func: Callable[[AgentID], str],
@@ -52,13 +52,14 @@ class TrainingManager(Manager):
         tasks execution and rollout task requests sending.
 
         Args:
+            experiment_tag (str): Experiment identifier, for data tracking.
             algorithms (Dict[str, Any]): The algorithms configuration candidates.
             env_desc (Dict[str, Any]): The description for environment generation.
             interface_config (Dict[str, Any]): Configuration for agent training inferece construction, keys include \
                 `type` and `custom_config`, a dict.
             agent_mapping_func (Callable[[AgentID], str]): The mapping function maps agent id to training interface id.
             training_config (Dict[str, Any]): Training configuration, for agent interface, keys include \
-                `type`, `training_config` and `custom_config`.
+                `type`, `trainer_config` and `custom_config`.
             log_dir (str): Directory for logging.
             remote_mode (bool, Optional): Init agent interfaces as remote actor or not. Default is True.
         """
@@ -72,14 +73,14 @@ class TrainingManager(Manager):
             agent_groups[rid].add(agent)
 
         # FIXME(ming): resource configuration is not available now, will open in the next version
-        if training_config.get("use_cuda", False):
+        if training_config["trainer_config"].get("use_cuda", False):
             num_gpus = 1 / len(agent_groups)
         else:
             num_gpus = 0.0
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
-        agent_cls = get_training_agent(training_config["type"])
+        agent_cls = training_config["type"]
         # TODO(ming): consider to enable device specific
         agent_cls = agent_cls.as_remote(num_gpus=num_gpus)
         interfaces: Dict[str, Union[AgentInterface, ray.ObjectRef]] = {}
@@ -87,6 +88,7 @@ class TrainingManager(Manager):
         for rid, agents in agent_groups.items():
             handler = agent_cls.remote if remote_mode else agent_cls
             interfaces[rid] = handler(
+                experiment_tag=experiment_tag,
                 runtime_id=rid,
                 log_dir=f"{log_dir}/learner_{rid}",
                 env_desc=env_desc,
@@ -103,6 +105,7 @@ class TrainingManager(Manager):
             _ = ray.get([x.start.remote() for x in interfaces.values()])
 
         self._agent_groups = agent_groups
+        self._experiment_tag = experiment_tag
         self._env_description = env_desc
         self._training_config = training_config
         self._log_dir = log_dir

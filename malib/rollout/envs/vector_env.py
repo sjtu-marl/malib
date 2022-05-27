@@ -23,7 +23,7 @@
 # SOFTWARE.
 
 from collections import ChainMap
-from typing import Tuple
+from typing import Tuple, Dict, Any, List, Callable
 
 import uuid
 
@@ -34,13 +34,9 @@ from ray.actor import ActorHandle
 
 from malib.utils.logging import Logger
 from malib.utils.typing import (
-    Dict,
     AgentID,
-    Any,
     EnvID,
-    List,
     PolicyID,
-    Callable,
 )
 from malib.rollout.envs import Environment
 from malib.utils.episode import Episode

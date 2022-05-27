@@ -2,14 +2,15 @@
 Implementation of basic PyTorch-based policy class
 """
 
-import gym
 
+from typing import Dict, Any, Tuple, Callable
 from abc import ABCMeta, abstractmethod
 
+import gym
 import torch.nn as nn
 
 from malib.utils import errors
-from malib.utils.typing import DataTransferType, ModelConfig, Dict, Any, Tuple, Callable
+from malib.utils.typing import DataTransferType
 from malib.utils.preprocessor import get_preprocessor, Mode
 from malib.utils.notations import deprecated
 from malib.algorithm.common.policy import SimpleObject
@@ -35,7 +36,7 @@ class Reward(metaclass=ABCMeta):
         reward_type: str,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        model_config: ModelConfig = None,
+        model_config: Dict[str, Any] = None,
         custom_config: Dict[str, Any] = None,
     ):
         """Create a reward model instance.

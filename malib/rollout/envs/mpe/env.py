@@ -1,9 +1,11 @@
+from typing import Dict, Any, List, Union
+
 import importlib
 import gym
 
+from malib.utils.typing import AgentID
+from malib.utils.episode import Episode
 from malib.rollout.envs.env import Environment
-from malib.utils.typing import Dict, Any, AgentID, List, Union
-from malib.utils.episode import Episode, Episode
 
 
 class MPE(Environment):

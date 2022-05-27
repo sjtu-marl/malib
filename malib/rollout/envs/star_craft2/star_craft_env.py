@@ -1,3 +1,5 @@
+from typing import Dict, Any, List, Union
+
 import numpy as np
 import gym
 
@@ -6,7 +8,7 @@ from smac.env import StarCraft2Env as sc_env
 
 from malib.rollout.envs import Environment
 from malib.rollout.envs.env import GroupWrapper
-from malib.utils.typing import Dict, AgentID, Any, List, Union
+from malib.utils.typing import AgentID
 from malib.utils.episode import Episode
 
 

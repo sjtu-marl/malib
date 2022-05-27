@@ -1,23 +1,23 @@
+from typing import Tuple, Any, Dict, List
+
 import copy
 import os
 import pickle
+import wrapt
+import tree
+
 import gym
 import torch
 import numpy as np
 
 from torch import nn
 
-from malib.utils.typing import DataTransferType, Tuple, Any, Dict, EpisodeID, List
-from malib.utils.episode import Episode, Episode
-
-from malib.algorithm.common.model import get_model
+from malib.utils.typing import DataTransferType
+from malib.utils.episode import Episode
 from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.misc import hard_update
-
 from malib.algorithm.mappo.actor_critic import RNNNet
 from malib.algorithm.mappo.utils import PopArt, init_fc_weights
-import wrapt
-import tree
 
 
 @wrapt.decorator
@@ -45,7 +45,6 @@ def shape_adjusting(wrapped, instance, args, kwargs):
             else:
                 return x
         except ValueError as e:
-            print("--------------->", x.shape, original_shape_pre)
             raise e
 
     adjusted_args = tree.map_structure(adjust_fn, args)

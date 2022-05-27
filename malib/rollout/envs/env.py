@@ -1,3 +1,4 @@
+from typing import Dict, List, Any, Union, Tuple
 from collections import defaultdict
 
 import uuid
@@ -5,7 +6,7 @@ import gym
 import copy
 import numpy as np
 
-from malib.utils.typing import Dict, AgentID, List, Any, Union, Tuple
+from malib.utils.typing import AgentID
 from malib.utils.episode import Episode
 
 

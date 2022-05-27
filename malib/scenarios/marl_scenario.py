@@ -42,7 +42,7 @@ class MARLScenario(Scenario):
         rollout_config: Dict[str, Any],
         training_config: Dict[str, Any],
         agent_mapping_func: LambdaType = lambda agent: agent,
-        num_worker: int = 1
+        num_worker: int = 1,
     ):
         super().__init__(name)
         self.algorithms = algorithms

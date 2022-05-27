@@ -6,6 +6,7 @@ then it will try to pull the newest parameter from remote server. Note this oper
 async agents have pushed their stacked gradients, and the aggregation operation is done.
 """
 
+from typing import Dict, Any, Callable, List
 from collections import defaultdict
 
 import time
@@ -13,15 +14,8 @@ import gym
 import ray
 
 from malib.utils.typing import (
-    Dict,
-    Any,
-    Callable,
-    List,
     AgentID,
     PolicyID,
-    Status,
-    ParameterDescription,
-    MetricEntry,
 )
 from malib.agent.indepdent_agent import IndependentAgent
 

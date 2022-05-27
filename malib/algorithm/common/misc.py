@@ -1,7 +1,8 @@
-import torch
-import numpy as np
+from typing import Dict, List, Any, Optional
+
 import math
 import torch
+import numpy as np
 
 import torch.nn.functional as F
 
@@ -10,7 +11,7 @@ from torch.distributions.utils import lazy_property
 from torch.distributions import utils as distr_utils
 from torch.distributions.categorical import Categorical as TorchCategorical
 
-from malib.utils.typing import Dict, List, DataTransferType, Any, Optional
+from malib.utils.typing import DataTransferType
 
 
 def soft_update(target, source, tau):

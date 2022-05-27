@@ -23,11 +23,12 @@
 # SOFTWARE.
 
 
-from random import random
+from abc import ABC, abstractmethod
 from typing import Dict, Any, Tuple, Callable, Type
 
 import os
 import time
+import random
 
 from collections import deque
 
@@ -47,16 +48,17 @@ from malib.common.strategy_spec import StrategySpec
 from malib.monitor.utils import write_to_tensorboard
 
 
-class AgentInterface(RemoteInterFace):
+class AgentInterface(RemoteInterFace, ABC):
     """Base class of agent interface, for training"""
 
+    @abstractmethod
     def __init__(
         self,
         experiment_tag: str,
         runtime_id: str,
         log_dir: str,
         env_desc: Dict[str, Any],
-        algorithms: Dict[str, Tuple[Dict, Dict, Dict]],
+        algorithms: Dict[str, Tuple[Type, Type, Dict]],
         agent_mapping_func: Callable[[AgentID], str],
         governed_agents: Tuple[AgentID],
         trainer_config: Dict[str, Any],
@@ -70,8 +72,8 @@ class AgentInterface(RemoteInterFace):
             runtime_id (str): Assigned runtime id, should be an element of the agent mapping results.
             log_dir (str): The directory for logging.
             env_desc (Dict[str, Any]): A dict that describes the environment property.
-            algorithms (Dict[str, Tuple[Dict, Dict, Dict]]): A dict that describes the algorithm candidates. Each is \
-                a tuple which describes the policy config, and training config.
+            algorithms (Dict[str, Tuple[Type, Type, Dict]]): A dict that describes the algorithm candidates. Each is \
+                a tuple of `policy_cls`, `trainer_cls` and `model_configuration`.
             agent_mapping_func (Callable[[AgentID], str]): A function that defines the rule of agent groupping.
             governed_agents (Tuple[AgentID]): A tuple that records which agents is related to this training procedures. \
                 Note that it should be a subset of the original set of environment agents.
@@ -94,7 +96,7 @@ class AgentInterface(RemoteInterFace):
             identifier=runtime_id,
             policy_ids=[],
             meta_data={
-                "policy_cls": algorithms["default"],
+                "policy_cls": algorithms["default"][0],
                 "experiment_tag": experiment_tag,
                 "kwargs": {},
             },
@@ -225,7 +227,7 @@ class AgentInterface(RemoteInterFace):
                         server_address=client_kwargs["address"]
                     )
                 else:
-                    secs = random()
+                    secs = random.random()
                     Logger.warning(
                         f"reverb server for {identifier} is not initialized yet, sleep {secs}(s) secionds"
                     )
@@ -240,6 +242,7 @@ class AgentInterface(RemoteInterFace):
         batch = self.multiagent_post_process(batch)
         return batch
 
+    @abstractmethod
     def multiagent_post_process(
         self, batch: Dict[AgentID, Dict[str, Any]]
     ) -> Dict[str, Any]:
@@ -251,8 +254,6 @@ class AgentInterface(RemoteInterFace):
         Returns:
             Dict[str, Any]: A merged buffer dict.
         """
-
-        return batch
 
     def get_interface_state(self):
         return {

@@ -1,7 +1,9 @@
+from typing import Callable, Any, Dict
+
 import gym
 import numpy as np
 
-from malib.utils.typing import Callable, AgentID, Any, Dict
+from malib.utils.typing import AgentID
 
 from malib.rollout.envs.env import GroupWrapper
 

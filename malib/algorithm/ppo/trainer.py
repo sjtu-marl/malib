@@ -1,17 +1,17 @@
+from typing import Dict, Any
 from collections import defaultdict
+
 import torch
 import numpy as np
-
 import torch.nn.functional as F
+
 from torch.distributions import Categorical, Normal
 from torch.distributions.kl import kl_divergence
 from torch.utils.data import Dataset, DataLoader
 
-from malib.utils.typing import Dict, Any
 from malib.utils.episode import Episode
 from malib.algorithm.common.trainer import Trainer
 from malib.algorithm.common.misc import vtrace, MaskedCategorical
-from malib.algorithm.common.model import get_model
 from malib.algorithm.mappo.utils import PopArt
 
 

@@ -22,14 +22,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import operator
 from abc import ABCMeta, abstractmethod
+from typing import Dict, Sequence, Tuple, List, Any
 from functools import reduce
 
+import operator
 import numpy as np
+
 from gym import spaces
 
-from malib.utils.typing import DataTransferType, Dict, Sequence, Tuple, List, Any
+from malib.utils.typing import DataTransferType
 
 
 def _get_batched(data: Any):

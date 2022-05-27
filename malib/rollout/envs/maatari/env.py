@@ -1,9 +1,11 @@
+from typing import Dict, Any, Sequence, List
+
 import importlib
 import supersuit
 import gym
 
 from malib.rollout.envs import Environment
-from malib.utils.typing import Dict, Any, Sequence, AgentID, List
+from malib.utils.typing import AgentID
 from malib.utils.episode import Episode
 
 

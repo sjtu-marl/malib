@@ -32,11 +32,7 @@ import numpy as np
 
 from dataclasses import dataclass
 
-from malib.utils.typing import (
-    AgentID,
-    RolloutFeedback,
-    PolicyID,
-)
+from malib.utils.typing import AgentID, PolicyID
 
 try:
     from open_spiel.python.egt import alpharank, utils as alpharank_utils
@@ -362,12 +358,8 @@ class PayoffManager:
 
         return res
 
-    def update_payoff(self, content: RolloutFeedback):
-        """Update the payoff table, and set the corresponding simulation_flag to True
-
-        :param RolloutFeedback content: a RolloutFeedback with policy_combination that specifies the entry to update
-         and statistics which stores the value to update
-        """
+    def update_payoff(self, content):
+        """Update the payoff table, and set the corresponding simulation_flag to True"""
 
         population_combination = content.policy_combination
         # for agent in self.agents:
