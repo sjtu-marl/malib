@@ -43,7 +43,6 @@ class TrainingManager(Manager):
         self,
         algorithms: Dict[str, Any],
         env_desc: Dict[str, Any],
-        interface_config: Dict[str, Any],
         agent_mapping_func: Callable[[AgentID], str],
         training_config: Dict[str, Any],
         log_dir: str,
@@ -58,7 +57,8 @@ class TrainingManager(Manager):
             interface_config (Dict[str, Any]): Configuration for agent training inferece construction, keys include \
                 `type` and `custom_config`, a dict.
             agent_mapping_func (Callable[[AgentID], str]): The mapping function maps agent id to training interface id.
-            training_config (Dict[str, Any]): Training configuration.
+            training_config (Dict[str, Any]): Training configuration, for agent interface, keys include \
+                `type`, `training_config` and `custom_config`.
             log_dir (str): Directory for logging.
             remote_mode (bool, Optional): Init agent interfaces as remote actor or not. Default is True.
         """
@@ -79,7 +79,7 @@ class TrainingManager(Manager):
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
-        agent_cls = get_training_agent(interface_config["type"])
+        agent_cls = get_training_agent(training_config["type"])
         # TODO(ming): consider to enable device specific
         agent_cls = agent_cls.as_remote(num_gpus=num_gpus)
         interfaces: Dict[str, Union[AgentInterface, ray.ObjectRef]] = {}
@@ -94,7 +94,8 @@ class TrainingManager(Manager):
                 algorithms=algorithms,
                 agent_mapping_func=agent_mapping_func,
                 governed_agents=tuple(agents),
-                custom_config=interface_config.get("custom_config"),
+                trainer_config=training_config["trainer_config"],
+                custom_config=training_config.get("custom_config"),
             )
 
         # ensure all interfaces have been started up

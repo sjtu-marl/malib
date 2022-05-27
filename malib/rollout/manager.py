@@ -27,7 +27,7 @@ class RolloutWorkerManager(Manager):
         self,
         num_worker: int,
         agent_mapping_func: Callable,
-        rollout_configs: Dict[str, Any],
+        rollout_config: Dict[str, Any],
         env_desc: Dict[str, Any],
         exp_cfg: Dict[str, Any],
     ):
@@ -59,7 +59,7 @@ class RolloutWorkerManager(Manager):
                 env_desc=env_desc,
                 agent_mapping_func=agent_mapping_func,
                 experiment_config=exp_cfg,
-                runtime_configs=rollout_configs,
+                runtime_config=rollout_config,
             )
 
         self._workers: Dict[str, ray.actor] = workers

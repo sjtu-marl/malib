@@ -37,7 +37,7 @@ class RolloutWorker(BaseRolloutWorker):
         self,
         env_desc: Dict[str, Any],
         agent_mapping_func: Callable,
-        runtime_configs: Dict[str, Any],
+        runtime_config: Dict[str, Any],
         log_dir: str,
         experiment_tag: Any,
         reverb_table_kwargs: Dict[str, Any],
@@ -49,7 +49,7 @@ class RolloutWorker(BaseRolloutWorker):
         super().__init__(
             env_desc,
             agent_mapping_func,
-            runtime_configs,
+            runtime_config,
             log_dir,
             experiment_tag,
             reverb_table_kwargs,
@@ -63,21 +63,21 @@ class RolloutWorker(BaseRolloutWorker):
         self,
         eval_step: bool,
         dataserver_entrypoint: str,
-        runtime_configs_template: Dict[str, Any],
+        runtime_config_template: Dict[str, Any],
     ):
         tasks = [
-            runtime_configs_template
-            for _ in range(self.worker_runtime_configs["num_threads"])
+            runtime_config_template
+            for _ in range(self.worker_runtime_config["num_threads"])
         ]
 
         # add tasks for evaluation
         if eval_step:
-            eval_runtime_configs = runtime_configs_template.copy()
-            eval_runtime_configs["flag"] = "evaluation"
+            eval_runtime_config = runtime_config_template.copy()
+            eval_runtime_config["flag"] = "evaluation"
             tasks.extend(
                 [
-                    eval_runtime_configs
-                    for _ in range(self.worker_runtime_configs["num_eval_threads"])
+                    eval_runtime_config
+                    for _ in range(self.worker_runtime_config["num_eval_threads"])
                 ]
             )
 
@@ -100,11 +100,11 @@ class RolloutWorker(BaseRolloutWorker):
     def step_simulation(
         self,
         runtime_strategy_specs_list: List[Dict[str, StrategySpec]],
-        runtime_configs_template: Dict[str, Any],
+        runtime_config_template: Dict[str, Any],
     ):
         tasks = []
         for strategy_specs in runtime_strategy_specs_list:
-            task = runtime_configs_template.copy()
+            task = runtime_config_template.copy()
             task["strategy_specs"] = strategy_specs
             tasks.append(task)
 

@@ -1,8 +1,6 @@
 import threading
-import copy
 
 from dataclasses import dataclass, field
-from collections import defaultdict
 
 from malib.utils.logging import Logger
 from malib.utils.typing import (

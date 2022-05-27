@@ -42,7 +42,6 @@ from malib.utils.stopping_conditions import get_stopper
 from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
 from malib.remote.interface import RemoteInterFace
-from malib.algorithm.common.policy import Policy
 from malib.algorithm.common.trainer import Trainer
 from malib.common.strategy_spec import StrategySpec
 from malib.monitor.utils import write_to_tensorboard
@@ -60,6 +59,7 @@ class AgentInterface(RemoteInterFace):
         algorithms: Dict[str, Tuple[Dict, Dict, Dict]],
         agent_mapping_func: Callable[[AgentID], str],
         governed_agents: Tuple[AgentID],
+        trainer_config: Dict[str, Any],
         custom_config: Dict[str, Any] = None,
         local_buffer_config: Dict = None,
     ):
@@ -75,6 +75,7 @@ class AgentInterface(RemoteInterFace):
             agent_mapping_func (Callable[[AgentID], str]): A function that defines the rule of agent groupping.
             governed_agents (Tuple[AgentID]): A tuple that records which agents is related to this training procedures. \
                 Note that it should be a subset of the original set of environment agents.
+            trainer_config (Dict[str, Any]): Trainer configuration.
             custom_config (Dict[str, Any], optional): A dict of custom configuration. Defaults to None.
             local_buffer_config (Dict, optional): A dict for local buffer configuration. Defaults to None.
         """
@@ -93,7 +94,7 @@ class AgentInterface(RemoteInterFace):
             identifier=runtime_id,
             policy_ids=[],
             meta_data={
-                "policy_cls": None,
+                "policy_cls": algorithms["default"],
                 "experiment_tag": experiment_tag,
                 "kwargs": {},
             },
@@ -109,6 +110,7 @@ class AgentInterface(RemoteInterFace):
         self._custom_config = custom_config
 
         self._summary_writer = tensorboard.SummaryWriter(log_dir=log_dir)
+        self._trainer_config = trainer_config
         self._total_step = 0
         self._total_epoch = 0
         self._trainer: Trainer = None
@@ -152,6 +154,7 @@ class AgentInterface(RemoteInterFace):
         for _ in range(n):
             spec_pid = f"policy-{len(self._strategy_spec.policy_ids)}"
             self._strategy_spec.register_policy_id(policy_id=spec_pid)
+            # TODO(ming): gen policy? from where?
             policy = self._strategy_spec.gen_policy()
             policy_id = f"{self._strategy_spec.id}/{spec_pid}"
             self._policies[policy_id] = policy
@@ -178,6 +181,7 @@ class AgentInterface(RemoteInterFace):
 
         pending_tasks = []
         for spec_pid in self._strategy_spec.policy_ids:
+            pid = f"{self._strategy_spec.id}/{spec_pid}"
             task = self._parameter_server.set_weights.remote(
                 spec_id=self._strategy_spec.id,
                 spec_policy_id=spec_pid,

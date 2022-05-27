@@ -162,7 +162,7 @@ class BaseRolloutWorker(RemoteInterFace):
         self,
         env_desc: Dict[str, Any],
         agent_mapping_func: Callable,
-        runtime_configs: Dict[str, Any],
+        runtime_config: Dict[str, Any],
         log_dir: str,
         experiment_tag: Any,
         reverb_table_kwargs: Dict[str, Any],
@@ -179,7 +179,7 @@ class BaseRolloutWorker(RemoteInterFace):
             env_desc (Dict[str, Any]): The environment description.
             agent_mapping_func (Callable): The agent mapping function, maps environment agents to runtime ids. \
                 It is shared among all workers.
-            runtime_configs (Dict[str, Any]): Basic runtime configuration to control the rollout. Keys including
+            runtime_config (Dict[str, Any]): Basic runtime configuration to control the rollout. Keys including
             * `fragment_length`: int, how many steps for each data collection and broadcasting.
             * `max_step`: int, the maximum step of each episode.
             * `num_eval_episodes`: int, the number of epsiodes for each evaluation.
@@ -216,9 +216,9 @@ class BaseRolloutWorker(RemoteInterFace):
         self.env_agents = env_desc["possible_agents"]
         self.runtime_agent_ids = runtime_agent_ids
         self.agent_group = agent_group
-        self.worker_runtime_configs: Dict[str, Any] = runtime_configs
+        self.worker_runtime_config: Dict[str, Any] = runtime_config
 
-        validate_runtime_configs(self.worker_runtime_configs)
+        validate_runtime_configs(self.worker_runtime_config)
 
         self.coordinator = None
         self.dataset_server = None
@@ -231,7 +231,7 @@ class BaseRolloutWorker(RemoteInterFace):
         self.inference_server_cls = outer_inference_server or InferenceWorkerSet
         self.agent_interfaces = self.init_agent_interfaces(env_desc, runtime_agent_ids)
         self.actor_pool: ActorPool = self.init_actor_pool(
-            env_desc, runtime_configs, agent_mapping_func
+            env_desc, runtime_config, agent_mapping_func
         )
 
         self.log_dir = log_dir
@@ -282,7 +282,7 @@ class BaseRolloutWorker(RemoteInterFace):
     def init_actor_pool(
         self,
         env_desc: Dict[str, Any],
-        runtime_configs: Dict[str, Any],
+        runtime_config: Dict[str, Any],
         agent_mapping_func: Callable,
     ) -> ActorPool:
         """Initialize an actor pool for the management of simulation tasks. Note the size of the \
@@ -290,7 +290,7 @@ class BaseRolloutWorker(RemoteInterFace):
 
         Args:
             env_desc (Dict[str, Any]): Environment description.
-            runtime_configs (Dict[str, Any]): Runtime configuration, the given keys in this configuration \
+            runtime_config (Dict[str, Any]): Runtime configuration, the given keys in this configuration \
                 include:
                 - `num_threads`: int, determines the size of this actor pool.
                 - `num_env_per_thread`: int, indicates how many environments will be created for each thread.
@@ -302,9 +302,9 @@ class BaseRolloutWorker(RemoteInterFace):
             ActorPool: An instance of `ActorPool`.
         """
 
-        num_threads = runtime_configs["num_threads"]
-        num_env_per_thread = runtime_configs["num_env_per_thread"]
-        num_eval_threads = runtime_configs["num_eval_threads"]
+        num_threads = runtime_config["num_threads"]
+        num_env_per_thread = runtime_config["num_env_per_thread"]
+        num_eval_threads = runtime_config["num_eval_threads"]
 
         actor_pool = ActorPool(
             [
@@ -312,10 +312,10 @@ class BaseRolloutWorker(RemoteInterFace):
                     env_desc,
                     ray.get_actor(settings.OFFLINE_DATASET_ACTOR),
                     max_env_num=num_env_per_thread,
-                    use_subproc_env=runtime_configs["use_subproc_env"],
-                    batch_mode=runtime_configs["batch_mode"],
+                    use_subproc_env=runtime_config["use_subproc_env"],
+                    batch_mode=runtime_config["batch_mode"],
                     training_agent_mapping=agent_mapping_func,
-                    postprocessor_types=runtime_configs["postprocessor_types"],
+                    postprocessor_types=runtime_config["postprocessor_types"],
                 )
                 for _ in range(num_threads + num_eval_threads)
             ]
@@ -381,8 +381,8 @@ class BaseRolloutWorker(RemoteInterFace):
             )
         )
 
-        runtime_configs_template = self.worker_runtime_configs.copy()
-        runtime_configs_template.update(
+        runtime_config_template = self.worker_runtime_config.copy()
+        runtime_config_template.update(
             {
                 "flag": "rollout",
                 "strategy_specs": runtime_strategy_specs,
@@ -395,9 +395,9 @@ class BaseRolloutWorker(RemoteInterFace):
         epoch = 0
 
         while True:
-            eval_step = (epoch + 1) % self.worker_runtime_configs["eval_interval"] == 0
+            eval_step = (epoch + 1) % self.worker_runtime_config["eval_interval"] == 0
             results = self.step_rollout(
-                eval_step, self.experiment_tag, runtime_configs_template
+                eval_step, self.experiment_tag, runtime_config_template
             )
             total_timesteps += results["total_timesteps"]
             eval_results = results.get("evaluation", None)
@@ -420,15 +420,15 @@ class BaseRolloutWorker(RemoteInterFace):
     def simulate(self, runtime_strategy_specs_list: List[Dict[str, StrategySpec]]):
         """Handling simulation task."""
 
-        runtime_configs_template = self.worker_runtime_configs.copy()
-        runtime_configs_template.update(
+        runtime_config_template = self.worker_runtime_config.copy()
+        runtime_config_template.update(
             {
                 "flag": "simulation",
             }
         )
 
         results: List[Dict[str, Any]] = self.step_simulation(
-            runtime_strategy_specs_list, runtime_configs_template
+            runtime_strategy_specs_list, runtime_config_template
         )
 
         self.simulate_callback(self.coordinator, results)
@@ -437,14 +437,14 @@ class BaseRolloutWorker(RemoteInterFace):
         self,
         eval_step: bool,
         dataserver_entrypoint: str,
-        runtime_configs: Dict[str, Any],
+        runtime_config: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         """The logic function to run rollout. Users must implment this method.
 
         Args:
             eval_step (bool): Indicate evaluation or not.
             buffer_desc (BufferDescription): The instance of buffer description, for data send.
-            runtime_configs (Dict[str, Any]): runtime_configs: Runtime configurations to control the amount of sampled data. Keys include:
+            runtime_config (Dict[str, Any]): Runtime configurations to control the amount of sampled data. Keys include:
             - `flag`: indicate the task type, the value is rollout.
             - `max_step`: indicates the maximum length of an episode.
             - `num_episodes`: indicates how many episodes will be collected.
@@ -469,13 +469,13 @@ class BaseRolloutWorker(RemoteInterFace):
     def step_simulation(
         self,
         runtime_strategy_specs_list: List[Dict[str, StrategySpec]],
-        runtime_conigs_template: Dict[str, Any],
+        runtime_conig_template: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         """Logic function for running simulation of a list of strategy spec dict.
 
         Args:
             runtime_strategy_specs_list (List[Dict[str, StrategySpec]]): A list of strategy spec dict.
-            runtime_conigs_template (Dict[str, Any]): Runtime configuration template.
+            runtime_conig_template (Dict[str, Any]): Runtime configuration template.
 
         Raises:
             NotImplementedError: Not implemented error.
