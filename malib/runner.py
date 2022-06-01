@@ -11,17 +11,21 @@ from malib.backend.parameter_server import ParameterServer
 
 def start_servers():
     try:
-        offline_dataset_server = OfflineDataset.options(
-            name=settings.OFFLINE_DATASET_ACTOR
-        ).remote(table_capacity=100)
+        offline_dataset_server = (
+            OfflineDataset.as_remote(num_cpus=0)
+            .options(name=settings.OFFLINE_DATASET_ACTOR)
+            .remote(table_capacity=100)
+        )
     except ValueError:
         Logger.warning("detected existing offline dataset server")
         offline_dataset_server = ray.get_actor(settings.OFFLINE_DATASET_ACTOR)
 
     try:
-        parameter_server = ParameterServer.options(
-            name=settings.PARAMETER_SERVER_ACTOR
-        ).remote()
+        parameter_server = (
+            ParameterServer.as_remote(num_cpus=1)
+            .options(name=settings.PARAMETER_SERVER_ACTOR)
+            .remote()
+        )
     except ValueError:
         Logger.warning("detected exisitng parameter server")
         parameter_server = ray.get_actor(settings.PARAMETER_SERVER_ACTOR)
@@ -31,22 +35,31 @@ def start_servers():
 
 
 def run(scenario: Scenario):
+
     try:
         start_ray_info = ray.init(address="auto")
     except ConnectionError:
         Logger.warning("No active cluster deteced, will create a local ray instance.")
         start_ray_info = ray.init()
 
-    Logger.info("Ray lauched: {}".format(start_ray_info))
-    Logger.info("Ray cluster resources info: {}".format(ray.cluster_resources()))
+    try:
+        Logger.info("Ray lauched: {}".format(start_ray_info))
+        Logger.info("Ray cluster resources info: {}".format(ray.cluster_resources()))
 
-    _ = start_servers()
+        parameter_server, offline_dataset_server = start_servers()
 
-    experiment_tag = f"malib-{scenario.name}-{time.time()}"
+        experiment_tag = f"malib-{scenario.name}-{time.time()}"
 
-    if isinstance(scenario, marl_scenario.MARLScenario):
-        marl_scenario.execution_plan(experiment_tag, scenario)
-    elif isinstance(scenario, psro_scenario.PSROScenario):
-        psro_scenario.execution_plan(scenario)
-    else:
-        raise TypeError("Unexpected scenario type: {}".format(scenario))
+        if isinstance(scenario, marl_scenario.MARLScenario):
+            marl_scenario.execution_plan(experiment_tag, scenario)
+        elif isinstance(scenario, psro_scenario.PSROScenario):
+            psro_scenario.execution_plan(scenario)
+        else:
+            raise TypeError("Unexpected scenario type: {}".format(scenario))
+    except KeyboardInterrupt:
+        ray.shutdown()
+    except TypeError as e:
+        ray.shutdown()
+        raise e
+    except Exception as e:
+        raise e

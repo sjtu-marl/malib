@@ -39,6 +39,8 @@ import reverb
 from torch.utils import tensorboard
 
 from malib import settings
+from malib.backend.offline_dataset_server import OfflineDataset
+from malib.backend.parameter_server import ParameterServer
 from malib.utils.stopping_conditions import get_stopper
 from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
@@ -131,8 +133,8 @@ class AgentInterface(RemoteInterface, ABC):
         self._trainer: Trainer = None
         self._policies = {}
 
-        self._offline_dataset = None
-        self._parameter_server = None
+        self._offline_dataset: OfflineDataset = None
+        self._parameter_server: ParameterServer = None
         self._active_tups = deque()
         self._clients: Dict[str, Type[reverb.Client]] = {}
 
@@ -146,6 +148,10 @@ class AgentInterface(RemoteInterface, ABC):
                 if self._parameter_server is None:
                     self._parameter_server = ray.get_actor(
                         settings.PARAMETER_SERVER_ACTOR
+                    )
+                if self._offline_dataset is None:
+                    self._offline_dataset = ray.get_actor(
+                        settings.OFFLINE_DATASET_ACTOR
                     )
                 break
             except Exception as e:
@@ -250,10 +256,11 @@ class AgentInterface(RemoteInterface, ABC):
                     )
                 else:
                     secs = random.random()
-                    Logger.warning(
-                        f"reverb server for {identifier} is not initialized yet, sleep {secs}(s) secionds"
-                    )
+                    # Logger.warning(
+                    #     f"reverb server for {identifier} is not initialized yet, sleep {secs:.3f}(s) secionds"
+                    # )
                     time.sleep(secs)
+            Logger.debug(f"retrive client kwargs: {client_kwargs}")
             client = self._clients[identifier]
             batch[identifier] = client.sample(
                 table=None,

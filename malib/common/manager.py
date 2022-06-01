@@ -17,7 +17,7 @@ class Manager(ABC):
             if self._force_stop:
                 self.terminate()
             else:
-                dones, self.pending_tasks = ray.wait(self._pending_tasks)
+                dones, self.pending_tasks = ray.wait(self.pending_tasks)
 
     @abstractmethod
     def terminate(self):

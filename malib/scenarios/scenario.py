@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from types import LambdaType
 from typing import Callable, Union, Dict, Any
 from copy import deepcopy
 
@@ -11,11 +12,23 @@ class Scenario(ABC):
     def __init__(
         self,
         name: str,
+        log_dir: str,
+        env_desc: Dict[str, Any],
+        algorithms: Dict[str, Any],
+        agent_mapping_func: LambdaType,
+        training_config: Dict[str, Any],
+        rollout_config: Dict[str, Any],
         stopping_conditions: Dict[str, Any],
         dataset_config: Dict[str, Any],
         parameter_server_config: Dict[str, Any],
     ):
         self.name = name
+        self.log_dir = log_dir
+        self.env_desc = env_desc
+        self.algorithms = algorithms
+        self.agent_mapping_func = agent_mapping_func
+        self.training_config = training_config
+        self.rollout_config = rollout_config
         self.stopping_conditions = stopping_conditions or DEFAULT_STOPPING_CONDITIONS
         self.dataset_config = dataset_config or {"table_capacity": 1000}
         self.parameter_server_config = parameter_server_config or {}

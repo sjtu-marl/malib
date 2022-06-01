@@ -30,6 +30,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 
 import os
+import time
 import traceback
 
 import pickle as pkl
@@ -40,6 +41,7 @@ from ray.util.queue import Queue
 
 from malib import settings
 from malib.utils.typing import AgentID, DataFrame
+from malib.utils.timing import Timing
 from malib.utils.episode import Episode
 from malib.common.strategy_spec import StrategySpec
 from malib.algorithm.common.policy import Policy
@@ -165,6 +167,8 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
         e: Any expectation.
     """
 
+    timer = Timing()
+
     try:
         handler = self.runtime[runtime_id]
         runtime_config = handler.runtime_config
@@ -178,7 +182,9 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
             data_frames: List[DataFrame] = handler.recver.get()
             rets = {}
             send_data_frames = []
-            with self.parameter_buffer_lock:
+            timer.clear()
+            # with self.parameter_buffer_lock:
+            with timer.add_time("data_frame_iter"):
                 for data_frame in data_frames:
                     spec = strategy_specs[data_frame.identifier]
                     spec_policy_id = spec.sample()
@@ -195,18 +201,20 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
                         policy,
                         identifier=data_frame.identifier,
                     )
-                    (
-                        rets[Episode.ACTION],
-                        rets[Episode.ACTION_LOGITS],
-                        rets[Episode.ACTION_DIST],
-                        rets[Episode.RNN_STATE],
-                    ) = policy.compute_action(observation=observation, **kwargs)
+                    with timer.add_time("compute_action"):
+                        (
+                            rets[Episode.ACTION],
+                            rets[Episode.ACTION_LOGITS],
+                            rets[Episode.ACTION_DIST],
+                            rets[Episode.RNN_STATE],
+                        ) = policy.compute_action(observation=observation, **kwargs)
                     # compute state value
-                    rets[Episode.STATE_VALUE] = policy.value_function(
-                        observation=observation,
-                        action_dist=rets[Episode.ACTION_DIST].copy(),
-                        **kwargs,
-                    )
+                    with timer.add_time("compute_value"):
+                        rets[Episode.STATE_VALUE] = policy.value_function(
+                            observation=observation,
+                            action_dist=rets[Episode.ACTION_DIST].copy(),
+                            **kwargs,
+                        )
                     for k, v in rets.items():
                         if k == Episode.RNN_STATE:
                             continue
@@ -230,7 +238,8 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
                         rets[Episode.RNN_STATE],
                         identifier=data_frame.identifier,
                     )
-
+                    # TODO(ming): considering use async sending
+                    # handler.sender.put_nowait(send_df)
             handler.sender.put_nowait(send_data_frames)
     except Exception as e:
         traceback.print_exc()

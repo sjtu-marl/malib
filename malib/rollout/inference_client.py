@@ -38,6 +38,7 @@ import numpy as np
 
 from ray.util.queue import Queue
 from reverb.client import Writer as ReverbWriter
+from malib.utils.logging import Logger
 
 from malib.utils.typing import AgentID, DataFrame, EnvID, BehaviorMode
 from malib.utils.episode import Episode, NewEpisodeDict
@@ -163,18 +164,6 @@ def merge_env_rets(rets, next_rets):
     return r
 
 
-def wait_recv(recv_queue: Dict[str, Queue]):
-    while True:
-        ready = True
-        for recv in recv_queue.values():
-            if recv.empty():
-                ready = False
-        if ready:
-            break
-        # else:
-        #     time.sleep(1)
-
-
 def recieve(queue: Dict[str, Queue]) -> Dict[AgentID, DataFrame]:
     """Recieving messages from remote server.
 
@@ -182,11 +171,9 @@ def recieve(queue: Dict[str, Queue]) -> Dict[AgentID, DataFrame]:
     :type queue: Dict[str, Queue]
     """
 
-    wait_recv(queue)
-
     rets = {}
     for runtime_id, v in queue.items():
-        rets[runtime_id] = v.get_nowait()
+        rets[runtime_id] = v.get()
     return rets
 
 
@@ -306,12 +293,14 @@ class InferenceClient(RemoteInterface):
             reset (bool, optional): Reset connection if existing connect detected. Defaults to False.
 
         Returns:
-            Dict[str, Any]: Simulation results.
+            Dict[str, Any]: A dict of simulation results.
         """
 
         # reset timer, ready for monitor
         self.timer.clear()
         task_type = desc["flag"]
+
+        Logger.debug(f"accept task description: {desc}")
 
         desc["custom_reset_config"] = desc.get("custom_reset_config", {})
         server_runtime_config = desc.copy()
@@ -354,6 +343,8 @@ class InferenceClient(RemoteInterface):
             )
             gc.collect()
 
+        Logger.debug("connected to inference server")
+
         if dataserver_entrypoint is not None:
             if dataserver_entrypoint not in self.reverb_clients:
                 with self.timer.timeit("dataset_sever_connect"):
@@ -372,13 +363,19 @@ class InferenceClient(RemoteInterface):
         else:
             reverb_writer: ReverbWriter = None
 
+        Logger.debug("reverb writer has been initialized")
+
         def collect_backend(episodes: Dict[EnvID, Dict[AgentID, Dict]]):
             print(f"collect activated with reverb writer: {reverb_writer}...")
+            reverb_writer.close()
 
-        results = env_runner(
+        eval_results, performance = env_runner(
             self, request, server_runtime_config, collect_backend=collect_backend
         )
-        return results
+        res = {**performance}
+        # if task_type != "rollout":
+        res["evaluation"] = eval_results
+        return res
 
 
 def env_runner(
@@ -386,7 +383,7 @@ def env_runner(
     request: Namespace,
     server_runtime_config: Dict[str, Any],
     collect_backend: Callable = None,
-):
+) -> Tuple[List[Dict[str, Any]], Dict[str, float]]:
     try:
         episode_dict = NewEpisodeDict(
             lambda: Episode(
@@ -404,23 +401,28 @@ def env_runner(
         dataframes = process_env_rets(env_rets, server_runtime_config)
         episode_dict.record(env_rets)
 
+        Logger.debug("env runner started...")
         start = time.time()
         while not client.env.is_terminated():
-            with client.timer.time_avg("policy_step"):
-                grouped_data_frames = defaultdict(lambda: [])
-                for agent, dataframe in dataframes.items():
-                    # map runtime to agent
-                    runtime_id = client.training_agent_mapping(agent)
-                    grouped_data_frames[runtime_id].append(dataframe)
+            grouped_data_frames = defaultdict(lambda: [])
+            for agent, dataframe in dataframes.items():
+                # map runtime to agent
+                runtime_id = client.training_agent_mapping(agent)
+                grouped_data_frames[runtime_id].append(dataframe)
+
+            with client.timer.add_time("wait_env_return"):
                 for runtime_id, _send_queue in client.send_queue.items():
                     _send_queue.put_nowait(grouped_data_frames[runtime_id])
+            with client.timer.add_time("policy_step"):
                 policy_outputs = recieve(client.recv_queue)
+
+            with client.timer.add_time("process_policy_output"):
                 env_actions, processed_policy_outputs = process_policy_outputs(
                     policy_outputs, client.env
                 )
                 episode_dict.record(processed_policy_outputs)
 
-            with client.timer.time_avg("environment_step"):
+            with client.timer.add_time("environment_step"):
                 env_rets = client.env.step(env_actions)
                 assert len(env_rets) > 0, env_actions
                 # merge RNN states here
@@ -440,7 +442,8 @@ def env_runner(
 
     performance = client.timer.todict()
     performance["FPS"] = client.env.batched_step_cnt / (end - start)
+    eval_results = list(rollout_info.values())
+    performance["total_timesteps"] = client.env.batched_step_cnt
 
-    res = list(rollout_info.values())
     # TODO(ming): merge information?
-    return res
+    return eval_results, performance

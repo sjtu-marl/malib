@@ -5,7 +5,8 @@ will be assigned with rollout tasks sent from the `CoordinatorServer`.
 """
 
 from argparse import Namespace
-from typing import Dict, Tuple, Any, Callable, Set
+import traceback
+from typing import Dict, Tuple, Any, Callable, Set, List
 from collections import defaultdict
 
 import hashlib
@@ -19,6 +20,7 @@ from ray.util import ActorPool
 from malib.common.manager import Manager
 from malib.common.strategy_spec import StrategySpec
 from malib.rollout.rollout_worker import RolloutWorker
+from malib.utils.logging import Logger
 
 
 def _get_worker_hash_idx(idx):
@@ -79,24 +81,25 @@ class RolloutWorkerManager(Manager):
             object_store_memory=None,
             resources=None,
         )
-        workers = {}
+        workers = []
 
         for i in range(num_worker):
-            worker_idx = _get_worker_hash_idx(i)
-            workers[worker_idx] = worker_cls.options(max_concurrency=100).remote(
-                experiment_tag=experiment_tag,
-                env_desc=env_desc,
-                agent_mapping_func=agent_mapping_func,
-                runtime_config=rollout_config,
-                log_dir=log_dir,
-                reverb_table_kwargs={},
-                rollout_callback=None,
-                simulate_callback=None,
-                outer_inference_client=None,
-                outer_inference_server=None,
+            workers.append(
+                worker_cls.options(max_concurrency=100).remote(
+                    experiment_tag=experiment_tag,
+                    env_desc=env_desc,
+                    agent_mapping_func=agent_mapping_func,
+                    runtime_config=rollout_config,
+                    log_dir=log_dir,
+                    reverb_table_kwargs={},
+                    rollout_callback=None,
+                    simulate_callback=None,
+                    outer_inference_client=None,
+                    outer_inference_server=None,
+                )
             )
 
-        self._workers: Dict[str, ray.actor] = workers
+        self._workers: List[ray.actor] = workers
         self._actor_pool = ActorPool(self._workers)
 
         agent_groups = defaultdict(lambda: set())
@@ -136,13 +139,22 @@ class RolloutWorkerManager(Manager):
         )
 
     def rollout(self, task_list) -> None:
-        """Start rollout task without blocking"""
+        """Start rollout task without blocking.
+
+        Args:
+            task_list (_type_): A list of task dict, keys include:
+                - `strategy_specs`: a dict of strategy specs, mapping from runtime ids to specs.
+                - `trainable_agents`: a list of trainable agents.
+
+        """
 
         # validate all strategy specs here
         for task in task_list:
             validate_strategy_specs(task["strategy_specs"])
 
-        self._actor_pool.map(
+        Logger.debug(f"accept rollout tasks as: {task_list}")
+
+        self.pending_tasks = self._actor_pool.map(
             lambda actor, task: actor.rollout.remote(
                 runtime_strategy_specs=task["strategy_specs"],
                 stopping_conditions=self.stopping_conditions["rollout"],
@@ -152,10 +164,15 @@ class RolloutWorkerManager(Manager):
         )
 
     def wait(self):
-        while not self._actor_pool.has_free():
-            if self._force_stop:
-                self.terminate()
-                break
+        try:
+            for task in self.pending_tasks:
+                print("done or not:", task)
+                if self._force_stop:
+                    self.terminate()
+                    break
+            print("seems done", self._force_stop)
+        except Exception:
+            traceback.print_exc()
 
     def terminate(self):
         """Stop all remote workers"""

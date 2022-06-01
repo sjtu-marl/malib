@@ -57,6 +57,9 @@ class StrategySpec:
     def __str__(self):
         return f"<StrategySpec: {self.policy_ids}>"
 
+    def __repr__(self) -> str:
+        return f"<StrategySpec: {self.policy_ids}>"
+
     def __len__(self):
         return len(self.policy_ids)
 

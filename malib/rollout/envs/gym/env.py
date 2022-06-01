@@ -58,7 +58,7 @@ class GymEnv(Environment):
         )
 
         observation = self._env.reset()
-        return {self._default_agent: observation}
+        return ({self._default_agent: observation},)
 
     def close(self):
         pass

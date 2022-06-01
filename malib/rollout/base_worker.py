@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Any, List, Callable, Sequence
+from typing import Dict, Any, List, Callable, Sequence, Tuple
 
 import os
 import time
@@ -64,7 +64,10 @@ def _parse_rollout_info(raw_statistics: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Merge a list of rollout information here.
 
     Args:
-        raw_statistics (List[Dict[str, Any]]): A list of dict, each element is a result dict.
+        raw_statistics (List[Dict[str, Any]]): A list of dict, each element is a result dict. Keys include
+        - total_timesteps
+        - FPS
+        - evaluation
 
     Returns:
         Dict[str, Any]: A merged dict.
@@ -75,23 +78,26 @@ def _parse_rollout_info(raw_statistics: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     for e in raw_statistics:
         if "evaluation" in e:
-            evaluation.append(e.pop("evaluation"))
+            evaluation.extend(e.pop("evaluation"))
 
         for k, v in e.items():
             if k == "total_timesteps":
                 results[k] += v
             elif k == "FPS":
                 results[k] += v
-            else:
-                raise ValueError(f"Unknow key: {k} / {v}")
+            # else:
+            #     raise ValueError(f"Unknow key: {k} / {v}")
 
     if len(evaluation) > 0:
         raw_eval_results = defaultdict(lambda: [])
         for e in evaluation:
             for k, v in e.items():
+                if isinstance(v, (Tuple, List)):
+                    v = sum(v)
                 raw_eval_results[k].append(v)
         eval_results = {}
         for k, v in raw_eval_results.items():
+            # convert v to array
             eval_results.update(
                 {f"{k}_max": np.max(v), f"{k}_min": np.min(v), f"{k}_mean": np.mean(v)}
             )
@@ -226,7 +232,7 @@ class BaseRolloutWorker(RemoteInterface):
 
         self.coordinator = None
         self.dataset_server = None
-        self._parameter_server = None
+        self.parameter_server = None
 
         self.init_servers()
         self.inference_client_cls = outer_inference_client or InferenceClient.as_remote(
@@ -275,7 +281,7 @@ class BaseRolloutWorker(RemoteInterface):
                 agent_id=runtime_id,
                 observation_space=runtime_obs_spaces[runtime_id],
                 action_space=runtime_act_spaces[runtime_id],
-                parameter_server=self._parameter_server,
+                parameter_server=self.parameter_server,
                 governed_agents=self.agent_group[runtime_id],
             )
             for runtime_id in runtime_ids
@@ -335,11 +341,11 @@ class BaseRolloutWorker(RemoteInterface):
         retries = 100
         while True:
             try:
-                if self.coordinator is None:
-                    self.coordinator = ray.get_actor(settings.COORDINATOR_SERVER_ACTOR)
+                # if self.coordinator is None:
+                #     self.coordinator = ray.get_actor(settings.COORDINATOR_SERVER_ACTOR)
 
-                if self._parameter_server is None:
-                    self._parameter_server = ray.get_actor(
+                if self.parameter_server is None:
+                    self.parameter_server = ray.get_actor(
                         settings.PARAMETER_SERVER_ACTOR
                     )
 
@@ -397,7 +403,13 @@ class BaseRolloutWorker(RemoteInterface):
         total_timesteps = 0
         eval_results = {}
         epoch = 0
+        performance = {
+            "rollout_iter_rate": 0.0,
+            "rollout_FPS": 0.0,
+            "ave_rollout_FPS": 0.0,
+        }
 
+        start_time = time.time()
         while True:
             eval_step = (epoch + 1) % self.worker_runtime_config["eval_interval"] == 0
             results = self.step_rollout(
@@ -414,6 +426,16 @@ class BaseRolloutWorker(RemoteInterface):
                     global_step=total_timesteps,
                     prefix="Evaluation",
                 )
+
+            performance["rollout_iter_rate"] = (epoch + 1) / (time.time() - start_time)
+            performance["rollout_FPS"] = results["FPS"]
+            performance["ave_rollout_FPS"] = (
+                performance["ave_rollout_FPS"] * epoch + results["FPS"]
+            ) / (epoch + 1)
+
+            write_to_tensorboard(
+                self.tb_writer, performance, global_step=epoch, prefix="Performance"
+            )
 
             if stopper.should_stop(results):
                 break

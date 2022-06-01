@@ -96,10 +96,10 @@ def get_stopper(conditions: Dict[str, Any]):
     stoppings = []
     if "minimum_reward_improvement" in conditions:
         stoppings.append(
-            RewardImprovementStopping(conditions["mininum_reward_improvement"])
+            RewardImprovementStopping(conditions["minimum_reward_improvement"])
         )
     if "max_iteration" in conditions:
-        stoppings.append(MaxIterationStopping(conditions["max_iteartion"]))
+        stoppings.append(MaxIterationStopping(conditions["max_iteration"]))
 
     if len(stoppings) == 0:
         raise NotImplementedError(f"unkonw stopping condition type: {conditions}")

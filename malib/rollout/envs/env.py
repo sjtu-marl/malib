@@ -8,6 +8,7 @@ import numpy as np
 
 from malib.utils.typing import AgentID
 from malib.utils.episode import Episode
+from malib.utils.general import flatten_dict
 
 
 def record_episode_info(func):
@@ -23,7 +24,12 @@ class Environment:
     def __init__(self, **configs):
         self.is_sequential = False
 
-        self.episode_metrics = {"env_step": 0, "reward": {}, "agent_step": {}}
+        self.episode_metrics = {
+            "env_step": 0,
+            "episode_reward": 0.0,
+            "agent_reward": {},
+            "agent_step": {},
+        }
         self.runtime_id = uuid.uuid4().hex
         # -1 means no horizon limitation
         self.max_step = -1
@@ -40,7 +46,7 @@ class Environment:
         self._configs = configs
 
     def record_episode_info_step(self, observations, rewards, dones, infos):
-        reward_ph = self.episode_metrics["reward"]
+        reward_ph = self.episode_metrics["agent_reward"]
         step_ph = self.episode_metrics["agent_step"]
         for aid, r in rewards.items():
             if aid not in reward_ph:
@@ -50,6 +56,7 @@ class Environment:
             step_ph[aid] += 1
         self.episode_meta_info["env_done"] = dones["__all__"]
         self.episode_metrics["env_step"] += 1
+        self.episode_metrics["episode_reward"] += sum(rewards.values())
 
     @property
     def possible_agents(self) -> List[AgentID]:
@@ -85,7 +92,8 @@ class Environment:
         custom_reset_config = custom_reset_config or self.custom_reset_config
         self.episode_metrics = {
             "env_step": 0,
-            "reward": {k: [] for k in self.possible_agents},
+            "episode_reward": 0.0,
+            "agent_reward": {k: [] for k in self.possible_agents},
             "agent_step": {k: 0.0 for k in self.possible_agents},
         }
         self.episode_meta_info.update(
@@ -162,11 +170,10 @@ class Environment:
         pass
 
     def collect_info(self) -> Dict[str, Any]:
-        return {
-            # "episode_runtime_info": self.episode_meta_info,
-            "episode_metrics": copy.deepcopy(self.episode_metrics),
-            "custom_metrics": copy.deepcopy(self.custom_metrics),
-        }
+        # flatten metrics
+        res1 = flatten_dict(self.episode_metrics)
+        res2 = flatten_dict(self.custom_metrics)
+        return {**res1, **res2}
 
 
 class SequentialEnv(Environment):

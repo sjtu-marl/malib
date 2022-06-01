@@ -64,15 +64,18 @@ class MARLScenario(Scenario):
         """
 
         super().__init__(
-            name, stopping_conditions, dataset_config, parameter_server_config
+            name,
+            log_dir,
+            env_description,
+            algorithms,
+            agent_mapping_func,
+            training_config,
+            rollout_config,
+            stopping_conditions,
+            dataset_config,
+            parameter_server_config,
         )
-        self.algorithms = algorithms
-        self.env_desc = env_description
-        self.agent_mapping_func = agent_mapping_func
-        self.training_config = training_config
-        self.log_dir = log_dir
         self.num_worker = num_worker
-        self.rollout_config = rollout_config
         self.num_policy_each_interface = 1
 
 
@@ -92,7 +95,7 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
         )
 
     if hasattr(scenario, "rollout_manager"):
-        rollout_manager = scenario.rollout_manager
+        rollout_manager: RolloutWorkerManager = scenario.rollout_manager
     else:
         rollout_manager = RolloutWorkerManager(
             experiment_tag=experiment_tag,
@@ -104,9 +107,16 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
             log_dir=scenario.log_dir,
         )
 
-    training_manager.add_policies(n=scenario.num_policy_each_interface)
+    strategy_specs = training_manager.add_policies(n=scenario.num_policy_each_interface)
     training_manager.run()
-    rollout_manager.rollout(task_list=None)
+
+    rollout_tasks = [
+        {
+            "strategy_specs": strategy_specs,
+            "trainable_agents": scenario.env_desc["possible_agents"],
+        }
+    ]
+    rollout_manager.rollout(task_list=rollout_tasks)
 
     executor = ThreadPoolExecutor(max_workers=2)
     executor.submit(training_manager.wait)

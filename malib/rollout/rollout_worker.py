@@ -28,6 +28,7 @@ import ray
 
 from malib.rollout.base_worker import BaseRolloutWorker, _parse_rollout_info
 from malib.common.strategy_spec import StrategySpec
+from malib.utils.logging import Logger
 
 
 class RolloutWorker(BaseRolloutWorker):
@@ -81,6 +82,10 @@ class RolloutWorker(BaseRolloutWorker):
                 ]
             )
 
+        Logger.debug(
+            f"rollout worker step rollout with dataset: {dataserver_entrypoint}"
+        )
+
         rets = [
             x
             for x in self.actor_pool.map(
@@ -93,8 +98,9 @@ class RolloutWorker(BaseRolloutWorker):
             )
         ]
 
+        # check evaluation info
         parsed_results = _parse_rollout_info(rets)
-
+        Logger.debug(f"parsed results: {parsed_results}")
         return parsed_results
 
     def step_simulation(

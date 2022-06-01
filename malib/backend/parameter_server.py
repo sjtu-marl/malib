@@ -22,51 +22,41 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from argparse import Namespace
 from typing import Dict, Any, Sequence
 from threading import Lock
 
-import logging
-
-import ray
 import torch
 import numpy as np
 
-from torch import nn
-
-from malib import settings
-from malib.models.torch import make_net
 from malib.common.strategy_spec import StrategySpec
+from malib.remote.interface import RemoteInterface
 from malib.utils.logging import Logger
 
 
 class Table:
-    def __init__(
-        self, policy_meta_data: Dict[str, Any], optim_config: Dict[str, Any] = None
-    ):
-        observation_space = policy_meta_data["observation_space"]
-        action_space = policy_meta_data["action_space"]
-        model_config = policy_meta_data["model_config"]
-
-        net_type = model_config.get("net_type")
-        kwargs = model_config.get("custom_config", {})
-        self.model: nn.Module = make_net(
-            observation_space=observation_space,
-            action_space=action_space,
-            device="cpu",
-            net_type=net_type,
-            **kwargs,
+    def __init__(self, policy_meta_data: Dict[str, Any]):
+        policy_cls = policy_meta_data["policy_cls"]
+        optim_config = policy_meta_data.get("optim_config")
+        plist = Namespace(**policy_meta_data["kwargs"])
+        self.policy = policy_cls(
+            observation_space=plist.observation_space,
+            action_space=plist.action_space,
+            model_config=plist.model_config,
+            custom_config=plist.custom_config,
+            **plist.kwargs,
         )
         if optim_config is not None:
             self.optimizer: torch.optim.Optimizer = getattr(
                 torch.optim, optim_config["type"]
-            )(self.model.parameters(), lr=optim_config["lr"])
+            )(self.policy.parameters(), lr=optim_config["lr"])
         else:
             self.optimizer: torch.optim.Optimizer = None
         self.lock = Lock()
 
     def set_weights(self, state_dict):
         with self.lock:
-            self.model.load_state_dict(state_dict)
+            self.policy.load_state_dict(state_dict)
 
     def apply_gradients(self, *gradients):
         with self.lock:
@@ -74,18 +64,17 @@ class Table:
                 np.stack(gradient_zip).sum(axis=0) for gradient_zip in zip(*gradients)
             ]
             self.optimizer.zero_grad()
-            for g, p in zip(summed_gradients, self.model.parameters()):
+            for g, p in zip(summed_gradients, self.policy.parameters()):
                 if g is not None:
                     p.grad = torch.from_numpy(g.copy())
             self.optimizer.step()
 
     def get_weights(self):
         with self.lock:
-            return {k: v.cpu() for k, v in self.state_dict().items()}
+            return {k: v.cpu() for k, v in self.policy.state_dict().items()}
 
 
-@ray.remote
-class ParameterServer:
+class ParameterServer(RemoteInterface):
     def __init__(self, **kwargs):
         self.tables: Dict[str, Table] = {}
         self.lock = Lock()
@@ -137,6 +126,6 @@ class ParameterServer:
                 table_name = f"{strategy_spec.id}/{policy_id}"
                 if table_name in self.tables:
                     continue
-                meta_data = strategy_spec.get_meta_data()["kwargs"].copy()
+                meta_data = strategy_spec.get_meta_data().copy()
                 self.tables[table_name] = Table(meta_data)
         return table_name
