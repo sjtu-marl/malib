@@ -1,7 +1,7 @@
 import ray
 
 
-class RemoteInterFace:
+class RemoteInterface:
     @classmethod
     def as_remote(
         cls,

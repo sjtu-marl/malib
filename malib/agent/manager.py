@@ -41,6 +41,7 @@ class TrainingManager(Manager):
     def __init__(
         self,
         experiment_tag: str,
+        stopping_conditions: Dict[str, Any],
         algorithms: Dict[str, Any],
         env_desc: Dict[str, Any],
         agent_mapping_func: Callable[[AgentID], str],
@@ -85,6 +86,10 @@ class TrainingManager(Manager):
         agent_cls = agent_cls.as_remote(num_gpus=num_gpus)
         interfaces: Dict[str, Union[AgentInterface, ray.ObjectRef]] = {}
 
+        assert (
+            "training" in stopping_conditions
+        ), f"Stopping conditions should contains `training` stoppong conditions: {stopping_conditions}"
+
         for rid, agents in agent_groups.items():
             handler = agent_cls.remote if remote_mode else agent_cls
             interfaces[rid] = handler(
@@ -102,9 +107,10 @@ class TrainingManager(Manager):
 
         # ensure all interfaces have been started up
         if remote_mode:
-            _ = ray.get([x.start.remote() for x in interfaces.values()])
+            _ = ray.get([x.connect.remote() for x in interfaces.values()])
 
         self._agent_groups = agent_groups
+        self._runtime_ids = tuple(self._agent_groups.keys())
         self._experiment_tag = experiment_tag
         self._env_description = env_desc
         self._training_config = training_config
@@ -113,9 +119,10 @@ class TrainingManager(Manager):
         self._interfaces = interfaces
         self._remote_mode = remote_mode
         self._thread_pool = ThreadPoolExecutor(max_workers=len(interfaces))
+        self._stopping_conditions = stopping_conditions
 
         Logger.info(
-            f"training manager launched, {len(self._agents)} learner(s) created"
+            f"training manager launched, {len(self._interfaces)} learner(s) created"
         )
 
     @property
@@ -127,6 +134,10 @@ class TrainingManager(Manager):
         """
 
         return self._agent_groups
+
+    @property
+    def runtime_ids(self) -> Tuple[str]:
+        return self._runtime_ids
 
     def add_policies(
         self, interface_ids: Sequence[str] = None, n: Union[int, Dict[str, int]] = 1
@@ -162,6 +173,8 @@ class TrainingManager(Manager):
                 k: self._interfaces[k].add_policies(n=ns[k]) for k in interface_ids
             }
 
+        Logger.debug(f"newest strategy spec dict: {strategy_spec_dict}")
+
         return strategy_spec_dict
 
     def run(self):
@@ -169,10 +182,16 @@ class TrainingManager(Manager):
 
         if self._remote_mode:
             for interface in self._interfaces.values():
-                self.pending_tasks.append(interface.train.remote())
+                self.pending_tasks.append(
+                    interface.train.remote(self._stopping_conditions["training"])
+                )
         else:
             for interface in self._interfaces.values():
-                self.pending_tasks.append(self._thread_pool.submit(interface.train))
+                self.pending_tasks.append(
+                    self._thread_pool.submit(
+                        interface.train, self._stopping_conditions["training"]
+                    )
+                )
 
     def terminate(self) -> None:
         """Terminate all training actors."""

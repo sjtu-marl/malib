@@ -43,7 +43,7 @@ from malib.utils.typing import AgentID, DataFrame, EnvID, BehaviorMode
 from malib.utils.episode import Episode, NewEpisodeDict
 from malib.utils.preprocessor import Preprocessor, get_preprocessor
 from malib.utils.timing import Timing
-from malib.remote.interface import RemoteInterFace
+from malib.remote.interface import RemoteInterface
 from malib.rollout.envs.vector_env import VectorEnv
 from malib.rollout.envs.async_vector_env import AsyncVectorEnv, AsyncSubProcVecEnv
 from malib.rollout.postprocessor import get_postprocessor
@@ -197,7 +197,7 @@ def postprocessing(episodes, postprocessor_types, policies=None):
     return episodes
 
 
-class InferenceClient(RemoteInterFace):
+class InferenceClient(RemoteInterface):
     def __init__(
         self,
         env_desc: Dict[str, Any],

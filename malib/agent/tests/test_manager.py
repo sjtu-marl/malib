@@ -29,18 +29,22 @@ from typing import Dict, Any, Dict, List, Set, Tuple, Type
 
 import os
 import pytest
+import ray
 
 from collections import defaultdict
 
+from malib import settings
 from malib.utils.typing import AgentID
 from malib.agent import IndependentAgent
 from malib.agent.manager import TrainingManager
 from malib.scenarios.marl_scenario import MARLScenario
 from malib.algorithm.random import RandomPolicy, RandomTrainer, DEFAULT_CONFIG
+from malib.backend.offline_dataset_server import OfflineDataset
+from malib.backend.parameter_server import ParameterServer
 
 
 def default_algorithms():
-    return {"default": (RandomPolicy, RandomTrainer)}
+    return {"default": (RandomPolicy, RandomTrainer, {}, {})}
 
 
 def generate_gym_desc(env_id):
@@ -84,6 +88,29 @@ class TestTrainingManager:
 
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
+
+        if not ray.is_initialized():
+            ray.init()
+
+        try:
+            offline_dataset_server = OfflineDataset.options(
+                name=settings.OFFLINE_DATASET_ACTOR
+            ).remote(table_capacity=100)
+        except ValueError:
+            print("detected existing offline dataset server")
+            offline_dataset_server = ray.get_actor(settings.OFFLINE_DATASET_ACTOR)
+
+        try:
+            parameter_server = ParameterServer.options(
+                name=settings.PARAMETER_SERVER_ACTOR
+            ).remote()
+        except ValueError:
+            print("detected exisitng parameter server")
+            parameter_server = ray.get_actor(settings.PARAMETER_SERVER_ACTOR)
+
+        ray.get(
+            [parameter_server.start.remote(), offline_dataset_server.start.remote()]
+        )
 
         training_config = {
             "type": training_type,

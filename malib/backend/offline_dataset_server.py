@@ -23,7 +23,7 @@
 # SOFTWARE.
 
 import threading
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 import logging
 import ray
@@ -31,13 +31,7 @@ import reverb
 
 from malib import settings
 from malib.utils.typing import PolicyID, AgentID
-
-
-logger = logging.getLogger(__name__)
-
-
-def log(message: str):
-    logger.log(settings.LOG_LEVEL, f"(dataset server) {message}")
+from malib.utils.logging import Logger
 
 
 @ray.remote(num_cpus=0)
@@ -49,7 +43,7 @@ class OfflineDataset:
         self.lock = threading.Lock()
 
     def start(self):
-        pass
+        Logger.info("Dataset server started")
 
     def get_port(self, table_name: str):
         with self.lock:

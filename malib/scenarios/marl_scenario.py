@@ -43,8 +43,29 @@ class MARLScenario(Scenario):
         training_config: Dict[str, Any],
         agent_mapping_func: LambdaType = lambda agent: agent,
         num_worker: int = 1,
+        stopping_conditions: Dict[str, Any] = None,
+        dataset_config: Dict[str, Any] = None,
+        parameter_server_config: Dict[str, Any] = None,
     ):
-        super().__init__(name)
+        """Construct a scenario for MARL training.
+
+        Args:
+            name (str): Scenario name, for experiment tag creating and identification.
+            log_dir (str): Log directory.
+            algorithms (Dict[str, Any]): A dict that provides a series of algorithms, must indludes algorithm named with `default`.
+            env_description (Dict[str, Any]): Environment description.
+            rollout_config (Dict[str, Any]): Rollout configuration.
+            training_config (Dict[str, Any]): Training configuration, for the construction of `AgentInterface`.
+            agent_mapping_func (LambdaType, optional): Agent mapping function, maps from environment agents to runtime ids, all workers share the same mapping func. Defaults to lambdaagent:agent.
+            num_worker (int, optional): Indicates how many `RolloutWorker` will be initialized. Defaults to 1.
+            stopping_conditions (Dict[str, Any], optional): Stopping conditions, should contain `rollout` and `training`. Defaults to None.
+            dataset_config (Dict[str, Any], optional): Dataset configuration. Defaults to None.
+            parameter_server_config (Dict[str, Any], optional): Parameter server configuration. Defaults to None.
+        """
+
+        super().__init__(
+            name, stopping_conditions, dataset_config, parameter_server_config
+        )
         self.algorithms = algorithms
         self.env_desc = env_description
         self.agent_mapping_func = agent_mapping_func
@@ -52,13 +73,16 @@ class MARLScenario(Scenario):
         self.log_dir = log_dir
         self.num_worker = num_worker
         self.rollout_config = rollout_config
+        self.num_policy_each_interface = 1
 
 
-def execution_plan(scenario: Scenario):
+def execution_plan(experiment_tag: str, scenario: Scenario):
     if hasattr(scenario, "training_manager"):
         training_manager = scenario.training_manager
     else:
         training_manager = TrainingManager(
+            experiment_tag=experiment_tag,
+            stopping_conditions=scenario.stopping_conditions,
             algorithms=scenario.algorithms,
             env_desc=scenario.env_desc,
             agent_mapping_func=scenario.agent_mapping_func,
@@ -71,6 +95,8 @@ def execution_plan(scenario: Scenario):
         rollout_manager = scenario.rollout_manager
     else:
         rollout_manager = RolloutWorkerManager(
+            experiment_tag=experiment_tag,
+            stopping_conditions=scenario.stopping_conditions,
             num_worker=scenario.num_worker,
             agent_mapping_func=scenario.agent_mapping_func,
             rollout_config=scenario.rollout_config,

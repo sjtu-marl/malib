@@ -1,3 +1,4 @@
+import time
 import ray
 
 from malib import settings
@@ -6,6 +7,27 @@ from malib.scenarios import marl_scenario, psro_scenario
 from malib.scenarios.scenario import Scenario
 from malib.backend.offline_dataset_server import OfflineDataset
 from malib.backend.parameter_server import ParameterServer
+
+
+def start_servers():
+    try:
+        offline_dataset_server = OfflineDataset.options(
+            name=settings.OFFLINE_DATASET_ACTOR
+        ).remote(table_capacity=100)
+    except ValueError:
+        Logger.warning("detected existing offline dataset server")
+        offline_dataset_server = ray.get_actor(settings.OFFLINE_DATASET_ACTOR)
+
+    try:
+        parameter_server = ParameterServer.options(
+            name=settings.PARAMETER_SERVER_ACTOR
+        ).remote()
+    except ValueError:
+        Logger.warning("detected exisitng parameter server")
+        parameter_server = ray.get_actor(settings.PARAMETER_SERVER_ACTOR)
+
+    ray.get([parameter_server.start.remote(), offline_dataset_server.start.remote()])
+    return parameter_server, offline_dataset_server
 
 
 def run(scenario: Scenario):
@@ -18,17 +40,12 @@ def run(scenario: Scenario):
     Logger.info("Ray lauched: {}".format(start_ray_info))
     Logger.info("Ray cluster resources info: {}".format(ray.cluster_resources()))
 
-    offline_dataset = OfflineDataset.options(
-        name=settings.OFFLINE_DATASET_ACTOR, max_concurrency=1000
-    ).remote(scenario.dataset_config)
-    parameter_server = ParameterServer.options(
-        name=settings.PARAMETER_SERVER_ACTOR, max_concurrency=1000
-    ).remote(**scenario.parameter_server_config)
+    _ = start_servers()
 
-    _ = ray.get([offline_dataset.start.remote(), parameter_server.start.remote()])
+    experiment_tag = f"malib-{scenario.name}-{time.time()}"
 
     if isinstance(scenario, marl_scenario.MARLScenario):
-        marl_scenario.execution_plan(scenario)
+        marl_scenario.execution_plan(experiment_tag, scenario)
     elif isinstance(scenario, psro_scenario.PSROScenario):
         psro_scenario.execution_plan(scenario)
     else:

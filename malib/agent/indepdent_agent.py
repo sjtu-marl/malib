@@ -4,6 +4,10 @@ Independent agent interface, for independent algorithms training. Policy/Trainer
 
 from typing import Dict, Tuple, Any, Callable
 
+import shutup
+
+shutup.please()
+
 from malib.utils.typing import AgentID
 from malib.agent.agent_interface import AgentInterface
 

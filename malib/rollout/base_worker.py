@@ -33,6 +33,10 @@ import logging
 from functools import reduce
 from collections import defaultdict
 
+import shutup
+
+shutup.please()
+
 import ray
 import gym
 import numpy as np
@@ -44,7 +48,7 @@ from malib import settings
 from malib.utils.typing import AgentID
 from malib.utils.stopping_conditions import get_stopper
 from malib.common.strategy_spec import StrategySpec
-from malib.remote.interface import RemoteInterFace
+from malib.remote.interface import RemoteInterface
 from malib.monitor.utils import write_to_tensorboard
 from malib.rollout.inference_server import InferenceWorkerSet
 from malib.rollout.inference_client import InferenceClient
@@ -157,14 +161,14 @@ def validate_runtime_configs(configs: Dict[str, Any]):
     assert "eval_interval" in configs
 
 
-class BaseRolloutWorker(RemoteInterFace):
+class BaseRolloutWorker(RemoteInterface):
     def __init__(
         self,
+        experiment_tag: str,
         env_desc: Dict[str, Any],
         agent_mapping_func: Callable,
         runtime_config: Dict[str, Any],
         log_dir: str,
-        experiment_tag: Any,
         reverb_table_kwargs: Dict[str, Any],
         rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
         simulate_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,

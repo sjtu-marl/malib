@@ -42,13 +42,13 @@ from malib import settings
 from malib.utils.stopping_conditions import get_stopper
 from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
-from malib.remote.interface import RemoteInterFace
+from malib.remote.interface import RemoteInterface
 from malib.algorithm.common.trainer import Trainer
 from malib.common.strategy_spec import StrategySpec
 from malib.monitor.utils import write_to_tensorboard
 
 
-class AgentInterface(RemoteInterFace, ABC):
+class AgentInterface(RemoteInterface, ABC):
     """Base class of agent interface, for training"""
 
     @abstractmethod
@@ -58,7 +58,7 @@ class AgentInterface(RemoteInterFace, ABC):
         runtime_id: str,
         log_dir: str,
         env_desc: Dict[str, Any],
-        algorithms: Dict[str, Tuple[Type, Type, Dict]],
+        algorithms: Dict[str, Tuple[Type, Type, Dict, Dict]],
         agent_mapping_func: Callable[[AgentID], str],
         governed_agents: Tuple[AgentID],
         trainer_config: Dict[str, Any],
@@ -73,7 +73,7 @@ class AgentInterface(RemoteInterFace, ABC):
             log_dir (str): The directory for logging.
             env_desc (Dict[str, Any]): A dict that describes the environment property.
             algorithms (Dict[str, Tuple[Type, Type, Dict]]): A dict that describes the algorithm candidates. Each is \
-                a tuple of `policy_cls`, `trainer_cls` and `model_configuration`.
+                a tuple of `policy_cls`, `trainer_cls`, `model_config` and `custom_config`.
             agent_mapping_func (Callable[[AgentID], str]): A function that defines the rule of agent groupping.
             governed_agents (Tuple[AgentID]): A tuple that records which agents is related to this training procedures. \
                 Note that it should be a subset of the original set of environment agents.
@@ -82,8 +82,8 @@ class AgentInterface(RemoteInterFace, ABC):
             local_buffer_config (Dict, optional): A dict for local buffer configuration. Defaults to None.
         """
 
-        Logger.info("\tray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
-        Logger.info(
+        print("\tray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
+        print(
             "\tCUDA_VISIBLE_DEVICES: {}".format(
                 os.environ.get("CUDA_VISIBLE_DEVICES", [])
             )
@@ -92,13 +92,26 @@ class AgentInterface(RemoteInterFace, ABC):
         local_buffer_config = local_buffer_config or {}
         device = torch.device("cuda" if ray.get_gpu_ids() else "cpu")
         # a strategy spec dict, mapping from algorithm
+        obs_spaces = env_desc["observation_spaces"]
+        act_spaces = env_desc["action_spaces"]
+        selected_observation_space = obs_spaces[governed_agents[0]]
+        selected_action_space = act_spaces[governed_agents[0]]
+
+        # initialize a strategy spec for policy maintainance.
         strategy_spec = StrategySpec(
             identifier=runtime_id,
             policy_ids=[],
             meta_data={
                 "policy_cls": algorithms["default"][0],
                 "experiment_tag": experiment_tag,
-                "kwargs": {},
+                # for policy initialize
+                "kwargs": {
+                    "observation_space": selected_observation_space,
+                    "action_space": selected_action_space,
+                    "model_config": algorithms["default"][2],
+                    "custom_config": algorithms["default"][3],
+                    "kwargs": {},
+                },
             },
         )
 
@@ -119,7 +132,6 @@ class AgentInterface(RemoteInterFace, ABC):
         self._policies = {}
 
         self._offline_dataset = None
-        self._coordinator = None
         self._parameter_server = None
         self._active_tups = deque()
         self._clients: Dict[str, Type[reverb.Client]] = {}
@@ -131,15 +143,13 @@ class AgentInterface(RemoteInterFace, ABC):
 
         while True:
             try:
-                if self._coordinator is None:
-                    self._coordinator = ray.get_actor(settings.COORDINATOR_SERVER_ACTOR)
-
                 if self._parameter_server is None:
                     self._parameter_server = ray.get_actor(
                         settings.PARAMETER_SERVER_ACTOR
                     )
+                break
             except Exception as e:
-                Logger.debug(f"Waiting for coordinator server... {e}")
+                Logger.debug(f"{e}")
                 time.sleep(1)
                 continue
 
@@ -160,12 +170,16 @@ class AgentInterface(RemoteInterFace, ABC):
             policy = self._strategy_spec.gen_policy()
             policy_id = f"{self._strategy_spec.id}/{spec_pid}"
             self._policies[policy_id] = policy
+            # active tups store the policy info tuple for training, the
+            # the data request relies on it.
             self._active_tups.append((self._strategy_spec.id, spec_pid))
 
             ray.get(self._parameter_server.create_table.remote(self._strategy_spec))
             ray.get(
                 self._parameter_server.set_weights.remote(
-                    table_name=policy_id, state_dict=policy.state_dict()
+                    spec_id=self._strategy_spec.id,
+                    spec_policy_id=spec_pid,
+                    state_dict=policy.state_dict(),
                 )
             )
             # TODO(ming): create trainer here?
@@ -197,6 +211,7 @@ class AgentInterface(RemoteInterFace, ABC):
         """Pull remote weights to update local version."""
 
         pending_tasks = []
+
         for spec_pid in self._strategy_spec.policy_ids:
             pid = f"{self._strategy_spec.id}/{spec_pid}"
             task = self._parameter_server.get_weights.remote(
@@ -205,13 +220,20 @@ class AgentInterface(RemoteInterFace, ABC):
                 state_dict=self._policies[pid],
             )
             pending_tasks.append(task)
+
         while len(pending_tasks) > 0:
             dones, pending_tasks = ray.wait(pending_tasks)
             for done in ray.get(dones):
                 pid = "{}/{}".format(done["spec_id"], done["spec_policy_id"])
                 self.policy[pid].load_state_dict(done["weights"])
 
-    def request_data(self) -> Tuple[Any, str]:
+    def request_data(self) -> Dict[str, Any]:
+        """Request data for active policies.
+
+        Returns:
+            Dict[str, Any]: A batch dict.
+        """
+
         batch = {}
         for active_tup in list(self._active_tups):
             identifier = f"{active_tup[0]}/{active_tup[1]}"
@@ -246,7 +268,7 @@ class AgentInterface(RemoteInterFace, ABC):
     def multiagent_post_process(
         self, batch: Dict[AgentID, Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """Merge agent buffer here.
+        """Merge agent buffer here and return the merged buffer.
 
         Args:
             batch (Dict[AgentID, Dict[str, Any]]): Agent buffer dict.
@@ -259,13 +281,17 @@ class AgentInterface(RemoteInterFace, ABC):
         return {
             "total_step": self._total_step,
             "total_epoch": self._total_epoch,
-            "policy_num": len(self._strategy_spec.policy_ids),
+            "policy_num": len(self._strategy_spec),
+            "active_tups": list(self._active_tups),
         }
 
-    def train(self, reset_state: bool = True) -> Dict[str, Any]:
+    def train(
+        self, stopping_conditions: Dict[str, Any], reset_state: bool = True
+    ) -> Dict[str, Any]:
         """Executes training task and returns the final interface state.
 
         Args:
+            stopping_conditions (Dict[str, Any]): Control the training stepping.
             reset_tate (bool, optional): Reset interface state or not. Default is True.
 
         Returns:
@@ -275,7 +301,7 @@ class AgentInterface(RemoteInterFace, ABC):
         if reset_state:
             self.reset()
 
-        stopper = get_stopper(conditions=self._stopping_conditions)
+        stopper = get_stopper(conditions=stopping_conditions)
 
         # loop epoch
         while True:

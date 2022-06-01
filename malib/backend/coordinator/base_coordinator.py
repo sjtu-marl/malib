@@ -2,15 +2,15 @@ import uuid
 import ray
 
 
-from malib.remote.interface import RemoteInterFace
+from malib.remote.interface import RemoteInterface
 from malib.utils.typing import Dict
 from malib.rollout.manager import RolloutWorkerManager
 from malib.agent.manager import TrainingManager
 
 
-class BaseCoordinator(RemoteInterFace):
+class BaseCoordinator(RemoteInterface):
     def __init__(self):
-        RemoteInterFace.__init__(self)
+        RemoteInterface.__init__(self)
         self._training_manager: TrainingManager = None
         self._rollout_manager: RolloutWorkerManager = None
         self._task_cache: Dict[str, Dict] = {}

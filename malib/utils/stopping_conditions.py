@@ -47,26 +47,32 @@ class StopImmediately(StoppingCondition):
         return True
 
 
-class RewardAndIterationStopping(StoppingCondition):
+class RewardImprovementStopping(StoppingCondition):
+    def __init__(self, mininum_reward_improvement: float) -> None:
+        self.minium_reward_improvement = mininum_reward_improvement
+
+    def should_stop(self, latest_trainer_result: dict, *args, **kwargs) -> bool:
+        reward_this_iter = latest_trainer_result.get(
+            "evaluation", {"episode_reward_mean": float("inf")}
+        )["episode_reward_mean"]
+        if reward_this_iter == float("inf"):
+            return False
+        should_stop = False
+        return should_stop
+
+
+class MaxIterationStopping(StoppingCondition):
     def __init__(
         self,
         max_iteration: int,
-        minimum_reward_improvement: float,
     ) -> None:
         self.max_iteration = max_iteration
-        self.minimum_reward_imp = minimum_reward_improvement
         self.n_iteration = 0
 
     def should_stop(self, latest_trainer_result: dict, *args, **kwargs) -> bool:
         self.n_iteration += 1
-        br_reward_this_iter = latest_trainer_result.get(
-            "evaluation", {"episode_reward_mean": float("inf")}
-        )["episode_reward_mean"]
-        if br_reward_this_iter == float("inf"):
-            return False
 
         should_stop = False
-
         if self.n_iteration >= self.max_iteration:
             logger.info(
                 f"Max iterations reached ({self.n_iteration}). stopping if allowed."
@@ -88,10 +94,12 @@ class MergeStopping(StoppingCondition):
 
 def get_stopper(conditions: Dict[str, Any]):
     stoppings = []
-    if "reward_and_iteration":
+    if "minimum_reward_improvement" in conditions:
         stoppings.append(
-            RewardAndIterationStopping(**conditions["reward_and_iteration"])
+            RewardImprovementStopping(conditions["mininum_reward_improvement"])
         )
+    if "max_iteration" in conditions:
+        stoppings.append(MaxIterationStopping(conditions["max_iteartion"]))
 
     if len(stoppings) == 0:
         raise NotImplementedError(f"unkonw stopping condition type: {conditions}")

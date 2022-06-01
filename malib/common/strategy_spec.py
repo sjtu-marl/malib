@@ -41,11 +41,28 @@ class StrategySpec:
     def __init__(
         self, identifier: str, policy_ids: Tuple[PolicyID], meta_data: Dict[str, Any]
     ) -> None:
+        """Construct a strategy spec.
+
+        Args:
+            identifier (str): Runtime id as identifier.
+            policy_ids (Tuple[PolicyID]): A tuple of policy id, could be empty.
+            meta_data (Dict[str, Any]): Meta data, for policy construction.
+        """
+
         validate_meta_data(meta_data)
         self.id = identifier
         self.policy_ids = tuple(policy_ids)
         self.meta_data = meta_data
-        self.num_policy = len(policy_ids)
+
+    def __str__(self):
+        return f"<StrategySpec: {self.policy_ids}>"
+
+    def __len__(self):
+        return len(self.policy_ids)
+
+    @property
+    def num_policy(self) -> int:
+        return len(self.policy_ids)
 
     def register_policy_id(self, policy_id: PolicyID):
         """Register new policy id, and preset prob as 0.
@@ -78,19 +95,31 @@ class StrategySpec:
         )
 
     def get_meta_data(self) -> Dict[str, Any]:
+        """Return meta data.
+
+        Returns:
+            Dict[str, Any]: A dict of meta data.
+        """
+
         return self.meta_data
 
     def gen_policy(self) -> Policy:
+        """Generate a policy instance with the given meta data.
+
+        Returns:
+            Policy: A policy instance.
+        """
+
         policy_cls: Type[Policy] = self.meta_data["policy_cls"]
         plist = self.meta_data["kwargs"]
         plist = Namespace(**plist)
+
         return policy_cls(
-            registered_name=plist.registered_name,
             observation_space=plist.observation_space,
             action_space=plist.action_space,
             model_config=plist.model_config,
             custom_config=plist.custom_config,
-            **plist.others
+            **plist.kwargs,
         )
 
     def sample(self) -> PolicyID:
@@ -103,6 +132,10 @@ class StrategySpec:
         prob_list = self.meta_data.get(
             "prob_list", [1 / self.num_policy] * self.num_policy
         )
+        assert np.isclose(
+            sum(prob_list), 1.0
+        ), f"You cannot specify a prob list whose sum is not close to 1.: {prob_list}"
+
         idx = np.random.choice(self.num_policy, p=prob_list)
         return self.policy_ids[idx]
 

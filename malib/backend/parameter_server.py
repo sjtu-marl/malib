@@ -36,21 +36,17 @@ from torch import nn
 from malib import settings
 from malib.models.torch import make_net
 from malib.common.strategy_spec import StrategySpec
-
-
-logger = logging.getLogger(__name__)
-
-
-def log(message: str):
-    logger.log(settings.LOG_LEVEL, f"(dataset server) {message}")
+from malib.utils.logging import Logger
 
 
 class Table:
     def __init__(
-        self, model_config: Dict[str, Any], optim_config: Dict[str, Any] = None
+        self, policy_meta_data: Dict[str, Any], optim_config: Dict[str, Any] = None
     ):
-        observation_space = model_config["observation_space"]
-        action_space = model_config["action_space"]
+        observation_space = policy_meta_data["observation_space"]
+        action_space = policy_meta_data["action_space"]
+        model_config = policy_meta_data["model_config"]
+
         net_type = model_config.get("net_type")
         kwargs = model_config.get("custom_config", {})
         self.model: nn.Module = make_net(
@@ -60,7 +56,6 @@ class Table:
             net_type=net_type,
             **kwargs,
         )
-        torch.optim.Adam()
         if optim_config is not None:
             self.optimizer: torch.optim.Optimizer = getattr(
                 torch.optim, optim_config["type"]
@@ -91,13 +86,13 @@ class Table:
 
 @ray.remote
 class ParameterServer:
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.tables: Dict[str, Table] = {}
         self.lock = Lock()
 
     def start(self):
         """For debug"""
-        pass
+        Logger.info("Parameter server started")
 
     def apply_gradients(self, table_name: str, gradients: Sequence[Any]):
         self.tables[table_name].apply_gradients(*gradients)
@@ -143,7 +138,5 @@ class ParameterServer:
                 if table_name in self.tables:
                     continue
                 meta_data = strategy_spec.get_meta_data()["kwargs"].copy()
-                self.tables[table_name] = Table(
-                    meta_data["model_config"], meta_data.get("optim_config")
-                )
+                self.tables[table_name] = Table(meta_data)
         return table_name

@@ -1,12 +1,24 @@
 from abc import ABC, abstractmethod
-from typing import Callable, Union, Dict
+from typing import Callable, Union, Dict, Any
 from copy import deepcopy
+
+
+DEFAULT_STOPPING_CONDITIONS = {}
 
 
 class Scenario(ABC):
     @abstractmethod
-    def __init__(self, name: str):
+    def __init__(
+        self,
+        name: str,
+        stopping_conditions: Dict[str, Any],
+        dataset_config: Dict[str, Any],
+        parameter_server_config: Dict[str, Any],
+    ):
         self.name = name
+        self.stopping_conditions = stopping_conditions or DEFAULT_STOPPING_CONDITIONS
+        self.dataset_config = dataset_config or {"table_capacity": 1000}
+        self.parameter_server_config = parameter_server_config or {}
         self.validate_properties()
 
     def validate_properties(self):

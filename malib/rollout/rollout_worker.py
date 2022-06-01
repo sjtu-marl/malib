@@ -35,11 +35,11 @@ class RolloutWorker(BaseRolloutWorker):
 
     def __init__(
         self,
+        experiment_tag: Any,
         env_desc: Dict[str, Any],
         agent_mapping_func: Callable,
         runtime_config: Dict[str, Any],
         log_dir: str,
-        experiment_tag: Any,
         reverb_table_kwargs: Dict[str, Any],
         rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
         simulate_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
@@ -47,11 +47,11 @@ class RolloutWorker(BaseRolloutWorker):
         outer_inference_server=None,
     ):
         super().__init__(
+            experiment_tag,
             env_desc,
             agent_mapping_func,
             runtime_config,
             log_dir,
-            experiment_tag,
             reverb_table_kwargs,
             rollout_callback,
             simulate_callback,
