@@ -24,7 +24,7 @@
 
 import threading
 import traceback
-from typing import Dict, Any
+from typing import Dict, Any, Tuple, Union, List
 
 import reverb
 
@@ -33,7 +33,7 @@ from malib.utils.typing import PolicyID, AgentID
 from malib.utils.logging import Logger
 
 
-class OfflineDataset(RemoteInterface):
+class ReverbDataset(RemoteInterface):
     def __init__(self, table_capacity: int):
         self.servers: Dict[str, reverb.Server] = {}
         self.tb_params_list_dict: Dict[str, Dict[str, Any]] = {}
@@ -136,3 +136,96 @@ class OfflineDataset(RemoteInterface):
         Expect the dataset to be in the form of List[ Dict[str, Any] ]
         """
         raise NotImplementedError
+
+
+import time
+
+from concurrent.futures import ThreadPoolExecutor
+from ray.util.queue import Queue
+
+import numpy as np
+import ray
+
+from readerwriterlock import rwlock
+from malib.utils.tianshou_batch import Batch
+from malib.utils.tianshou_replay import ReplayBuffer
+
+
+def write_table(marker: rwlock.RWLockFair, buffer: ReplayBuffer, writer: Queue):
+    wlock = marker.gen_wlock()
+    while True:
+        try:
+            batch: Union[Batch, List[Batch]] = writer.get()
+            with wlock:
+                if isinstance(batch, List):
+                    batch = batch[0]
+                buffer.add(batch)
+        except Exception as e:
+            Logger.warning(f"writer queue dead for: {traceback.format_exc()}")
+            break
+
+
+def read_table(
+    marker: rwlock.RWLockFair, buffer: ReplayBuffer, batch_size: int, reader: Queue
+):
+    rlock = marker.gen_rlock()
+    while True:
+        try:
+            with rlock:
+                batch, indices = buffer.sample(batch_size)
+            reader.put_nowait((batch, indices))
+        except Exception as e:
+            Logger.warning(f"reader queue dead for: {traceback.format_exc()}")
+            break
+
+
+class OfflineDataset(RemoteInterface):
+    def __init__(self, table_capacity: int, max_consumer_size: int = 1024) -> None:
+        self.tb_capacity = table_capacity
+        self.reader_queues: Dict[str, Queue] = {}
+        self.writer_queues: Dict[str, Queue] = {}
+        self.buffers: Dict[str, ReplayBuffer] = {}
+        self.markers: Dict[str, rwlock.RWLockFair] = {}
+        self.thread_pool = ThreadPoolExecutor(max_workers=max_consumer_size)
+
+    def start(self):
+        Logger.info("Dataset server started")
+
+    def start_producer_pipe(self, name: str, **kwargs) -> Tuple[str, Queue]:
+        if name not in self.buffers:
+            buffer = ReplayBuffer(
+                size=self.tb_capacity,
+                stack_num=kwargs.get("stack_num", 1),
+                ignore_obs_next=False,
+                save_only_last_obs=False,
+                sample_avail=False,
+                **kwargs,
+            )
+            marker = rwlock.RWLockFair()
+            writer = Queue(actor_options={"num_cpus": 0})
+
+            self.buffers[name] = buffer
+            self.markers[name] = marker
+            self.writer_queues[name] = writer
+            self.thread_pool.submit(write_table, marker, buffer, writer)
+
+        return name, self.writer_queues[name]
+
+    def end_producer_pipe(self, name: str):
+        if name in self.writer_queues:
+            queue = self.writer_queues.pop(name)
+            ray.kill(queue)
+
+    def start_consumer_pipe(self, name: str, batch_size: int) -> Tuple[str, Queue]:
+        queue_id = f"{name}_{time.time()}"
+        queue = Queue(actor_options={"num_cpus": 0})
+        self.queues[queue_id] = queue
+        self.thread_pool.submit(
+            read_table, self.markers[name], self.buffers[name], batch_size, queue
+        )
+        return queue_id, queue
+
+    def end_consumer_pipe(self, name: str):
+        if name in self.reader_queues:
+            queue = self.queues.pop(name)
+            ray.kill(queue)

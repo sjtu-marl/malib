@@ -23,7 +23,7 @@
 # SOFTWARE.
 
 from argparse import Namespace
-from typing import Type, Union, Any, List, Dict, Tuple, Callable
+from typing import Type, Any, List, Dict, Tuple, Callable
 from types import LambdaType
 from collections import defaultdict
 
@@ -49,6 +49,7 @@ from malib.rollout.envs.vector_env import VectorEnv
 from malib.rollout.envs.async_vector_env import AsyncVectorEnv, AsyncSubProcVecEnv
 from malib.rollout.postprocessor import get_postprocessor
 from malib.rollout.inference_server import InferenceWorkerSet
+from malib.utils.tianshou_batch import Batch
 
 
 def process_env_rets(
@@ -345,32 +346,31 @@ class InferenceClient(RemoteInterface):
 
         Logger.debug("connected to inference server")
 
-        if dataserver_entrypoint is not None:
-            if dataserver_entrypoint not in self.reverb_clients:
-                with self.timer.timeit("dataset_sever_connect"):
-                    address = ray.get(
-                        self.dataset_server.get_client_kwargs.remote(
-                            dataserver_entrypoint
-                        )
-                    )["address"]
-                    self.reverb_clients[dataserver_entrypoint] = reverb.Client(
-                        f"localhost:{address}"
-                    )
-            reverb_writer: ReverbWriter = self.reverb_clients[
-                dataserver_entrypoint
-            ].writer(max_sequence_length=desc["fragment_length"])
+        # if dataserver_entrypoint is not None:
+        #     if dataserver_entrypoint not in self.reverb_clients:
+        #         with self.timer.timeit("dataset_sever_connect"):
+        #             address = ray.get(
+        #                 self.dataset_server.get_client_kwargs.remote(
+        #                     dataserver_entrypoint
+        #                 )
+        #             )["address"]
+        #             self.reverb_clients[dataserver_entrypoint] = reverb.Client(
+        #                 f"localhost:{address}"
+        #             )
+        #     reverb_writer: ReverbWriter = self.reverb_clients[
+        #         dataserver_entrypoint
+        #     ].writer(max_sequence_length=desc["fragment_length"])
 
-        else:
-            reverb_writer: ReverbWriter = None
+        # else:
+        #     reverb_writer: ReverbWriter = None
 
-        Logger.debug("reverb writer has been initialized")
-
-        def collect_backend(episodes: Dict[EnvID, Dict[AgentID, Dict]]):
-            print(f"collect activated with reverb writer: {reverb_writer}...")
-            reverb_writer.close()
+        # Logger.debug("reverb writer has been initialized")
 
         eval_results, performance = env_runner(
-            self, request, server_runtime_config, collect_backend=collect_backend
+            self,
+            request,
+            server_runtime_config,
+            writer_info=desc.get("writer_info", None),
         )
         res = {**performance}
         # if task_type != "rollout":
@@ -382,7 +382,7 @@ def env_runner(
     client: InferenceClient,
     request: Namespace,
     server_runtime_config: Dict[str, Any],
-    collect_backend: Callable = None,
+    writer_info: Tuple[str, Queue] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, float]]:
     try:
         episode_dict = NewEpisodeDict(
@@ -410,30 +410,31 @@ def env_runner(
                 runtime_id = client.training_agent_mapping(agent)
                 grouped_data_frames[runtime_id].append(dataframe)
 
-            with client.timer.add_time("wait_env_return"):
+            with client.timer.time_avg("wait_env_return"):
                 for runtime_id, _send_queue in client.send_queue.items():
                     _send_queue.put_nowait(grouped_data_frames[runtime_id])
-            with client.timer.add_time("policy_step"):
+            with client.timer.time_avg("policy_step"):
                 policy_outputs = recieve(client.recv_queue)
 
-            with client.timer.add_time("process_policy_output"):
+            with client.timer.time_avg("process_policy_output"):
                 env_actions, processed_policy_outputs = process_policy_outputs(
                     policy_outputs, client.env
                 )
                 episode_dict.record(processed_policy_outputs)
 
-            with client.timer.add_time("environment_step"):
+            with client.timer.time_avg("environment_step"):
                 env_rets = client.env.step(env_actions)
                 assert len(env_rets) > 0, env_actions
                 # merge RNN states here
                 dataframes = process_env_rets(env_rets, server_runtime_config)
                 episode_dict.record(env_rets)
 
-        if collect_backend is not None:
+        if writer_info is not None:
             # episode_id: agent_id: dict_data
             episodes = episode_dict.to_numpy()
-            # print("episodes:", episode_dict.to_numpy())
-            collect_backend(episodes=episodes)
+            writer_info[-1].put_nowait_batch(
+                [[Batch(v) for v in e.values()] for e in episodes.values()]
+            )
         end = time.time()
         rollout_info = client.env.collect_info()
     except Exception as e:

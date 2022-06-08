@@ -266,3 +266,4 @@ def _update_weights(inference_server: InferenceWorkerSet, force: bool = False) -
                     )
                     if weights is not None:
                         inference_server.policies[policy_id].load_state_dict(weights)
+            time.sleep(1)

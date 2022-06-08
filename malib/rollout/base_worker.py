@@ -382,14 +382,15 @@ class BaseRolloutWorker(RemoteInterface):
         stopper = get_stopper(stopping_conditions)
         trainable_agents = trainable_agents or self.env_agents
 
-        ray.get(
-            self.dataset_server.create_table.remote(
-                name=self.experiment_tag,
-                reverb_server_kwargs={
-                    "tb_params_list": [{"name": agent} for agent in trainable_agents]
-                },
-            )
-        )
+        # ray.get(
+        #     self.dataset_server.create_table.remote(
+        #         name=self.experiment_tag,
+        #         reverb_server_kwargs={
+        #             "tb_params_list": [{"name": agent} for agent in trainable_agents]
+        #         },
+        #     )
+        # )
+        queue_id, queue = ray.get(self.dataset_server.start_producer_pipe())
 
         runtime_config_template = self.worker_runtime_config.copy()
         runtime_config_template.update(
@@ -398,6 +399,7 @@ class BaseRolloutWorker(RemoteInterface):
                 "strategy_specs": runtime_strategy_specs,
                 "trainable_agents": trainable_agents,
                 "agent_group": self.agent_group,
+                "writer_info": (queue_id, queue),
             }
         )
         total_timesteps = 0
