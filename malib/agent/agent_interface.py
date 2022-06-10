@@ -24,7 +24,8 @@
 
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Tuple, Callable, Type
+import traceback
+from typing import Dict, Any, Tuple, Callable, Type, List
 
 import os
 import time
@@ -34,8 +35,10 @@ from collections import deque
 
 import torch
 import ray
-import reverb
 
+# import reverb
+
+from ray.util.queue import Queue
 from torch.utils import tensorboard
 
 from malib import settings
@@ -44,6 +47,7 @@ from malib.backend.parameter_server import ParameterServer
 from malib.utils.stopping_conditions import get_stopper
 from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
+from malib.utils.tianshou_batch import Batch
 from malib.remote.interface import RemoteInterface
 from malib.algorithm.common.trainer import Trainer
 from malib.common.strategy_spec import StrategySpec
@@ -130,15 +134,12 @@ class AgentInterface(RemoteInterface, ABC):
         self._trainer_config = trainer_config
         self._total_step = 0
         self._total_epoch = 0
-        self._trainer: Trainer = None
+        self._trainer: Trainer = algorithms["default"][1](trainer_config)
         self._policies = {}
 
         self._offline_dataset: OfflineDataset = None
         self._parameter_server: ParameterServer = None
         self._active_tups = deque()
-        self._clients: Dict[str, Type[reverb.Client]] = {}
-
-        # TODO(ming): local buffer is muted temporary, consider to recover it in future.
 
     def connect(self):
         """Connect backend server"""
@@ -179,6 +180,7 @@ class AgentInterface(RemoteInterface, ABC):
             # active tups store the policy info tuple for training, the
             # the data request relies on it.
             self._active_tups.append((self._strategy_spec.id, spec_pid))
+            self._trainer.reset(policy_instance=policy)
 
             ray.get(self._parameter_server.create_table.remote(self._strategy_spec))
             ray.get(
@@ -256,9 +258,6 @@ class AgentInterface(RemoteInterface, ABC):
                     )
                 else:
                     secs = random.random()
-                    # Logger.warning(
-                    #     f"reverb server for {identifier} is not initialized yet, sleep {secs:.3f}(s) secionds"
-                    # )
                     time.sleep(secs)
             Logger.debug(f"retrive client kwargs: {client_kwargs}")
             client = self._clients[identifier]
@@ -273,7 +272,7 @@ class AgentInterface(RemoteInterface, ABC):
 
     @abstractmethod
     def multiagent_post_process(
-        self, batch: Dict[AgentID, Dict[str, Any]]
+        self, batch: Dict[AgentID, Batch], batch_indices: List[int]
     ) -> Dict[str, Any]:
         """Merge agent buffer here and return the merged buffer.
 
@@ -293,7 +292,10 @@ class AgentInterface(RemoteInterface, ABC):
         }
 
     def train(
-        self, stopping_conditions: Dict[str, Any], reset_state: bool = True
+        self,
+        data_request_identifier: str,
+        stopping_conditions: Dict[str, Any],
+        reset_state: bool = True,
     ) -> Dict[str, Any]:
         """Executes training task and returns the final interface state.
 
@@ -309,26 +311,43 @@ class AgentInterface(RemoteInterface, ABC):
             self.reset()
 
         stopper = get_stopper(conditions=stopping_conditions)
+        reader_info_dict: Dict[str, Tuple[str, Queue]] = {}
+        assert len(self._active_tups) == 1, "the length of active tups can be only 1."
 
-        # loop epoch
-        while True:
-            batch = self.request_data()
-            step_info_list = self._trainer(batch)
-            for step_info in step_info_list:
-                self._total_step += 1
-                write_to_tensorboard(
-                    self._summary_writer,
-                    info=step_info,
-                    global_step=self._total_step,
-                    prefix=f"Training/{self._runtime_id}",
-                )
-                if stopper.is_meet_condition(step_info):
+        try:
+            while True:
+                if data_request_identifier not in reader_info_dict:
+                    reader_info_dict[data_request_identifier] = ray.get(
+                        self._offline_dataset.start_consumer_pipe.remote(
+                            name=data_request_identifier,
+                            batch_size=self._trainer_config["batch_size"],
+                        )
+                    )
+                reader_info: Tuple[str, Queue] = reader_info_dict[
+                    data_request_identifier
+                ]
+
+                batch_info = reader_info[-1].get()
+                if len(batch_info[-1]) == 0:
+                    continue
+                batch = self.multiagent_post_process(*batch_info)
+                step_info_list = self._trainer(batch)
+                for step_info in step_info_list:
+                    self._total_step += 1
+                    write_to_tensorboard(
+                        self._summary_writer,
+                        info=step_info,
+                        global_step=self._total_step,
+                        prefix=f"Training/{self._runtime_id}",
+                    )
+                if stopper.should_stop(step_info):
                     self._total_epoch += 1
                     break
-
-            if stopper.is_meet_condition(step_info):
-                break
-            self._total_epoch += 1
+        except Exception as e:
+            Logger.warning(
+                f"training pipe is terminated. caused by: {traceback.format_exc()}"
+            )
+            ray.get(self._offline_dataset.end_consumer_pipe.remote())
 
         return self.get_interface_state()
 

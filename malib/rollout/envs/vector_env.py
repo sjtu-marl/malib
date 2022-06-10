@@ -224,7 +224,7 @@ class VectorEnv:
         # since activ_envs maybe updated after self.step, so we should use keys
         # in self.active_envs
         res = {
-            env_id: {agent: v["action"][0] for agent, v in policy_output.items()}
+            env_id: {agent: v[Episode.ACTION][0] for agent, v in policy_output.items()}
             for env_id, policy_output in policy_outputs.items()
         }
 

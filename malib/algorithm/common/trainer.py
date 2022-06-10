@@ -1,4 +1,4 @@
-from typing import Dict, Any, Sequence, Union, Type
+from typing import Dict, Any, Sequence, Union, Type, List
 
 import torch
 
@@ -8,6 +8,7 @@ from functools import reduce
 from malib.utils.typing import AgentID
 from malib.algorithm.common.policy import Policy
 from malib.utils.data import to_torch
+from malib.utils.tianshou_batch import Batch
 
 
 class Trainer(metaclass=ABCMeta):
@@ -104,14 +105,17 @@ class Trainer(metaclass=ABCMeta):
         """
 
         buffer = self.post_process(buffer, agent_filter)
+        buffer.to_torch(device=self.policy.device)
         # TODO(ming): check whether multiagent buffer, then check torch data
-        buffer = {
-            k: v
-            if isinstance(v, torch.Tensor)
-            else to_torch(v, device=self.policy.device)
-            for k, v in buffer.items()
-        }
+        # buffer = {
+        #     k: v
+        #     if isinstance(v, torch.Tensor)
+        #     else to_torch(v, device=self.policy.device)
+        #     for k, v in buffer.items()
+        # }
         feedback = self.train(buffer)
+        if not isinstance(feedback, List):
+            feedback = [feedback]
         self._counter += 1
         return feedback
 

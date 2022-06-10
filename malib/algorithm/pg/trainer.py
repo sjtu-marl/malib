@@ -9,6 +9,7 @@ from torch import optim
 from malib.algorithm.common.trainer import Trainer
 from malib.utils.data import Postprocessor
 from malib.utils.typing import AgentID
+from malib.utils.tianshou_batch import Batch
 
 
 class PGTrainer(Trainer):
@@ -20,7 +21,7 @@ class PGTrainer(Trainer):
         self.ret_rms = None
 
     def post_process(
-        self, batch: Dict[str, Any], agent_filter: Sequence[AgentID]
+        self, batch: Batch, agent_filter: Sequence[AgentID]
     ) -> Dict[str, Any]:
 
         # v_s_ = np.full(indices.shape, self.ret_rms.mean)
@@ -36,16 +37,15 @@ class PGTrainer(Trainer):
         else:
             batch["returns"] = unnormalized_returns
         batch["logits"], _ = self.policy.actor(
-            batch.observation, state=batch.get("state", None)
+            batch.obs, state=batch.get("state", None)
         )
         return batch
 
     def train(self, batch: Dict[str, torch.Tensor]) -> Dict[str, Any]:
-        batch = Namespace(**batch)
         self.optimizer.zero_grad()
         logits = batch.logits
         dist = self.policy.dist_fn.proba_distribution(logits)
-        act = batch.action
+        act = batch.act
         ret = batch.returns
         log_prob = dist.log_prob(act).reshape(len(ret), -1).transpose(0, 1)
         loss = -(log_prob * ret).mean()

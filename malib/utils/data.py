@@ -213,8 +213,8 @@ class Postprocessor:
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
     ):
-        rew = batch["reward"].numpy()
-        done = batch["done"].numpy()
+        rew = batch["rew"]
+        done = batch["done"]
 
         if next_state_value is None:
             assert np.isclose(gae_lambda, 1.0)

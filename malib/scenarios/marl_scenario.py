@@ -81,7 +81,7 @@ class MARLScenario(Scenario):
 
 def execution_plan(experiment_tag: str, scenario: Scenario):
     if hasattr(scenario, "training_manager"):
-        training_manager = scenario.training_manager
+        training_manager: TrainingManager = scenario.training_manager
     else:
         training_manager = TrainingManager(
             experiment_tag=experiment_tag,
@@ -108,12 +108,16 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
         )
 
     strategy_specs = training_manager.add_policies(n=scenario.num_policy_each_interface)
-    training_manager.run()
+
+    # define the data entrypoint to bridge the training interfaces and remote dataset
+    data_entrypoints = {rid: rid for rid in training_manager.runtime_ids}
+    training_manager.run(data_request_identifiers=data_entrypoints)
 
     rollout_tasks = [
         {
             "strategy_specs": strategy_specs,
             "trainable_agents": scenario.env_desc["possible_agents"],
+            "data_entrypoints": data_entrypoints,
         }
     ]
     rollout_manager.rollout(task_list=rollout_tasks)

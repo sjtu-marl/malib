@@ -33,11 +33,11 @@ import time
 import traceback
 
 import ray
-import reverb
+
+# import reverb
 import numpy as np
 
 from ray.util.queue import Queue
-from reverb.client import Writer as ReverbWriter
 from malib.utils.logging import Logger
 
 from malib.utils.typing import AgentID, DataFrame, EnvID, BehaviorMode
@@ -117,7 +117,7 @@ def process_env_rets(
 
 def process_policy_outputs(
     raw_output: Dict[str, List[DataFrame]], env: VectorEnv
-) -> Dict[EnvID, Dict[AgentID, Any]]:
+) -> Tuple[Dict[EnvID, Dict[AgentID, Any]], Dict[EnvID, Dict[AgentID, Dict[str, Any]]]]:
     """Processing policy outputs for each agent.
 
     Args:
@@ -125,10 +125,11 @@ def process_policy_outputs(
         env (VectorEnv): Environment instance.
 
     Returns:
-        Dict[EnvID, Dict[AgentID, Any]]: Agent action by environments.
+        Tuple[Dict[EnvID, Dict[AgentID, Any]], Dict[EnvID, Dict[AgentID, Dict[str, Any]]]]: A tuple of 1. Agent action by environments, 2.
     """
 
     rets = defaultdict(lambda: defaultdict(lambda: {}))  # env_id, str, agent, any
+    # {runtime_id: [dataframes]}
     for dataframes in raw_output.values():
         # data should be a dict of agent value
         for dataframe in dataframes:
@@ -166,11 +167,7 @@ def merge_env_rets(rets, next_rets):
 
 
 def recieve(queue: Dict[str, Queue]) -> Dict[AgentID, DataFrame]:
-    """Recieving messages from remote server.
-
-    :param queue: A dict of queue.
-    :type queue: Dict[str, Queue]
-    """
+    """Recieving messages from remote server."""
 
     rets = {}
     for runtime_id, v in queue.items():
@@ -247,7 +244,7 @@ class InferenceClient(RemoteInterface):
 
         self.recv_queue = None
         self.send_queue = None
-        self.reverb_clients: Dict[str, Type[reverb.Client]] = {}
+        # self.reverb_clients: Dict[str, Type[reverb.Client]] = {}
 
     def add_envs(self, maximum: int) -> int:
         """Create environments, if env is an instance of VectorEnv, add these \
@@ -290,7 +287,7 @@ class InferenceClient(RemoteInterface):
         Args:
             agent_interfaces (Dict[AgentID, InferenceWorkerSet]): A dict of agent interface server.
             desc (Dict[str, Any]): Task description.
-            dataserver_entrypoint (str, optional): Dataserver entrypoint, actually a reverb server name. Defaults to None.
+            dataserver_entrypoint (str, optional): Dataserver entrypoint, to identify online dataset servers for different experiments. Defaults to None.
             reset (bool, optional): Reset connection if existing connect detected. Defaults to False.
 
         Returns:
@@ -320,6 +317,7 @@ class InferenceClient(RemoteInterface):
         elif task_type in ["evaluation", "simulation"]:
             server_runtime_config["behavior_mode"] = BehaviorMode.EXPLOITATION
 
+        # build connection if needed
         if self.recv_queue is None or reset:
             self.recv_queue = {
                 runtime_id: Queue(actor_options={"num_cpus": 0})
@@ -330,47 +328,27 @@ class InferenceClient(RemoteInterface):
                 for runtime_id in agent_interfaces
             }
 
-        with self.timer.timeit("inference_server_connect"):
-            _ = ray.get(
-                [
-                    server.connect.remote(
-                        [self.recv_queue[runtime_id], self.send_queue[runtime_id]],
-                        runtime_config=server_runtime_config,
-                        runtime_id=self.process_id,
-                    )
-                    for runtime_id, server in agent_interfaces.items()
-                ],
-                timeout=10.0,
-            )
-            gc.collect()
+            with self.timer.timeit("inference_server_connect"):
+                _ = ray.get(
+                    [
+                        server.connect.remote(
+                            [self.recv_queue[runtime_id], self.send_queue[runtime_id]],
+                            runtime_config=server_runtime_config,
+                            runtime_id=self.process_id,
+                        )
+                        for runtime_id, server in agent_interfaces.items()
+                    ],
+                    timeout=10.0,
+                )
+                gc.collect()
 
-        Logger.debug("connected to inference server")
-
-        # if dataserver_entrypoint is not None:
-        #     if dataserver_entrypoint not in self.reverb_clients:
-        #         with self.timer.timeit("dataset_sever_connect"):
-        #             address = ray.get(
-        #                 self.dataset_server.get_client_kwargs.remote(
-        #                     dataserver_entrypoint
-        #                 )
-        #             )["address"]
-        #             self.reverb_clients[dataserver_entrypoint] = reverb.Client(
-        #                 f"localhost:{address}"
-        #             )
-        #     reverb_writer: ReverbWriter = self.reverb_clients[
-        #         dataserver_entrypoint
-        #     ].writer(max_sequence_length=desc["fragment_length"])
-
-        # else:
-        #     reverb_writer: ReverbWriter = None
-
-        # Logger.debug("reverb writer has been initialized")
+            Logger.debug("connected to inference server")
 
         eval_results, performance = env_runner(
             self,
             request,
             server_runtime_config,
-            writer_info=desc.get("writer_info", None),
+            writer_info_dict=desc.get("writer_info_dict", None),
         )
         res = {**performance}
         # if task_type != "rollout":
@@ -382,7 +360,7 @@ def env_runner(
     client: InferenceClient,
     request: Namespace,
     server_runtime_config: Dict[str, Any],
-    writer_info: Tuple[str, Queue] = None,
+    writer_info_dict: Dict[str, Tuple[str, Queue]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, float]]:
     try:
         episode_dict = NewEpisodeDict(
@@ -399,7 +377,9 @@ def env_runner(
             )
 
         dataframes = process_env_rets(env_rets, server_runtime_config)
-        episode_dict.record(env_rets)
+        # record environment return at reset has been called:
+        # (obs, action_mask)
+        episode_dict.record_env_rets(env_rets)
 
         Logger.debug("env runner started...")
         start = time.time()
@@ -420,21 +400,32 @@ def env_runner(
                 env_actions, processed_policy_outputs = process_policy_outputs(
                     policy_outputs, client.env
                 )
-                episode_dict.record(processed_policy_outputs)
+
+                # record environment return at policy return
+                # ()
+                episode_dict.record_policy_step(processed_policy_outputs)
 
             with client.timer.time_avg("environment_step"):
                 env_rets = client.env.step(env_actions)
                 assert len(env_rets) > 0, env_actions
                 # merge RNN states here
                 dataframes = process_env_rets(env_rets, server_runtime_config)
-                episode_dict.record(env_rets)
+                episode_dict.record_env_rets(env_rets)
 
-        if writer_info is not None:
+        if writer_info_dict is not None:
             # episode_id: agent_id: dict_data
             episodes = episode_dict.to_numpy()
-            writer_info[-1].put_nowait_batch(
-                [[Batch(v) for v in e.values()] for e in episodes.values()]
-            )
+            print("converted episodes to numpy")
+            # print(f"collected episodes: {episodes}")
+            for rid, writer_info in writer_info_dict.items():
+                # get agents from agent group
+                agents = client.agent_group[rid]
+                batches = []
+                for episode in episodes.values():
+                    agent_buffer = [episode[aid] for aid in agents]
+                    batches.append(agent_buffer)
+                writer_info[-1].put_nowait_batch(batches)
+                print("data push done.")
         end = time.time()
         rollout_info = client.env.collect_info()
     except Exception as e:

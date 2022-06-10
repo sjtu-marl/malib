@@ -177,19 +177,24 @@ class TrainingManager(Manager):
 
         return strategy_spec_dict
 
-    def run(self):
+    def run(self, data_request_identifiers: Dict[str, str]):
         """Start training thread without blocking"""
 
         if self._remote_mode:
-            for interface in self._interfaces.values():
+            for rid, interface in self._interfaces.items():
                 self.pending_tasks.append(
-                    interface.train.remote(self._stopping_conditions["training"])
+                    interface.train.remote(
+                        data_request_identifiers[rid],
+                        self._stopping_conditions["training"],
+                    )
                 )
         else:
-            for interface in self._interfaces.values():
+            for rid, interface in self._interfaces.items():
                 self.pending_tasks.append(
                     self._thread_pool.submit(
-                        interface.train, self._stopping_conditions["training"]
+                        interface.train,
+                        data_request_identifiers[rid],
+                        self._stopping_conditions["training"],
                     )
                 )
 

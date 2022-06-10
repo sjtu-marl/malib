@@ -13,7 +13,7 @@ def start_servers():
     try:
         offline_dataset_server = (
             OfflineDataset.as_remote(num_cpus=0)
-            .options(name=settings.OFFLINE_DATASET_ACTOR)
+            .options(name=settings.OFFLINE_DATASET_ACTOR, max_concurrency=100)
             .remote(table_capacity=100)
         )
     except ValueError:
@@ -23,7 +23,7 @@ def start_servers():
     try:
         parameter_server = (
             ParameterServer.as_remote(num_cpus=1)
-            .options(name=settings.PARAMETER_SERVER_ACTOR)
+            .options(name=settings.PARAMETER_SERVER_ACTOR, max_concurrency=100)
             .remote()
         )
     except ValueError:

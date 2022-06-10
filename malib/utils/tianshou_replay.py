@@ -326,6 +326,15 @@ class ReplayBuffer:
         else:
             return ptr, self._ep_rew * 0.0, 0, self._ep_idx
 
+    def add_episode(self, episode: Dict[str, np.ndarray]):
+        assert set(["obs", "act", "rew", "done"]).issubset(
+            episode.keys()
+        ), episode.keys()
+
+        length = len(episode["obs"])
+        for i in range(length):
+            self.add({k: v[i] for k, v in episode.items()})
+
     def add(
         self, batch: Batch, buffer_ids: Optional[Union[np.ndarray, List[int]]] = None
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -345,7 +354,7 @@ class ReplayBuffer:
         for key in set(self._reserved_keys).intersection(batch.keys()):
             new_batch.__dict__[key] = batch[key]
         batch = new_batch
-        assert set(["obs", "act", "rew", "done"]).issubset(batch.keys())
+        assert set(["obs", "act", "rew", "done"]).issubset(batch.keys()), batch.keys()
         stacked_batch = buffer_ids is not None
         if stacked_batch:
             assert len(batch) == 1

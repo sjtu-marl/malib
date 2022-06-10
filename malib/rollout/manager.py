@@ -159,6 +159,7 @@ class RolloutWorkerManager(Manager):
                 runtime_strategy_specs=task["strategy_specs"],
                 stopping_conditions=self.stopping_conditions["rollout"],
                 trainable_agents=task["trainable_agents"],
+                data_entrypoints=task["data_entrypoints"],
             ),
             task_list,
         )

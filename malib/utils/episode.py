@@ -22,6 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from re import L
 from typing import Dict, Any, List, Sequence
 from collections import defaultdict
 
@@ -31,22 +32,22 @@ from malib.utils.typing import AgentID, EnvID
 
 
 class Episode:
-    CUR_OBS = "observation"
-    NEXT_OBS = "next_observation"
-    ACTION = "action"
+    CUR_OBS = "obs"
+    NEXT_OBS = "obs_next"
+    ACTION = "act"
     ACTION_MASK = "action_mask"
-    NEXT_ACTION_MASK = "next_action_mask"
-    REWARD = "reward"
+    NEXT_ACTION_MASK = "action_mask_next"
+    REWARD = "rew"
     DONE = "done"
-    ACTION_LOGITS = "action_logits"
-    ACTION_DIST = "action_dist"
+    ACTION_LOGITS = "act_logits"
+    ACTION_DIST = "act_dist"
     INFO = "infos"
 
     # optional
     STATE_VALUE = "state_value_estimation"
     STATE_ACTION_VALUE = "state_action_value_estimation"
     CUR_STATE = "state"  # current global state
-    NEXT_STATE = "next_state"  # next global state
+    NEXT_STATE = "state_next"  # next global state
     LAST_REWARD = "last_reward"
 
     # post process
@@ -69,7 +70,12 @@ class Episode:
     def __setitem__(self, __k: str, v: Dict[AgentID, List]) -> None:
         self.agent_entry[__k] = v
 
-    def record(self, env_rets: Sequence[Dict[AgentID, Any]]):
+    def record_policy_step(self, policy_rets: Dict[AgentID, Dict[str, Any]]):
+        for agent, agent_item in policy_rets.items():
+            for k, v in agent_item.items():
+                self.agent_entry[agent][k].append(v)
+
+    def record_env_rets(self, env_rets: Sequence[Dict[AgentID, Any]]):
         for i, key in enumerate(
             [
                 Episode.CUR_OBS,
@@ -95,16 +101,16 @@ class Episode:
             for k, v in agent_trajectory.items():
                 if k == Episode.CUR_OBS:
                     # move to next obs
-                    tmp[Episode.NEXT_OBS] = np.asarray(v[1:])
-                    tmp[Episode.CUR_OBS] = np.asarray(v[:-1])
+                    tmp[Episode.NEXT_OBS] = np.asarray(v[1:]).squeeze()
+                    tmp[Episode.CUR_OBS] = np.asarray(v[:-1]).squeeze()
                 elif k == Episode.CUR_STATE:
                     # move to next state
-                    tmp[Episode.NEXT_STATE] = np.asarray(v[1:])
-                    tmp[Episode.CUR_STATE] = np.asarray(v[:-1])
+                    tmp[Episode.NEXT_STATE] = np.asarray(v[1:]).squeeze()
+                    tmp[Episode.CUR_STATE] = np.asarray(v[:-1]).squeeze()
                 elif k == Episode.INFO:
                     continue
                 else:
-                    tmp[k] = np.asarray(v)
+                    tmp[k] = np.asarray(v).squeeze()
             res[agent] = tmp
         return dict(res)
 
@@ -117,9 +123,15 @@ class NewEpisodeDict(defaultdict):
             ret = self[env_id] = self.default_factory()
             return ret
 
-    def record(self, env_outputs: Dict[EnvID, Sequence[Dict[AgentID, Any]]]):
+    def record_env_rets(self, env_outputs: Dict[EnvID, Sequence[Dict[AgentID, Any]]]):
         for env_id, env_output in env_outputs.items():
-            self[env_id].record(env_output)
+            self[env_id].record_env_rets(env_output)
+
+    def record_policy_step(
+        self, env_policy_outputs: Dict[EnvID, Dict[AgentID, Dict[str, Any]]]
+    ):
+        for env_id, policy_outputs in env_policy_outputs.items():
+            self[env_id].record_policy_step(policy_outputs)
 
     def to_numpy(self) -> Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]:
         """Lossy data transformer, which converts a dict of episode to a dict of numpy array like. (some episode may be empty)"""

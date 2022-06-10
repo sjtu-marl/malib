@@ -2,13 +2,14 @@
 Independent agent interface, for independent algorithms training. Policy/Trainer adding rule: one policy one trainer.
 """
 
-from typing import Dict, Tuple, Any, Callable
+from typing import Dict, Tuple, Any, Callable, List, Union
 
 import shutup
 
 shutup.please()
 
 from malib.utils.typing import AgentID
+from malib.utils.tianshou_batch import Batch
 from malib.agent.agent_interface import AgentInterface
 
 
@@ -40,6 +41,9 @@ class IndependentAgent(AgentInterface):
         )
 
     def multiagent_post_process(
-        self, batch: Dict[AgentID, Dict[str, Any]]
+        self, batch: Union[Batch, Dict[AgentID, Batch]], batch_indices: List[int]
     ) -> Dict[str, Any]:
-        return super().multiagent_post_process(batch)
+        if isinstance(batch, Batch):
+            return batch
+        else:
+            raise NotImplementedError

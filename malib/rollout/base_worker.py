@@ -42,6 +42,7 @@ import gym
 import numpy as np
 
 from ray.util import ActorPool
+from ray.util.queue import Queue
 from torch.utils import tensorboard
 
 from malib import settings
@@ -367,6 +368,7 @@ class BaseRolloutWorker(RemoteInterface):
         self,
         runtime_strategy_specs: Dict[str, StrategySpec],
         stopping_conditions: Dict[str, Any],
+        data_entrypoints: Dict[str, str],
         trainable_agents: List[AgentID] = None,
     ):
         """Run rollout procedure, collect data until meets the stopping conditions.
@@ -376,21 +378,21 @@ class BaseRolloutWorker(RemoteInterface):
         Args:
             runtime_strategy_specs (Dict[str, StrategySpec]): A dict of strategy spec, mapping from runtime id to `StrategySpec`.
             stopping_conditions (Dict[str, Any]): A dict of stopping conditions.
+            data_entrypoints (Dict[str, str]): Mapping from runtimeids to dataentrypoint names.
             trainable_agents (List[AgentID], optional): A list of environment agent id. Defaults to None, which means all environment agents will be trainable.
         """
 
         stopper = get_stopper(stopping_conditions)
         trainable_agents = trainable_agents or self.env_agents
-
-        # ray.get(
-        #     self.dataset_server.create_table.remote(
-        #         name=self.experiment_tag,
-        #         reverb_server_kwargs={
-        #             "tb_params_list": [{"name": agent} for agent in trainable_agents]
-        #         },
-        #     )
-        # )
-        queue_id, queue = ray.get(self.dataset_server.start_producer_pipe())
+        queue_info_dict: Dict[str, Tuple[str, Queue]] = {
+            rid: None for rid in self.runtime_agent_ids
+        }
+        for rid, identifier in data_entrypoints.items():
+            print(f"request for start producer pipe named={identifier}.")
+            queue_id, queue = ray.get(
+                self.dataset_server.start_producer_pipe.remote(name=identifier)
+            )
+            queue_info_dict[rid] = (queue_id, queue)
 
         runtime_config_template = self.worker_runtime_config.copy()
         runtime_config_template.update(
@@ -399,7 +401,7 @@ class BaseRolloutWorker(RemoteInterface):
                 "strategy_specs": runtime_strategy_specs,
                 "trainable_agents": trainable_agents,
                 "agent_group": self.agent_group,
-                "writer_info": (queue_id, queue),
+                "writer_info_dict": queue_info_dict,
             }
         )
         total_timesteps = 0
