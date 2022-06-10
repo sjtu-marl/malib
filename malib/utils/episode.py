@@ -101,16 +101,17 @@ class Episode:
             for k, v in agent_trajectory.items():
                 if k == Episode.CUR_OBS:
                     # move to next obs
-                    tmp[Episode.NEXT_OBS] = np.asarray(v[1:]).squeeze()
-                    tmp[Episode.CUR_OBS] = np.asarray(v[:-1]).squeeze()
+                    tmp[Episode.NEXT_OBS] = v[1:]
+                    tmp[Episode.CUR_OBS] = v[:-1]
                 elif k == Episode.CUR_STATE:
                     # move to next state
-                    tmp[Episode.NEXT_STATE] = np.asarray(v[1:]).squeeze()
-                    tmp[Episode.CUR_STATE] = np.asarray(v[:-1]).squeeze()
+                    tmp[Episode.NEXT_STATE] = v[1:]
+                    tmp[Episode.CUR_STATE] = v[:-1]
                 elif k == Episode.INFO:
                     continue
                 else:
-                    tmp[k] = np.asarray(v).squeeze()
+                    # print("datat:", k, v)
+                    tmp[k] = v
             res[agent] = tmp
         return dict(res)
 

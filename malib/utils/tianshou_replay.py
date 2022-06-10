@@ -331,9 +331,13 @@ class ReplayBuffer:
             episode.keys()
         ), episode.keys()
 
+        # assert length
         length = len(episode["obs"])
+        for k, v in episode.items():
+            assert len(v) == length, (k, len(v))
+
         for i in range(length):
-            self.add({k: v[i] for k, v in episode.items()})
+            self.add(Batch({k: v[i] for k, v in episode.items()}))
 
     def add(
         self, batch: Batch, buffer_ids: Optional[Union[np.ndarray, List[int]]] = None
