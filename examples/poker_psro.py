@@ -26,7 +26,7 @@ import argparse
 import os
 
 from malib.runner import run
-from malib.envs.poker import env_desc_gen
+from malib.rollout.envs.poker import env_desc_gen
 
 
 if __name__ == "__main__":

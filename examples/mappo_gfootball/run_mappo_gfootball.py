@@ -4,9 +4,9 @@ import torch
 import yaml
 
 
-from malib.utils.logger import Logger
+from malib.utils.logging import Logger
 from malib.runner import run
-from malib.envs.gr_football import env_desc_gen
+from malib.rollout.envs.gr_football import env_desc_gen
 import pathlib
 
 BASE_DIR = pathlib.Path(__file__).parent.parent.parent.absolute()
