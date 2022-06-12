@@ -792,7 +792,7 @@ class MaskedCategorical:
                 uniforms = torch.empty_like(self.probs).uniform_()
                 uniforms = distr_utils.clamp_probs(uniforms)
                 gumbel_noise = -(-uniforms.log()).log()
-            # TODO(serhii): This is used for debugging (to get the same samples) and is not differentiable.
+            # TODO(ming): This is used for debugging (to get the same samples) and is not differentiable.
             # gumbel_noise = None
             # _sample = self.cat_distr.sample()
             # sample = torch.zeros_like(self.probs)

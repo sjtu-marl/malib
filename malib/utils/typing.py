@@ -56,4 +56,4 @@ class BColors:
 class DataFrame:
     identifier: Any
     data: Any
-    runtime_config: Dict[str, Any]
+    meta_data: Dict[str, Any]

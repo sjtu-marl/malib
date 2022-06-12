@@ -204,7 +204,6 @@ class OfflineDataset(RemoteInterface):
         **kwargs,
     ) -> Tuple[str, Queue]:
         if name not in self.buffers:
-            print(f"create buffer for name={name}")
             buffer = ReplayBuffer(
                 size=self.tb_capacity,
                 stack_num=stack_num,
@@ -234,7 +233,6 @@ class OfflineDataset(RemoteInterface):
         self.reader_queues[queue_id] = queue
         # make sure that the buffer is ready
         while name not in self.buffers:
-            print("waiting for consumer pipe ...")
             time.sleep(1)
         self.thread_pool.submit(
             read_table, self.markers[name], self.buffers[name], batch_size, queue

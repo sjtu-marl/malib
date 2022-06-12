@@ -41,7 +41,12 @@ from malib.utils.typing import (
 from malib.rollout.envs import Environment
 from malib.utils.episode import Episode
 
-
+# :param Dict[AgentID,gym.Space] observation_spaces: A dict of agent observation space
+# :param Dict[AgentID,gym.Space] action_spaces: A dict of agent action space
+# :param type creator: The handler to create environment
+# :param Dict[str,Any] configs: Environment configuration
+# :param int num_envs: The number of nested environment
+# :param int fragment_length: The maximum of batched frames
 class VectorEnv:
     def __init__(
         self,
@@ -51,16 +56,16 @@ class VectorEnv:
         configs: Dict[str, Any],
         preset_num_envs: int = 0,
     ):
-        """Create a VectorEnv instance.
+        """Create a vector environment instance.
 
-        :param Dict[AgentID,gym.Space] observation_spaces: A dict of agent observation space
-        :param Dict[AgentID,gym.Space] action_spaces: A dict of agent action space
-        :param type creator: The handler to create environment
-        :param Dict[str,Any] configs: Environment configuration
-        :param int num_envs: The number of nested environment
-        :param int fragment_length: The maximum of batched frames
-
+        Args:
+            observation_spaces (Dict[AgentID, gym.Space]): A dict of agent observation spaces.
+            action_spaces (Dict[AgentID, gym.Space]): A dict of agent action spaces.
+            creator (type): Environment creator.
+            configs (Dict[str, Any]): Environment configuration.
+            preset_num_envs (int, optional): The number of started envrionments. Defaults to 0.
         """
+
         self.observation_spaces = observation_spaces
         self.action_spaces = action_spaces
         self.possible_agents = list(observation_spaces.keys())
@@ -230,9 +235,16 @@ class VectorEnv:
 
         return res
 
-    def collect_info(self, truncated=False) -> List[Dict[str, Any]]:
-        # XXX(ziyu): We can add a new param 'truncated' to determine whether to add
-        # the nonterminal env_info into rets.
+    def collect_info(self, truncated=False) -> Dict[EnvID, Dict[str, Any]]:
+        """Collect information of each episode since last running.
+
+        Args:
+            truncated (bool, optional): Deprecated argument. Defaults to False.
+
+        Returns:
+            Dict[EnvID, Dict[str, Any]]: A dict of episode informations, mapping from environment ids to dicts.
+        """
+
         ret = self._cached_episode_infos
         for runtime_id, env in self.active_envs.items():
             if env.cnt > 0 and (runtime_id not in ret):

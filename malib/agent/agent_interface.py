@@ -173,7 +173,6 @@ class AgentInterface(RemoteInterface, ABC):
         for _ in range(n):
             spec_pid = f"policy-{len(self._strategy_spec.policy_ids)}"
             self._strategy_spec.register_policy_id(policy_id=spec_pid)
-            # TODO(ming): gen policy? from where?
             policy = self._strategy_spec.gen_policy()
             policy_id = f"{self._strategy_spec.id}/{spec_pid}"
             self._policies[policy_id] = policy
@@ -190,7 +189,6 @@ class AgentInterface(RemoteInterface, ABC):
                     state_dict=policy.state_dict(),
                 )
             )
-            # TODO(ming): create trainer here?
 
         return self._strategy_spec
 

@@ -82,7 +82,6 @@ class TrainingManager(Manager):
             os.makedirs(log_dir)
 
         agent_cls = training_config["type"]
-        # TODO(ming): consider to enable device specific
         agent_cls = agent_cls.as_remote(num_gpus=num_gpus)
         interfaces: Dict[str, Union[AgentInterface, ray.ObjectRef]] = {}
 
@@ -97,7 +96,6 @@ class TrainingManager(Manager):
                 runtime_id=rid,
                 log_dir=f"{log_dir}/learner_{rid}",
                 env_desc=env_desc,
-                # TODO(ming): Enable algorithm spec register here
                 algorithms=algorithms,
                 agent_mapping_func=agent_mapping_func,
                 governed_agents=tuple(agents),

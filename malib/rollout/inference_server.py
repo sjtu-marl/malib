@@ -22,12 +22,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Tuple
 from functools import reduce
 from operator import mul
-from collections import namedtuple
+from collections import defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
+from readerwriterlock import rwlock
 
 import os
 import time
@@ -36,11 +37,13 @@ import traceback
 import pickle as pkl
 import ray
 import gym
+import numpy as np
 
 from ray.util.queue import Queue
 
 from malib import settings
-from malib.utils.typing import AgentID, DataFrame
+from malib.utils.typing import AgentID, DataFrame, PolicyID
+from malib.utils.logging import Logger
 from malib.utils.timing import Timing
 from malib.utils.episode import Episode
 from malib.common.strategy_spec import StrategySpec
@@ -48,7 +51,7 @@ from malib.algorithm.common.policy import Policy
 from malib.backend.parameter_server import ParameterServer
 
 
-RuntimeHandler = namedtuple("RuntimeHandler", "sender,recver,runtime_config,rnn_states")
+ClientHandler = namedtuple("ClientHandler", "sender,recver,runtime_config,rnn_states")
 
 
 @ray.remote
@@ -72,16 +75,22 @@ class InferenceWorkerSet:
         self.policies: Dict[str, Policy] = {}
         self.strategy_spec_dict: Dict[str, StrategySpec] = {}
 
-        self.runtime: Dict[int, RuntimeHandler] = {}
+        self.clients: Dict[int, ClientHandler] = {}
         self.parameter_buffer_lock = Lock()
+
+        marker = rwlock.RWLockFair()
+
+        self.shared_wlock = marker.gen_wlock()
         self.thread_pool.submit(_update_weights, self, force_weight_update)
+        self.thread_pool.submit(_compute_action, self, False, marker.gen_rlock())
+        self.thread_pool.submit(_compute_action, self, True, marker.gen_rlock())
 
     def shutdown(self):
         self.thread_pool.shutdown(wait=True)
-        for _runtime in self.runtime.values():
-            _runtime.sender.shutdown(True)
-            _runtime.recver.shutdown(True)
-        self.runtime: Dict[int, RuntimeHandler] = {}
+        for _handler in self.clients.values():
+            _handler.sender.shutdown(True)
+            _handler.recver.shutdown(True)
+        self.clients: Dict[int, ClientHandler] = {}
 
     def save(self, model_dir: str) -> None:
         if not os.path.exists(model_dir):
@@ -96,32 +105,32 @@ class InferenceWorkerSet:
         self,
         queues: List[Queue],
         runtime_config: Dict[str, Any],
-        runtime_id: int,
+        client_id: int,
     ):
         """Connect new inference task with given configuration and queues.
 
         Args:
             queues (List[Queue]): A list of send and recieve queues.
             runtime_config (Dict[str, Any]): Runtime configuration for rollout.
-            runtime_id (int): Refered runtime id.
+            client_id (int): Refered client id.
         """
 
-        send_queue, recv_queue = queues
-        is_exisiting = runtime_id in self.runtime
-        self.runtime[runtime_id] = RuntimeHandler(
-            send_queue,
-            recv_queue,
-            runtime_config,
-            {agent: [] for agent in self.governed_agents},
-        )
+        try:
+            send_queue, recv_queue = queues
+            with self.shared_wlock:
+                self.clients[client_id] = ClientHandler(
+                    send_queue,
+                    recv_queue,
+                    runtime_config,
+                    {agent: [] for agent in self.governed_agents},
+                )
 
-        strategy_spec: StrategySpec = runtime_config["strategy_specs"][
-            self.runtime_agent_id
-        ]
-        self._update_policies(strategy_spec, self.runtime_agent_id)
-
-        if not is_exisiting:
-            self.thread_pool.submit(_compute_action, self, runtime_id)
+                strategy_spec: StrategySpec = runtime_config["strategy_specs"][
+                    self.runtime_agent_id
+                ]
+                self._update_policies(strategy_spec, self.runtime_agent_id)
+        except Exception as e:
+            Logger.error(traceback.format_exc())
 
     def _update_policies(self, strategy_spec: StrategySpec, agent_id: AgentID):
         for strategy_spec_pid in strategy_spec.policy_ids:
@@ -131,9 +140,13 @@ class InferenceWorkerSet:
                 self.policies[policy_id] = policy
 
 
-def _get_initial_states(self, runtime_id, observation, policy: Policy, identifier):
-    if len(self.runtime[runtime_id].rnn_states[identifier]) > 0:
-        return self.runtime[runtime_id].rnn_states[identifier][-1]
+def _get_initial_states(self, client_id, observation, policy: Policy, identifier):
+    # FIXME(ming): KeyError: None
+    if (
+        client_id is not None
+        and len(self.clients[client_id].rnn_states[identifier]) > 0
+    ):
+        return self.clients[client_id].rnn_states[identifier][-1]
     else:
         # use inner shape to judge it
         offset = len(policy.preprocessor.shape)
@@ -144,24 +157,24 @@ def _get_initial_states(self, runtime_id, observation, policy: Policy, identifie
         return policy.get_initial_state(batch_size=batch_size)
 
 
-def _update_initial_states(self, runtime_id, rnn_states, identifier):
+def _update_initial_states(self, client_id, rnn_states, identifier):
     """Maintain the intermediate states produced by policy, for session each.
 
     Args:
-        runtime_id (int): Runtime id.
+        client_id (int): Client id.
         rnn_states (Any): A tuple of states
         identifier (str): Identifier, agent id in general.
     """
 
-    self.runtime[runtime_id].rnn_states[identifier].append(rnn_states)
+    self.clients[client_id].rnn_states[identifier].append(rnn_states)
 
 
-def _compute_action(self: InferenceWorkerSet, runtime_id: int):
+def _compute_action(self: InferenceWorkerSet, eval_mode: bool, reader_lock: Any):
     """Maintain the session of action compute for runtime handler tagged with `runtime_id`.
 
     Args:
         self (InferenceWorkerSet): The instance of inference server, it is actually a ray.ObjectRef.
-        runtime_id (int): Runtime id.
+        eval_mode (bool): Either current thread running for eval mode or not.
 
     Raises:
         e: Any expectation.
@@ -170,77 +183,107 @@ def _compute_action(self: InferenceWorkerSet, runtime_id: int):
     timer = Timing()
 
     try:
-        handler = self.runtime[runtime_id]
-        runtime_config = handler.runtime_config
-        strategy_specs: Dict[AgentID, StrategySpec] = runtime_config["strategy_specs"]
-
         while True:
+            policy_refer_data_frames: Dict[str, List[DataFrame]] = defaultdict(
+                lambda: []
+            )
+            client_responses: Dict[str, List[DataFrame]] = {}
+            client_agent_seg_tups: List[Tuple[str, AgentID, int]] = []
+            dataframe_meta_data_buffers: Dict[str, Dict[AgentID, Dict]] = {}
 
-            if handler.recver.empty():
+            with reader_lock:
+                with timer.time_avg("ready"):
+                    for client_id, handler in self.clients.items():
+                        if handler.runtime_config["evaluate"] is not eval_mode:
+                            continue
+                        if handler.recver.empty():
+                            continue
+                        dataframe_meta_data_buffers[client_id] = {}
+                        dataframes: List[DataFrame] = handler.recver.get_nowait()
+                        strategy_specs: Dict[
+                            AgentID, StrategySpec
+                        ] = handler.runtime_config["strategy_specs"]
+                        for dataframe in dataframes:
+                            agent_id = dataframe.identifier
+                            spec = strategy_specs[agent_id]
+                            batch_size = len(dataframe.meta_data["environment_ids"])
+                            spec_policy_id = spec.sample()
+                            policy_id = f"{spec.id}/{spec_policy_id}"
+                            policy_refer_data_frames[policy_id].append(dataframe)
+                            client_agent_seg_tups.append(
+                                (client_id, agent_id, batch_size)
+                            )
+                            dataframe_meta_data_buffers[client_id][
+                                agent_id
+                            ] = dataframe.meta_data.copy()
+
+            if len(policy_refer_data_frames) == 0:
+                time.sleep(0.5)
                 continue
 
-            data_frames: List[DataFrame] = handler.recver.get()
-            rets = {}
-            send_data_frames = []
-            timer.clear()
-            # with self.parameter_buffer_lock:
-            with timer.add_time("data_frame_iter"):
-                for data_frame in data_frames:
-                    spec = strategy_specs[data_frame.identifier]
-                    spec_policy_id = spec.sample()
-                    policy_id = f"{spec.id}/{spec_policy_id}"
-                    policy: Policy = self.policies[policy_id]
-                    kwargs = {**data_frame.data, **data_frame.runtime_config}
-                    batch_size = len(kwargs["environment_ids"])
-                    assert Episode.CUR_OBS in kwargs, kwargs.keys()
-                    observation = kwargs.pop(Episode.CUR_OBS)
-                    kwargs[Episode.RNN_STATE] = _get_initial_states(
-                        self,
-                        runtime_id,
-                        observation,
-                        policy,
-                        identifier=data_frame.identifier,
-                    )
-                    with timer.add_time("compute_action"):
-                        (
-                            rets[Episode.ACTION],
-                            rets[Episode.ACTION_LOGITS],
-                            rets[Episode.ACTION_DIST],
-                            rets[Episode.RNN_STATE],
-                        ) = policy.compute_action(observation=observation, **kwargs)
-                    # compute state value
-                    with timer.add_time("compute_value"):
-                        rets[Episode.STATE_VALUE] = policy.value_function(
-                            observation=observation,
-                            action_dist=rets[Episode.ACTION_DIST].copy(),
-                            **kwargs,
-                        )
-                    for k, v in rets.items():
-                        if k == Episode.RNN_STATE:
-                            continue
-                        if len(v.shape) < 1:
-                            rets[k] = v.reshape(-1)
-                        elif v.shape[0] == 1:
-                            continue
-                        else:
-                            rets[k] = v.reshape(batch_size, -1)
-                    # recover env length
-                    send_df = DataFrame(
-                        identifier=data_frame.identifier,
-                        data=rets,
-                        runtime_config=data_frame.runtime_config,
-                    )
-                    send_data_frames.append(send_df)
-                    # save rnn state
-                    _update_initial_states(
-                        self,
-                        runtime_id,
+            merged_dataframes: Dict[PolicyID, DataFrame] = merge_data_frames(
+                policy_refer_data_frames,
+                preset_meta_data={"evaluate": eval_mode},
+            )
+
+            for pid, dataframe in merged_dataframes.items():
+                policy: Policy = self.policies[pid]
+                kwargs = {
+                    Episode.DONE: dataframe.data[Episode.DONE],
+                    Episode.ACTION_MASK: dataframe.data[Episode.ACTION_MASK],
+                    "evaluate": dataframe.meta_data["evaluate"],
+                }
+                batch_size = len(dataframe.meta_data["environment_ids"])
+                observation = dataframe.data[Episode.CUR_OBS]
+
+                # FIXME(ming): not identifier dependent
+                kwargs[Episode.RNN_STATE] = _get_initial_states(
+                    self,
+                    None,
+                    observation,
+                    policy,
+                    identifier=dataframe.identifier,
+                )
+
+                rets = {}
+                with timer.time_avg("compute_action"):
+                    (
+                        rets[Episode.ACTION],
+                        rets[Episode.ACTION_LOGITS],
+                        rets[Episode.ACTION_DIST],
                         rets[Episode.RNN_STATE],
-                        identifier=data_frame.identifier,
+                    ) = policy.compute_action(observation=observation, **kwargs)
+
+                # compute state value
+                with timer.time_avg("compute_value"):
+                    rets[Episode.STATE_VALUE] = policy.value_function(
+                        observation=observation,
+                        action_dist=rets[Episode.ACTION_DIST].copy(),
+                        **kwargs,
                     )
-                    # TODO(ming): considering use async sending
-                    # handler.sender.put_nowait(send_df)
-            handler.sender.put_nowait(send_data_frames)
+                for k, v in rets.items():
+                    if k == Episode.RNN_STATE:
+                        continue
+                    if len(v.shape) < 1:
+                        rets[k] = v.reshape(-1)
+                    elif v.shape[0] == 1:
+                        continue
+                    else:
+                        rets[k] = v.reshape(batch_size, -1)
+
+                unmerge_policy_rets(
+                    client_responses,
+                    rets,
+                    client_agent_seg_tups,
+                    dataframe_meta_data_buffers,
+                )
+
+            # recover rets to response handler
+            with reader_lock:
+                with timer.time_avg("unmerge"):
+                    for client_id, agent_dataframes in client_responses.items():
+                        self.clients[client_id].sender.put_nowait(agent_dataframes)
+            print(f"timer information: {timer.todict()}")
     except Exception as e:
         traceback.print_exc()
         raise e
@@ -267,3 +310,131 @@ def _update_weights(inference_server: InferenceWorkerSet, force: bool = False) -
                     if weights is not None:
                         inference_server.policies[policy_id].load_state_dict(weights)
             time.sleep(1)
+
+
+def _merge_meta_data(source: Dict[str, Any], dest: Dict[str, Any]):
+    # assert
+    assert dest["evaluate"] == source["evaluate"], (
+        dest["evaluate"],
+        source["evaluate"],
+    )
+    # merge runtime configs, update the environment ids
+    dest_environment_ids = dest.get("environment_ids", [])
+    dest_environment_ids.extend(source["environment_ids"])
+    dest["environment_ids"] = dest_environment_ids
+
+
+def _merge_data(
+    offset: int, source: Dict[str, np.ndarray], dest: Dict[str, np.ndarray]
+) -> int:
+    """Merge data and return the newest offset.
+
+    Args:
+        offset (int): Started offset.
+        source (Dict[str, np.ndarray]): Source dict of data.
+        dest (Dict[str, np.ndarrray]): Destination dict of data.
+
+    Returns:
+        int: Updated offset.
+    """
+
+    new_offset = source[Episode.CUR_OBS].shape[0] + offset
+    for k, v in dest.items():
+        data = source[k]
+        if isinstance(v, (np.ndarray, list)):
+            # print("shape and key:", k, v.shape, data.shape)
+            v[offset : offset + data.shape[0]] = data
+        elif v is None and data is None:
+            continue
+        else:
+            raise TypeError(f"Unexpected data type: {type(v)} for key={k}")
+        assert new_offset == offset + data.shape[0], (offset, data.shape[0])
+
+    return new_offset
+
+
+def merge_data_frames(
+    policy_refer_dataframes: Dict[PolicyID, List[DataFrame]],
+    preset_meta_data: Dict[str, Any],
+) -> Dict[AgentID, DataFrame]:
+    """Merge dataframes by policy id.
+
+    Args:
+        policy_refer_dataframes (Dict[PolicyID, List[DataFrame]]): A dict of dataframe lists, mapping from policy id to dataframe lists.
+        preset_meta_data (Dict[str, Any]): Preset meta data.
+
+    Returns:
+        Dict[AgentID, DataFrame]: A dict of merged dataframes, mapping from policy ids to dataframes.
+    """
+
+    # merge data shapes by pid
+
+    # merge data frames by strategy policy id
+    rets: Dict[PolicyID, DataFrame] = {}
+
+    # we group data frames by policy id.
+    for policy_id, dataframes in policy_refer_dataframes.items():
+        offset = 0
+        batch_size = 0
+        inner_shapes = dataframes[0].meta_data["data_shapes"]
+        placeholder = {}
+
+        for dataframe in dataframes:
+            # check consistency
+            for k, v in dataframe.meta_data["data_shapes"].items():
+                assert k in inner_shapes, (k, inner_shapes)
+                assert v == inner_shapes[k], (k, v, inner_shapes[k])
+            batch_size += len(dataframe.meta_data["environment_ids"])
+
+        for k, v in inner_shapes.items():
+            if v is None:
+                placeholder[k] = None
+            else:
+                placeholder[k] = np.zeros((batch_size,) + v)
+
+        rets[policy_id] = DataFrame(
+            identifier=None, data=placeholder, meta_data=preset_meta_data.copy()
+        )
+
+        for dataframe in dataframes:
+            # stack data
+            offset = _merge_data(offset, dataframe.data, rets[policy_id].data)
+            # merge runtime configs
+            _merge_meta_data(dataframe.meta_data, rets[policy_id].meta_data)
+
+    return rets
+
+
+def unmerge_policy_rets(
+    client_responses: Dict[str, List[DataFrame]],
+    rets: Dict[str, np.ndarray],
+    client_agent_seg_tups: List[Tuple[str, AgentID, int]],
+    meta_data_buffers: Dict[str, Dict[AgentID, Dict]],
+):
+    """Split policy outputs by clients and agents.
+
+    Args:
+        client_responses (Dict[str, List[DataFrame]]): A dict of agent dataframes, a placeholder.
+        rets (Dict[str, np.ndarray]): A dict of policy outputs, stacked.
+        client_agent_seg_tups (List[Tuple[str, AgentID, int]]): A list of 3-tuples, i.e., (client_id, agent_id, segment_length).
+        meta_data_buffers (Dict[str, Dict[AgentID, Dict]]): Runtime buffers, mapping from client id to dicts of dataframe runtime configurations.
+    """
+
+    start = 0
+    for client_id, agent_id, seg_size in client_agent_seg_tups:
+        if client_id not in client_responses:
+            client_responses[client_id] = []
+        segment_data = {}
+        for k, v in rets.items():
+            if v is None:
+                segment_data[k] = None
+            else:
+                segment_data[k] = v[start : start + seg_size]
+        client_responses[client_id].append(
+            DataFrame(
+                identifier=agent_id,
+                data=segment_data,
+                meta_data=meta_data_buffers[client_id][agent_id],
+            )
+        )
+        start += seg_size

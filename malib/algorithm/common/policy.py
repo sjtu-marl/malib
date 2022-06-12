@@ -255,7 +255,6 @@ class Policy(metaclass=ABCMeta):
                 replacement[k] = v
 
         if use_copy:
-            # FIXME(ming): copy has bug, when policy is trainable!!!!!!
             ret = self.copy(self, replacement=replacement)
         else:
             self.use_cuda = use_cuda

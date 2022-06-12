@@ -106,13 +106,6 @@ class Trainer(metaclass=ABCMeta):
 
         buffer = self.post_process(buffer, agent_filter)
         buffer.to_torch(device=self.policy.device)
-        # TODO(ming): check whether multiagent buffer, then check torch data
-        # buffer = {
-        #     k: v
-        #     if isinstance(v, torch.Tensor)
-        #     else to_torch(v, device=self.policy.device)
-        #     for k, v in buffer.items()
-        # }
         feedback = self.train(buffer)
         if not isinstance(feedback, List):
             feedback = [feedback]

@@ -239,7 +239,9 @@ class BaseRolloutWorker(RemoteInterface):
         self.inference_client_cls = outer_inference_client or InferenceClient.as_remote(
             num_cpus=0
         )
-        self.inference_server_cls = outer_inference_server or InferenceWorkerSet
+        self.inference_server_cls = (
+            outer_inference_server or InferenceWorkerSet.options(max_concurrency=100)
+        )
         self.agent_interfaces = self.init_agent_interfaces(env_desc, runtime_agent_ids)
         self.actor_pool: ActorPool = self.init_actor_pool(
             env_desc, runtime_config, agent_mapping_func

@@ -54,27 +54,28 @@ from malib.utils.tianshou_batch import Batch
 
 def process_env_rets(
     env_rets: Dict[EnvID, Dict[str, Dict[AgentID, Any]]],
-    server_runtime_config: Dict[str, Any],
+    preprocessor: Dict[AgentID, Preprocessor],
+    preset_meta_data: Dict[str, Any],
 ) -> Dict[AgentID, DataFrame]:
     """Process environment returns, generally, for the observation transformation.
 
     Args:
         env_rets (Dict[EnvID, Dict[str, Dict[AgentID, Any]]]): A dict of environment returns.
-        server_runtime_config (Dict[str, Any]): _description_
+        preprocessor (Dict[AgentID, Preprocessor]): A dict of preprocessor for raw environment observations, mapping from agent ids to preprocessors.
+        preset_meta_data (Dict[str, Any]): Preset meta data.
 
     Returns:
-        Dict[AgentID, DataFrame]: _description_
+        Dict[AgentID, DataFrame]: A dict of dataframes, mapping from agent ids to dataframes.
     """
 
     dataframes = {}
-    preprocessor = server_runtime_config["preprocessor"]
-
     agent_obs_list = defaultdict(lambda: [])
     agent_action_mask_list = defaultdict(lambda: [])
     agent_dones_list = defaultdict(lambda: [])
 
     all_agents = set()
     alive_env_ids = []
+
     for env_id, ret in env_rets.items():
         # obs, action_mask, reward, done, info
         # process obs
@@ -98,18 +99,28 @@ def process_env_rets(
         all_agents.update(agents)
         alive_env_ids.append(env_id)
 
-    server_runtime_config["environment_ids"] = alive_env_ids
+    # server_runtime_config["environment_ids"] = alive_env_ids
     for agent in all_agents:
         dataframes[agent] = DataFrame(
             identifier=agent,
             data={
-                Episode.CUR_OBS: np.stack(agent_obs_list[agent]),
-                Episode.ACTION_MASK: np.stack(agent_action_mask_list[agent])
+                Episode.CUR_OBS: np.stack(agent_obs_list[agent]).squeeze(),
+                Episode.ACTION_MASK: np.stack(agent_action_mask_list[agent]).squeeze()
                 if agent_action_mask_list.get(agent)
                 else None,
                 Episode.DONE: np.stack(agent_dones_list[agent]),
             },
-            runtime_config=server_runtime_config,
+            meta_data={
+                "environment_ids": alive_env_ids,
+                "evaluate": preset_meta_data["evaluate"],
+                "data_shapes": {
+                    Episode.CUR_OBS: preprocessor[agent].shape,
+                    Episode.ACTION_MASK: agent_action_mask_list[agent][0].shape
+                    if agent_action_mask_list.get(agent)
+                    else None,
+                    Episode.DONE: (),
+                },
+            },
         )
 
     return dataframes
@@ -129,16 +140,12 @@ def process_policy_outputs(
     """
 
     rets = defaultdict(lambda: defaultdict(lambda: {}))  # env_id, str, agent, any
-    # {runtime_id: [dataframes]}
     for dataframes in raw_output.values():
-        # data should be a dict of agent value
         for dataframe in dataframes:
             agent = dataframe.identifier
             data = dataframe.data
-            env_ids = dataframe.runtime_config["environment_ids"]
-
+            env_ids = dataframe.meta_data["environment_ids"]
             assert isinstance(data, dict)
-
             for k, v in data.items():
                 if k == Episode.RNN_STATE:
                     for i, env_id in enumerate(env_ids):
@@ -166,12 +173,24 @@ def merge_env_rets(rets, next_rets):
     return r
 
 
-def recieve(queue: Dict[str, Queue]) -> Dict[AgentID, DataFrame]:
-    """Recieving messages from remote server."""
+def recieve(queue: Dict[str, Queue], block: bool = False) -> Dict[AgentID, DataFrame]:
+    """Recieves message from remote servers. If block, then wait until not empty.
+
+    Args:
+        queue (Dict[str, Queue]): A dict of queues, mapping from runtime ids to queues.
+        block (bool, optional): Sync mode or not. Defaults to False.
+
+    Returns:
+        Dict[AgentID, DataFrame]: A dict of frames, mapping from agent ids to dataframes.
+    """
 
     rets = {}
     for runtime_id, v in queue.items():
-        rets[runtime_id] = v.get()
+        if block:
+            rets[runtime_id] = v.get()
+        else:
+            if not v.empty():
+                rets[runtime_id] = v.get_nowait()
     return rets
 
 
@@ -242,9 +261,8 @@ class InferenceClient(RemoteInterface):
                 obs_spaces, act_spaces, env_cls, env_config, preset_num_envs=max_env_num
             )
 
-        self.recv_queue = None
-        self.send_queue = None
-        # self.reverb_clients: Dict[str, Type[reverb.Client]] = {}
+        self.recv_queue: Dict[str, Queue] = None
+        self.send_queue: Dict[str, Queue] = None
 
     def add_envs(self, maximum: int) -> int:
         """Create environments, if env is an instance of VectorEnv, add these \
@@ -270,6 +288,8 @@ class InferenceClient(RemoteInterface):
         return self.env.num_envs
 
     def close(self):
+        """Disconnects with inference servers and turns off environment."""
+
         if self.recv_queue is not None:
             _ = [e.shutdown(force=True) for e in self.recv_queue.values()]
             _ = [e.shutdown(force=True) for e in self.send_queue.values()]
@@ -282,7 +302,10 @@ class InferenceClient(RemoteInterface):
         dataserver_entrypoint: str = None,
         reset: bool = False,
     ) -> Dict[str, Any]:
-        """Run environment runner to collect training data or pure simulation.
+        """Executes environment runner to collect training data or run purely simulation/evaluation.
+
+        Note:
+            Only simulation/evaluation tasks return evaluation information.
 
         Args:
             agent_interfaces (Dict[AgentID, InferenceWorkerSet]): A dict of agent interface server.
@@ -305,7 +328,6 @@ class InferenceClient(RemoteInterface):
         server_runtime_config.update(
             {
                 "sample_mode": "once",
-                # TODO(ming): move to policy
                 "preprocessor": self.preprocessor,
                 "evaluate": task_type != "rollout",
             }
@@ -334,7 +356,7 @@ class InferenceClient(RemoteInterface):
                         server.connect.remote(
                             [self.recv_queue[runtime_id], self.send_queue[runtime_id]],
                             runtime_config=server_runtime_config,
-                            runtime_id=self.process_id,
+                            client_id=self.process_id,
                         )
                         for runtime_id, server in agent_interfaces.items()
                     ],
@@ -350,9 +372,10 @@ class InferenceClient(RemoteInterface):
             server_runtime_config,
             writer_info_dict=desc.get("writer_info_dict", None),
         )
-        res = {**performance}
-        # if task_type != "rollout":
-        res["evaluation"] = eval_results
+
+        res = performance.copy()
+        if task_type != "rollout":
+            res["evaluation"] = eval_results
         return res
 
 
@@ -362,6 +385,21 @@ def env_runner(
     server_runtime_config: Dict[str, Any],
     writer_info_dict: Dict[str, Tuple[str, Queue]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, float]]:
+    """The main logic of environment stepping, also for data collections.
+
+    Args:
+        client (InferenceClient): The inference client.
+        request (Namespace): A namespace instance which describes the request.
+        server_runtime_config (Dict[str, Any]): A dict which gives the runtime configuration of inference server.
+        writer_info_dict (Dict[str, Tuple[str, Queue]], optional): A dict maps from runtime ids to a tuple of writer info. Defaults to None.
+
+    Raises:
+        e: General exceptions.
+
+    Returns:
+        Tuple[List[Dict[str, Any]], Dict[str, float]]: A tuple of evaluation results and performance results.
+    """
+
     try:
         episode_dict = NewEpisodeDict(
             lambda: Episode(
@@ -369,6 +407,7 @@ def env_runner(
                 processors=server_runtime_config["preprocessor"],
             )
         )
+
         with client.timer.timeit("environment_reset"):
             env_rets = client.env.reset(
                 fragment_length=request.fragment_length,
@@ -376,47 +415,59 @@ def env_runner(
                 custom_reset_config=request.custom_reset_config,
             )
 
-        dataframes = process_env_rets(env_rets, server_runtime_config)
+        dataframes: Dict[AgentID, DataFrame] = process_env_rets(
+            env_rets,
+            preprocessor=server_runtime_config["preprocessor"],
+            preset_meta_data={"evaluate": server_runtime_config["evaluate"]},
+        )
         # record environment return at reset has been called:
         # (obs, action_mask)
         episode_dict.record_env_rets(env_rets)
 
         Logger.debug("env runner started...")
         start = time.time()
+        # async policy interaction
         while not client.env.is_terminated():
-            grouped_data_frames = defaultdict(lambda: [])
+            grouped_data_frames: Dict[str, List[DataFrame]] = defaultdict(lambda: [])
             for agent, dataframe in dataframes.items():
                 # map runtime to agent
                 runtime_id = client.training_agent_mapping(agent)
                 grouped_data_frames[runtime_id].append(dataframe)
 
-            with client.timer.time_avg("wait_env_return"):
-                for runtime_id, _send_queue in client.send_queue.items():
-                    _send_queue.put_nowait(grouped_data_frames[runtime_id])
+            if len(grouped_data_frames) > 0:
+                with client.timer.time_avg("wait_env_return"):
+                    for runtime_id, _send_queue in client.send_queue.items():
+                        _send_queue.put_nowait(grouped_data_frames[runtime_id])
+
             with client.timer.time_avg("policy_step"):
-                policy_outputs = recieve(client.recv_queue)
+                # async policy output recieving when block=False
+                policy_outputs: Dict[str, List[DataFrame]] = recieve(
+                    client.recv_queue, block=True
+                )
 
             with client.timer.time_avg("process_policy_output"):
                 env_actions, processed_policy_outputs = process_policy_outputs(
                     policy_outputs, client.env
                 )
 
-                # record environment return at policy return
-                # ()
                 episode_dict.record_policy_step(processed_policy_outputs)
 
             with client.timer.time_avg("environment_step"):
                 env_rets = client.env.step(env_actions)
-                assert len(env_rets) > 0, env_actions
+                if len(env_rets) < 1:
+                    dataframes = {}
+                    continue
                 # merge RNN states here
-                dataframes = process_env_rets(env_rets, server_runtime_config)
+                dataframes = process_env_rets(
+                    env_rets,
+                    preprocessor=server_runtime_config["preprocessor"],
+                    preset_meta_data={"evaluate": server_runtime_config["evaluate"]},
+                )
                 episode_dict.record_env_rets(env_rets)
 
         if writer_info_dict is not None:
             # episode_id: agent_id: dict_data
             episodes = episode_dict.to_numpy()
-            print("converted episodes to numpy")
-            # print(f"collected episodes: {episodes}")
             for rid, writer_info in writer_info_dict.items():
                 # get agents from agent group
                 agents = client.agent_group[rid]
@@ -425,7 +476,6 @@ def env_runner(
                     agent_buffer = [episode[aid] for aid in agents]
                     batches.append(agent_buffer)
                 writer_info[-1].put_nowait_batch(batches)
-                print("data push done.")
         end = time.time()
         rollout_info = client.env.collect_info()
     except Exception as e:
@@ -433,9 +483,9 @@ def env_runner(
         raise e
 
     performance = client.timer.todict()
+    print(f"performace from timer is: {performance}")
     performance["FPS"] = client.env.batched_step_cnt / (end - start)
     eval_results = list(rollout_info.values())
     performance["total_timesteps"] = client.env.batched_step_cnt
 
-    # TODO(ming): merge information?
     return eval_results, performance
