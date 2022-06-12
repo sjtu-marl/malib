@@ -23,7 +23,7 @@
 # SOFTWARE.
 
 from collections import ChainMap
-from typing import Tuple, Dict, Any, List, Callable
+from typing import Tuple, Dict, Any, List, Callable, Sequence
 
 import uuid
 
@@ -155,7 +155,7 @@ class VectorEnv:
         max_step: int,
         custom_reset_config: Dict[str, Any] = None,
         trainable_mapping: Dict[AgentID, PolicyID] = None,
-    ) -> Dict[EnvID, Dict[str, Dict[AgentID, Any]]]:
+    ) -> Dict[EnvID, Sequence[Dict[AgentID, Any]]]:
         self._limits = self.num_envs
         self._step_cnt = 0
         self._fragment_length = fragment_length

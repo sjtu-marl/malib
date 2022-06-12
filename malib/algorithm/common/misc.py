@@ -113,7 +113,8 @@ def gumbel_softmax(logits: DataTransferType, temperature=1.0, hard=False, explor
 
 def masked_logits(logits: torch.Tensor, mask: torch.Tensor):
     logits = F.normalize(logits)
-    logits = torch.clamp(logits - (1.0 - mask) * 1e9, -1e9, 1e9)
+    if mask is not None:
+        logits = torch.clamp(logits - (1.0 - mask) * 1e9, -1e9, 1e9)
     return logits
 
 

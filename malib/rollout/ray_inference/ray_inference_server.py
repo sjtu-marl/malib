@@ -101,27 +101,28 @@ class RayInferenceWorkerSet(RemoteInterface):
         )
 
         for dataframe in dataframes:
-            agent_id = dataframe.identifier
-            spec = strategy_specs[agent_id]
-            batch_size = len(dataframe.meta_data["environment_ids"])
-            spec_policy_id = spec.sample()
-            policy_id = f"{spec.id}/{spec_policy_id}"
-            policy: Policy = self.policies[policy_id]
-            kwargs = {
-                Episode.DONE: dataframe.data[Episode.DONE],
-                Episode.ACTION_MASK: dataframe.data[Episode.ACTION_MASK],
-                "evaluate": dataframe.meta_data["evaluate"],
-            }
-            observation = dataframe.data[Episode.CUR_OBS]
-            kwargs[Episode.RNN_STATE] = _get_initial_states(
-                self,
-                None,
-                observation,
-                policy,
-                identifier=dataframe.identifier,
-            )
+            with timer.time_avg("others"):
+                agent_id = dataframe.identifier
+                spec = strategy_specs[agent_id]
+                batch_size = len(dataframe.meta_data["environment_ids"])
+                spec_policy_id = spec.sample()
+                policy_id = f"{spec.id}/{spec_policy_id}"
+                policy: Policy = self.policies[policy_id]
+                kwargs = {
+                    Episode.DONE: dataframe.data[Episode.DONE],
+                    Episode.ACTION_MASK: dataframe.data[Episode.ACTION_MASK],
+                    "evaluate": dataframe.meta_data["evaluate"],
+                }
+                observation = dataframe.data[Episode.CUR_OBS]
+                kwargs[Episode.RNN_STATE] = _get_initial_states(
+                    self,
+                    None,
+                    observation,
+                    policy,
+                    identifier=dataframe.identifier,
+                )
 
-            rets = {}
+                rets = {}
             with timer.time_avg("compute_action"):
                 (
                     rets[Episode.ACTION],
@@ -137,19 +138,21 @@ class RayInferenceWorkerSet(RemoteInterface):
                     action_dist=rets[Episode.ACTION_DIST].copy(),
                     **kwargs,
                 )
-            for k, v in rets.items():
-                if k == Episode.RNN_STATE:
-                    continue
-                if len(v.shape) < 1:
-                    rets[k] = v.reshape(-1)
-                elif v.shape[0] == 1:
-                    continue
-                else:
-                    rets[k] = v.reshape(batch_size, -1)
+
+            with timer.time_avg("tail_handler"):
+                for k, v in rets.items():
+                    if k == Episode.RNN_STATE:
+                        continue
+                    if len(v.shape) < 1:
+                        rets[k] = v.reshape(-1)
+                    elif v.shape[0] == 1:
+                        continue
+                    else:
+                        rets[k] = v.reshape(batch_size, -1)
             return_dataframes.append(
                 DataFrame(identifier=agent_id, data=rets, meta_data=dataframe.meta_data)
             )
-            # print(f"timer information: {timer.todict()}")
+        # print(f"timer information: {timer.todict()}")
         return return_dataframes
 
     def _update_policies(self, strategy_spec: StrategySpec, agent_id: AgentID):
