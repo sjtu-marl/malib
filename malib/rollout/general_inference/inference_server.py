@@ -283,7 +283,7 @@ def _compute_action(self: InferenceWorkerSet, eval_mode: bool, reader_lock: Any)
                 with timer.time_avg("unmerge"):
                     for client_id, agent_dataframes in client_responses.items():
                         self.clients[client_id].sender.put_nowait(agent_dataframes)
-            print(f"timer information: {timer.todict()}")
+            # print(f"timer information: {timer.todict()}")
     except Exception as e:
         traceback.print_exc()
         raise e

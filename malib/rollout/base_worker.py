@@ -51,8 +51,8 @@ from malib.utils.stopping_conditions import get_stopper
 from malib.common.strategy_spec import StrategySpec
 from malib.remote.interface import RemoteInterface
 from malib.monitor.utils import write_to_tensorboard
-from malib.rollout.inference_server import InferenceWorkerSet
-from malib.rollout.inference_client import InferenceClient
+from malib.rollout.general_inference.inference_server import InferenceWorkerSet
+from malib.rollout.general_inference.inference_client import InferenceClient
 
 
 PARAMETER_GET_TIMEOUT = 3

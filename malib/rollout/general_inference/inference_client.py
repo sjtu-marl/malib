@@ -48,7 +48,7 @@ from malib.remote.interface import RemoteInterface
 from malib.rollout.envs.vector_env import VectorEnv
 from malib.rollout.envs.async_vector_env import AsyncVectorEnv, AsyncSubProcVecEnv
 from malib.rollout.postprocessor import get_postprocessor
-from malib.rollout.inference_server import InferenceWorkerSet
+from malib.rollout.general_inference.inference_server import InferenceWorkerSet
 from malib.utils.tianshou_batch import Batch
 
 
@@ -342,11 +342,11 @@ class InferenceClient(RemoteInterface):
         # build connection if needed
         if self.recv_queue is None or reset:
             self.recv_queue = {
-                runtime_id: Queue(actor_options={"num_cpus": 0})
+                runtime_id: Queue(actor_options={"num_cpus": 0, "max_concurrency": 10})
                 for runtime_id in agent_interfaces
             }
             self.send_queue = {
-                runtime_id: Queue(actor_options={"num_cpus": 0})
+                runtime_id: Queue(actor_options={"num_cpus": 0, "max_concurrency": 10})
                 for runtime_id in agent_interfaces
             }
 
@@ -420,8 +420,6 @@ def env_runner(
             preprocessor=server_runtime_config["preprocessor"],
             preset_meta_data={"evaluate": server_runtime_config["evaluate"]},
         )
-        # record environment return at reset has been called:
-        # (obs, action_mask)
         episode_dict.record_env_rets(env_rets)
 
         Logger.debug("env runner started...")
