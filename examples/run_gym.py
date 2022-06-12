@@ -33,11 +33,11 @@ if __name__ == "__main__":
         "custom_config": {},
     }
     rollout_config = {
-        "fragment_length": 1000,
+        "fragment_length": 2000,  # every thread
         "max_step": 200,
-        "num_eval_episodes": 5,
-        "num_threads": 1,
-        "num_env_per_thread": 5,
+        "num_eval_episodes": 10,
+        "num_threads": 2,
+        "num_env_per_thread": 10,
         "num_eval_threads": 1,
         "use_subproc_env": False,
         "batch_mode": "time_step",

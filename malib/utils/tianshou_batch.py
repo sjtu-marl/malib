@@ -390,7 +390,7 @@ class Batch:
                 # ndarray or scalar
                 if not isinstance(obj, np.ndarray):
                     obj = np.asanyarray(obj)
-                obj = torch.from_numpy(obj).to(device)
+                obj = torch.from_numpy(obj.copy()).to(device)
                 if dtype is not None:
                     obj = obj.type(dtype)
                 self.__dict__[batch_key] = obj
