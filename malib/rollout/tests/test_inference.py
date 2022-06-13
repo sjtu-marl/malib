@@ -9,8 +9,8 @@ from malib import settings
 from malib.common.strategy_spec import StrategySpec
 from malib.algorithm.random import RandomPolicy
 from malib.rollout.envs import dummy_env
-from malib.rollout.general_inference.inference_client import InferenceClient
-from malib.rollout.general_inference.inference_server import InferenceWorkerSet
+from malib.rollout.pipe_inference.client import InferenceClient
+from malib.rollout.pipe_inference.server import InferenceWorkerSet
 from malib.backend.offline_dataset_server import OfflineDataset
 from malib.backend.parameter_server import ParameterServer
 

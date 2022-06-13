@@ -48,7 +48,7 @@ from malib.remote.interface import RemoteInterface
 from malib.rollout.envs.vector_env import VectorEnv
 from malib.rollout.envs.async_vector_env import AsyncVectorEnv, AsyncSubProcVecEnv
 from malib.rollout.postprocessor import get_postprocessor
-from malib.rollout.general_inference.inference_server import InferenceWorkerSet
+from malib.rollout.ray_inference.server import RayInferenceWorkerSet
 from malib.utils.tianshou_batch import Batch
 
 
@@ -201,7 +201,7 @@ def postprocessing(episodes, postprocessor_types, policies=None):
     return episodes
 
 
-class InferenceClient(RemoteInterface):
+class RayInferenceClient(RemoteInterface):
     def __init__(
         self,
         env_desc: Dict[str, Any],
@@ -297,7 +297,7 @@ class InferenceClient(RemoteInterface):
 
     def run(
         self,
-        agent_interfaces: Dict[AgentID, InferenceWorkerSet],
+        agent_interfaces: Dict[AgentID, RayInferenceWorkerSet],
         desc: Dict[str, Any],
         dataserver_entrypoint: str = None,
         reset: bool = False,
@@ -339,35 +339,9 @@ class InferenceClient(RemoteInterface):
         elif task_type in ["evaluation", "simulation"]:
             server_runtime_config["behavior_mode"] = BehaviorMode.EXPLOITATION
 
-        # build connection if needed
-        if self.recv_queue is None or reset:
-            self.recv_queue = {
-                runtime_id: Queue(actor_options={"num_cpus": 0, "max_concurrency": 10})
-                for runtime_id in agent_interfaces
-            }
-            self.send_queue = {
-                runtime_id: Queue(actor_options={"num_cpus": 0, "max_concurrency": 10})
-                for runtime_id in agent_interfaces
-            }
-
-            with self.timer.timeit("inference_server_connect"):
-                _ = ray.get(
-                    [
-                        server.connect.remote(
-                            [self.recv_queue[runtime_id], self.send_queue[runtime_id]],
-                            runtime_config=server_runtime_config,
-                            client_id=self.process_id,
-                        )
-                        for runtime_id, server in agent_interfaces.items()
-                    ],
-                    timeout=10.0,
-                )
-                gc.collect()
-
-            Logger.debug("connected to inference server")
-
         eval_results, performance = env_runner(
             self,
+            agent_interfaces,
             request,
             server_runtime_config,
             writer_info_dict=desc.get("writer_info_dict", None),
@@ -380,7 +354,8 @@ class InferenceClient(RemoteInterface):
 
 
 def env_runner(
-    client: InferenceClient,
+    client: RayInferenceClient,
+    servers: Dict[str, RayInferenceWorkerSet],
     request: Namespace,
     server_runtime_config: Dict[str, Any],
     writer_info_dict: Dict[str, Tuple[str, Queue]] = None,
@@ -420,6 +395,8 @@ def env_runner(
             preprocessor=server_runtime_config["preprocessor"],
             preset_meta_data={"evaluate": server_runtime_config["evaluate"]},
         )
+        # record environment return at reset has been called:
+        # (obs, action_mask)
         episode_dict.record_env_rets(env_rets)
 
         Logger.debug("env runner started...")
@@ -432,16 +409,16 @@ def env_runner(
                 runtime_id = client.training_agent_mapping(agent)
                 grouped_data_frames[runtime_id].append(dataframe)
 
-            if len(grouped_data_frames) > 0:
-                with client.timer.time_avg("wait_env_return"):
-                    for runtime_id, _send_queue in client.send_queue.items():
-                        _send_queue.put_nowait(grouped_data_frames[runtime_id])
-
             with client.timer.time_avg("policy_step"):
-                # async policy output recieving when block=False
-                policy_outputs: Dict[str, List[DataFrame]] = recieve(
-                    client.recv_queue, block=True
-                )
+                policy_outputs: Dict[str, List[DataFrame]] = {
+                    rid: ray.get(
+                        server.compute_action.remote(
+                            grouped_data_frames[rid],
+                            runtime_config=server_runtime_config,
+                        )
+                    )
+                    for rid, server in servers.items()
+                }
 
             with client.timer.time_avg("process_policy_output"):
                 env_actions, processed_policy_outputs = process_policy_outputs(

@@ -119,7 +119,7 @@ class DictFlattenPreprocessor(Preprocessor):
         if isinstance(data, Dict):
             array = np.zeros(self.shape)
             self.write(array, 0, data)
-        elif isinstance(data, Sequence):
+        elif isinstance(data, (list, tuple)):
             array = np.zeros((len(data),) + self.shape)
             for i in range(len(array)):
                 self.write(array[i], 0, data[i])
@@ -193,11 +193,11 @@ class BoxFlattenPreprocessor(Preprocessor):
         if nested:
             data = _get_batched(data)
 
-        # if isinstance(data, list):
-        #     array = np.vtack(data)
-        #     return array
-        # else:
-        array = np.asarray(data).reshape((-1,) + self.shape)
+        if isinstance(data, list):
+            array = np.vstack(data)
+            return array
+        else:
+            array = np.asarray(data).reshape((-1,) + self.shape)
         return array
 
     def write(self, array, offset, data):

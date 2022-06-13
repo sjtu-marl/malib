@@ -20,8 +20,8 @@ from ray.util import ActorPool
 from malib.common.manager import Manager
 from malib.common.strategy_spec import StrategySpec
 from malib.rollout.rollout_worker import RolloutWorker
-from malib.rollout.ray_inference.ray_inference_client import RayInferenceClient
-from malib.rollout.ray_inference.ray_inference_server import RayInferenceWorkerSet
+from malib.rollout.ray_inference.client import RayInferenceClient
+from malib.rollout.ray_inference.server import RayInferenceWorkerSet
 from malib.utils.logging import Logger
 
 
@@ -96,10 +96,6 @@ class RolloutWorkerManager(Manager):
                     reverb_table_kwargs={},
                     rollout_callback=None,
                     simulate_callback=None,
-                    outer_inference_client=RayInferenceClient.as_remote(),
-                    outer_inference_server=RayInferenceWorkerSet.as_remote().options(
-                        max_concurrency=100
-                    ),
                 )
             )
 

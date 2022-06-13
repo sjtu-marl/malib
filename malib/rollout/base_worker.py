@@ -51,8 +51,14 @@ from malib.utils.stopping_conditions import get_stopper
 from malib.common.strategy_spec import StrategySpec
 from malib.remote.interface import RemoteInterface
 from malib.monitor.utils import write_to_tensorboard
-from malib.rollout.general_inference.inference_server import InferenceWorkerSet
-from malib.rollout.general_inference.inference_client import InferenceClient
+from malib.rollout.pipe_inference.server import (
+    InferenceWorkerSet as PipeInferenceServer,
+)
+from malib.rollout.pipe_inference.client import InferenceClient as PipeInferenceClient
+from malib.rollout.ray_inference.server import (
+    RayInferenceWorkerSet as RayInferenceServer,
+)
+from malib.rollout.ray_inference.client import RayInferenceClient
 
 
 PARAMETER_GET_TIMEOUT = 3
@@ -179,8 +185,6 @@ class BaseRolloutWorker(RemoteInterface):
         reverb_table_kwargs: Dict[str, Any],
         rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
         simulate_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
-        outer_inference_client=None,
-        outer_inference_server=None,
     ):
         """Create a instance for simulations, rollout and evaluation. This base class initializes \
             all necessary servers and workers for rollouts. Including remote agent interfaces, \
@@ -236,13 +240,26 @@ class BaseRolloutWorker(RemoteInterface):
         self.parameter_server = None
 
         self.init_servers()
-        self.inference_client_cls = outer_inference_client or InferenceClient.as_remote(
-            num_cpus=0
-        )
-        self.inference_server_cls = (
-            outer_inference_server or InferenceWorkerSet.options(max_concurrency=100)
-        )
-        self.agent_interfaces = self.init_agent_interfaces(env_desc, runtime_agent_ids)
+
+        if runtime_config["inference_server"] == "local":
+            self.agent_interfaces = None
+            self.inference_server_cls = None
+            self.inference_client_cls = RayInferenceClient.as_remote(num_cpus=1)
+        else:
+            if runtime_config["inference_server"] == "pipe":
+                self.inference_client_cls = PipeInferenceClient.as_remote(num_cpus=0)
+                self.inference_server_cls = PipeInferenceServer.as_remote(
+                    num_cpus=0
+                ).options(max_concurrency=100)
+            else:
+                self.inference_client_cls = RayInferenceClient.as_remote(num_cpus=0)
+                self.inference_server_cls = RayInferenceServer.as_remote(
+                    num_cpus=0
+                ).options(max_concurrency=100)
+
+            self.agent_interfaces = self.init_agent_interfaces(
+                env_desc, runtime_agent_ids
+            )
         self.actor_pool: ActorPool = self.init_actor_pool(
             env_desc, runtime_config, agent_mapping_func
         )
@@ -327,8 +344,12 @@ class BaseRolloutWorker(RemoteInterface):
                     max_env_num=num_env_per_thread,
                     use_subproc_env=runtime_config["use_subproc_env"],
                     batch_mode=runtime_config["batch_mode"],
-                    training_agent_mapping=agent_mapping_func,
                     postprocessor_types=runtime_config["postprocessor_types"],
+                    training_agent_mapping=agent_mapping_func,
+                    custom_config={
+                        "inference_server": runtime_config["inference_server"],
+                        "parameter_server": self.parameter_server,
+                    },
                 )
                 for _ in range(num_threads + num_eval_threads)
             ]

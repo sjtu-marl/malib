@@ -44,8 +44,6 @@ class RolloutWorker(BaseRolloutWorker):
         reverb_table_kwargs: Dict[str, Any],
         rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
         simulate_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
-        outer_inference_client=None,
-        outer_inference_server=None,
     ):
         super().__init__(
             experiment_tag,
@@ -56,8 +54,6 @@ class RolloutWorker(BaseRolloutWorker):
             reverb_table_kwargs,
             rollout_callback,
             simulate_callback,
-            outer_inference_client=outer_inference_client,
-            outer_inference_server=outer_inference_server,
         )
 
     def step_rollout(

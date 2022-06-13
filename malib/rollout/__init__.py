@@ -23,5 +23,5 @@
 # SOFTWARE.
 
 from .rollout_worker import RolloutWorker
-from .general_inference.inference_client import InferenceClient
-from .general_inference.inference_server import InferenceWorkerSet
+from .pipe_inference.client import InferenceClient
+from .pipe_inference.server import InferenceWorkerSet

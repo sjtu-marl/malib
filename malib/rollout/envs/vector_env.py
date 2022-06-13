@@ -41,12 +41,7 @@ from malib.utils.typing import (
 from malib.rollout.envs import Environment
 from malib.utils.episode import Episode
 
-# :param Dict[AgentID,gym.Space] observation_spaces: A dict of agent observation space
-# :param Dict[AgentID,gym.Space] action_spaces: A dict of agent action space
-# :param type creator: The handler to create environment
-# :param Dict[str,Any] configs: Environment configuration
-# :param int num_envs: The number of nested environment
-# :param int fragment_length: The maximum of batched frames
+
 class VectorEnv:
     def __init__(
         self,

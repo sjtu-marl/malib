@@ -42,6 +42,7 @@ import numpy as np
 from ray.util.queue import Queue
 
 from malib import settings
+from malib.remote.interface import RemoteInterface
 from malib.utils.typing import AgentID, DataFrame, PolicyID
 from malib.utils.logging import Logger
 from malib.utils.timing import Timing
@@ -54,8 +55,7 @@ from malib.backend.parameter_server import ParameterServer
 ClientHandler = namedtuple("ClientHandler", "sender,recver,runtime_config,rnn_states")
 
 
-@ray.remote
-class InferenceWorkerSet:
+class InferenceWorkerSet(RemoteInterface):
     def __init__(
         self,
         agent_id: AgentID,

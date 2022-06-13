@@ -44,6 +44,7 @@ if __name__ == "__main__":
         "postprocessor_types": ["defaults"],
         # every # rollout epoch run evaluation.
         "eval_interval": 10,
+        "inference_server": "local",  # three kinds of inference server: `local`, `pipe` and `ray`
     }
     agent_mapping_func = lambda agent: agent
 
