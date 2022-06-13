@@ -35,6 +35,7 @@ import ray
 import numpy as np
 
 from ray.util.queue import Queue
+from ray.actor import ActorHandle
 
 from malib import settings
 from malib.utils.logging import Logger
@@ -400,7 +401,7 @@ def env_runner(
     """
 
     # check whether remote server or not
-    remote_actor = isinstance(list(servers.values())[0], ray.ObjectRef)
+    remote_actor = isinstance(list(servers.values())[0], ActorHandle)
 
     try:
         episode_dict = NewEpisodeDict(

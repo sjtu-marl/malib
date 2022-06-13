@@ -52,10 +52,13 @@ class Table:
             )(self.policy.parameters(), lr=optim_config["lr"])
         else:
             self.optimizer: torch.optim.Optimizer = None
+        self.cur_version = 0
+        self.cur_version = -1
         self.lock = Lock()
 
     def set_weights(self, state_dict):
         with self.lock:
+            self.cur_version += 1
             self.policy.load_state_dict(state_dict)
 
     def apply_gradients(self, *gradients):
@@ -69,9 +72,14 @@ class Table:
                     p.grad = torch.from_numpy(g.copy())
             self.optimizer.step()
 
-    def get_weights(self):
+    def get_weights(self, request_version):
         with self.lock:
-            return {k: v.cpu() for k, v in self.policy.state_dict().items()}
+            if request_version >= self.cur_version:
+                return self.cur_version, None
+            else:
+                return self.cur_version, {
+                    k: v for k, v in self.policy.state_dict().items()
+                }
 
 
 class ParameterServer(RemoteInterface):
@@ -86,7 +94,9 @@ class ParameterServer(RemoteInterface):
     def apply_gradients(self, table_name: str, gradients: Sequence[Any]):
         self.tables[table_name].apply_gradients(*gradients)
 
-    def get_weights(self, spec_id: str, spec_policy_id: str) -> Dict[str, Any]:
+    def get_weights(
+        self, spec_id: str, spec_policy_id: str, cur_version: int
+    ) -> Dict[str, Any]:
         """Request for weight retrive, return a dict includes keys: `spec_id`, `spec_policy_id` and `weights`.
 
         Args:
@@ -98,10 +108,12 @@ class ParameterServer(RemoteInterface):
         """
 
         table_name = f"{spec_id}/{spec_policy_id}"
+        version, weights = self.tables[table_name].get_weights(cur_version)
         return {
             "spec_id": spec_id,
             "spec_policy_id": spec_policy_id,
-            "weights": self.tables[table_name].get_weights(),
+            "weights": weights,
+            "version": version,
         }
 
     def set_weights(

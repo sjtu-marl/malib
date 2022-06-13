@@ -67,9 +67,10 @@ class RayInferenceWorkerSet(RemoteInterface):
         self.thread_pool = ThreadPoolExecutor()
         self.governed_agents = governed_agents
         self.policies: Dict[str, Policy] = {}
+        self.policy_version: Dict[str, int] = {}
         self.strategy_spec_dict: Dict[str, StrategySpec] = {}
 
-        self.thread_pool.submit(_update_weights, self, force_weight_update)
+        # self.thread_pool.submit(_update_weights, self, force_weight_update)
 
     def shutdown(self):
         self.thread_pool.shutdown(wait=True)
@@ -123,6 +124,18 @@ class RayInferenceWorkerSet(RemoteInterface):
                 )
 
                 rets = {}
+            with timer.time_avg("policy_update"):
+                info = ray.get(
+                    self.parameter_server.get_weights.remote(
+                        spec_id=spec.id,
+                        spec_policy_id=spec_policy_id,
+                        cur_version=self.policy_version[policy_id],
+                    )
+                )
+                if info["weights"] is not None:
+                    self.policies[policy_id].load_state_dict(info["weights"])
+                    self.policy_version[policy_id] = info["version"] + 1
+
             with timer.time_avg("compute_action"):
                 (
                     rets[Episode.ACTION],
@@ -161,6 +174,7 @@ class RayInferenceWorkerSet(RemoteInterface):
             if policy_id not in self.policies:
                 policy = strategy_spec.gen_policy()
                 self.policies[policy_id] = policy
+                self.policy_version[policy_id] = -1
 
 
 def _get_initial_states(self, client_id, observation, policy: Policy, identifier):
@@ -200,5 +214,7 @@ def _update_weights(
                         )
                     )
                     if weights is not None:
-                        inference_server.policies[policy_id].load_state_dict(weights)
-            time.sleep(1)
+                        inference_server.policies[policy_id].load_state_dict(
+                            weights["weights"]
+                        )
+            # time.sleep(1)
