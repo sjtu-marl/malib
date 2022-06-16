@@ -12,7 +12,6 @@ from malib.utils.typing import AgentID
 
 from malib.algorithm.common import misc
 from malib.algorithm.common.trainer import Trainer
-from malib.utils.data import to_torch
 from malib.utils.schedules import LinearSchedule
 
 
@@ -25,45 +24,32 @@ class DQNTrainer(Trainer):
 
         self.exploration = LinearSchedule(
             schedule_timesteps=int(exploration_fraction * total_timesteps),
-            initial_p=1.0 if self.fixed_eps is None else self.fixed_eps,
+            initial_p=1.0,
             final_p=exploration_final_eps,
         )
 
         optim_cls = getattr(torch.optim, self.training_config["optimizer"])
         self.target_critic = copy.deepcopy(self.policy.critic)
         self.optimizer: torch.optim.Optimizer = optim_cls(
-            self.policy.critic.parameters(), lr=self.training_config["critic_lr"]
+            self.policy.critic.parameters(), lr=self.training_config["lr"]
         )
 
     def post_process(
         self, batch: Dict[str, Any], agent_filter: Sequence[AgentID]
     ) -> Dict[str, np.ndarray]:
-        policy = self.policy.to(
-            "cuda" if self.policy.custom_config.get("use_cuda", False) else "cpu",
-            use_copy=False,
-        )
         # set exploration rate for policy
-        if not self._training_config.get("param_noise", False):
-            update_eps = self.exploration.value(self.counter)
-            update_param_noise_threshold = 0.0
-        else:
-            update_eps = 0.0
-        if self.fixed_eps is not None:
-            policy.eps = self.fixed_eps
-        else:
-            policy.eps = update_eps
+        update_eps = self.exploration.value(self.counter)
+        self.policy.eps = update_eps
         return batch
 
     def train(self, batch: Dict[str, torch.Tensor]):
-        batch = {k: to_torch(v) for k, v in batch.items()}
-        batch = Namespace(**batch)
-        state_action_values, _ = self.policy.critic(batch.observation)
+        state_action_values, _ = self.policy.critic(batch.obs)
         state_action_values = state_action_values.gather(
-            -1, batch.action.long().view((-1, 1))
+            -1, batch.act.long().view((-1, 1))
         ).view(-1)
 
-        next_state_q, _ = self.target_critic(batch.next_observation)
-        next_action_mask = batch.get("next_action_mask", None)
+        next_state_q, _ = self.target_critic(batch.obs_next)
+        next_action_mask = batch.get("action_mask_next", None)
 
         if next_action_mask is not None:
             illegal_action_mask = 1.0 - next_action_mask
@@ -72,11 +58,21 @@ class DQNTrainer(Trainer):
             next_state_q += illegal_action_logits
 
         next_state_action_values = next_state_q.max(-1)[0]
+        assert batch.rew.shape == batch.done.shape == next_state_action_values.shape, (
+            batch.rew.shape,
+            batch.done.shape,
+            next_state_action_values.shape,
+        )
         expected_state_values = (
-            batch.reward
+            batch.rew.float()
             + self._training_config["gamma"]
-            * (1.0 - batch.done)
+            * (1.0 - batch.done.float())
             * next_state_action_values
+        )
+
+        assert expected_state_values.shape == state_action_values.shape, (
+            expected_state_values.shape,
+            state_action_values.shape,
         )
 
         self.optimizer.zero_grad()
@@ -96,8 +92,8 @@ class DQNTrainer(Trainer):
             "max_eval": state_action_values.max().cpu().item(),
             "max_target": expected_state_values.max().cpu().item(),
             "min_target": expected_state_values.min().cpu().item(),
-            "mean_reward": batch.reward.mean().cpu().item(),
-            "min_reward": batch.reward.min().cpu().item(),
-            "max_reward": batch.reward.max().cpu().item(),
+            "mean_reward": batch.rew.mean().cpu().item(),
+            "min_reward": batch.rew.min().cpu().item(),
+            "max_reward": batch.rew.max().cpu().item(),
             "eps": self.policy.eps,
         }

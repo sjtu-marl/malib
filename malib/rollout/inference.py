@@ -321,7 +321,7 @@ class RayInferenceClient(RemoteInterface):
         self.timer.clear()
         task_type = desc["flag"]
 
-        Logger.debug(f"accept task description: {desc}")
+        # Logger.debug(f"accept task description: {desc}")
 
         desc["custom_reset_config"] = desc.get("custom_reset_config", {})
         server_runtime_config = desc.copy()
@@ -458,7 +458,6 @@ def env_runner(
         raise e
 
     performance = client.timer.todict()
-    print(f"performace from timer is: {performance}")
     performance["FPS"] = client.env.batched_step_cnt / (end - start)
     eval_results = list(rollout_info.values())
     performance["total_timesteps"] = client.env.batched_step_cnt

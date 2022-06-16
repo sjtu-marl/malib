@@ -2,6 +2,10 @@ DEFAULT_CONFIG = {
     "training_config": {
         "optimizer": "Adam",
         "lr": 1e-4,
+        "batch_size": 32,
+        "exploration_fraction": 0.01,
+        "exploration_final_eps": 0.01,
+        "total_timesteps": 10000,
         "reward_norm": None,
         "n_repeat": 2,
         "minibatch": 2,

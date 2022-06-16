@@ -9,7 +9,7 @@ shutup.please()
 from malib.runner import run
 from malib.agent import IndependentAgent
 from malib.scenarios.marl_scenario import MARLScenario
-from malib.algorithm.pg import PGPolicy, PGTrainer
+from malib.algorithm.dqn import DQNPolicy, DQNTrainer, DEFAULT_CONFIG
 from malib.rollout.envs.gym import env_desc_gen
 
 
@@ -20,16 +20,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    trainer_config = DEFAULT_CONFIG["training_config"].copy()
+    trainer_config["total_timesteps"] = int(1e6)
+
     training_config = {
         "type": IndependentAgent,
-        "trainer_config": {
-            "use_cuda": False,
-            "batch_size": 32,
-            "optimizer": "Adam",
-            "lr": 1e-4,
-            "reward_norm": None,
-            "gamma": 0.99,
-        },
+        "trainer_config": trainer_config,
         "custom_config": {},
     }
     rollout_config = {
@@ -43,15 +39,15 @@ if __name__ == "__main__":
         "batch_mode": "time_step",
         "postprocessor_types": ["defaults"],
         # every # rollout epoch run evaluation.
-        "eval_interval": 10,
+        "eval_interval": 1,
         "inference_server": "ray",  # three kinds of inference server: `local`, `pipe` and `ray`
     }
     agent_mapping_func = lambda agent: agent
 
     algorithms = {
         "default": (
-            PGPolicy,
-            PGTrainer,
+            DQNPolicy,
+            DQNTrainer,
             # model configuration, None for default
             {},
             {},
@@ -73,7 +69,7 @@ if __name__ == "__main__":
         rollout_config=rollout_config,
         agent_mapping_func=agent_mapping_func,
         stopping_conditions={
-            "training": {"max_iteration": 1000},
+            "training": {"max_iteration": int(1e10)},
             "rollout": {"max_iteration": 1000, "minimum_reward_improvement": 1.0},
         },
     )

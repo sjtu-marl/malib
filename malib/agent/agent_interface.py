@@ -29,14 +29,11 @@ from typing import Dict, Any, Tuple, Callable, Type, List
 
 import os
 import time
-import random
 
 from collections import deque
 
 import torch
 import ray
-
-# import reverb
 
 from ray.util.queue import Queue
 from torch.utils import tensorboard
@@ -233,41 +230,6 @@ class AgentInterface(RemoteInterface, ABC):
                 pid = "{}/{}".format(done["spec_id"], done["spec_policy_id"])
                 self.policy[pid].load_state_dict(done["weights"])
 
-    def request_data(self) -> Dict[str, Any]:
-        """Request data for active policies.
-
-        Returns:
-            Dict[str, Any]: A batch dict.
-        """
-
-        batch = {}
-        for active_tup in list(self._active_tups):
-            identifier = f"{active_tup[0]}/{active_tup[1]}"
-            while identifier not in self._clients:
-                # build client
-                client_kwargs = ray.get(
-                    self._offline_dataset.get_client_kwargs.remote(
-                        table_name=identifier
-                    )
-                )
-                if client_kwargs["address"] is not None:
-                    self._clients[identifier] = reverb.Client(
-                        server_address=client_kwargs["address"]
-                    )
-                else:
-                    secs = random.random()
-                    time.sleep(secs)
-            Logger.debug(f"retrive client kwargs: {client_kwargs}")
-            client = self._clients[identifier]
-            batch[identifier] = client.sample(
-                table=None,
-                num_samples=1,
-                emit_timesteps=True,
-                unpack_as_table_signature=False,
-            )
-        batch = self.multiagent_post_process(batch)
-        return batch
-
     @abstractmethod
     def multiagent_post_process(
         self, batch: Dict[AgentID, Batch], batch_indices: List[int]
@@ -288,6 +250,16 @@ class AgentInterface(RemoteInterface, ABC):
             "policy_num": len(self._strategy_spec),
             "active_tups": list(self._active_tups),
         }
+
+    def sync_remote_parameters(self):
+        top_active_tup = self._active_tups[0]
+        ray.get(
+            self._parameter_server.set_weights.remote(
+                spec_id=top_active_tup[0],
+                spec_policy_id=top_active_tup[1],
+                state_dict=self._trainer.policy.state_dict(),
+            )
+        )
 
     def train(
         self,
@@ -338,6 +310,7 @@ class AgentInterface(RemoteInterface, ABC):
                         global_step=self._total_step,
                         prefix=f"Training/{self._runtime_id}",
                     )
+                self.sync_remote_parameters()
                 if stopper.should_stop(step_info):
                     self._total_epoch += 1
                     break
@@ -347,6 +320,11 @@ class AgentInterface(RemoteInterface, ABC):
             )
             ray.get(self._offline_dataset.end_consumer_pipe.remote())
 
+        Logger.warning(
+            "training meets stopping condition after {}-epoch: {}".format(
+                self._total_epoch, stopping_conditions
+            )
+        )
         return self.get_interface_state()
 
     def reset(self):

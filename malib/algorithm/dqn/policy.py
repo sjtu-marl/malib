@@ -83,10 +83,6 @@ class DQNPolicy(Policy):
             state (Any, Optional): The hidden state. Default by None.
         """
 
-        observation = torch.as_tensor(
-            observation, device="cuda" if self.use_cuda else "cpu"
-        )
-
         with torch.no_grad():
             logits, state = self.critic(observation)
 
@@ -119,7 +115,7 @@ class DQNPolicy(Policy):
                 return action, action_probs, logits.cpu().numpy(), state
 
         action = torch.argmax(action_probs, dim=-1).cpu().numpy()
-        return action, action_probs.cpu().numpy(), logits.cpy().numpy(), state
+        return action, action_probs.cpu().numpy(), logits.cpu().numpy(), state
 
     def parameters(self):
         return {
@@ -129,9 +125,10 @@ class DQNPolicy(Policy):
     def value_function(
         self, observation: torch.Tensor, evaluate: bool, **kwargs
     ) -> np.ndarray:
-        states = torch.as_tensor(states, device="cuda" if self.use_cuda else "cpu")
-        values = self.critic(states).detach().cpu().numpy()
-        if action_mask is not None:
+        values, _ = self.critic(observation)
+        values = values.detach().cpu().numpy()
+        if "action_mask" in kwargs:
+            action_mask = kwargs["action_mask"]
             values[action_mask] = -1e9
         return values
 
