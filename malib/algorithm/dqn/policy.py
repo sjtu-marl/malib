@@ -8,6 +8,7 @@ import gym
 import torch
 import numpy as np
 
+from gym import spaces
 from torch import nn
 
 from malib.algorithm.common import misc
@@ -34,6 +35,14 @@ class DQNPolicy(Policy):
         custom_config = merge_dicts(
             DEFAULT_CONFIG["custom_config"].copy(), custom_config
         )
+        agent_dimension = 0
+
+        if isinstance(observation_space, spaces.Tuple):
+            # it means the input has agent dimension
+            agent_dimension = len(observation_space.spaces)
+            assert isinstance(action_space, spaces.Tuple)
+            observation_space = observation_space.spaces[0]
+            action_space = action_space[0]
 
         super(DQNPolicy, self).__init__(
             observation_space, action_space, model_config, custom_config, **kwargs
@@ -49,6 +58,7 @@ class DQNPolicy(Policy):
         )
 
         self.use_cuda = self.custom_config.get("use_cuda", False)
+        self.agent_dimension = agent_dimension
 
         if self.use_cuda:
             self.critic = self.critic.to("cuda")
@@ -84,15 +94,16 @@ class DQNPolicy(Policy):
         """
 
         with torch.no_grad():
+            if self.agent_dimension > 0:
+                # reshape to (n_batch * agent_dimension, shape)
+                observation = observation.reshape((-1,) + self.preprocessor.shape)
+                if action_mask is not None:
+                    action_mask = action_mask.reshape(-1, self._action_space.n)
             logits, state = self.critic(observation)
 
             # do masking
-            if action_mask is not None:
-                mask = torch.FloatTensor(action_mask).to(logits.device)
-                action_probs = misc.masked_gumbel_softmax(logits, mask)
-                assert mask.shape == logits.shape, (mask.shape, logits.shape)
-            else:
-                action_probs = misc.gumbel_softmax(logits, hard=True)
+            action_probs = misc.masked_logits(logits, mask=action_mask)
+            action_probs = misc.gumbel_softmax(logits, hard=True)
 
         if not evaluate:
             if np.random.random() < self.eps:
@@ -112,10 +123,42 @@ class DQNPolicy(Policy):
                     action = np.random.choice(legal_actions, len(observation))
                 else:
                     action = np.random.choice(self._action_space.n, len(observation))
-                return action, action_probs, logits.cpu().numpy(), state
+                if self.agent_dimension > 0:
+                    action = action.reshape(-1, self.agent_dimension)
+                    action_probs = action_probs.reshape(
+                        -1, self.agent_dimension, self._action_space.n
+                    )
+                    logits = (
+                        logits.reshape(-1, self.agent_dimension, self._action_space.n)
+                        .cpu()
+                        .numpy()
+                    )
+                    if state is not None:
+                        raise NotImplementedError
+                else:
+                    logits = logits.cpu().numpy()
+                return action, action_probs, logits, state
 
         action = torch.argmax(action_probs, dim=-1).cpu().numpy()
-        return action, action_probs.cpu().numpy(), logits.cpu().numpy(), state
+        if self.agent_dimension > 0:
+            action = action.reshape(-1, self.agent_dimension)
+            action_probs = (
+                action_probs.reshape(-1, self.agent_dimension, self._action_space.n)
+                .cpu()
+                .numpy()
+            )
+            logits = (
+                logits.reshape(-1, self.agent_dimension, self._action_space.n)
+                .cpu()
+                .numpy()
+            )
+            if state is not None:
+                raise NotImplementedError
+        else:
+            action_probs = action_probs.cpu().numpy()
+            logits = logits.cpu().numpy()
+
+        return action, action_probs, logits, state
 
     def parameters(self):
         return {

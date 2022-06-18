@@ -1,4 +1,4 @@
-from typing import Dict, List, Any, Union, Tuple
+from typing import ChainMap, Dict, List, Any, Union, Tuple, Sequence
 from collections import defaultdict
 
 import uuid
@@ -44,6 +44,7 @@ class Environment:
 
         self._trainable_agents = None
         self._configs = configs
+        self._state: Dict[str, np.ndarray] = None
 
     def record_episode_info_step(self, observations, rewards, dones, infos):
         reward_ph = self.episode_metrics["agent_reward"]
@@ -83,7 +84,7 @@ class Environment:
 
     def reset(
         self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
-    ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
+    ) -> Union[None, Sequence[Dict[AgentID, Any]]]:
         """Reset environment and the episode info handler here."""
 
         self.max_step = max_step or self.max_step
@@ -111,6 +112,13 @@ class Environment:
         done2 = self.cnt >= self.max_step > 0
         return done1 or done2
 
+    def action_mask_extract(self, raw_observations: Dict[str, Any]):
+        action_masks = {}
+        for agent, obs in raw_observations.items():
+            if isinstance(obs, dict) and "action_mask" in obs:
+                action_masks[agent] = np.asarray(obs["action_mask"], dtype=np.int32)
+        return action_masks
+
     def step(
         self, actions: Dict[AgentID, Any]
     ) -> Tuple[
@@ -120,17 +128,33 @@ class Environment:
         Dict[AgentID, bool],
         Dict[AgentID, Any],
     ]:
+        """Return a tuple of (obs, action_mask, reward, done, info).
+
+        Note:
+            If envrionment has state return, it will be included in the info dict.
+
+        Args:
+            actions (Dict[AgentID, Any]): A dict of agent actions.
+
+        Returns:
+            Tuple[ Dict[AgentID, Any], Dict[AgentID, np.ndarray], Dict[AgentID, float], Dict[AgentID, bool], Dict[AgentID, Any]]: A 5-tuple.
+        """
+
         self.cnt += 1
         rets = list(self.time_step(actions))
         rets[2]["__all__"] = self.env_done_check(rets[2])
         self.record_episode_info_step(*rets)
         observations = rets[0]
-        action_masks = {}
-        for agent, obs in observations.items():
-            if isinstance(obs, dict) and "action_mask" in obs:
-                action_masks[agent] = np.asarray(obs["action_mask"], dtype=np.float32)
+        action_masks = self.action_mask_extract(observations)
         rets = tuple([rets[0], action_masks] + rets[1:])
+        # obs, action_mask, reward, done, info.
         return rets
+
+    def set_state(self, state: Dict[str, np.ndarray]):
+        self._state = state
+
+    def get_state(self) -> Union[None, Dict[str, np.ndarray]]:
+        return self._state
 
     def time_step(
         self, actions: Dict[AgentID, Any]
@@ -187,6 +211,7 @@ class SequentialEnv(Environment):
         raise NotImplementedError
 
 
+# TODO(ming): test required
 class Wrapper(Environment):
     """Wraps the environment to allow a modular transformation"""
 
@@ -232,47 +257,91 @@ class Wrapper(Environment):
 
     def reset(
         self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
-    ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
-        return self.env.reset(max_step, custom_reset_config)
+    ) -> Union[None, Tuple[Dict[AgentID, Any]]]:
+        ret = self.env.reset(max_step, custom_reset_config)
+
+        if isinstance(ret, dict):
+            ret = (ret,)
+
+        return ret
 
     def collect_info(self) -> Dict[str, Any]:
         return self.env.collect_info()
 
 
+# TODO(ming): test required.
 class GroupWrapper(Wrapper):
-    def __init__(self, env: Environment):
+    def __init__(
+        self,
+        env: Environment,
+        aid_to_gid: Dict[AgentID, str],
+        agent_groups: Dict[str, List[AgentID]],
+    ):
         super(GroupWrapper, self).__init__(env)
-
-        self.group_to_agents = defaultdict(lambda: [])
-        # self.agent_to_group = {}
-        for agent_id in self.possible_agents:
-            gid = self.group_rule(agent_id)
-            # self.agent_to_group[agent_id] = gid
-            self.group_to_agents[gid].append(agent_id)
-        # soft frozen group_to_agents
-        self.group_to_agents = dict(self.group_to_agents)
-        self.groups = tuple(self.group_to_agents.keys())
-
+        self._aid_to_gid = aid_to_gid
+        self._agent_groups = agent_groups
         self._state_spaces = self.build_state_spaces()
 
     @property
-    def state_spaces(self) -> Dict[AgentID, gym.Space]:
+    def state_spaces(self) -> Dict[str, gym.Space]:
+        """Return a dict of group state spaces.
+
+        Note:
+            Users must implement the method `build_state_space`.
+
+        Returns:
+            Dict[str, gym.Space]: A dict of state spaces.
+        """
+
         return self._state_spaces
 
-    def group_rule(self, agent_id: AgentID) -> str:
-        """Define the rule of grouping, mapping agent id to group id"""
+    @property
+    def possible_agents(self) -> List[str]:
+        return list(self.agent_groups.keys())
 
+    @property
+    def action_spaces(self) -> Dict[str, gym.Space]:
         raise NotImplementedError
 
-    def build_state_spaces(self) -> Dict[AgentID, gym.Space]:
+    @property
+    def observation_spaces(self) -> Dict[str, gym.Space]:
+        return NotImplementedError
+
+    @property
+    def agent_groups(self) -> Dict[str, List[AgentID]]:
+        return self._agent_groups
+
+    def agent_to_group(self, agent_id: AgentID) -> str:
+        """Mapping agent id to groupd id.
+
+        Args:
+            agent_id (AgentID): Agent id.
+
+        Returns:
+            str: Group id.
+        """
+
+        return self._aid_to_gid[agent_id]
+
+    def build_state_spaces(self) -> Dict[str, gym.Space]:
         """Call `self.group_to_agents` to build state space here"""
 
         raise NotImplementedError
 
     def build_state_from_observation(
         self, agent_observation: Dict[AgentID, Any]
-    ) -> Dict[AgentID, Any]:
-        """Return a dict of state"""
+    ) -> Dict[str, np.ndarray]:
+        """Build state from raw observation.
+
+        Args:
+            agent_observation (Dict[AgentID, Any]): A dict of agent observation.
+
+        Raises:
+            NotImplementedError: Not implemented error
+
+        Returns:
+            Dict[str, np.ndarray]: A dict of states.
+        """
 
         raise NotImplementedError
 
@@ -282,15 +351,69 @@ class GroupWrapper(Wrapper):
         rets = super(GroupWrapper, self).reset(
             max_step=max_step, custom_reset_config=custom_reset_config
         )
-        # add CUR_STATE
-        rets[Episode.CUR_STATE] = self.build_state_from_observation(
-            rets[Episode.CUR_OBS]
-        )
-        return rets
+        state = self.build_state_from_observation(rets[0])
+        self.set_state(state)
+        observations = rets[0]
+        grouped_obs = {
+            gid: tuple(observations[aid] for aid in agents)
+            for gid, agents in self.agent_groups.items()
+        }
+        grouped_action_masks = self.action_mask_extract(grouped_obs)
+        return (grouped_obs, grouped_action_masks)
 
-    def time_step(self, actions: Dict[AgentID, Any]):
-        rets = super(GroupWrapper, self).time_step(actions)
-        rets[Episode.NEXT_STATE] = self.build_state_from_observation(
-            rets[Episode.NEXT_OBS]
-        )
-        return rets
+    def action_mask_extract(self, raw_observations: Dict[str, Any]):
+        action_masks = {}
+        for gid, agent_obs_tup in raw_observations.items():
+            if isinstance(agent_obs_tup[0], dict) and "action_mask" in agent_obs_tup[0]:
+                action_masks[gid] = tuple(x["action_mask"] for x in agent_obs_tup)
+        return action_masks
+
+    def record_episode_info_step(self, observations, rewards, dones, infos):
+        reward_ph = self.episode_metrics["agent_reward"]
+        step_ph = self.episode_metrics["agent_step"]
+        for aid, r in rewards.items():
+            if aid not in reward_ph:
+                reward_ph[aid] = []
+                step_ph[aid] = 0
+            reward_ph[aid].append(r)
+            step_ph[aid] += 1
+        self.episode_meta_info["env_done"] = dones["__all__"]
+        self.episode_metrics["env_step"] += 1
+        self.episode_metrics["episode_reward"] += sum(map(sum, rewards.values()))
+
+    def env_done_check(self, agent_dones: Dict[AgentID, bool]) -> bool:
+        # default by any
+        done1 = any(map(any, agent_dones.values()))
+        done2 = self.cnt >= self.max_step > 0
+        return done1 or done2
+
+    def time_step(self, actions: Dict[str, Any]):
+        agent_actions = {}
+        for gid, _actions in actions.items():
+            agent_actions.update(dict(zip(self.agent_groups[gid], _actions)))
+        rets = self.env.time_step(agent_actions)
+        state = self.build_state_from_observation(rets[0])
+        self.set_state(state)
+        # regroup obs
+        observations = rets[0]
+        rewards = rets[1]
+        dones = rets[2]
+        infos = rets[3]
+
+        grouped_obs = {
+            gid: tuple(observations[aid] for aid in agents)
+            for gid, agents in self.agent_groups.items()
+        }
+        grouped_rewards = {
+            gid: tuple(rewards[agent] for agent in agents)
+            for gid, agents in self.agent_groups.items()
+        }
+        grouped_dones = {
+            gid: tuple(dones[agent] for agent in agents)
+            for gid, agents in self.agent_groups.items()
+        }
+        grouped_infos = {
+            gid: tuple(infos[agent] for agent in agents)
+            for gid, agents in self.agent_groups.items()
+        }
+        return grouped_obs, grouped_rewards, grouped_dones, grouped_infos

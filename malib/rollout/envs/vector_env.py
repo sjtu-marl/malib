@@ -80,12 +80,6 @@ class VectorEnv:
 
     @property
     def batched_step_cnt(self) -> int:
-        # return (
-        #     self._step_cnt
-        #     if isinstance(self._step_cnt, int)
-        #     else self._step_cnt[self._trainable_agents]
-        # )
-        # XXX(ming): we currently considers only int case
         return self._step_cnt
 
     @property
@@ -224,7 +218,12 @@ class VectorEnv:
         # since activ_envs maybe updated after self.step, so we should use keys
         # in self.active_envs
         res = {
-            env_id: {agent: v[Episode.ACTION][0] for agent, v in policy_output.items()}
+            env_id: {
+                agent: v[Episode.ACTION][0]
+                if v[Episode.ACTION].shape == (1,)
+                else v[Episode.ACTION]
+                for agent, v in policy_output.items()
+            }
             for env_id, policy_output in policy_outputs.items()
         }
 

@@ -1,46 +1,82 @@
-from typing import Callable, Any, Dict
+from collections import defaultdict
+from types import LambdaType
+from typing import Any, Dict, List
 
 import gym
-import numpy as np
+
+from gym import spaces
 
 from malib.utils.typing import AgentID
-
+from malib.utils.preprocessor import get_preprocessor
 from malib.rollout.envs.env import GroupWrapper
+from .env import GRFootball
 
 
-def GroupedGFBall(base_env, parameter_sharing_func: Callable):
-    class PSGFootBall(GroupWrapper):
-        def __init__(self, env):
-            super().__init__(env)
-            self.is_sequential = False
+class GroupedFootball(GroupWrapper):
+    def __init__(self, agent_group_mapping: LambdaType, **config):
+        env = GRFootball(**config)
+        agent_groups = defaultdict(lambda: [])
+        for agent in env.possible_agents:
+            gid = agent_group_mapping(agent)
+            agent_groups[gid].append(agent)
+        agent_groups = dict(agent_groups)
+        # build agent to group
+        aid_to_gid = {}
+        for gid, agents in agent_groups.items():
+            aid_to_gid.update(dict.fromkeys(agents, gid))
+        self.aid_to_gid = aid_to_gid
 
-        def build_state_from_observation(
-            self, agent_observation: Dict[AgentID, Any]
-        ) -> Dict[AgentID, Any]:
-            # considering overlapping in the mapping, maybe?
-            group_obs = {gid: [] for gid in self.groups}
-            for gid, container in group_obs.items():
-                container.extend(
-                    [agent_observation[aid] for aid in self.group_to_agents[gid]]
-                )
-                container = np.vstack(container)
-            # share among agents
-            return {
-                aid: group_obs[self.group_rule(aid)] for aid in self.possible_agents
-            }
+        agent_obs_spaces = env.observation_spaces
+        agent_act_spaces = env.action_spaces
 
-        def build_state_spaces(self) -> Dict[AgentID, gym.Space]:
-            return {
-                aid: gym.spaces.Tuple(
-                    [
-                        self.observation_spaces[member]
-                        for member in self.group_to_agents[self.group_rule(aid)]
-                    ]
-                )
-                for aid in self.possible_agents
-            }
+        self._observation_spaces = {
+            gid: spaces.Tuple([agent_obs_spaces[aid] for aid in agents])
+            for gid, agents in agent_groups.items()
+        }
+        self._action_spaces = {
+            gid: spaces.Tuple([agent_act_spaces[aid] for aid in agents])
+            for gid, agents in agent_groups.items()
+        }
 
-        def group_rule(self, agent_id: AgentID) -> str:
-            return parameter_sharing_func(agent_id)
+        super(GroupedFootball, self).__init__(env, aid_to_gid, agent_groups)
 
-    return PSGFootBall(base_env)
+    @property
+    def observation_spaces(self) -> Dict[str, gym.Space]:
+        return self._observation_spaces
+
+    @property
+    def action_spaces(self) -> Dict[str, gym.Space]:
+        return self._action_spaces
+
+    def build_state_from_observation(
+        self, agent_observation: Dict[AgentID, Any]
+    ) -> Dict[AgentID, Any]:
+        """Build state spaces for each group.
+
+        Args:
+            agent_observation (Dict[AgentID, Any]): A dict of agent observations.
+
+        Returns:
+            Dict[AgentID, Any]: A dict of states.
+        """
+
+        states = {}
+
+        for gid, agents in self.agent_groups.items():
+            selected_obs = tuple(agent_observation[agent] for agent in agents)
+            states[gid] = self.state_preprocessors[gid].transform(selected_obs)
+
+        return states
+
+    def build_state_spaces(self) -> Dict[str, gym.Space]:
+        state_spaces = {gid: None for gid in self.agent_groups}
+        state_preprocessors = {gid: None for gid in self.agent_groups}
+        for gid, agents in self.agent_groups.items():
+            state_preprocessor = get_preprocessor(self.observation_spaces[gid])(
+                self.observation_spaces[gid]
+            )
+            space_unit = state_preprocessor.observation_space
+            state_spaces[gid] = spaces.Tuple([space_unit] * len(agents))
+            state_preprocessors[gid] = state_preprocessor
+        self.state_preprocessors = state_preprocessors
+        return state_spaces

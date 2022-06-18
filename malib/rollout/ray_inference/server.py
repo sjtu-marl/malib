@@ -124,6 +124,7 @@ class RayInferenceWorkerSet(RemoteInterface):
                 )
 
                 rets = {}
+
             with timer.time_avg("policy_update"):
                 info = ray.get(
                     self.parameter_server.get_weights.remote(

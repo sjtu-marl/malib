@@ -40,15 +40,20 @@ class DQNTrainer(Trainer):
         # set exploration rate for policy
         update_eps = self.exploration.value(self.counter)
         self.policy.eps = update_eps
+        if self.policy.agent_dimension > 0:
+            for k, v in batch.items():
+                if isinstance(v, np.ndarray):
+                    inner_shape = v.shape[2:]
+                    batch[k] = v.reshape((-1,) + inner_shape)
         return batch
 
     def train(self, batch: Dict[str, torch.Tensor]):
-        state_action_values, _ = self.policy.critic(batch.obs)
+        state_action_values, _ = self.policy.critic(batch.obs.squeeze())
         state_action_values = state_action_values.gather(
             -1, batch.act.long().view((-1, 1))
         ).view(-1)
 
-        next_state_q, _ = self.target_critic(batch.obs_next)
+        next_state_q, _ = self.target_critic(batch.obs_next.squeeze())
         next_action_mask = batch.get("action_mask_next", None)
 
         if next_action_mask is not None:

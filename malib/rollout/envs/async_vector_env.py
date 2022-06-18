@@ -1,5 +1,7 @@
 from collections import defaultdict
+from readerwriterlock import rwlock
 from typing import ChainMap, Dict, Any, List, Union
+from asyncio.queues import Queue as PyQueue
 
 import gym
 import uuid
@@ -7,7 +9,28 @@ import ray
 
 from malib.utils.typing import AgentID, EnvID
 from malib.utils.episode import Episode
+from malib.rollout.envs import Environment
 from .vector_env import VectorEnv, SubprocVecEnv
+
+
+def start_env_thread(manager, env: Environment, sender: PyQueue, recver: PyQueue):
+    """Start environment thread.
+
+    Args:
+        env (Environment): Enivronment instance
+        queue (PyQueue): Queue.
+    """
+
+    try:
+        done = False
+        while not done:
+            actions = sender.get()
+            ret = env.step(actions)
+            manager._update_step_cnt()
+            recver.put(ret)
+            done = ret[3]["__all__"]
+    except Exception as e:
+        raise e
 
 
 class AsyncVectorEnv(VectorEnv):
@@ -24,6 +47,10 @@ class AsyncVectorEnv(VectorEnv):
         )
         self.cached_frame = defaultdict(lambda: {})
 
+        mark = rwlock.RWLockFair()
+        self.rlock = mark.gen_rlock()
+        self.wlock = mark.gen_wlock()
+
     def _delay_step(
         self, env_id: EnvID, actions: Dict[AgentID, Any]
     ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
@@ -39,6 +66,14 @@ class AsyncVectorEnv(VectorEnv):
                 self.cached_frame[env_id] = {}
 
         return rets
+
+    # def _update_step_cnt(self, ava_agents: List[AgentID] = None):
+    #     with self.wlock:
+    #         return super()._update_step_cnt(ava_agents)
+
+    # def is_terminated(self):
+    #     with self.rlock:
+    #         return super().is_terminated()
 
     def step(self, actions: Dict[EnvID, Dict[AgentID, Any]]) -> Dict:
         """Execute environment step. Note the enter environment ids could be different from the output.

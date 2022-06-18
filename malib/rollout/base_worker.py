@@ -411,7 +411,7 @@ class BaseRolloutWorker(RemoteInterface):
             rid: None for rid in self.runtime_agent_ids
         }
         for rid, identifier in data_entrypoints.items():
-            print(f"request for start producer pipe named={identifier}.")
+            print(f"request producer-pipe named={identifier}.")
             queue_id, queue = ray.get(
                 self.dataset_server.start_producer_pipe.remote(name=identifier)
             )

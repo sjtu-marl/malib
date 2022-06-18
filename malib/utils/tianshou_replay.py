@@ -1,7 +1,7 @@
 # refer to: https://github.com/thu-ml/tianshou/blob/master/tianshou/data/buffer/base.py
 
 from numbers import Number
-from typing import Any, Dict, List, Optional, Tuple, Union, no_type_check
+from typing import Any, Dict, List, Optional, Tuple, Union, no_type_check, Sequence
 from copy import deepcopy
 
 import h5py
@@ -319,6 +319,11 @@ class ReplayBuffer:
         self._ep_rew += rew
         self._ep_len += 1
 
+        # TODO(ming): note, the done in group mode could be a tuple/list/np.ndarray
+        #   so we need to check it.
+        if not isinstance(done, bool):
+            if not (isinstance(done, np.ndarray) and done.shape == ()):
+                done = any(done)
         if done:
             result = ptr, self._ep_rew, self._ep_len, self._ep_idx
             self._ep_rew, self._ep_len, self._ep_idx = 0.0, 0, self._index

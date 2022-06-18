@@ -23,6 +23,7 @@
 # SOFTWARE.
 
 from re import L
+import traceback
 from typing import Dict, Any, List, Sequence
 from collections import defaultdict
 
@@ -75,7 +76,7 @@ class Episode:
             for k, v in agent_item.items():
                 self.agent_entry[agent][k].append(v)
 
-    def record_env_rets(self, env_rets: Sequence[Dict[AgentID, Any]]):
+    def record_env_rets(self, env_rets: Sequence[Dict[AgentID, Any]], ignore_keys={}):
         for i, key in enumerate(
             [
                 Episode.CUR_OBS,
@@ -87,6 +88,8 @@ class Episode:
         ):
             if len(env_rets) < i + 1:
                 break
+            if key in ignore_keys:
+                continue
             for agent, _v in env_rets[i].items():
                 if agent == "__all__":
                     continue
@@ -98,21 +101,33 @@ class Episode:
         res = {}
         for agent, agent_trajectory in self.agent_entry.items():
             tmp = {}
-            for k, v in agent_trajectory.items():
-                if k == Episode.CUR_OBS:
-                    # move to next obs
-                    tmp[Episode.NEXT_OBS] = v[1:]
-                    tmp[Episode.CUR_OBS] = v[:-1]
-                elif k == Episode.CUR_STATE:
-                    # move to next state
-                    tmp[Episode.NEXT_STATE] = v[1:]
-                    tmp[Episode.CUR_STATE] = v[:-1]
-                elif k == Episode.INFO:
-                    continue
-                else:
-                    # print("datat:", k, v)
-                    tmp[k] = v
+            try:
+                for k, v in agent_trajectory.items():
+                    if k == Episode.CUR_OBS:
+                        # move to next obs
+                        tmp[Episode.NEXT_OBS] = v[1:]
+                        tmp[Episode.CUR_OBS] = v[:-1]
+                    elif k == Episode.CUR_STATE:
+                        # move to next state
+                        tmp[Episode.NEXT_STATE] = v[1:]
+                        tmp[Episode.CUR_STATE] = v[:-1]
+                    elif k == Episode.INFO:
+                        continue
+                    elif k == Episode.ACTION_MASK:
+                        tmp[Episode.ACTION_MASK] = v[:-1]
+                        tmp[Episode.NEXT_ACTION_MASK] = v[1:]
+                    else:
+                        tmp[k] = v
+            except Exception as e:
+                print(traceback.format_exc())
+                continue
             res[agent] = tmp
+        # agent trajectory length check
+        for agent, trajectory in res.items():
+            assert "rew" in trajectory, trajectory.keys()
+            expected_length = len(trajectory[Episode.CUR_OBS])
+            for k, v in trajectory.items():
+                assert len(v) == expected_length, (len(v), k, expected_length)
         return dict(res)
 
 
@@ -124,9 +139,11 @@ class NewEpisodeDict(defaultdict):
             ret = self[env_id] = self.default_factory()
             return ret
 
-    def record_env_rets(self, env_outputs: Dict[EnvID, Sequence[Dict[AgentID, Any]]]):
+    def record_env_rets(
+        self, env_outputs: Dict[EnvID, Sequence[Dict[AgentID, Any]]], ignore_keys={}
+    ):
         for env_id, env_output in env_outputs.items():
-            self[env_id].record_env_rets(env_output)
+            self[env_id].record_env_rets(env_output, ignore_keys)
 
     def record_policy_step(
         self, env_policy_outputs: Dict[EnvID, Dict[AgentID, Dict[str, Any]]]

@@ -26,6 +26,7 @@ from argparse import Namespace
 from typing import Type, Any, List, Dict, Tuple, Callable
 from types import LambdaType
 from collections import defaultdict
+from numbers import Number
 
 import os
 import time
@@ -75,15 +76,21 @@ def process_env_rets(
 
     all_agents = set()
     alive_env_ids = []
+    processed_env_rets = {}
 
     for env_id, ret in env_rets.items():
         # obs, action_mask, reward, done, info
         # process obs
         agents = list(ret[0].keys())
-        if len(ret) >= 2:
-            for agent, action_mask in ret[1].items():
-                agent_action_mask_list[agent].append(action_mask)
-            # check done
+        processed_obs = {
+            agent: preprocessor[agent].transform(raw_obs)
+            for agent, raw_obs in ret[0].items()
+        }
+        # obs, action_mask, reward, done, info,
+        processed_env_rets[env_id] = (processed_obs,) + ret[1:]
+
+        # check done
+        if len(ret) > 2:
             all_done = ret[3]["__all__"]
             if all_done:
                 continue
@@ -93,37 +100,51 @@ def process_env_rets(
                     agent_dones_list[agent].append(done)
         else:
             for agent in agents:
-                agent_dones_list[agent].append(False)
-        for agent, raw_obs in ret[0].items():
-            agent_obs_list[agent].append(preprocessor[agent].transform(raw_obs))
+                if isinstance(ret[0][agent], Tuple):
+                    agent_dones_list[agent].append([False] * len(ret[0][agent]))
+                else:
+                    agent_dones_list[agent].append(False)
+
+        # do not move this inference before check done
+        if len(ret) >= 2:
+            for agent, action_mask in ret[1].items():
+                agent_action_mask_list[agent].append(action_mask)
+
+        for agent, obs in processed_obs.items():
+            agent_obs_list[agent].append(obs)
         all_agents.update(agents)
         alive_env_ids.append(env_id)
 
-    # server_runtime_config["environment_ids"] = alive_env_ids
     for agent in all_agents:
+        stacked_obs = np.stack(agent_obs_list[agent])
+        stacked_action_mask = (
+            np.stack(agent_action_mask_list[agent])
+            if agent_action_mask_list.get(agent)
+            else None
+        )
+        stacked_done = np.stack(agent_dones_list[agent])
+
         dataframes[agent] = DataFrame(
             identifier=agent,
             data={
-                Episode.CUR_OBS: np.stack(agent_obs_list[agent]).squeeze(),
-                Episode.ACTION_MASK: np.stack(agent_action_mask_list[agent]).squeeze()
-                if agent_action_mask_list.get(agent)
-                else None,
-                Episode.DONE: np.stack(agent_dones_list[agent]),
+                Episode.CUR_OBS: stacked_obs,
+                Episode.ACTION_MASK: stacked_action_mask,
+                Episode.DONE: stacked_done,
             },
             meta_data={
                 "environment_ids": alive_env_ids,
                 "evaluate": preset_meta_data["evaluate"],
                 "data_shapes": {
-                    Episode.CUR_OBS: preprocessor[agent].shape,
-                    Episode.ACTION_MASK: agent_action_mask_list[agent][0].shape
-                    if agent_action_mask_list.get(agent)
+                    Episode.CUR_OBS: stacked_obs.shape[1:],
+                    Episode.ACTION_MASK: stacked_action_mask.shape[1:]
+                    if stacked_action_mask is not None
                     else None,
-                    Episode.DONE: (),
+                    Episode.DONE: stacked_done.shape[1:],
                 },
             },
         )
 
-    return dataframes
+    return processed_env_rets, dataframes
 
 
 def process_policy_outputs(
@@ -346,8 +367,6 @@ class RayInferenceClient(RemoteInterface):
         self.timer.clear()
         task_type = desc["flag"]
 
-        # Logger.debug(f"accept task description: {desc}")
-
         desc["custom_reset_config"] = desc.get("custom_reset_config", {})
         server_runtime_config = desc.copy()
         server_runtime_config.update(
@@ -418,18 +437,19 @@ def env_runner(
                 custom_reset_config=request.custom_reset_config,
             )
 
-        dataframes: Dict[AgentID, DataFrame] = process_env_rets(
+        processed_env_ret, dataframes = process_env_rets(
             env_rets,
             preprocessor=server_runtime_config["preprocessor"],
             preset_meta_data={"evaluate": server_runtime_config["evaluate"]},
         )
         # record environment return at reset has been called:
         # (obs, action_mask)
-        episode_dict.record_env_rets(env_rets)
+        episode_dict.record_env_rets(processed_env_ret)
 
         Logger.debug("env runner started...")
         start = time.time()
         # async policy interaction
+        cnt = 0
         while not client.env.is_terminated():
             grouped_data_frames: Dict[str, List[DataFrame]] = defaultdict(lambda: [])
             for agent, dataframe in dataframes.items():
@@ -470,12 +490,35 @@ def env_runner(
                     dataframes = {}
                     continue
                 # merge RNN states here
-                dataframes = process_env_rets(
+                processed_env_ret, dataframes = process_env_rets(
                     env_rets,
                     preprocessor=server_runtime_config["preprocessor"],
                     preset_meta_data={"evaluate": server_runtime_config["evaluate"]},
                 )
-                episode_dict.record_env_rets(env_rets)
+                episode_dict.record_env_rets(processed_env_ret)
+
+            cnt += 1
+            # FIXME(ming): only time step mode support
+            # if writer_info_dict is not None and cnt % 100 == 0:
+            #     episodes = episode_dict.to_numpy()
+            #     for rid, writer_info in writer_info_dict.items():
+            #         # get agents from agent group
+            #         agents = client.agent_group[rid]
+            #         batches = []
+            #         for episode in episodes.values():
+            #             agent_buffer = [episode[aid] for aid in agents]
+            #             batches.append(agent_buffer)
+            #         writer_info[-1].put_nowait_batch(batches)
+            #     # rewrite
+            #     episode_dict.clear()
+            #     episode_dict.record_env_rets(
+            #         processed_env_ret, ignore_keys={"rew", "infos", "done"}
+            #     )
+            #     print(
+            #         "send data, current rollout fps: {:.3f}".format(
+            #             client.env.batched_step_cnt / (time.time() - start)
+            #         )
+            #     )
 
         if writer_info_dict is not None:
             # episode_id: agent_id: dict_data

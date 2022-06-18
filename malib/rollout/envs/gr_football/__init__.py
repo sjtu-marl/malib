@@ -1,4 +1,9 @@
-from .env import BaseGFootBall, ParameterSharing
+from types import LambdaType
+from typing import Dict, List
+
+from malib.utils.typing import AgentID
+from .env import GRFootball
+from .wrappers import GroupedFootball
 
 
 default_sharing_mapping = lambda x: x[:6]
@@ -20,24 +25,32 @@ DEFAULT_ENV_CONNFIG = {
 }
 
 
-def creator(**kwargs):
-    base = BaseGFootBall(**kwargs)
-    if kwargs.get("enable_sharing", False):
-        return ParameterSharing(base, default_sharing_mapping)
+def env_desc_gen(config, group: bool = False, agent_group_mapping: LambdaType = None):
+    if config is None:
+        config = DEFAULT_ENV_CONNFIG
+
+    if not group:
+        env = GRFootball(**config)
+        env_desc = {"creator": GRFootball}
     else:
-        return base
+        env = GroupedFootball(
+            agent_group_mapping=default_sharing_mapping or agent_group_mapping, **config
+        )
+        env_desc = {"creator": GroupedFootball}
+        config["agent_group_mapping"] = default_sharing_mapping or agent_group_mapping
 
+    env_desc.update(
+        {
+            "possible_agents": env.possible_agents,
+            "action_spaces": env.action_spaces,
+            "observation_spaces": env.observation_spaces,
+            "config": config,
+        }
+    )
 
-def env_desc_gen(config):
-    env = creator(**config)
-    env_desc = {
-        "creator": creator,
-        "possible_agents": env.possible_agents,
-        "action_spaces": env.action_spaces,
-        "observation_spaces": env.observation_spaces,
-        "config": config,
-    }
     if hasattr(env, "state_spaces"):
         env_desc["state_spaces"] = env.state_spaces
+
     env.close()
+
     return env_desc

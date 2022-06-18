@@ -1,21 +1,34 @@
 import numpy as np
+from gym import spaces
 
 
 class FeatureEncoder:
-    def __init__(self):
+    def __init__(self, n_left_agent: int, n_right_agent: int, n_action: int):
         self.active = -1
+        self.n_left_agent = n_left_agent
+        self.n_right_agent = n_right_agent
+        self.n_action = n_action
         self.player_pos_x, self.player_pos_y = 0, 0
 
     def get_feature_dims(self):
         dims = {
-            "player": 29,
+            "player": 19,
             "ball": 18,
-            "left_team": 7,
-            "left_team_closest": 7,
-            "right_team": 7,
-            "right_team_closest": 7,
+            "left_team": self.n_left_agent * 7,
+            "left_closest": 7,
+            "right_team": self.n_right_agent * 7,
+            "right_closest": 7,
+            "action_mask": self.n_action,
         }
         return dims
+
+    def get_obs_shape(self):
+        return spaces.Dict(
+            {
+                k: spaces.Box(low=-10.0, high=10.0, shape=(v,), dtype=np.float32)
+                for k, v in self.get_feature_dims().items()
+            }
+        )
 
     def encode(self, obs):
         player_num = obs["active"]
@@ -134,7 +147,7 @@ class FeatureEncoder:
             "left_closest": left_closest_state,
             "right_team": right_team_state,
             "right_closest": right_closest_state,
-            "avail": avail,
+            "action_mask": avail,
         }
 
         return state_dict

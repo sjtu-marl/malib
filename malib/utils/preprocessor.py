@@ -63,6 +63,7 @@ def _get_batched(data: Any):
 class Preprocessor(metaclass=ABCMeta):
     def __init__(self, space: spaces.Space):
         self._original_space = space
+        self._size = 0
 
     @abstractmethod
     def transform(self, data, nested=False) -> DataTransferType:
@@ -140,12 +141,30 @@ class DictFlattenPreprocessor(Preprocessor):
 
 class TupleFlattenPreprocessor(Preprocessor):
     def __init__(self, space: spaces.Tuple):
-        assert isinstance(space, spaces.Tuple), space
+        """Init a tuple flatten preprocessor, will stack inner flattend spaces.
+
+        Note:
+            All sub spaces in a tuple should be homogeneous.
+
+        Args:
+            space (spaces.Tuple): A tuple of homogeneous spaces.
+        """
         super(TupleFlattenPreprocessor, self).__init__(space)
         self._preprocessors = []
-        for k, _space in enumerate(space.spaces):
-            self._preprocessors.append(get_preprocessor(_space)(_space))
-        self._size = sum([prep.size for prep in self._preprocessors])
+
+        self._preprocessors.append(get_preprocessor(space.spaces[0])(space.spaces[0]))
+        expected_shape = self._preprocessors[0].shape
+        self._size += self._preprocessors[0].size
+
+        for _space in space.spaces[1:]:
+            sub_preprocessor = get_preprocessor(_space)(_space)
+            assert sub_preprocessor.shape == expected_shape, (
+                sub_preprocessor.shape,
+                expected_shape,
+            )
+            self._preprocessors.append(sub_preprocessor)
+            self._size += sub_preprocessor.size
+        self._shape = (len(space.spaces),) + expected_shape
 
     @property
     def size(self):
@@ -153,17 +172,19 @@ class TupleFlattenPreprocessor(Preprocessor):
 
     @property
     def shape(self):
-        return (self.size,)
+        return self._shape
 
     def transform(self, data, nested=False) -> DataTransferType:
         if nested:
-            data = _get_batched(data)
+            raise NotImplementedError
 
         if isinstance(data, List):
+            # write batch
             array = np.zeros((len(data),) + self.shape)
             for i in range(len(array)):
                 self.write(array[i], 0, data[i])
         else:
+            # write single to stack
             array = np.zeros(self.shape)
             self.write(array, 0, data)
         return array
@@ -171,7 +192,8 @@ class TupleFlattenPreprocessor(Preprocessor):
     def write(self, array: DataTransferType, offset: int, data: Any):
         if isinstance(data, Tuple):
             for _data, prep in zip(data, self._preprocessors):
-                array[offset : offset + prep.size] = prep.transform(_data)
+                array[offset : offset + 1] = prep.transform(_data)
+                offset += 1
         else:
             raise TypeError(f"Unexpected type: {type(data)}")
 
