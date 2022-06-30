@@ -31,6 +31,7 @@ import gym
 import ray
 
 from ray.actor import ActorHandle
+from ray.util.queue import Queue
 
 from malib.utils.logging import Logger
 from malib.utils.typing import (
@@ -249,6 +250,19 @@ class VectorEnv:
     def close(self):
         for env in self._envs:
             env.close()
+
+
+def env_thread(env, sender: Queue, recver: Queue):
+    env_id = None
+
+    while True:
+        actions = recver.get()
+        ret = env.step(actions)
+        sender.put({"id": env_id, "ret": ret})
+        if ret[2]["__all__"]:
+            # reset and regen id
+            env_id = None
+            ret = env.reset()
 
 
 @ray.remote(num_cpus=0)

@@ -67,14 +67,6 @@ class AsyncVectorEnv(VectorEnv):
 
         return rets
 
-    # def _update_step_cnt(self, ava_agents: List[AgentID] = None):
-    #     with self.wlock:
-    #         return super()._update_step_cnt(ava_agents)
-
-    # def is_terminated(self):
-    #     with self.rlock:
-    #         return super().is_terminated()
-
     def step(self, actions: Dict[EnvID, Dict[AgentID, Any]]) -> Dict:
         """Execute environment step. Note the enter environment ids could be different from the output.
 

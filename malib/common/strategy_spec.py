@@ -92,7 +92,7 @@ class StrategySpec:
         for pid, prob in policy_probs.items():
             idx = self.policy_ids.index(pid)
             self.meta_data["prob_list"][idx] = prob
-        assert np.isclose(self.meta_data["prob_list"], 1.0), (
+        assert np.isclose(sum(self.meta_data["prob_list"]), 1.0), (
             self.meta_data["prob_list"],
             sum(self.meta_data["prob_list"]),
         )

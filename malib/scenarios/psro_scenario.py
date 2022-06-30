@@ -32,10 +32,13 @@ from malib.rollout.manager import RolloutWorkerManager
 from malib.common.payoff_manager import PayoffManager
 from malib.common.strategy_spec import StrategySpec
 from malib.scenarios import Scenario
-from malib.scenarios.marl_scenario import execution_plan as marl_execution_plan
+from malib.scenarios.marl_scenario import (
+    execution_plan as marl_execution_plan,
+    MARLScenario,
+)
 
 
-class PSROScenario(Scenario):
+class PSROScenario(MARLScenario):
     def __init__(
         self,
         name: str,
@@ -45,16 +48,45 @@ class PSROScenario(Scenario):
         rollout_config: Dict[str, Any],
         training_config: Dict[str, Any],
         global_stopping_conditions: Dict[str, Any],
-        agent_mapping_func: LambdaType = lambda agent: agent,
+        meta_solver_type: str = "fictitious_play",
+        agent_mapping_func: LambdaType = ...,
         num_worker: int = 1,
+        stopping_conditions: Dict[str, Any] = None,
+        dataset_config: Dict[str, Any] = None,
+        parameter_server_config: Dict[str, Any] = None,
     ):
-        super().__init__(name)
-        self.algortihms = algorithms
-        self.log_dir = log_dir
-        self.env_desc = env_description
-        self.rollout_config = rollout_config
-        self.agent_mapping_func = agent_mapping_func
-        self.num_worker = num_worker
+        """Construct a learning scenario for Policy Space Response Oracle methods.
+
+        Args:
+            name (str): Scenario name, for experiment tag creating and identification.
+            log_dir (str): Log directory.
+            algorithms (Dict[str, Any]): A dict that provides a series of algorithms, must indludes algorithm named with `default`.
+            env_description (Dict[str, Any]): Environment description.
+            rollout_config (Dict[str, Any]): Rollout configuration.
+            training_config (Dict[str, Any]): Training configuration, for the construction of `AgentInterface`.
+            global_stopping_conditions (Dict[str, Any]): Global stopping conditions to control the outer loop.
+            meta_solver_type (str): Meta solver type, `fictitious_play` or `alpharank`.
+            agent_mapping_func (LambdaType, optional): Agent mapping function, maps from environment agents to runtime ids, all workers share the same mapping func. Defaults to lambdaagent:agent.
+            num_worker (int, optional): Indicates how many `RolloutWorker` will be initialized. Defaults to 1.
+            stopping_conditions (Dict[str, Any], optional): Stopping conditions, should contain `rollout` and `training`. Defaults to None.
+            dataset_config (Dict[str, Any], optional): Dataset configuration. Defaults to None.
+            parameter_server_config (Dict[str, Any], optional): Parameter server configuration. Defaults to None.
+        """
+
+        super().__init__(
+            name,
+            log_dir,
+            algorithms,
+            env_description,
+            rollout_config,
+            training_config,
+            agent_mapping_func,
+            num_worker,
+            stopping_conditions,
+            dataset_config,
+            parameter_server_config,
+        )
+        self.meta_solver_type = meta_solver_type
         self.global_stopping_conditions = global_stopping_conditions
 
 
@@ -62,16 +94,19 @@ def simulate(
     rollout_manager: RolloutWorkerManager,
     strategy_specs_list: List[Dict[str, StrategySpec]],
 ):
-    rollout_manager.simulate(strategy_specs_list)
-    results = rollout_manager.wait()
-    return results
+    # rollout_manager.simulate(strategy_specs_list)
+    # results = rollout_manager.wait()
+    # return results
+    # TODO(ming): for debug, fake simulation results
+    return
 
 
-def execution_plan(scenario: Scenario):
+def execution_plan(experiment_tag: str, scenario: Scenario):
     training_manager = TrainingManager(
+        experiment_tag=experiment_tag,
+        stopping_conditions=scenario.stopping_conditions,
         algorithms=scenario.algorithms,
         env_desc=scenario.env_desc,
-        interface_config=scenario.interface_config,
         agent_mapping_func=scenario.agent_mapping_func,
         training_config=scenario.training_config,
         log_dir=scenario.log_dir,
@@ -79,19 +114,22 @@ def execution_plan(scenario: Scenario):
     )
 
     rollout_manager = RolloutWorkerManager(
+        experiment_tag=experiment_tag,
+        stopping_conditions=scenario.stopping_conditions,
         num_worker=scenario.num_worker,
         agent_mapping_func=scenario.agent_mapping_func,
-        rollout_configs=scenario.rollout_config,
+        rollout_config=scenario.rollout_config,
         env_desc=scenario.env_desc,
         log_dir=scenario.log_dir,
     )
 
     payoff_manager = PayoffManager(
-        agent_names=scenario.env_desc["possible_agents"],
+        agent_names=scenario.env_desc["possible_agents"].copy(),
+        agent_mapping_func=scenario.agent_mapping_func,
         solve_method=scenario.meta_solver_type,
     )
 
-    stopper = get_stopper(scenario.global_stopping_conditions)
+    # stopper = get_stopper(scenario.global_stopping_conditions)
 
     equilibrium = {
         agent: {"policy-0": 1.0} for agent in scenario.env_desc["possible_agents"]
@@ -100,17 +138,19 @@ def execution_plan(scenario: Scenario):
     scenario.rollout_manager = rollout_manager
 
     # TODO(ming): eval based on the exploitability
-    while stopper.should_stop():
+    for i in range(10):
+        print(f"\n---------------- outer epoch: {i} --------------")
         scenario.prob_list_each = equilibrium
-        info = marl_execution_plan(scenario)
-        # extend payoff tables with new brs
-        strategy_specs: Dict[AgentID, StrategySpec] = info["strategy_specs"]
-        payoff_manager.expand(brs=strategy_specs)
+        # run inner multi-agent training tasks
+        info = marl_execution_plan(experiment_tag, scenario)
+        # extend payoff tables with runtime brs
+        strategy_specs: Dict[str, StrategySpec] = info["strategy_specs"]
+        payoff_manager.expand(strategy_specs=strategy_specs)
 
         # retrieve specs list, a dict as a joint strategy spec
-        strategy_specs_list = payoff_manager.get_pending_matchups(strategy_specs)
-        results = simulate(rollout_manager, strategy_specs_list=strategy_specs_list)
-        payoff_manager.update_payoff(results)
+        # strategy_specs_list = payoff_manager.get_pending_matchups(strategy_specs)
+        # results = simulate(rollout_manager, strategy_specs_list=strategy_specs_list)
+        # payoff_manager.update_payoff(results)
 
         # update probs
         equilibrium = payoff_manager.compute_equilibrium(strategy_specs)

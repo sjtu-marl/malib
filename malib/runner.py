@@ -50,10 +50,10 @@ def run(scenario: Scenario):
 
         experiment_tag = f"malib-{scenario.name}-{time.time()}"
 
-        if isinstance(scenario, marl_scenario.MARLScenario):
+        if isinstance(scenario, psro_scenario.PSROScenario):
+            psro_scenario.execution_plan(experiment_tag, scenario)
+        elif isinstance(scenario, marl_scenario.MARLScenario):
             marl_scenario.execution_plan(experiment_tag, scenario)
-        elif isinstance(scenario, psro_scenario.PSROScenario):
-            psro_scenario.execution_plan(scenario)
         else:
             raise TypeError("Unexpected scenario type: {}".format(scenario))
     except KeyboardInterrupt:

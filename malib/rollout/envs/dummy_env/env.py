@@ -1,5 +1,6 @@
 from typing import Dict, Any, List, Union
 
+import time
 import gym
 
 from gym import spaces
@@ -15,6 +16,7 @@ class DummyEnv(Environment):
         self.num_agents = configs.get("num_agents", 2)
         self.action_space = spaces.Discrete(n=3)
         self.observation_space = spaces.Box(low=-1.0, high=1.0, shape=(3, 2))
+        self.step_time_consumption = configs.get("step_time_consumption", 0.1)
 
     @property
     def possible_agents(self) -> List[AgentID]:
@@ -37,6 +39,8 @@ class DummyEnv(Environment):
         done = self.cnt >= self.max_step
         dones = dict.fromkeys(self.possible_agents, done)
         infos = dict.fromkeys(self.possible_agents, {})
+        # fake time consumption
+        # time.sleep(self.step_time_consumption)
         return observations, rewards, dones, infos
 
     def close(self):

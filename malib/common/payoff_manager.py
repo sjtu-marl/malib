@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import List, Union, Sequence, Dict, Tuple, Any
+from typing import List, Union, Sequence, Dict, Tuple, Any, Callable
 import copy
 import itertools
 import logging
@@ -33,6 +33,8 @@ import numpy as np
 from dataclasses import dataclass
 
 from malib.utils.typing import AgentID, PolicyID
+from malib.utils.logging import Logger
+from malib.common.strategy_spec import StrategySpec
 
 try:
     from open_spiel.python.egt import alpharank, utils as alpharank_utils
@@ -215,15 +217,19 @@ class PayoffTable:
 class PayoffManager:
     def __init__(
         self,
-        agent_names: Sequence,
+        agent_names: Sequence[str],
+        agent_mapping_func: Callable,
         solve_method="fictitious_play",
     ):
-        """Create a payoff manager with agent names
+        """Construct a payoff manager.
 
-        :param Sequence agent_names: a sequence of names which indicate players in the game
-        :param str solve_method: the method used to solve the game, "fictitious_play" or "alpharank", default is "fictitious_play"
+        Args:
+            agent_names (Sequence[str]): a sequence of names which indicate players in the game
+            solve_method (str, optional): The method used to solve the game, "fictitious_play" or "alpharank". Defaults to "fictitious_play".
         """
+
         self.agents = agent_names
+        self.agent_mapping_func = agent_mapping_func
         self.num_player = len(agent_names)
         self.solver = DefaultSolver(solve_method)
 
@@ -242,21 +248,29 @@ class PayoffManager:
         self._equilibrium = {}
 
     @property
-    def payoffs(self):
-        """
-        :return: a copy of the payoff tables, which is a dict of PayoffTable objects.
-        """
-        return self._payoff_tables.copy()
+    def payoffs(self) -> Dict[AgentID, PayoffTable]:
+        """Return a copy of payoff tables.
 
-    def get_payoff_table(self):
-        return list(self._payoff_tables.values())[0].table
+        Returns:
+            Dict[AgentID, PayoffTable]: A dict of payoff tables.
+        """
+
+        return self._payoff_tables.copy()
 
     @property
     def equilibrium(self):
         return self._equilibrium
 
-    def expand(self, brs: Dict[str, List[PolicyID]]):
-        raise NotImplementedError
+    def expand(self, strategy_specs: Dict[str, StrategySpec]):
+        agent_pids = {}
+        for agent in self.agents:
+            rid = self.agent_mapping_func(agent)
+            # TODO(ming): consider only the latest active policy now
+            agent_pids[agent] = strategy_specs[rid].policy_ids[-1]
+
+        # forced expand with value
+        for agent in self.agents:
+            self._payoff_tables[agent][agent_pids] = 0.0
 
     def check_done(self, population_mapping: Dict):
         """Check whether all payoff values have been updated, a population_mapping
@@ -358,55 +372,44 @@ class PayoffManager:
 
         return res
 
-    def update_payoff(self, content):
+    def update_payoff(self, eval_data: List[Tuple[Dict, Dict]]):
         """Update the payoff table, and set the corresponding simulation_flag to True"""
 
-        population_combination = content.policy_combination
-        # for agent in self.agents:
-        for k, v in content.statistics.items():
-            # Logger.debug("get kd: {} {}".format(k, v))
-            ks = k.split("/")
-            if "reward" == ks[-2] and "mean" in ks[-1]:
-                agent = ks[-1][:-5]
-                self._payoff_tables[agent][population_combination] = v
-                self._payoff_tables[agent].set_simulation_done(population_combination)
-            # self._done_table[agent][population_combination] = True
+        raise NotImplementedError
 
-        # Logger.debug(
-        #     f"Updated Payoff for {population_combination} with result: {content.statistics}"
-        #     f"current payoff table: {self._payoff_tables}\n"
-        # )
-
-    # @deprecated
-    # def _add_matchup_result(
-    #     self,
-    #     policy_combination: List[Tuple[PolicyID, PolicyConfig]],
-    #     payoffs: Union[List, np.ndarray],
-    # ):
-    #     """
-    #     add payoffs to each table, call it only after self._expand_table
-    #     """
-    #     policy_mapping: List[PolicyID] = [p_tuple[0] for p_tuple in policy_combination]
-    #     idx2add = self._get_combination_index(policy_mapping)
-    #     # self.[idx2add] = 1
-
-    #     for i, a_name in enumerate(self.agents):
-    #         # self._payoff_tables[a_name][idx2add] = payoffs[i]
-    #         self._payoff_tables[a_name][policy_combination] = payoffs[i]
+        # population_combination = content.policy_combination
+        # # for agent in self.agents:
+        # for k, v in content.statistics.items():
+        #     # Logger.debug("get kd: {} {}".format(k, v))
+        #     ks = k.split("/")
+        #     if "reward" == ks[-2] and "mean" in ks[-1]:
+        #         agent = ks[-1][:-5]
+        #         self._payoff_tables[agent][population_combination] = v
+        #         self._payoff_tables[agent].set_simulation_done(population_combination)
 
     def compute_equilibrium(
-        self, population_mapping: Dict[PolicyID, Sequence[PolicyID]]
-    ) -> Dict[PolicyID, Dict[PolicyID, float]]:
-        """Compute nash equilibrium of given populations
+        self, strategy_specs: Dict[str, StrategySpec]
+    ) -> Dict[str, Dict[PolicyID, float]]:
+        """Compute equilibrium of given strategy specs.
 
-        :param Dict[PolicyID,Sequence[PolicyID]] population_mapping: a dict from agent_name to a sequence of policy ids
-        :return: the nash equilibrium which is a dict from agent_name to a dict from policy id to float
+        Args:
+            strategy_specs (Dict[str, StrategySpec]): A dict of strategy specs.
+
+        Returns:
+            Dict[str, Dict[PolicyID, float]]: _description_
         """
+
         # sub_payoff_matrix = self.get_selected_table(population_combination)
+        # map strategy specs to agent specs
+        population_mapping = {}
+        for agent in self.agents:
+            rid = self.agent_mapping_func(agent)
+            population_mapping[agent] = list(strategy_specs[rid].policy_ids)
+
         sub_payoff_matrix = [
             self._payoff_tables[agent][population_mapping] for agent in self.agents
         ]
-        # print("Compute NE, payoff matrix", sub_payoff_matrix)
+
         if sub_payoff_matrix[0].shape[-1] == 1:
             res = {
                 agent: dict(zip(p, [1 / max(1, len(p))] * len(p)))
@@ -420,6 +423,13 @@ class PayoffManager:
                 agent: dict(zip(p, dist[i]))
                 for i, (agent, p) in enumerate(population_mapping.items())
             }
+
+        # convert agent eq to runtime eq, consider only one to one.
+        runtime_probs = {}
+        for agent, probs in res.items():
+            rid = self.agent_mapping_func(agent)
+            runtime_probs[rid] = probs
+
         return res
 
     def update_equilibrium(
@@ -447,11 +457,7 @@ class PayoffManager:
         >>> self.get_equilibrium(population_mapping)
         ... {"player_0": {"policy_0": 1.0, "policy_1": 0.0}, "player_1": {"policy_0": 0.3, "policy_1": 0.7}}
         """
-        # if len(population_mapping) == 1:
-        #     res = {}
-        #     for aid, pids in population_mapping.items():
-        #         res[aid] = dict.fromkeys(pids, 1.0)
-        #     return res
+
         hash_key = self._hash_population_mapping(population_mapping)
         agent = list(population_mapping.keys())[0]
         assert hash_key in self._equilibrium, (

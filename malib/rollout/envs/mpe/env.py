@@ -1,10 +1,9 @@
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List, Union, Tuple
 
 import importlib
 import gym
 
 from malib.utils.typing import AgentID
-from malib.utils.episode import Episode
 from malib.rollout.envs.env import Environment
 
 
@@ -41,9 +40,14 @@ class MPE(Environment):
     def observation_spaces(self) -> Dict[AgentID, gym.Space]:
         return self._observation_spaces
 
-    def time_step(self, actions: Dict[AgentID, Any]) -> Dict[str, Any]:
-        # for agent, action in actions.items():
-        #     assert self.action_spaces[agent].contains(action), f"Action is not in space: {action} with type={type(action)}"
+    def time_step(
+        self, actions: Dict[AgentID, Any]
+    ) -> Tuple[
+        Dict[AgentID, Any],
+        Dict[AgentID, float],
+        Dict[AgentID, bool],
+        Dict[AgentID, Any],
+    ]:
         observations, rewards, dones, infos = self._env.step(actions)
         return observations, rewards, dones, infos
 

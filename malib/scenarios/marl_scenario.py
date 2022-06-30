@@ -28,6 +28,7 @@ from typing import Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 from malib.scenarios import Scenario
 
+from malib.utils.logging import Logger
 from malib.agent.manager import TrainingManager
 from malib.rollout.manager import RolloutWorkerManager
 
@@ -47,7 +48,7 @@ class MARLScenario(Scenario):
         dataset_config: Dict[str, Any] = None,
         parameter_server_config: Dict[str, Any] = None,
     ):
-        """Construct a scenario for MARL training.
+        """Construct a learning scenario for MARL training.
 
         Args:
             name (str): Scenario name, for experiment tag creating and identification.
@@ -113,6 +114,14 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
     data_entrypoints = {rid: rid for rid in training_manager.runtime_ids}
     training_manager.run(data_request_identifiers=data_entrypoints)
 
+    # load prob list if there is a `prob_list_each` in scenario.
+    Logger.debug("Load behavior probas for each spec...")
+    if hasattr(scenario, "prob_list_each"):
+        for pid, _probs in scenario.prob_list_each.items():
+            runtime_id = scenario.agent_mapping_func(pid)
+            spec = strategy_specs[runtime_id]
+            spec.update_prob_list(_probs)
+
     rollout_tasks = [
         {
             "strategy_specs": strategy_specs,
@@ -126,3 +135,7 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
     executor.submit(training_manager.wait)
     executor.submit(rollout_manager.wait)
     executor.shutdown(wait=True)
+
+    return {
+        "strategy_specs": strategy_specs,
+    }
