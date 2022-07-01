@@ -78,10 +78,6 @@ class RolloutWorker(BaseRolloutWorker):
                 ]
             )
 
-        Logger.debug(
-            f"rollout worker step rollout with dataset: {dataserver_entrypoint}"
-        )
-
         rets = [
             x
             for x in self.actor_pool.map(
@@ -103,15 +99,26 @@ class RolloutWorker(BaseRolloutWorker):
         self,
         runtime_strategy_specs_list: List[Dict[str, StrategySpec]],
         runtime_config_template: Dict[str, Any],
-    ):
+    ) -> List[Dict[str, Any]]:
+        """Step simulation task with a given list of strategy spec dicts.
+
+        Args:
+            runtime_strategy_specs_list (List[Dict[str, StrategySpec]]): A list of strategy spec dicts, each for one task.
+            runtime_config_template (Dict[str, Any]): Runtime configuration template.
+
+        Returns:
+            List[Dict[str, Any]]: A list of results, one for each task.
+        """
+
         tasks = []
         for strategy_specs in runtime_strategy_specs_list:
             task = runtime_config_template.copy()
             task["strategy_specs"] = strategy_specs
             tasks.append(task)
 
+        # we should keep dimension as tasks.
         rets = [
-            x
+            _parse_rollout_info([x])
             for x in self.actor_pool.map(
                 lambda a, task: a.run.remote(
                     agent_interfaces=self.agent_interfaces,
@@ -121,5 +128,4 @@ class RolloutWorker(BaseRolloutWorker):
             )
         ]
 
-        results = _parse_rollout_info(rets)
-        return results
+        return rets

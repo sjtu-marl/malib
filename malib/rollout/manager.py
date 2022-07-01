@@ -18,20 +18,23 @@ import numpy as np
 from ray.util import ActorPool
 
 from malib.common.manager import Manager
+from malib.remote.interface import RemoteInterface
 from malib.common.strategy_spec import StrategySpec
 from malib.rollout.rollout_worker import RolloutWorker
-from malib.rollout.ray_inference.client import RayInferenceClient
-from malib.rollout.ray_inference.server import RayInferenceWorkerSet
-from malib.utils.logging import Logger
-
-
-def _get_worker_hash_idx(idx):
-    hash_coding = hashlib.md5()
-    hash_coding.update(bytes(f"worker-{idx}-{time.time()}", "utf-8"))
-    return hash_coding.hexdigest()
 
 
 def validate_strategy_specs(specs: Dict[str, StrategySpec]):
+    """Validate a dict of strategy specs that whether the prob list is legal.
+
+    Args:
+        specs (Dict[str, StrategySpec]): A dict of strategy spec.
+
+    Raises:
+        ValueError: Empty spec for some runtime id.
+        ValueError: Give an empty prob list explicitly for some spec.
+        ValueError: Summation of prob list is not close to 1.
+    """
+
     for rid, spec in specs.items():
         if len(spec) < 1:
             raise ValueError(f"Empty spec for runtime_id={rid}")
@@ -121,28 +124,58 @@ class RolloutWorkerManager(Manager):
 
     @property
     def runtime_ids(self) -> Tuple[str]:
+        """A tuple of active runtime ids.
+
+        Returns:
+            Tuple[str]: A tuple of runtime ids.
+        """
+
         return self._runtime_ids
 
     @property
     def agent_groups(self) -> Dict[str, Set]:
+        """A dict of agent groups.
+
+        Returns:
+            Dict[str, Set]: A dict of set.
+        """
+
         return self._agent_groups
+
+    @property
+    def workers(self) -> List[RemoteInterface]:
+        """Return a list of registered workers.
+
+        Returns:
+            List[RemoteInterface]: A list of workers.
+        """
+
+        return self._workers
 
     def simulate(self, task_list):
         """Parse simulation task and dispatch it to available workers"""
 
-        self._actor_pool.map(
+        self.pending_tasks = self._actor_pool.map(
             lambda actor, task: actor.simulate.remote(
-                runtime_strategy_specs=task.strategy_specs,
-                trainable_agents=task.trainable_agents,
+                runtime_strategy_specs_list=[task]
             ),
             task_list,
         )
 
-    def rollout(self, task_list) -> None:
+    # def wait(self):
+    #     try:
+    #         for task in self.pending_tasks:
+    #             if self._force_stop:
+    #                 self.terminate()
+    #                 break
+    #     except Exception:
+    #         traceback.print_exc()
+
+    def rollout(self, task_list: List[Dict[str, Any]]) -> None:
         """Start rollout task without blocking.
 
         Args:
-            task_list (_type_): A list of task dict, keys include:
+            task_list (List[Dict[str, Any]]): A list of task dict, keys include:
                 - `strategy_specs`: a dict of strategy specs, mapping from runtime ids to specs.
                 - `trainable_agents`: a list of trainable agents.
 
@@ -151,8 +184,6 @@ class RolloutWorkerManager(Manager):
         # validate all strategy specs here
         for task in task_list:
             validate_strategy_specs(task["strategy_specs"])
-
-        Logger.debug(f"accept rollout tasks as: {task_list}")
 
         self.pending_tasks = self._actor_pool.map(
             lambda actor, task: actor.rollout.remote(
@@ -164,20 +195,11 @@ class RolloutWorkerManager(Manager):
             task_list,
         )
 
-    def wait(self):
-        try:
-            for task in self.pending_tasks:
-                print("done or not:", task)
-                if self._force_stop:
-                    self.terminate()
-                    break
-            print("seems done", self._force_stop)
-        except Exception:
-            traceback.print_exc()
-
     def terminate(self):
         """Stop all remote workers"""
 
-        for worker in self._workers.values():
+        super().terminate()
+
+        for worker in self._workers:
             worker.close.remote()
             ray.kill(worker)

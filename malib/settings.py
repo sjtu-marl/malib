@@ -4,7 +4,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 LOG_DIR = os.path.join(BASE_DIR, "logs")
-LOG_LEVEL = logging.DEBUG
+LOG_LEVEL = logging.INFO
 STATISTIC_FEEDBACK = True
 DATA_FEEDBACK = False
 USE_REMOTE_LOGGER = True
@@ -26,7 +26,7 @@ PICKLE_PROTOCOL_VER = 4
 PARAM_DIR = os.path.join(BASE_DIR, "../checkpoints")
 DATASET_DIR = os.path.join(BASE_DIR, "dataset")
 
-# __sphinx_doc_begin__
+# DEPRECATED
 DEFAULT_CONFIG = {
     # configuration for training agent usage, specify which type you wanna use
     "training": {

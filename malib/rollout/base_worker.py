@@ -27,10 +27,9 @@ from typing import Dict, Any, List, Callable, Sequence, Tuple
 import os
 import time
 import traceback
-import operator
 import logging
+import pprint
 
-from functools import reduce
 from collections import defaultdict
 
 import shutup
@@ -47,6 +46,7 @@ from torch.utils import tensorboard
 
 from malib import settings
 from malib.utils.typing import AgentID
+from malib.utils.logging import Logger
 from malib.utils.stopping_conditions import get_stopper
 from malib.common.strategy_spec import StrategySpec
 from malib.remote.interface import RemoteInterface
@@ -84,6 +84,8 @@ def _parse_rollout_info(raw_statistics: List[Dict[str, Any]]) -> Dict[str, Any]:
     evaluation = []
 
     for e in raw_statistics:
+        # when task mode is `simualtion` or `evaluation`, then
+        #   evaluation result is not empty.
         if "evaluation" in e:
             evaluation.extend(e.pop("evaluation"))
 
@@ -411,7 +413,6 @@ class BaseRolloutWorker(RemoteInterface):
             rid: None for rid in self.runtime_agent_ids
         }
         for rid, identifier in data_entrypoints.items():
-            print(f"request producer-pipe named={identifier}.")
             queue_id, queue = ray.get(
                 self.dataset_server.start_producer_pipe.remote(name=identifier)
             )
@@ -436,8 +437,10 @@ class BaseRolloutWorker(RemoteInterface):
             "ave_rollout_FPS": 0.0,
         }
 
+        self.set_running(True)
+
         start_time = time.time()
-        while True:
+        while self.is_running():
             eval_step = (epoch + 1) % self.worker_runtime_config["eval_interval"] == 0
             results = self.step_rollout(
                 eval_step, self.experiment_tag, runtime_config_template
@@ -446,7 +449,8 @@ class BaseRolloutWorker(RemoteInterface):
             eval_results = results.get("evaluation", None)
 
             if eval_results is not None:
-                log(f"epoch: {epoch} [{eval_results}]")
+                formatted_results = pprint.pformat(eval_results)
+                Logger.info(f"Evaluation at epoch: {epoch}\n{formatted_results}")
                 write_to_tensorboard(
                     self.tb_writer,
                     eval_results,
@@ -469,6 +473,7 @@ class BaseRolloutWorker(RemoteInterface):
             epoch += 1
 
         self.rollout_callback(self.coordinator, results)
+        return results
 
     def simulate(self, runtime_strategy_specs_list: List[Dict[str, StrategySpec]]):
         """Handling simulation task."""
@@ -485,6 +490,7 @@ class BaseRolloutWorker(RemoteInterface):
         )
 
         self.simulate_callback(self.coordinator, results)
+        return results
 
     def step_rollout(
         self,
@@ -536,6 +542,7 @@ class BaseRolloutWorker(RemoteInterface):
         Returns:
             List[Dict[str, Any]]: A list of evaluation results, one for each strategy spec dict.
         """
+
         raise NotImplementedError
 
     def assign_episode_id(self):

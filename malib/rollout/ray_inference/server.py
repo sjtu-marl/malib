@@ -29,7 +29,6 @@ from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 
 import os
-import time
 
 import pickle as pkl
 import ray
@@ -37,8 +36,7 @@ import gym
 
 from malib import settings
 from malib.remote.interface import RemoteInterface
-from malib.utils.typing import AgentID, DataFrame, PolicyID
-from malib.utils.logging import Logger
+from malib.utils.typing import AgentID, DataFrame
 from malib.utils.timing import Timing
 from malib.utils.episode import Episode
 from malib.common.strategy_spec import StrategySpec
@@ -69,8 +67,6 @@ class RayInferenceWorkerSet(RemoteInterface):
         self.policies: Dict[str, Policy] = {}
         self.policy_version: Dict[str, int] = {}
         self.strategy_spec_dict: Dict[str, StrategySpec] = {}
-
-        # self.thread_pool.submit(_update_weights, self, force_weight_update)
 
     def shutdown(self):
         self.thread_pool.shutdown(wait=True)

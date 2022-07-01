@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import List, Dict, Any, Tuple, Type
+from typing import Dict, Any, Tuple, Type
 from argparse import Namespace
 
 import numpy as np
@@ -31,10 +31,21 @@ from malib.algorithm.common.policy import Policy
 from malib.utils.typing import PolicyID
 
 
-def validate_meta_data(meta_data):
+def validate_meta_data(policy_ids: Tuple[PolicyID], meta_data: Dict[str, Any]):
+    """Validate meta data. check whether there is a valid prob list.
+
+    Args:
+        policy_ids (Tuple[PolicyID]): A tuple of registered policy ids.
+        meta_data (Dict[str, Any]): Meta data.
+    """
+
     assert "policy_cls" in meta_data
     assert "kwargs" in meta_data
     assert "experiment_tag" in meta_data
+
+    if "prob_list" in meta_data:
+        assert len(policy_ids) == len(meta_data["prob_list"])
+        assert np.isclose(sum(meta_data["prob_list"]), 1.0)
 
 
 class StrategySpec:
@@ -49,7 +60,7 @@ class StrategySpec:
             meta_data (Dict[str, Any]): Meta data, for policy construction.
         """
 
-        validate_meta_data(meta_data)
+        validate_meta_data(policy_ids, meta_data)
         self.id = identifier
         self.policy_ids = tuple(policy_ids)
         self.meta_data = meta_data
@@ -81,7 +92,7 @@ class StrategySpec:
             self.meta_data["prob_list"].append(0.0)
 
     def update_prob_list(self, policy_probs: Dict[PolicyID, float]):
-        """Update prob list with given policy probs dict.
+        """Update prob list with given policy probs dict. Partial assignment is allowed.
 
         Args:
             policy_probs (Dict[PolicyID, float]): A dict that indicates which policy probs should be updated.
@@ -89,6 +100,7 @@ class StrategySpec:
 
         if "prob_list" not in self.meta_data:
             self.meta_data["prob_list"] = [0.0] * len(self.policy_ids)
+
         for pid, prob in policy_probs.items():
             idx = self.policy_ids.index(pid)
             self.meta_data["prob_list"][idx] = prob
@@ -135,9 +147,9 @@ class StrategySpec:
         prob_list = self.meta_data.get(
             "prob_list", [1 / self.num_policy] * self.num_policy
         )
-        assert np.isclose(
-            sum(prob_list), 1.0
-        ), f"You cannot specify a prob list whose sum is not close to 1.: {prob_list}"
+        assert (
+            np.isclose(sum(prob_list), 1.0) and len(prob_list) == self.num_policy
+        ), f"You cannot specify a prob list whose sum is not close to 1.: {prob_list}. Or an inconsistent length detected: {len(prob_list)} (expcted: {self.num_policy})."
 
         idx = np.random.choice(self.num_policy, p=prob_list)
         return self.policy_ids[idx]

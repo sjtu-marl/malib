@@ -280,12 +280,14 @@ class AgentInterface(RemoteInterface, ABC):
         if reset_state:
             self.reset()
 
-        stopper = get_stopper(conditions=stopping_conditions)
+        # stopper = get_stopper(conditions=stopping_conditions)
         reader_info_dict: Dict[str, Tuple[str, Queue]] = {}
         assert len(self._active_tups) == 1, "the length of active tups can be only 1."
 
+        self.set_running(True)
+
         try:
-            while True:
+            while self.is_running():
                 if data_request_identifier not in reader_info_dict:
                     reader_info_dict[data_request_identifier] = ray.get(
                         self._offline_dataset.start_consumer_pipe.remote(
@@ -310,19 +312,19 @@ class AgentInterface(RemoteInterface, ABC):
                         global_step=self._total_step,
                         prefix=f"Training/{self._runtime_id}",
                     )
+                # TODO(ming): collect mean loss maybe
                 self.sync_remote_parameters()
-                if stopper.should_stop(step_info):
-                    self._total_epoch += 1
-                    break
+                self._total_epoch += 1
+            self._active_tups.popleft()
         except Exception as e:
             Logger.warning(
                 f"training pipe is terminated. caused by: {traceback.format_exc()}"
             )
             ray.get(self._offline_dataset.end_consumer_pipe.remote())
 
-        Logger.warning(
-            "training meets stopping condition after {}-epoch: {}".format(
-                self._total_epoch, stopping_conditions
+        Logger.info(
+            "training meets stopping condition after {} epoch(s), {} iteration(s)".format(
+                self._total_epoch, self._total_step
             )
         )
         return self.get_interface_state()

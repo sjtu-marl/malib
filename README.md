@@ -21,18 +21,37 @@ conda create -n malib python==3.7 -y
 conda activate malib
 
 # install dependencies
-./install_deps.sh
-
-# install malib
-pip install -e .
+./install.sh
 ```
 
-External environments are integrated in MALib, such as [StarCraftII](https://github.com/oxwhirl/smac) and [Mujoco](https://mujoco.org/). You can intall them by following the official guides on their project homepage.
+## Environments
+
+MALib integrates many popular reinforcement learning environments, we list some of them as follows.
+
+- [Google Research Football](https://github.com/google-research/football): RL environment based on open-source game Gameplay Football.
+- [SMAC](https://github.com/oxwhirl/smac): An environment for research in the field of collaborative multi-agent reinforcement learning (MARL) based on Blizzard's StarCraft II RTS game.
+- [Gym](https://github.com/openai/gym): An open source environment collections for developing and comparing reinforcement learning algorithms.
+- [PettingZoo](https://github.com/Farama-Foundation/PettingZoo): Gym for multi-agent reinforcement learning.
+- [OpenSpiel](https://github.com/deepmind/open_spiel): A framework for Reinforcement Learning in games, it provides plenty of environments for the research of game theory.
+
+In addition, users can customize environments with MALib's environment interfaces. Please refer to our documentation.
+
+## Algorithms
+
+MALib integrates population-based reinforcement learning, classical multi-agent and single-agent reinforcement learning algorithms. See algorithms table [here](/algorithms.md).
 
 ## Quick Start
 
-[TODO]
+Before running examples, please ensure that you import python path as:
 
+```bash
+cd malib
+export PYTHONPATH=./
+```
+
+- Training PSRO with running `python examples/run_psro.py`
+- Training Gym example with running `python examples/run_gym.py`
+- Training Google Research Football cases you can run `python examples/run_grfootball.py`. It runs single agent training by default, you can activate group training with `--use_group`.
 ## Documentation
 
 See [MALib Docs](https://malib.readthedocs.io/)

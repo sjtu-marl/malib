@@ -14,7 +14,7 @@ from malib.rollout.envs.gym import env_desc_gen
 
 
 if __name__ == "__main__":
-    parser = ArgumentParser("Multi-agent reinforcement learning.")
+    parser = ArgumentParser("Multi-agent reinforcement learning for gym cases.")
     parser.add_argument("--log_dir", default="./logs/", help="Log directory.")
     parser.add_argument("--env_id", default="CartPole-v1", help="gym environment id.")
 

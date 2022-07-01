@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 
 import random
 import time
+import pprint
 import ray
 
 from malib.utils.logging import Logger
@@ -56,7 +57,9 @@ if __name__ == "__main__":
     try:
         env: Environment = env_description["creator"](**env_description["config"])
         cnt = 0
-        Logger.info("start performance evaluation")
+        Logger.info(
+            "Performance evaluation started. You can press Ctrl-C to stop evaluation and get performance result..."
+        )
         start = time.time()
 
         while True:
@@ -86,7 +89,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt as e:
         fps = cnt / (time.time() - start)
         Logger.warning(
-            f"Keyboard interrupt detected, end evaluation. Average evaluation performance:\nFPS = {fps}\nAVG_TIMER={timer.todict()}"
+            f"Keyboard interrupt detected, end evaluation. Average performance evaluation:\nFPS = {fps}\nAVG_TIMER={pprint.pformat(timer.todict())}"
         )
     finally:
         env.close()

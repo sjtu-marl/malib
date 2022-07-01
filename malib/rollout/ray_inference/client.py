@@ -23,10 +23,9 @@
 # SOFTWARE.
 
 from argparse import Namespace
-from typing import Type, Any, List, Dict, Tuple, Callable
+from typing import Any, List, Dict, Tuple
 from types import LambdaType
 from collections import defaultdict
-from numbers import Number
 
 import os
 import time
@@ -38,7 +37,6 @@ import numpy as np
 from ray.util.queue import Queue
 from ray.actor import ActorHandle
 
-from malib import settings
 from malib.utils.logging import Logger
 
 from malib.utils.typing import AgentID, DataFrame, EnvID, BehaviorMode
@@ -50,7 +48,6 @@ from malib.rollout.envs.vector_env import VectorEnv
 from malib.rollout.envs.async_vector_env import AsyncVectorEnv, AsyncSubProcVecEnv
 from malib.rollout.postprocessor import get_postprocessor
 from malib.rollout.ray_inference.server import RayInferenceWorkerSet
-from malib.utils.tianshou_batch import Batch
 
 
 def process_env_rets(

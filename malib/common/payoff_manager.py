@@ -33,7 +33,6 @@ import numpy as np
 from dataclasses import dataclass
 
 from malib.utils.typing import AgentID, PolicyID
-from malib.utils.logging import Logger
 from malib.common.strategy_spec import StrategySpec
 
 try:
@@ -137,18 +136,38 @@ class DefaultSolver:
             return self.alpharank(payoffs_seq)
 
 
+class SimulationFlag:
+    def __init__(self, data):
+        self._data = data
+
+    @property
+    def data(self):
+        return self._data
+
+    @data.setter
+    def data(self, value):
+        self._data = value
+
+
 @dataclass
 class PayoffTable:
     identify: AgentID
     agents: Sequence[AgentID]
+    shared_simulation_flag: SimulationFlag
     table: Any = None
-    simulation_flag: Any = None
 
     def __post_init__(self):
         # record policy idx
         self._policy_idx = {agent: {} for agent in self.agents}
-        self.table = np.zeros([0] * len(self.agents), dtype=np.float32)
-        self.simulation_flag = np.zeros([0] * len(self.agents), dtype=bool)
+
+        if self.table is not None:
+            # check shape
+            assert len(self.table.shape) == len(self.agents), (
+                self.table.shape,
+                len(self.agents),
+            )
+        else:
+            self.table = np.zeros([0] * len(self.agents), dtype=np.float32)
 
     def __getitem__(self, key: Dict[str, Sequence[PolicyID]]) -> np.ndarray:
         """Return a sub matrix"""
@@ -166,21 +185,37 @@ class PayoffTable:
         """Check whether all simulations have been done"""
 
         idx = self._get_combination_index(population_mapping)
-        return np.alltrue(self.simulation_flag[idx])
+        return np.alltrue(self.shared_simulation_flag.data[idx])
+
+    def idx_to_policy_mapping(
+        self, idx_tup: Sequence[int]
+    ) -> Dict[AgentID, List[PolicyID]]:
+        policy_mapping = {}
+        for agent, pid_idx in zip(self.agents, idx_tup):
+            pid_idx_mapping = self._policy_idx[agent]
+            for k, v in pid_idx_mapping.items():
+                if v == pid_idx:
+                    policy_mapping[agent] = [k]
+                    break
+        return policy_mapping
 
     def set_simulation_done(self, population_mapping: Dict[str, Sequence[PolicyID]]):
         idx = self._get_combination_index(population_mapping)
-        self.simulation_flag[idx] = True
+        self.shared_simulation_flag.data[idx] = True
 
     def expand_table(self, pad_info):
-        """Expand payoff table"""
+        """Expand payoff table along my axis."""
 
         # head and tail
 
         if not any(self.table.shape):
             pad_info = [(0, 1)] * len(self.agents)
         self.table = np.pad(self.table, pad_info)
-        self.simulation_flag = np.pad(self.simulation_flag, pad_info)
+        # check whether there is need to expand
+        if self.shared_simulation_flag.data.shape != self.table.shape:
+            self.shared_simulation_flag.data = np.pad(
+                self.shared_simulation_flag.data, pad_info
+            )
 
     def _get_combination_index(
         self, policy_combination: Dict[AgentID, Sequence[PolicyID]]
@@ -232,15 +267,21 @@ class PayoffManager:
         self.agent_mapping_func = agent_mapping_func
         self.num_player = len(agent_names)
         self.solver = DefaultSolver(solve_method)
+        self.shared_simulation_flag = SimulationFlag(
+            np.zeros([0] * len(self.agents), dtype=bool)
+        )
 
         # a map for each player in which is a list
-        self._policy = {an: [] for an in agent_names}
-        self._policy_idx = {an: {} for an in agent_names}
-        self._policy_config = {an: [] for an in agent_names}
+        # self._policy = {an: [] for an in agent_names}
+        # self._policy_idx = {an: {} for an in agent_names}
+        # self._policy_config = {an: [] for an in agent_names}
 
         # table for each player
         self._payoff_tables = {
-            agent: PayoffTable(agent, self.agents) for agent in self.agents
+            agent: PayoffTable(
+                agent, self.agents, shared_simulation_flag=self.shared_simulation_flag
+            )
+            for agent in self.agents
         }
 
         # a list store equilibria, in which is a dict of the
@@ -258,7 +299,7 @@ class PayoffManager:
         return self._payoff_tables.copy()
 
     @property
-    def equilibrium(self):
+    def equilibrium_cache(self):
         return self._equilibrium
 
     def expand(self, strategy_specs: Dict[str, StrategySpec]):
@@ -372,20 +413,27 @@ class PayoffManager:
 
         return res
 
-    def update_payoff(self, eval_data: List[Tuple[Dict, Dict]]):
+    def update_payoff(
+        self, eval_data_tups: List[Tuple[Dict[str, StrategySpec], Dict[str, Any]]]
+    ):
         """Update the payoff table, and set the corresponding simulation_flag to True"""
 
-        raise NotImplementedError
+        for spec_dict, _eval_data in eval_data_tups:
+            policy_mapping = {}
+            for agent in self.agents:
+                rid = self.agent_mapping_func(agent)
+                assert (
+                    len(spec_dict[rid].policy_ids) == 1
+                ), "The number of policies must be 1, while {} detected (agent={}, rid={}).".format(
+                    len(spec_dict[rid].policy_ids, agent, rid)
+                )
+                policy_mapping[agent] = [spec_dict[rid].policy_ids[-1]]
 
-        # population_combination = content.policy_combination
-        # # for agent in self.agents:
-        # for k, v in content.statistics.items():
-        #     # Logger.debug("get kd: {} {}".format(k, v))
-        #     ks = k.split("/")
-        #     if "reward" == ks[-2] and "mean" in ks[-1]:
-        #         agent = ks[-1][:-5]
-        #         self._payoff_tables[agent][population_combination] = v
-        #         self._payoff_tables[agent].set_simulation_done(population_combination)
+            for agent in self.agents:
+                self._payoff_tables[agent].set_simulation_done(policy_mapping)
+                self._payoff_tables[agent][policy_mapping] = _eval_data["evaluation"][
+                    f"agent_reward/{agent}_mean"
+                ]
 
     def compute_equilibrium(
         self, strategy_specs: Dict[str, StrategySpec]
@@ -486,33 +534,64 @@ class PayoffManager:
             ans += ";"
         return ans
 
-    def _get_pending_matchups(
-        self, agent_name: AgentID, policy_id: PolicyID, policy_config: Dict[str, Any]
-    ) -> List[Dict]:
-        """Generate match description with policy combinations"""
+    # def _get_pending_matchups(
+    #     self, agent_name: AgentID, policy_id: PolicyID, policy_config: Dict[str, Any]
+    # ) -> List[Dict]:
+    #     """Generate match description with policy combinations"""
 
-        agent_policy_list = []
-        for an in self.agents:
-            if an == agent_name:
-                agent_policy_list.append([(policy_id, policy_config)])
-            else:
-                # skip empty policy
-                if len(self._policy[an]) == 0:
-                    continue
-                # append all other agent policies
-                agent_policy_list.append(
-                    list(zip(self._policy[an], self._policy_config[an]))
+    #     agent_policy_list = []
+    #     for an in self.agents:
+    #         if an == agent_name:
+    #             agent_policy_list.append([(policy_id, policy_config)])
+    #         else:
+    #             # skip empty policy
+    #             if len(self._policy[an]) == 0:
+    #                 continue
+    #             # append all other agent policies
+    #             agent_policy_list.append(
+    #                 list(zip(self._policy[an], self._policy_config[an]))
+    #             )
+
+    #     # if other agents has no available policies, return an empty list
+    #     if len(agent_policy_list) < len(self.agents):
+    #         return []
+
+    #     pending_comb_list = [comb for comb in itertools.product(*agent_policy_list)]
+    #     return [
+    #         {an: pending_comb[i] for i, an in enumerate(self.agents)}
+    #         for pending_comb in pending_comb_list
+    #     ]
+
+    def get_matchups_eval_needed(
+        self, specs_template: Dict[str, StrategySpec]
+    ) -> List[Dict[str, StrategySpec]]:
+        """Return a list of strategy spec that for simulations
+
+        Returns:
+            List[Dict[str, StrategySpec]]: A list of strategy specs.
+        """
+
+        idx_tups = list(zip(*np.where(self.shared_simulation_flag.data == False)))
+        # convert idx to policy mappings
+        res = []
+        # choose any payoff tables
+        payoff_table = self._payoff_tables[self.agents[0]]
+        for idx_tup in idx_tups:
+            policy_mapping = payoff_table.idx_to_policy_mapping(idx_tup)
+            specs = {}
+            # convert policy mapping to strategy specs
+            for agent, pids in policy_mapping.items():
+                rid = self.agent_mapping_func(agent)
+                meta_data_copy = specs_template[rid].get_meta_data().copy()
+                meta_data_copy["prob_list"] = [1.0]
+                specs[rid] = StrategySpec(
+                    identifier=rid,
+                    policy_ids=pids,
+                    meta_data=meta_data_copy,
                 )
-
-        # if other agents has no available policies, return an empty list
-        if len(agent_policy_list) < len(self.agents):
-            return []
-
-        pending_comb_list = [comb for comb in itertools.product(*agent_policy_list)]
-        return [
-            {an: pending_comb[i] for i, an in enumerate(self.agents)}
-            for pending_comb in pending_comb_list
-        ]
+            assert len(specs) == len(self.agents), (specs, self.agents)
+            res.append(specs)
+        return res
 
     def get_pending_matchups(
         self, agent_name: AgentID, policy_id: PolicyID, policy_config: Dict[str, Any]
@@ -528,8 +607,11 @@ class PayoffManager:
             return []
 
         # May have some problems for concurrent version, but we have no demand for a concurrent payoff table ...
-        self._policy_idx[agent_name][policy_id] = len(self._policy[agent_name])
-        self._policy[agent_name].append(policy_id)
-        self._policy_config[agent_name].append(policy_config)
+        # self._policy_idx[agent_name][policy_id] = len(self._policy[agent_name])
+        # self._policy[agent_name].append(policy_id)
+        # self._policy_config[agent_name].append(policy_config)
 
-        return self._get_pending_matchups(agent_name, policy_id, policy_config)
+        # policy_mapping_list = self._get_pending_matchups(agent_name, policy_id, policy_config)
+        # generate strategy specs list here
+
+        return None

@@ -32,6 +32,7 @@ import ray
 from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
 from malib.utils.exploitability import measure_exploitability
+from malib.remote.interface import RemoteInterface
 from malib.agent.agent_interface import AgentInterface
 from malib.common.strategy_spec import StrategySpec
 from malib.common.manager import Manager
@@ -82,7 +83,7 @@ class TrainingManager(Manager):
             os.makedirs(log_dir)
 
         agent_cls = training_config["type"]
-        agent_cls = agent_cls.as_remote(num_gpus=num_gpus)
+        agent_cls = agent_cls.as_remote(num_gpus=num_gpus).options(max_concurrency=10)
         interfaces: Dict[str, Union[AgentInterface, ray.ObjectRef]] = {}
 
         assert (
@@ -134,6 +135,10 @@ class TrainingManager(Manager):
         return self._agent_groups
 
     @property
+    def workers(self) -> List[RemoteInterface]:
+        return list(self._interfaces.values())
+
+    @property
     def runtime_ids(self) -> Tuple[str]:
         return self._runtime_ids
 
@@ -171,7 +176,7 @@ class TrainingManager(Manager):
                 k: self._interfaces[k].add_policies(n=ns[k]) for k in interface_ids
             }
 
-        Logger.debug(f"newest strategy spec dict: {strategy_spec_dict}")
+        # Logger.debug(f"newest strategy spec dict: {strategy_spec_dict}")
 
         return strategy_spec_dict
 
@@ -199,9 +204,12 @@ class TrainingManager(Manager):
     def terminate(self) -> None:
         """Terminate all training actors."""
 
+        super().terminate()
+
         if self._remote_mode:
             for x in self._interfaces.values():
                 ray.kill(x)
+
         self._thread_pool.shutdown()
         del self._interfaces
 

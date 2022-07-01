@@ -80,7 +80,9 @@ class MARLScenario(Scenario):
         self.num_policy_each_interface = 1
 
 
-def execution_plan(experiment_tag: str, scenario: Scenario):
+def execution_plan(
+    experiment_tag: str, scenario: Scenario, recall_resource: bool = True
+):
     if hasattr(scenario, "training_manager"):
         training_manager: TrainingManager = scenario.training_manager
     else:
@@ -131,10 +133,16 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
     ]
     rollout_manager.rollout(task_list=rollout_tasks)
 
+    # TODO(ming): note we should stop training if the rollout has been stopped.
     executor = ThreadPoolExecutor(max_workers=2)
-    executor.submit(training_manager.wait)
+    # executor.submit(training_manager.wait)
     executor.submit(rollout_manager.wait)
     executor.shutdown(wait=True)
+    training_manager.cancel_pending_tasks()
+
+    if recall_resource:
+        rollout_manager.terminate()
+        training_manager.terminate()
 
     return {
         "strategy_specs": strategy_specs,

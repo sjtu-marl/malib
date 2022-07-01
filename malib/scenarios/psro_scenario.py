@@ -23,9 +23,9 @@
 # SOFTWARE.
 
 from types import LambdaType
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
-from malib.utils.typing import AgentID
+from malib.utils.logging import Logger
 from malib.utils.stopping_conditions import get_stopper
 from malib.agent.manager import TrainingManager
 from malib.rollout.manager import RolloutWorkerManager
@@ -93,12 +93,14 @@ class PSROScenario(MARLScenario):
 def simulate(
     rollout_manager: RolloutWorkerManager,
     strategy_specs_list: List[Dict[str, StrategySpec]],
-):
-    # rollout_manager.simulate(strategy_specs_list)
-    # results = rollout_manager.wait()
+) -> List[Tuple[Dict, Dict]]:
+    rollout_manager.simulate(strategy_specs_list)
+    ordered_results = rollout_manager.wait()
+    # print("retrive simulation results: {}".format(ordered_results))
+
     # return results
     # TODO(ming): for debug, fake simulation results
-    return
+    return list(zip(strategy_specs_list, ordered_results))
 
 
 def execution_plan(experiment_tag: str, scenario: Scenario):
@@ -137,20 +139,25 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
     scenario.training_manager = training_manager
     scenario.rollout_manager = rollout_manager
 
-    # TODO(ming): eval based on the exploitability
     for i in range(10):
-        print(f"\n---------------- outer epoch: {i} --------------")
+        Logger.info("")
+        Logger.info(f"Start Global Iteration: {i}")
         scenario.prob_list_each = equilibrium
-        # run inner multi-agent training tasks
-        info = marl_execution_plan(experiment_tag, scenario)
-        # extend payoff tables with runtime brs
+
+        # run best response training tasks
+        info = marl_execution_plan(experiment_tag, scenario, recall_resource=False)
+
+        # extend payoff tables with brs
         strategy_specs: Dict[str, StrategySpec] = info["strategy_specs"]
         payoff_manager.expand(strategy_specs=strategy_specs)
 
         # retrieve specs list, a dict as a joint strategy spec
-        # strategy_specs_list = payoff_manager.get_pending_matchups(strategy_specs)
-        # results = simulate(rollout_manager, strategy_specs_list=strategy_specs_list)
-        # payoff_manager.update_payoff(results)
+        eval_matchups = payoff_manager.get_matchups_eval_needed(
+            specs_template=strategy_specs
+        )
+        # retrive strategy spec dict for which cell not be evaluated yet.
+        eval_data_tups = simulate(rollout_manager, strategy_specs_list=eval_matchups)
+        payoff_manager.update_payoff(eval_data_tups)
 
         # update probs
         equilibrium = payoff_manager.compute_equilibrium(strategy_specs)
