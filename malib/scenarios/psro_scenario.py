@@ -96,10 +96,6 @@ def simulate(
 ) -> List[Tuple[Dict, Dict]]:
     rollout_manager.simulate(strategy_specs_list)
     ordered_results = rollout_manager.wait()
-    # print("retrive simulation results: {}".format(ordered_results))
-
-    # return results
-    # TODO(ming): for debug, fake simulation results
     return list(zip(strategy_specs_list, ordered_results))
 
 
@@ -131,7 +127,7 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
         solve_method=scenario.meta_solver_type,
     )
 
-    # stopper = get_stopper(scenario.global_stopping_conditions)
+    stopper = get_stopper(scenario.global_stopping_conditions)
 
     equilibrium = {
         agent: {"policy-0": 1.0} for agent in scenario.env_desc["possible_agents"]
@@ -139,7 +135,8 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
     scenario.training_manager = training_manager
     scenario.rollout_manager = rollout_manager
 
-    for i in range(10):
+    i = 0
+    while True:
         Logger.info("")
         Logger.info(f"Start Global Iteration: {i}")
         scenario.prob_list_each = equilibrium
@@ -161,3 +158,7 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
 
         # update probs
         equilibrium = payoff_manager.compute_equilibrium(strategy_specs)
+        i += 1
+
+        if stopper.should_stop(None):
+            break

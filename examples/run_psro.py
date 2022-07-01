@@ -67,7 +67,7 @@ if __name__ == "__main__":
         training_config=training_config,
         rollout_config=rollout_config,
         # control the outer loop.
-        global_stopping_conditions={},
+        global_stopping_conditions={"max_iteration": 2},
         agent_mapping_func=agent_mapping_func,
         # for the training of best response.
         stopping_conditions={
