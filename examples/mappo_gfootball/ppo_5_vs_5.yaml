@@ -1,0 +1,98 @@
+group: "Football"
+name: "5_vs_5/impala"
+
+training:
+  interface:
+    type: independent
+    population_size: -1
+    local_buffer_config:
+      size: 300
+  config:
+    ppo_epoch: 4
+    batch_size: 32  # episode size
+    batch_mode: episode
+    mini_batch: 4  # data size
+    optimizer: Adam
+    actor_lr: 2.5e-4
+    critic_lr: 2.5e-4
+    opti_eps: 1.e-5
+    weight_decay: 0.0
+    cliprange: 0.4
+    policy_kl_range: 0.0008
+    policy_params: 20
+    grad_norm_clipping: 5.0
+    entropy_coef: 0.05
+    vf_loss_coef: 1.0
+    value_clip: 1.0
+    gamma: 0.99
+    lam: 0.95
+    use_cuda: True  # enable cuda or not
+    vtrace:
+      clip_rho_threshold: 1.0
+      clip_pg_rho_threshold: 1.0
+
+rollout:
+  type: independent
+  stopper: simple_rollout
+  stopper_config:
+    max_step: 1000
+  fragment_length: 3000
+  num_episodes: 32
+  num_env_per_worker: 8
+  use_remote_env: False
+  # terminate: any
+  batch_mode: episode
+
+evaluation:
+  num_episodes: 8
+
+
+env_description:
+  config:
+    env_id: PSGFootball
+    enable_sharing: True
+    use_built_in_GK: True
+    scenario_configs:
+      env_name: "5_vs_5"
+      number_of_left_players_agent_controls: 4
+      number_of_right_players_agent_controls: 0
+      representation: "raw"
+      stacked: False
+      logdir: '/tmp/football/malib_psro'
+      write_goal_dumps: False
+      write_full_episode_dumps: False
+      render: False
+
+algorithms:
+  PPO:
+    name: PPO
+    model_config:
+      actor:
+        network: mlp
+        layers:
+          - units: 256
+            activation: ReLU
+          - units: 64
+            activation: ReLU
+          - units: 64
+            activation: ReLU
+        output:
+          activation: False
+      critic:
+        network: mlp
+        layers:
+          - units: 256
+            activation: ReLU
+          - units: 64
+            activation: ReLU
+          - units: 64
+            activation: ReLU
+        output:
+          activation: False
+
+global_evaluator:
+  name: "generic"
+
+dataset_config:
+  episode_capacity: 32
+  fragment_length: 2000

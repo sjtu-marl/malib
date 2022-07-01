@@ -1,31 +1,54 @@
+# MIT License
+
+# Copyright (c) 2021 MARL @ SJTU
+
+# Author: Ming Zhou
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+from re import L
+import traceback
+from typing import Dict, Any, List, Sequence
 from collections import defaultdict
 
 import numpy as np
-from malib.utils.logger import Logger
 
-from malib.utils.typing import AgentID, EnvID, Dict, Any, PolicyID, List
+from malib.utils.typing import AgentID, EnvID
 
 
-class EpisodeKey:
-    """Unlimited buffer"""
-
-    CUR_OBS = "observation"
-    NEXT_OBS = "next_observation"
-    ACTION = "action"
+class Episode:
+    CUR_OBS = "obs"
+    NEXT_OBS = "obs_next"
+    ACTION = "act"
     ACTION_MASK = "action_mask"
-    NEXT_ACTION_MASK = "next_action_mask"
-    REWARD = "reward"
+    NEXT_ACTION_MASK = "action_mask_next"
+    REWARD = "rew"
     DONE = "done"
-    # XXX(ziyu): Change to 'logits' for numerical issues.
-    ACTION_DIST = "action_logits"
-    # XXX(ming): seems useless
+    ACTION_LOGITS = "act_logits"
+    ACTION_DIST = "act_dist"
     INFO = "infos"
 
     # optional
     STATE_VALUE = "state_value_estimation"
     STATE_ACTION_VALUE = "state_action_value_estimation"
     CUR_STATE = "state"  # current global state
-    NEXT_STATE = "next_state"  # next global state
+    NEXT_STATE = "state_next"  # next global state
     LAST_REWARD = "last_reward"
 
     # post process
@@ -36,13 +59,11 @@ class EpisodeKey:
     # model states
     RNN_STATE = "rnn_state"
 
-
-class Episode:
-    def __init__(self, behavior_policies: Dict[AgentID, PolicyID], env_id: str):
-        self.policy_mapping = behavior_policies
-        self.env_id = env_id
-
-        self.agent_entry = defaultdict(lambda: {aid: [] for aid in self.policy_mapping})
+    def __init__(self, agents, processors):
+        self.processors = processors
+        # self.agent_entry = defaultdict(lambda: {aid: [] for aid in self.policy_mapping})
+        self.agents = agents
+        self.agent_entry = {agent: defaultdict(lambda: []) for agent in self.agents}
 
     def __getitem__(self, __k: str) -> Dict[AgentID, List]:
         return self.agent_entry[__k]
@@ -50,32 +71,63 @@ class Episode:
     def __setitem__(self, __k: str, v: Dict[AgentID, List]) -> None:
         self.agent_entry[__k] = v
 
-    def to_numpy(
-        self, batch_mode: str = "time_step", filter: List[AgentID] = None
-    ) -> Dict[str, Dict[AgentID, np.ndarray]]:
-        res = defaultdict(lambda: {})
+    def record_policy_step(self, policy_rets: Dict[AgentID, Dict[str, Any]]):
+        for agent, agent_item in policy_rets.items():
+            for k, v in agent_item.items():
+                self.agent_entry[agent][k].append(v)
 
-        for ek, agent_v in self.agent_entry.items():
-            _filter = filter or list(agent_v.keys())
-            for agent_id in _filter:
-                v = agent_v[agent_id]
-                if ek == EpisodeKey.RNN_STATE:
-                    if len(v) == 0 or len(v[0]) == 0:
+    def record_env_rets(self, env_rets: Sequence[Dict[AgentID, Any]], ignore_keys={}):
+        for i, key in enumerate(
+            [
+                Episode.CUR_OBS,
+                Episode.ACTION_MASK,
+                Episode.REWARD,
+                Episode.DONE,
+                Episode.INFO,
+            ]
+        ):
+            if len(env_rets) < i + 1:
+                break
+            if key in ignore_keys:
+                continue
+            for agent, _v in env_rets[i].items():
+                if agent == "__all__":
+                    continue
+                self.agent_entry[agent][key].append(_v)
+
+    def to_numpy(self) -> Dict[AgentID, Dict[str, np.ndarray]]:
+        """Convert episode to numpy array-like data."""
+
+        res = {}
+        for agent, agent_trajectory in self.agent_entry.items():
+            tmp = {}
+            try:
+                for k, v in agent_trajectory.items():
+                    if k == Episode.CUR_OBS:
+                        # move to next obs
+                        tmp[Episode.NEXT_OBS] = v[1:]
+                        tmp[Episode.CUR_OBS] = v[:-1]
+                    elif k == Episode.CUR_STATE:
+                        # move to next state
+                        tmp[Episode.NEXT_STATE] = v[1:]
+                        tmp[Episode.CUR_STATE] = v[:-1]
+                    elif k == Episode.INFO:
                         continue
-                    tmp = [np.stack(r)[:-1] for r in list(zip(*v))]
-                    if batch_mode == "episode":
-                        tmp = [np.expand_dims(r, axis=0) for r in tmp]
-                    res[agent_id].update(
-                        {f"{ek}_{i}": _tmp for i, _tmp in enumerate(tmp)}
-                    )
-                else:
-                    if len(v) == 0:
-                        return {}
-                    tmp = np.asarray(v, dtype=np.float32)
-                    if batch_mode == "episode":
-                        res[agent_id][ek] = np.expand_dims(tmp, axis=0)
+                    elif k == Episode.ACTION_MASK:
+                        tmp[Episode.ACTION_MASK] = v[:-1]
+                        tmp[Episode.NEXT_ACTION_MASK] = v[1:]
                     else:
-                        res[agent_id][ek] = tmp
+                        tmp[k] = v
+            except Exception as e:
+                print(traceback.format_exc())
+                continue
+            res[agent] = tmp
+        # agent trajectory length check
+        for agent, trajectory in res.items():
+            assert "rew" in trajectory, trajectory.keys()
+            expected_length = len(trajectory[Episode.CUR_OBS])
+            for k, v in trajectory.items():
+                assert len(v) == expected_length, (len(v), k, expected_length)
         return dict(res)
 
 
@@ -84,38 +136,28 @@ class NewEpisodeDict(defaultdict):
         if self.default_factory is None:
             raise KeyError(env_id)
         else:
-            ret = self[env_id] = self.default_factory(env_id)
+            ret = self[env_id] = self.default_factory()
             return ret
 
-    def record(
-        self, policy_outputs, env_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]
+    def record_env_rets(
+        self, env_outputs: Dict[EnvID, Sequence[Dict[AgentID, Any]]], ignore_keys={}
     ):
-        for env_id, policy_output in policy_outputs.items():
-            assert EpisodeKey.CUR_OBS in env_outputs[env_id]
-            for k, v in env_outputs[env_id].items():
-                if k == "infos":
-                    continue
-                agent_slot = self[env_id][k]
-                for aid, _v in v.items():
-                    agent_slot[aid].append(_v)
-            for k, v in policy_output.items():
-                agent_slot = self[env_id][k]
-                assert aid in agent_slot, agent_slot
-                for aid, _v in v.items():
-                    agent_slot[aid].append(_v)
+        for env_id, env_output in env_outputs.items():
+            self[env_id].record_env_rets(env_output, ignore_keys)
 
-    def to_numpy(
-        self, batch_mode: str = "time_step", filter: List[AgentID] = None
-    ) -> Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]:
+    def record_policy_step(
+        self, env_policy_outputs: Dict[EnvID, Dict[AgentID, Dict[str, Any]]]
+    ):
+        for env_id, policy_outputs in env_policy_outputs.items():
+            self[env_id].record_policy_step(policy_outputs)
+
+    def to_numpy(self) -> Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]:
+        """Lossy data transformer, which converts a dict of episode to a dict of numpy array like. (some episode may be empty)"""
+
         res = {}
         for k, v in self.items():
-            tmp = v.to_numpy(batch_mode, filter)
+            tmp: Dict[AgentID, Dict[str, np.ndarray]] = v.to_numpy()
             if len(tmp) == 0:
                 continue
             res[k] = tmp
-        a = len(res)
-        b = len(self.items())
-        Logger.debug(
-            "{} valid episode out of {} episodes (%{})".format(a, b, a / b * 100.0)
-        )
         return res

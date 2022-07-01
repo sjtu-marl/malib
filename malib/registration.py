@@ -1,4 +1,4 @@
-from malib.utils.typing import Dict, Callable, Union
+from typing import Dict, Callable, Union
 
 
 class Registry:

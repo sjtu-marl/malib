@@ -10,7 +10,7 @@ from malib.algorithm.mappo.data_generator import (
     compute_return,
 )
 from malib.algorithm.mappo.loss import MAPPOLoss
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 import torch
 import functools
 
@@ -52,7 +52,7 @@ class MAPPOTrainer(Trainer):
                 policy.device,
             )
         else:
-            len_traj, n_rollout_threads, n_agent, _ = batch[EpisodeKey.CUR_OBS].shape
+            len_traj, n_rollout_threads, n_agent, _ = batch[Episode.CUR_OBS].shape
             batch_size = len_traj * n_rollout_threads * n_agent
             for k in batch:
                 batch[k] = torch.FloatTensor(batch[k].copy()).to(policy.device)

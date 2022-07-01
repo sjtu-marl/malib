@@ -21,20 +21,3 @@ Example:
 """
 
 from .indepdent_agent import IndependentAgent
-
-# from .indepdent_irl_agent import IndependentIRLAgent
-from .ctde_agent import CTDEAgent
-from .async_agent import AsyncAgent
-from .sync_agent import SyncAgent
-from .centralized_agent import CentralizedAgent
-
-
-def get_training_agent(type_name: str):
-    return {
-        "independent": IndependentAgent,
-        # "independentirl": IndependentIRLAgent,
-        "ctde": CTDEAgent,
-        "async": AsyncAgent,
-        "sync": SyncAgent,
-        "centralized": CentralizedAgent,
-    }[type_name]

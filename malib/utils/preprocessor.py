@@ -1,12 +1,37 @@
-import operator
-from abc import ABCMeta, abstractmethod
-from functools import reduce
-import re
+# MIT License
 
+# Copyright (c) 2021 MARL @ SJTU
+
+# Author: Ming Zhou
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+from abc import ABCMeta, abstractmethod
+from typing import Dict, Sequence, Tuple, List, Any
+from functools import reduce
+
+import operator
 import numpy as np
+
 from gym import spaces
 
-from malib.utils.typing import DataTransferType, Dict, Sequence, Tuple, List, Any
+from malib.utils.typing import DataTransferType
 
 
 def _get_batched(data: Any):
@@ -17,25 +42,28 @@ def _get_batched(data: Any):
         for k, v in data.items():
             cleaned_v = _get_batched(v)
             for i, e in enumerate(cleaned_v):
-                if i > len(res):
-                    res[i] = {}
+                if i >= len(res):
+                    res.append({})
                 res[i][k] = e
     elif isinstance(data, Sequence):
         for v in data:
             cleaned_v = _get_batched(v)
             for i, e in enumerate(cleaned_v):
-                if i > len(res):
-                    res[i] = []
+                if i >= len(res):
+                    res.append([])
                 res[i].append(e)
     elif isinstance(data, np.ndarray):
         return data
     else:
         raise TypeError(f"Unexpected nested data type: {type(data)}")
 
+    return res
+
 
 class Preprocessor(metaclass=ABCMeta):
     def __init__(self, space: spaces.Space):
         self._original_space = space
+        self._size = 0
 
     @abstractmethod
     def transform(self, data, nested=False) -> DataTransferType:
@@ -92,7 +120,7 @@ class DictFlattenPreprocessor(Preprocessor):
         if isinstance(data, Dict):
             array = np.zeros(self.shape)
             self.write(array, 0, data)
-        elif isinstance(data, Sequence):
+        elif isinstance(data, (list, tuple)):
             array = np.zeros((len(data),) + self.shape)
             for i in range(len(array)):
                 self.write(array[i], 0, data[i])
@@ -113,12 +141,30 @@ class DictFlattenPreprocessor(Preprocessor):
 
 class TupleFlattenPreprocessor(Preprocessor):
     def __init__(self, space: spaces.Tuple):
-        assert isinstance(space, spaces.Tuple), space
+        """Init a tuple flatten preprocessor, will stack inner flattend spaces.
+
+        Note:
+            All sub spaces in a tuple should be homogeneous.
+
+        Args:
+            space (spaces.Tuple): A tuple of homogeneous spaces.
+        """
         super(TupleFlattenPreprocessor, self).__init__(space)
         self._preprocessors = []
-        for k, _space in enumerate(space.spaces):
-            self._preprocessors.append(get_preprocessor(_space)(_space))
-        self._size = sum([prep.size for prep in self._preprocessors])
+
+        self._preprocessors.append(get_preprocessor(space.spaces[0])(space.spaces[0]))
+        expected_shape = self._preprocessors[0].shape
+        self._size += self._preprocessors[0].size
+
+        for _space in space.spaces[1:]:
+            sub_preprocessor = get_preprocessor(_space)(_space)
+            assert sub_preprocessor.shape == expected_shape, (
+                sub_preprocessor.shape,
+                expected_shape,
+            )
+            self._preprocessors.append(sub_preprocessor)
+            self._size += sub_preprocessor.size
+        self._shape = (len(space.spaces),) + expected_shape
 
     @property
     def size(self):
@@ -126,17 +172,19 @@ class TupleFlattenPreprocessor(Preprocessor):
 
     @property
     def shape(self):
-        return (self.size,)
+        return self._shape
 
     def transform(self, data, nested=False) -> DataTransferType:
         if nested:
-            data = _get_batched(data)
+            raise NotImplementedError
 
         if isinstance(data, List):
+            # write batch
             array = np.zeros((len(data),) + self.shape)
             for i in range(len(array)):
                 self.write(array[i], 0, data[i])
         else:
+            # write single to stack
             array = np.zeros(self.shape)
             self.write(array, 0, data)
         return array
@@ -144,7 +192,8 @@ class TupleFlattenPreprocessor(Preprocessor):
     def write(self, array: DataTransferType, offset: int, data: Any):
         if isinstance(data, Tuple):
             for _data, prep in zip(data, self._preprocessors):
-                array[offset : offset + prep.size] = prep.transform(_data)
+                array[offset : offset + 1] = prep.transform(_data)
+                offset += 1
         else:
             raise TypeError(f"Unexpected type: {type(data)}")
 
@@ -166,11 +215,11 @@ class BoxFlattenPreprocessor(Preprocessor):
         if nested:
             data = _get_batched(data)
 
-        # if isinstance(data, list):
-        #     array = np.vtack(data)
-        #     return array
-        # else:
-        array = np.asarray(data).reshape((-1,) + self.shape)
+        if isinstance(data, list):
+            array = np.vstack(data)
+            return array
+        else:
+            array = np.asarray(data).reshape((-1,) + self.shape)
         return array
 
     def write(self, array, offset, data):
@@ -231,6 +280,9 @@ class DiscreteFlattenPreprocessor(Preprocessor):
         if isinstance(data, int):
             array = np.zeros(self.size, dtype=np.int32)
             array[data] = 1
+            return array
+        elif isinstance(data, np.ndarray):
+            array = data.reshape((-1, self.size))
             return array
         else:
             raise TypeError(f"Unexpected type: {type(data)}")

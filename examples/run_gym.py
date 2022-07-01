@@ -1,55 +1,77 @@
-"""
-agent mapping func = lambda agent: share
-"""
+from argparse import ArgumentParser
 
-import argparse
-
-import yaml
 import os
+import time
+import shutup
 
-from malib.envs import gym as custom_gym
+shutup.please()
+
 from malib.runner import run
-from malib.utils.preprocessor import get_preprocessor
-
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from malib.agent import IndependentAgent
+from malib.scenarios.marl_scenario import MARLScenario
+from malib.algorithm.dqn import DQNPolicy, DQNTrainer, DEFAULT_CONFIG
+from malib.rollout.envs.gym import env_desc_gen
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        "General training on single-agent Gym environments."
-    )
-    parser.add_argument(
-        "--config", type=str, help="YAML configuration path.", required=True
-    )
+    parser = ArgumentParser("Multi-agent reinforcement learning for gym cases.")
+    parser.add_argument("--log_dir", default="./logs/", help="Log directory.")
+    parser.add_argument("--env_id", default="CartPole-v1", help="gym environment id.")
 
     args = parser.parse_args()
 
-    with open(os.path.join(BASE_DIR, args.config), "r") as f:
-        config = yaml.safe_load(f)
+    trainer_config = DEFAULT_CONFIG["training_config"].copy()
+    trainer_config["total_timesteps"] = int(1e6)
 
-    # read environment description
-    env_desc = custom_gym.env_desc_gen(**config["env_description"]["config"])
-    obs_space_template = list(env_desc["observation_spaces"].values())[0]
-    training_config = config["training"]
-    rollout_config = config["rollout"]
+    training_config = {
+        "type": IndependentAgent,
+        "trainer_config": trainer_config,
+        "custom_config": {},
+    }
+    rollout_config = {
+        "fragment_length": 2000,  # every thread
+        "max_step": 200,
+        "num_eval_episodes": 10,
+        "num_threads": 2,
+        "num_env_per_thread": 10,
+        "num_eval_threads": 1,
+        "use_subproc_env": False,
+        "batch_mode": "time_step",
+        "postprocessor_types": ["defaults"],
+        # every # rollout epoch run evaluation.
+        "eval_interval": 1,
+        "inference_server": "ray",  # three kinds of inference server: `local`, `pipe` and `ray`
+    }
+    agent_mapping_func = lambda agent: agent
 
-    training_config["interface"]["observation_spaces"] = env_desc["observation_spaces"]
-    training_config["interface"]["action_spaces"] = env_desc["action_spaces"]
+    algorithms = {
+        "default": (
+            DQNPolicy,
+            DQNTrainer,
+            # model configuration, None for default
+            {},
+            {},
+        )
+    }
 
-    run(
-        group=config["group"],
-        name=config["name"],
-        env_description=env_desc,
-        agent_mapping_func=lambda agent: "share",
-        training=training_config,
-        algorithms=config["algorithms"],
-        # rollout configuration for each learned policy model
-        rollout=rollout_config,
-        evaluation=config.get("evaluation", {}),
-        global_evaluator=config["global_evaluator"],
-        dataset_config=config.get("dataset_config", {}),
-        parameter_server=config.get("parameter_server", {}),
-        use_init_policy_pool=False,
-        task_mode="marl",
+    env_description = env_desc_gen(env_id=args.env_id, scenario_configs={})
+    runtime_logdir = os.path.join(args.log_dir, f"gym/{time.time()}")
+
+    if not os.path.exists(runtime_logdir):
+        os.makedirs(runtime_logdir)
+
+    scenario = MARLScenario(
+        name="gym",
+        log_dir=runtime_logdir,
+        algorithms=algorithms,
+        env_description=env_description,
+        training_config=training_config,
+        rollout_config=rollout_config,
+        agent_mapping_func=agent_mapping_func,
+        stopping_conditions={
+            "training": {"max_iteration": int(1e10)},
+            "rollout": {"max_iteration": 1000, "minimum_reward_improvement": 1.0},
+        },
     )
+
+    run(scenario)

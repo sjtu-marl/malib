@@ -2,7 +2,7 @@
 # from yaml import load, dump
 # from test_da import FakeDataServer
 
-# from malib.envs.agent_interface import AgentInterface
+# from malib.rollout.envs.agent_interface import AgentInterface
 # from malib.rollout.rollout_func import env_runner
 # from malib.utils.typing import BufferDescription
 
@@ -12,9 +12,9 @@
 #     from yaml import Loader, Dumper
 # import pytest
 
-# from malib.envs.gr_football import creator
+# from malib.rollout.envs.gr_football import creator
 # from pathlib import Path
-# from malib.envs.vector_env import VectorEnv
+# from malib.rollout.envs.vector_env import VectorEnv
 # import ray
 
 

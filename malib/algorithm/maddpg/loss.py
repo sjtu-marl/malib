@@ -3,7 +3,7 @@ import gym
 
 from malib.algorithm.common import misc
 from malib.algorithm.ddpg.loss import DDPGLoss
-from malib.utils.episode import EpisodeKey
+from malib.utils.episode import Episode
 from malib.algorithm.common.model import get_model
 
 
@@ -42,9 +42,9 @@ class MADDPGLoss(DDPGLoss):
         cliprange = self._params["grad_norm_clipping"]
 
         # print(all_agent_batch[agent_id])
-        rewards = agent_batch[self.main_id][EpisodeKey.REWARD].view(-1, 1)
-        dones = agent_batch[self.main_id][EpisodeKey.DONE].view(-1, 1)
-        cur_obs = agent_batch[self.main_id][EpisodeKey.CUR_OBS]
+        rewards = agent_batch[self.main_id][Episode.REWARD].view(-1, 1)
+        dones = agent_batch[self.main_id][Episode.DONE].view(-1, 1)
+        cur_obs = agent_batch[self.main_id][Episode.CUR_OBS]
 
         gamma = self.policy.custom_config["gamma"]
 
@@ -56,11 +56,11 @@ class MADDPGLoss(DDPGLoss):
         # set target state
         for aid in self.agents:
             batch = agent_batch[aid]
-            target_vf_in_list_obs.append(batch[EpisodeKey.NEXT_OBS])
+            target_vf_in_list_obs.append(batch[Episode.NEXT_OBS])
             target_vf_in_list_act.append(batch["next_act_by_target"])
 
-            vf_in_list_obs.append(batch[EpisodeKey.CUR_OBS])
-            vf_in_list_act.append(batch[EpisodeKey.ACTION_DIST])
+            vf_in_list_obs.append(batch[Episode.CUR_OBS])
+            vf_in_list_act.append(batch[Episode.ACTION_DIST])
 
         target_vf_state = torch.cat(
             [*target_vf_in_list_obs, *target_vf_in_list_act], dim=1

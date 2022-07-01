@@ -1,22 +1,34 @@
-"""
-Implementation of async rollout worker.
-"""
+# MIT License
 
-from ray.util import ActorPool
+# Copyright (c) 2021 MARL @ SJTU
 
-from malib.envs.agent_interface import AgentInterface
-from malib.rollout import rollout_func
-from malib.rollout.base_worker import BaseRolloutWorker
-from malib.utils.typing import (
-    AgentID,
-    Any,
-    BufferDescription,
-    Dict,
-    PolicyID,
-    Tuple,
-    Sequence,
-    List,
-)
+# Author: Ming Zhou
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+from typing import Dict, Any, List, Callable
+
+import ray
+
+from malib.rollout.base_worker import BaseRolloutWorker, _parse_rollout_info
+from malib.common.strategy_spec import StrategySpec
+from malib.utils.logging import Logger
 
 
 class RolloutWorker(BaseRolloutWorker):
@@ -24,158 +36,96 @@ class RolloutWorker(BaseRolloutWorker):
 
     def __init__(
         self,
-        worker_index: Any,
+        experiment_tag: Any,
         env_desc: Dict[str, Any],
-        save: bool = False,
-        **kwargs,
+        agent_mapping_func: Callable,
+        runtime_config: Dict[str, Any],
+        log_dir: str,
+        reverb_table_kwargs: Dict[str, Any],
+        rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
+        simulate_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
     ):
-
-        """Create a rollout worker instance.
-
-        :param Any worker_index: Indicates rollout worker
-        :param Dict[str,Any] env_desc: The environment description
-        :param bool remote: Indicates this rollout worker work in remote mode or not, default by False
-        """
-
-        BaseRolloutWorker.__init__(self, worker_index, env_desc, save, **kwargs)
-
-        self._num_rollout_actors = kwargs.get("num_rollout_actors", 1)
-        self._num_eval_actors = kwargs.get("num_eval_actors", 1)
-        # XXX(ming): computing resources for rollout / evaluation
-        self._resources = kwargs.get(
-            "resources",
-            {
-                "num_cpus": None,
-                "num_gpus": None,
-                "memory": None,
-                "object_store_memory": None,
-                "resources": None,
-            },
+        super().__init__(
+            experiment_tag,
+            env_desc,
+            agent_mapping_func,
+            runtime_config,
+            log_dir,
+            reverb_table_kwargs,
+            rollout_callback,
+            simulate_callback,
         )
 
-        assert (
-            self._num_rollout_actors > 0
-        ), f"num_rollout_actors should be positive, but got `{self._num_rollout_actors}`"
-
-        Stepping = rollout_func.Stepping.as_remote(**self._resources)
-        self.actors = [
-            Stepping.remote(
-                kwargs["exp_cfg"],
-                env_desc,
-                self._offline_dataset,
-                use_subproc_env=kwargs["use_subproc_env"],
-                batch_mode=kwargs["batch_mode"],
-                postprocessor_types=kwargs["postprocessor_types"],
-            )
-            for _ in range(self._num_rollout_actors)
-        ]
-        self.rollout_actor_pool = ActorPool(self.actors[: self._num_rollout_actors])
-        self.actors.extend(
-            [
-                Stepping.remote(
-                    kwargs["exp_cfg"],
-                    env_desc,
-                    None,
-                    use_subproc_env=kwargs["use_subproc_env"],
-                    batch_mode=kwargs["batch_mode"],
-                    postprocessor_types=kwargs["postprocessor_types"],
-                )
-                for _ in range(self._num_eval_actors)
-            ]
-        )
-        self.eval_actor_pool = ActorPool(self.actors[self._num_eval_actors :])
-
-    def ready_for_sample(self, policy_distribution=None):
-        """Reset policy behavior distribution.
-
-        :param Dict[AgentID,Dict[PolicyID,float]] policy_distribution: The agent policy distribution
-        """
-
-        return BaseRolloutWorker.ready_for_sample(self, policy_distribution)
-
-    def sample(
+    def step_rollout(
         self,
-        num_episodes: int,
-        fragment_length: int,
-        role: str,
-        policy_combinations: List,
-        policy_distribution: Dict[AgentID, Dict[PolicyID, float]] = None,
-        buffer_desc: BufferDescription = None,
-    ) -> Tuple[Sequence[Dict[str, List]], int]:
-        """Sample function, handling rollout or simulation tasks."""
+        eval_step: bool,
+        dataserver_entrypoint: str,
+        runtime_config_template: Dict[str, Any],
+    ):
+        tasks = [
+            runtime_config_template
+            for _ in range(self.worker_runtime_config["num_threads"])
+        ]
 
-        if role == "simulation":
-            tasks = [
-                {
-                    "num_episodes": num_episodes,
-                    "behavior_policies": comb,
-                    "flag": "simulation",
-                }
-                for comb in policy_combinations
-            ]
-            actor_pool = self.eval_actor_pool
-        elif role == "rollout":
-            seg_num = self._num_rollout_actors
-            x = num_episodes // seg_num
-            y = num_episodes - seg_num * x
-            episode_segs = [x] * seg_num + ([y] if y else [])
-            assert len(policy_combinations) == 1
-            assert policy_distribution is not None
-            tasks = [
-                {
-                    "flag": "rollout",
-                    "num_episodes": episode,
-                    "behavior_policies": policy_combinations[0],
-                    "policy_distribution": policy_distribution,
-                }
-                for episode in episode_segs
-            ]
-            # add tasks for evaluation
+        # add tasks for evaluation
+        if eval_step:
+            eval_runtime_config = runtime_config_template.copy()
+            eval_runtime_config["flag"] = "evaluation"
             tasks.extend(
                 [
-                    {
-                        "flag": "evaluation",
-                        "num_episodes": 10,  # FIXME(ziyu): fix it and debug
-                        "behavior_policies": policy_combinations[0],
-                        "policy_distribution": policy_distribution,
-                    }
-                    for _ in range(self._num_eval_actors)
+                    eval_runtime_config
+                    for _ in range(self.worker_runtime_config["num_eval_threads"])
                 ]
             )
-            actor_pool = self.rollout_actor_pool
-        else:
-            raise TypeError(f"Unkown role: {role}")
 
-        # self.check_actor_pool_available()
-        rets = actor_pool.map(
-            lambda a, task: a.run.remote(
-                agent_interfaces=self._agent_interfaces,
-                fragment_length=fragment_length,
-                desc=task,
-                buffer_desc=buffer_desc,
-            ),
-            tasks,
-        )
+        rets = [
+            x
+            for x in self.actor_pool.map(
+                lambda a, task: a.run.remote(
+                    agent_interfaces=self.agent_interfaces,
+                    desc=task,
+                    dataserver_entrypoint=dataserver_entrypoint,
+                ),
+                tasks,
+            )
+        ]
 
-        num_frames, stats_list = 0, []
-        for ret in rets:
-            # we retrieve only results from evaluation/simulation actors.
-            if ret[0] in ["evaluation", "simulation"]:
-                stats_list.append(ret[1]["eval_info"])
-            # and total fragment length tracking from rollout actors
-            if ret[0] == "rollout":
-                num_frames += ret[1]["total_fragment_length"]
+        # check evaluation info
+        parsed_results = _parse_rollout_info(rets)
+        Logger.debug(f"parsed results: {parsed_results}")
+        return parsed_results
 
-        return stats_list, num_frames
+    def step_simulation(
+        self,
+        runtime_strategy_specs_list: List[Dict[str, StrategySpec]],
+        runtime_config_template: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """Step simulation task with a given list of strategy spec dicts.
 
-    def update_population(self, agent, policy_id, policy):
-        """Update population with an existing policy instance"""
+        Args:
+            runtime_strategy_specs_list (List[Dict[str, StrategySpec]]): A list of strategy spec dicts, each for one task.
+            runtime_config_template (Dict[str, Any]): Runtime configuration template.
 
-        agent_interface: AgentInterface = self._agent_interfaces[agent]
-        agent_interface.policies[policy_id] = policy
+        Returns:
+            List[Dict[str, Any]]: A list of results, one for each task.
+        """
 
-    def close(self):
-        BaseRolloutWorker.close(self)
-        for actor in self.actors:
-            actor.stop.remote()
-            actor.__ray_terminate__.remote()
+        tasks = []
+        for strategy_specs in runtime_strategy_specs_list:
+            task = runtime_config_template.copy()
+            task["strategy_specs"] = strategy_specs
+            tasks.append(task)
+
+        # we should keep dimension as tasks.
+        rets = [
+            _parse_rollout_info([x])
+            for x in self.actor_pool.map(
+                lambda a, task: a.run.remote(
+                    agent_interfaces=self.agent_interfaces,
+                    desc=task,
+                ),
+                tasks,
+            )
+        ]
+
+        return rets

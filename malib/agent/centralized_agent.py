@@ -2,23 +2,13 @@
 Implementation of centralized agent learning, one team (many policies, many agents) one trainer.
 """
 
+from typing import Dict, Any, Callable, Tuple
 from copy import deepcopy
 
 import gym
 
 from malib.algorithm import get_algorithm_space
-from malib.utils import metrics
-from malib.utils.typing import (
-    BufferDescription,
-    Dict,
-    Any,
-    AgentID,
-    PolicyID,
-    MetricEntry,
-    Callable,
-    Tuple,
-    Union,
-)
+from malib.utils.typing import AgentID, PolicyID
 from malib.agent.ctde_agent import CTDEAgent
 from malib.algorithm.common.policy import Policy
 

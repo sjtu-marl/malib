@@ -4,9 +4,9 @@ import torch
 import yaml
 
 
-from malib.utils.logger import Logger
+from malib.utils.logging import Logger
 from malib.runner import run
-from malib.envs.gr_football import env_desc_gen
+from malib.rollout.envs.gr_football import env_desc_gen
 import pathlib
 
 BASE_DIR = pathlib.Path(__file__).parent.parent.parent.absolute()
@@ -26,7 +26,6 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     np.random.seed(args.seed)
-    Logger.info(f"the seed is set to be {args.seed}.")
 
     with open(args.config, "r") as f:
         config = yaml.safe_load(f)
@@ -69,7 +68,7 @@ if __name__ == "__main__":
         global_evaluator=config["global_evaluator"],
         dataset_config=config.get("dataset_config", {}),
         parameter_server=config.get("parameter_server", {}),
-        worker_config=config["worker_config"],
+        # worker_config=config["worker_config"],
         use_init_policy_pool=False,
         task_mode="marl",
     )

@@ -1,20 +1,12 @@
 """
 Implementation of synchronous agent interface, work with `SyncRolloutWorker`.
 """
+
+from typing import Callable, Dict, Any, Tuple
 import gym.spaces
 import ray
 
-from malib.utils.typing import (
-    Callable,
-    BufferDescription,
-    Status,
-    Dict,
-    AgentID,
-    PolicyID,
-    Any,
-    Tuple,
-    Union,
-)
+from malib.utils.typing import AgentID, PolicyID
 from malib.agent.indepdent_agent import IndependentAgent
 
 
@@ -23,155 +15,28 @@ class SyncAgent(IndependentAgent):
     rollout task has been terminated
     """
 
-    def save(self, model_dir):
-        pass
-
-    def load(self, model_dir):
-        pass
-
     def __init__(
         self,
-        assign_id: str,
+        experiment_tag: str,
+        runtime_id: str,
+        log_dir: str,
         env_desc: Dict[str, Any],
-        algorithm_candidates: Dict[str, Any],
-        training_agent_mapping: Callable,
-        observation_spaces: Dict[AgentID, gym.spaces.Space],
-        action_spaces: Dict[AgentID, gym.spaces.Space],
-        exp_cfg: Dict[str, Any],
-        population_size: int,
-        use_init_policy_pool: bool,
-        algorithm_mapping: Callable = None,
+        algorithms: Dict[str, Tuple[Dict, Dict, Dict]],
+        agent_mapping_func: Callable[[AgentID], str],
+        governed_agents: Tuple[AgentID],
+        trainer_config: Dict[str, Any],
+        custom_config: Dict[str, Any] = None,
         local_buffer_config: Dict = None,
     ):
-        """Create an independent agent instance work in synchronous mode.
-
-        :param str assign_id: Naming agent interface.
-        :param Dict[str,Any] env_desc: Environment description.
-        :param Dict[str,Any] algorithm_candidates: Mapping from readable name to algorithm configuration.
-        :param Callable training_agent_mapping: Mapping from environment agents to training agent interfaces.
-        :param Dict[AgentID,gym.spaces.Space] observation_spaces: Dict of raw agent observation spaces, it is a
-            completed description of all possible agents' observation spaces.
-        :param Dict[Agent,gym.spaces.Space] action_spaces: Dict of raw agent action spaces, it is a completed
-            description of all possible agents' action spaces.
-        :param Dict[str,Any] exp_cfg: Experiment description.
-        :param int population_size: The maximum number of policies in the policy pool. Default to -1, which means no
-            limitation.
-        :param Callable algorithm_mapping: Mapping from agent to algorithm name in `algorithm_candidates`, for
-            constructing your custom algorithm configuration getter. It is optional. Default to None, which means
-            random selection.
-        """
-
-        IndependentAgent.__init__(
-            self,
-            assign_id,
+        super().__init__(
+            experiment_tag,
+            runtime_id,
+            log_dir,
             env_desc,
-            algorithm_candidates,
-            training_agent_mapping,
-            observation_spaces,
-            action_spaces,
-            exp_cfg,
-            population_size,
-            use_init_policy_pool,
-            algorithm_mapping,
+            algorithms,
+            agent_mapping_func,
+            governed_agents,
+            trainer_config,
+            custom_config,
             local_buffer_config,
         )
-
-    def gen_buffer_description(
-        self,
-        agent_policy_mapping: Dict[AgentID, PolicyID],
-        batch_size: int,
-        sample_mode: str,
-    ):
-        """Generate buffer description.
-
-        :param AgentID aid: Environment agent id.
-        :param PolicyID pid: Policy id.
-        :param int batch_size: Sample batch size.
-        :param str sample_mode: sample mode
-        :return: A buffer description entity.
-        """
-        return {
-            aid: BufferDescription(
-                env_id=self._env_desc["config"]["env_id"],
-                agent_id=aid,
-                policy_id=pid,
-                batch_size=batch_size,
-                sample_mode=sample_mode,
-            )
-            for aid, pid in agent_policy_mapping.items()
-        }
-
-    def request_data(
-        self, buffer_desc: Union[BufferDescription, Dict[AgentID, BufferDescription]]
-    ) -> Tuple[Dict, str]:
-        """Request training data from remote `OfflineDatasetServer`.
-
-        Note:
-            This method could only be called in multi-instance scenarios. Or, `OfflineDataset` and `CoordinatorServer`
-            have been started.
-
-        :param Dict[AgentID,BufferDescription] buffer_desc: A dictionary of agent buffer description
-        :return: A tuple of agent batches and information.
-        """
-
-        status = Status.FAILED
-        if isinstance(buffer_desc, Dict):
-            batch = {}
-            for aid, _buffer_desc in buffer_desc.items():
-                while status == Status.FAILED:
-                    status = ray.get(
-                        self._offline_dataset.lock.remote(
-                            lock_type="pull", desc={aid: _buffer_desc}
-                        )
-                    )
-                assert status == Status.SUCCESS, status
-                _batch, info = ray.get(
-                    self._offline_dataset.sample.remote(_buffer_desc)
-                )
-                if _batch is None:
-                    _batch = dict()
-                else:
-                    _batch = _batch.data
-                batch[aid] = _batch
-            print("training lock:", status)
-        else:
-            while status == Status.FAILED:
-                status = ray.get(
-                    # FIXME(ming): support only one agent currently, no parameter sharing
-                    self._offline_dataset.lock.remote(
-                        lock_type="pull", desc={buffer_desc.agent_id: buffer_desc}
-                    )
-                )
-            assert status == Status.SUCCESS, status
-            batch, info = ray.get(self._offline_dataset.sample.remote(buffer_desc))
-            if batch is None:
-                batch = dict()
-            else:
-                batch = batch.data
-        return batch, info
-
-    def push(self, env_aid: AgentID, pid: PolicyID) -> Status:
-        """Push parameter to remote parameter server, then unlock pull.
-
-        :param AgentID env_aid: Registered environment agent id.
-        :param PolicyID pid: Registered policy id.
-        :return: A status code
-        """
-
-        status = IndependentAgent.push(self, env_aid, pid)
-        # then release table lock
-        _status = ray.get(
-            self._offline_dataset.unlock.remote(
-                lock_type="pull",
-                desc={
-                    env_aid: BufferDescription(
-                        env_id=self._env_desc["config"]["env_id"],
-                        agent_id=env_aid,
-                        policy_id=pid,
-                    )
-                },
-            )
-        )
-        print("training unlock:", _status)
-
-        return status
