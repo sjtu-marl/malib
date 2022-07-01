@@ -133,11 +133,11 @@ def execution_plan(
     ]
     rollout_manager.rollout(task_list=rollout_tasks)
 
-    # TODO(ming): note we should stop training if the rollout has been stopped.
     executor = ThreadPoolExecutor(max_workers=2)
     # executor.submit(training_manager.wait)
     executor.submit(rollout_manager.wait)
     executor.shutdown(wait=True)
+    # cancle pending tasks since rollout has been stopped
     training_manager.cancel_pending_tasks()
 
     if recall_resource:
