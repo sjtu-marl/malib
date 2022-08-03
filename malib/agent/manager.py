@@ -38,6 +38,11 @@ from malib.common.strategy_spec import StrategySpec
 from malib.common.manager import Manager
 
 
+DEFAULT_RESOURCE_CONFIG = dict(
+    num_cpus=None, num_gpus=None, memory=None, object_store_memory=None, resources=None
+)
+
+
 class TrainingManager(Manager):
     def __init__(
         self,
@@ -49,6 +54,7 @@ class TrainingManager(Manager):
         training_config: Dict[str, Any],
         log_dir: str,
         remote_mode: bool = True,
+        resource_config: Dict[str, Any] = None,
     ):
         """Create an TrainingManager instance which is responsible for the multi agent training
         tasks execution and rollout task requests sending.
@@ -68,6 +74,8 @@ class TrainingManager(Manager):
 
         super().__init__()
 
+        resource_config = resource_config or DEFAULT_RESOURCE_CONFIG
+
         # interface config give the agent type used here and the group mapping if needed
         agent_groups = defaultdict(lambda: set())
         for agent in env_desc["possible_agents"]:
@@ -83,7 +91,9 @@ class TrainingManager(Manager):
             os.makedirs(log_dir)
 
         agent_cls = training_config["type"]
-        agent_cls = agent_cls.as_remote(num_gpus=num_gpus).options(max_concurrency=10)
+        # update num gpus
+        resource_config["num_gpus"] = num_gpus
+        agent_cls = agent_cls.as_remote(**resource_config).options(max_concurrency=10)
         interfaces: Dict[str, Union[AgentInterface, ray.ObjectRef]] = {}
 
         assert (

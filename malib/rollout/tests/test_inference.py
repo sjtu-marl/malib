@@ -126,12 +126,7 @@ def test_inference_coordination(max_env_num: int):
 
     trainable_agents = env_agents
     # create table
-    offline_dataset_server.create_table.remote(
-        name=dataserver_entrypoint,
-        reverb_server_kwargs={
-            "tb_params_list": [{"name": agent} for agent in trainable_agents]
-        },
-    )
+    offline_dataset_server.create_table.remote(name=dataserver_entrypoint)
 
     client.run(
         agent_interfaces=servers,

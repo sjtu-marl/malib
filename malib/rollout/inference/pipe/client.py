@@ -34,7 +34,6 @@ import traceback
 
 import ray
 
-# import reverb
 import numpy as np
 
 from ray.util.queue import Queue

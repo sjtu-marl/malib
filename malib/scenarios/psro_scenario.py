@@ -54,6 +54,7 @@ class PSROScenario(MARLScenario):
         stopping_conditions: Dict[str, Any] = None,
         dataset_config: Dict[str, Any] = None,
         parameter_server_config: Dict[str, Any] = None,
+        resource_config: Dict[str, Any] = None,
     ):
         """Construct a learning scenario for Policy Space Response Oracle methods.
 
@@ -85,6 +86,7 @@ class PSROScenario(MARLScenario):
             stopping_conditions,
             dataset_config,
             parameter_server_config,
+            resource_config,
         )
         self.meta_solver_type = meta_solver_type
         self.global_stopping_conditions = global_stopping_conditions
@@ -109,6 +111,7 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
         training_config=scenario.training_config,
         log_dir=scenario.log_dir,
         remote_mode=True,
+        resource_config=scenario.resource_config["training"],
     )
 
     rollout_manager = RolloutWorkerManager(
@@ -119,6 +122,7 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
         rollout_config=scenario.rollout_config,
         env_desc=scenario.env_desc,
         log_dir=scenario.log_dir,
+        resource_config=scenario.resource_config["rollout"],
     )
 
     payoff_manager = PayoffManager(

@@ -47,6 +47,7 @@ class MARLScenario(Scenario):
         stopping_conditions: Dict[str, Any] = None,
         dataset_config: Dict[str, Any] = None,
         parameter_server_config: Dict[str, Any] = None,
+        resource_config: Dict[str, Any] = None,
     ):
         """Construct a learning scenario for MARL training.
 
@@ -78,6 +79,7 @@ class MARLScenario(Scenario):
         )
         self.num_worker = num_worker
         self.num_policy_each_interface = 1
+        self.resource_config = resource_config or {"training": None, "rollout": None}
 
 
 def execution_plan(
@@ -95,6 +97,7 @@ def execution_plan(
             training_config=scenario.training_config,
             log_dir=scenario.log_dir,
             remote_mode=True,
+            resource_config=scenario.resource_config["training"],
         )
 
     if hasattr(scenario, "rollout_manager"):
@@ -108,6 +111,7 @@ def execution_plan(
             rollout_config=scenario.rollout_config,
             env_desc=scenario.env_desc,
             log_dir=scenario.log_dir,
+            resource_config=scenario.resource_config["rollout"],
         )
 
     strategy_specs = training_manager.add_policies(n=scenario.num_policy_each_interface)

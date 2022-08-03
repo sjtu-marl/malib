@@ -52,6 +52,11 @@ def validate_strategy_specs(specs: Dict[str, StrategySpec]):
             )
 
 
+DEFAULT_RESOURCE_CONFIG = dict(
+    num_cpus=None, num_gpus=None, memory=None, object_store_memory=None, resources=None
+)
+
+
 class RolloutWorkerManager(Manager):
     def __init__(
         self,
@@ -79,13 +84,8 @@ class RolloutWorkerManager(Manager):
         super().__init__()
 
         rollout_worker_cls = PBRolloutWorker
-        worker_cls = rollout_worker_cls.as_remote(
-            num_cpus=None,
-            num_gpus=None,
-            memory=None,
-            object_store_memory=None,
-            resources=None,
-        )
+        resource_config = resource_config or DEFAULT_RESOURCE_CONFIG
+        worker_cls = rollout_worker_cls.as_remote(**resource_config)
         workers = []
 
         for i in range(num_worker):
@@ -96,7 +96,6 @@ class RolloutWorkerManager(Manager):
                     agent_mapping_func=agent_mapping_func,
                     runtime_config=rollout_config,
                     log_dir=log_dir,
-                    reverb_table_kwargs={},
                     rollout_callback=None,
                     simulate_callback=None,
                 )

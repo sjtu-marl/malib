@@ -137,7 +137,6 @@ def test_rollout_worker(agent_mapping_func: LambdaType):
         ),
         log_dir=log_dir,
         experiment_tag=experiment_tag,
-        reverb_table_kwargs=None,
         outer_inference_server=MockedInferenceServer,
         outer_inference_client=MockedInferenceClient,
     )

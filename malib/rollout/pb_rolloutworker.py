@@ -41,7 +41,6 @@ class PBRolloutWorker(RolloutWorker):
         agent_mapping_func: Callable,
         runtime_config: Dict[str, Any],
         log_dir: str,
-        reverb_table_kwargs: Dict[str, Any],
         rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
         simulate_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
     ):
@@ -51,7 +50,6 @@ class PBRolloutWorker(RolloutWorker):
             agent_mapping_func,
             runtime_config,
             log_dir,
-            reverb_table_kwargs,
             rollout_callback,
             simulate_callback,
         )

@@ -32,10 +32,6 @@ import pprint
 
 from collections import defaultdict
 
-import shutup
-
-shutup.please()
-
 import ray
 import gym
 import numpy as np
@@ -184,7 +180,6 @@ class RolloutWorker(RemoteInterface):
         agent_mapping_func: Callable,
         runtime_config: Dict[str, Any],
         log_dir: str,
-        reverb_table_kwargs: Dict[str, Any],
         rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
         simulate_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
     ):
@@ -202,7 +197,6 @@ class RolloutWorker(RemoteInterface):
             * `num_eval_episodes`: int, the number of epsiodes for each evaluation.
             log_dir (str): Log directory.
             experiment_tag (str): Experiment tag, to create a data table.
-            reverb_table_kwargs (Dict[str, Any]): Configuration to create reverb table.
             rollout_callback (Callable[[ray.ObjectRef, Dict[str, Any]], Any], optional): Callback function for rollout task, users can determine how \
                 to cordinate with coordinator here. Defaults by None, indicating no coordination.
             simulate_callback (Callable[[ray.ObjectRef, Dict[str, Any]], Any]): Callback function for simulation task, users can determine \
@@ -271,7 +265,6 @@ class RolloutWorker(RemoteInterface):
         self.simulate_callback = simulate_callback or default_simulate_callback
         self.tb_writer = tensorboard.SummaryWriter(log_dir=log_dir)
         self.experiment_tag = experiment_tag
-        self.reverb_table_kwargs = reverb_table_kwargs
 
     def init_agent_interfaces(
         self, env_desc: Dict[str, Any], runtime_ids: Sequence[AgentID]

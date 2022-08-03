@@ -39,6 +39,7 @@ setup(
         "mujoco_py",
         "hiredis==2.0.0",
         "frozendict==2.3.0",
+        "numba>=0.56.0",
     ],
     extras_require={
         "dev": [
