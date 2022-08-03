@@ -32,163 +32,21 @@ import time
 import traceback
 
 import ray
-import numpy as np
 
 from ray.util.queue import Queue
 from ray.actor import ActorHandle
 
 from malib.utils.logging import Logger
 
-from malib.utils.typing import AgentID, DataFrame, EnvID, BehaviorMode
+from malib.utils.typing import AgentID, DataFrame, BehaviorMode
 from malib.utils.episode import Episode, NewEpisodeDict
 from malib.utils.preprocessor import Preprocessor, get_preprocessor
 from malib.utils.timing import Timing
 from malib.remote.interface import RemoteInterface
 from malib.rollout.envs.vector_env import VectorEnv
 from malib.rollout.envs.async_vector_env import AsyncVectorEnv, AsyncSubProcVecEnv
-from malib.rollout.postprocessor import get_postprocessor
-from malib.rollout.ray_inference.server import RayInferenceWorkerSet
-
-
-def process_env_rets(
-    env_rets: Dict[EnvID, Dict[str, Dict[AgentID, Any]]],
-    preprocessor: Dict[AgentID, Preprocessor],
-    preset_meta_data: Dict[str, Any],
-) -> Dict[AgentID, DataFrame]:
-    """Process environment returns, generally, for the observation transformation.
-
-    Args:
-        env_rets (Dict[EnvID, Dict[str, Dict[AgentID, Any]]]): A dict of environment returns.
-        preprocessor (Dict[AgentID, Preprocessor]): A dict of preprocessor for raw environment observations, mapping from agent ids to preprocessors.
-        preset_meta_data (Dict[str, Any]): Preset meta data.
-
-    Returns:
-        Dict[AgentID, DataFrame]: A dict of dataframes, mapping from agent ids to dataframes.
-    """
-
-    dataframes = {}
-    agent_obs_list = defaultdict(lambda: [])
-    agent_action_mask_list = defaultdict(lambda: [])
-    agent_dones_list = defaultdict(lambda: [])
-
-    all_agents = set()
-    alive_env_ids = []
-    processed_env_rets = {}
-
-    for env_id, ret in env_rets.items():
-        # obs, action_mask, reward, done, info
-        # process obs
-        agents = list(ret[0].keys())
-        processed_obs = {
-            agent: preprocessor[agent].transform(raw_obs)
-            for agent, raw_obs in ret[0].items()
-        }
-        # obs, action_mask, reward, done, info,
-        processed_env_rets[env_id] = (processed_obs,) + ret[1:]
-
-        # check done
-        if len(ret) > 2:
-            all_done = ret[3]["__all__"]
-            if all_done:
-                continue
-            else:
-                ret[3].pop("__all__")
-                for agent, done in ret[3].items():
-                    agent_dones_list[agent].append(done)
-        else:
-            for agent in agents:
-                if isinstance(ret[0][agent], Tuple):
-                    agent_dones_list[agent].append([False] * len(ret[0][agent]))
-                else:
-                    agent_dones_list[agent].append(False)
-
-        # do not move this inference before check done
-        if len(ret) >= 2:
-            for agent, action_mask in ret[1].items():
-                agent_action_mask_list[agent].append(action_mask)
-
-        for agent, obs in processed_obs.items():
-            agent_obs_list[agent].append(obs)
-        all_agents.update(agents)
-        alive_env_ids.append(env_id)
-
-    for agent in all_agents:
-        stacked_obs = np.stack(agent_obs_list[agent])
-        stacked_action_mask = (
-            np.stack(agent_action_mask_list[agent])
-            if agent_action_mask_list.get(agent)
-            else None
-        )
-        stacked_done = np.stack(agent_dones_list[agent])
-
-        dataframes[agent] = DataFrame(
-            identifier=agent,
-            data={
-                Episode.CUR_OBS: stacked_obs,
-                Episode.ACTION_MASK: stacked_action_mask,
-                Episode.DONE: stacked_done,
-            },
-            meta_data={
-                "environment_ids": alive_env_ids,
-                "evaluate": preset_meta_data["evaluate"],
-                "data_shapes": {
-                    Episode.CUR_OBS: stacked_obs.shape[1:],
-                    Episode.ACTION_MASK: stacked_action_mask.shape[1:]
-                    if stacked_action_mask is not None
-                    else None,
-                    Episode.DONE: stacked_done.shape[1:],
-                },
-            },
-        )
-
-    return processed_env_rets, dataframes
-
-
-def process_policy_outputs(
-    raw_output: Dict[str, List[DataFrame]], env: VectorEnv
-) -> Tuple[Dict[EnvID, Dict[AgentID, Any]], Dict[EnvID, Dict[AgentID, Dict[str, Any]]]]:
-    """Processing policy outputs for each agent.
-
-    Args:
-        raw_output (Dict[str, List[DataFrame]]): A dict of raw policy output, mapping from agent to a data frame which is bound to a remote inference server.
-        env (VectorEnv): Environment instance.
-
-    Returns:
-        Tuple[Dict[EnvID, Dict[AgentID, Any]], Dict[EnvID, Dict[AgentID, Dict[str, Any]]]]: A tuple of 1. Agent action by environments, 2.
-    """
-
-    rets = defaultdict(lambda: defaultdict(lambda: {}))  # env_id, str, agent, any
-    for dataframes in raw_output.values():
-        for dataframe in dataframes:
-            agent = dataframe.identifier
-            data = dataframe.data
-            env_ids = dataframe.meta_data["environment_ids"]
-            assert isinstance(data, dict)
-            for k, v in data.items():
-                if k == Episode.RNN_STATE:
-                    for i, env_id in enumerate(env_ids):
-                        if v is None:
-                            continue
-                        rets[env_id][agent][k] = [_v[i] for _v in v]
-                else:
-                    for env_id, _v in zip(env_ids, v):
-                        rets[env_id][agent][k] = _v
-
-    # process action with action adapter
-    env_actions: Dict[EnvID, Dict[AgentID, Any]] = env.action_adapter(rets)
-
-    return env_actions, rets
-
-
-def merge_env_rets(rets, next_rets):
-    r: Dict[EnvID, Dict] = {}
-    for e in [rets, next_rets]:
-        for env_id, ret in e.items():
-            if env_id not in r:
-                r[env_id] = ret
-            else:
-                r[env_id].update(ret)
-    return r
+from malib.rollout.inference.ray.server import RayInferenceWorkerSet
+from malib.rollout.inference.utils import process_env_rets, process_policy_outputs
 
 
 def recieve(queue: Dict[str, Queue], block: bool = False) -> Dict[AgentID, DataFrame]:
@@ -210,13 +68,6 @@ def recieve(queue: Dict[str, Queue], block: bool = False) -> Dict[AgentID, DataF
             if not v.empty():
                 rets[runtime_id] = v.get_nowait()
     return rets
-
-
-def postprocessing(episodes, postprocessor_types, policies=None):
-    postprocessor_types = ["default"]
-    for handler in get_postprocessor(postprocessor_types):
-        episodes = handler(episodes, policies)
-    return episodes
 
 
 class RayInferenceClient(RemoteInterface):
@@ -495,27 +346,6 @@ def env_runner(
                 episode_dict.record_env_rets(processed_env_ret)
 
             cnt += 1
-            # FIXME(ming): only time step mode support
-            # if writer_info_dict is not None and cnt % 100 == 0:
-            #     episodes = episode_dict.to_numpy()
-            #     for rid, writer_info in writer_info_dict.items():
-            #         # get agents from agent group
-            #         agents = client.agent_group[rid]
-            #         batches = []
-            #         for episode in episodes.values():
-            #             agent_buffer = [episode[aid] for aid in agents]
-            #             batches.append(agent_buffer)
-            #         writer_info[-1].put_nowait_batch(batches)
-            #     # rewrite
-            #     episode_dict.clear()
-            #     episode_dict.record_env_rets(
-            #         processed_env_ret, ignore_keys={"rew", "infos", "done"}
-            #     )
-            #     print(
-            #         "send data, current rollout fps: {:.3f}".format(
-            #             client.env.batched_step_cnt / (time.time() - start)
-            #         )
-            #     )
 
         if writer_info_dict is not None:
             # episode_id: agent_id: dict_data

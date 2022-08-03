@@ -26,12 +26,12 @@ from typing import Dict, Any, List, Callable
 
 import ray
 
-from malib.rollout.base_worker import BaseRolloutWorker, _parse_rollout_info
+from malib.rollout.rolloutworker import RolloutWorker, parse_rollout_info
 from malib.common.strategy_spec import StrategySpec
 from malib.utils.logging import Logger
 
 
-class RolloutWorker(BaseRolloutWorker):
+class PBRolloutWorker(RolloutWorker):
     """For experience collection and simulation, the operating unit is env.AgentInterface"""
 
     def __init__(
@@ -91,7 +91,7 @@ class RolloutWorker(BaseRolloutWorker):
         ]
 
         # check evaluation info
-        parsed_results = _parse_rollout_info(rets)
+        parsed_results = parse_rollout_info(rets)
         Logger.debug(f"parsed results: {parsed_results}")
         return parsed_results
 
@@ -118,7 +118,7 @@ class RolloutWorker(BaseRolloutWorker):
 
         # we should keep dimension as tasks.
         rets = [
-            _parse_rollout_info([x])
+            parse_rollout_info([x])
             for x in self.actor_pool.map(
                 lambda a, task: a.run.remote(
                     agent_interfaces=self.agent_interfaces,

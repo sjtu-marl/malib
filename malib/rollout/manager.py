@@ -20,7 +20,7 @@ from ray.util import ActorPool
 from malib.common.manager import Manager
 from malib.remote.interface import RemoteInterface
 from malib.common.strategy_spec import StrategySpec
-from malib.rollout.rollout_worker import RolloutWorker
+from malib.rollout.pb_rolloutworker import PBRolloutWorker
 
 
 def validate_strategy_specs(specs: Dict[str, StrategySpec]):
@@ -78,7 +78,7 @@ class RolloutWorkerManager(Manager):
 
         super().__init__()
 
-        rollout_worker_cls = RolloutWorker
+        rollout_worker_cls = PBRolloutWorker
         worker_cls = rollout_worker_cls.as_remote(
             num_cpus=None,
             num_gpus=None,

@@ -51,14 +51,14 @@ from malib.utils.stopping_conditions import get_stopper
 from malib.common.strategy_spec import StrategySpec
 from malib.remote.interface import RemoteInterface
 from malib.monitor.utils import write_to_tensorboard
-from malib.rollout.pipe_inference.server import (
+from malib.rollout.inference.pipe.server import (
     InferenceWorkerSet as PipeInferenceServer,
 )
-from malib.rollout.pipe_inference.client import InferenceClient as PipeInferenceClient
-from malib.rollout.ray_inference.server import (
+from malib.rollout.inference.pipe.client import InferenceClient as PipeInferenceClient
+from malib.rollout.inference.ray.server import (
     RayInferenceWorkerSet as RayInferenceServer,
 )
-from malib.rollout.ray_inference.client import RayInferenceClient
+from malib.rollout.inference.ray.client import RayInferenceClient
 
 
 PARAMETER_GET_TIMEOUT = 3
@@ -67,7 +67,7 @@ MAX_PARAMETER_GET_RETRIES = 10
 logger = logging.getLogger(__name__)
 
 
-def _parse_rollout_info(raw_statistics: List[Dict[str, Any]]) -> Dict[str, Any]:
+def parse_rollout_info(raw_statistics: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Merge a list of rollout information here.
 
     Args:
@@ -176,7 +176,7 @@ def validate_runtime_configs(configs: Dict[str, Any]):
     assert "eval_interval" in configs
 
 
-class BaseRolloutWorker(RemoteInterface):
+class RolloutWorker(RemoteInterface):
     def __init__(
         self,
         experiment_tag: str,

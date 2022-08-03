@@ -188,30 +188,3 @@ def _get_initial_states(self, client_id, observation, policy: Policy, identifier
         else:
             batch_size = 1
         return policy.get_initial_state(batch_size=batch_size)
-
-
-def _update_weights(
-    inference_server: RayInferenceWorkerSet, force: bool = False
-) -> None:
-    """Traverse the dict of strategy spec, update policies needed.
-
-    Args:
-        inference_server (InferenceWorkerSet): The instance of inference server, it is actually a ray.ObjectRef.
-        force (bool, optional): Force update or not. Defaults to False.
-    """
-
-    while True:
-        for strategy_spec in inference_server.strategy_spec_dict.values():
-            for spec_policy_id in strategy_spec.policy_ids:
-                policy_id = f"{strategy_spec.id}/{policy_id}"
-                if policy_id in inference_server.policies:
-                    weights = ray.get(
-                        inference_server.parameter_server.get_weights.remote(
-                            spec_id=strategy_spec.id, spec_policy_id=spec_policy_id
-                        )
-                    )
-                    if weights is not None:
-                        inference_server.policies[policy_id].load_state_dict(
-                            weights["weights"]
-                        )
-            # time.sleep(1)

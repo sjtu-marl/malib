@@ -204,7 +204,7 @@ class SequentialEnv(Environment):
     def __init__(self, **configs):
         super(SequentialEnv, self).__init__(**configs)
         self.is_sequential = True
-        self.max_step = 2**63
+        self.max_step = 2 ** 63
 
     @property
     def agent_selection(self):

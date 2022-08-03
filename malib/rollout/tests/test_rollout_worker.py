@@ -114,7 +114,7 @@ def test_rollout_worker(agent_mapping_func: LambdaType):
     p = ParameterServer.options(name=settings.PARAMETER_SERVER_ACTOR).remote()
     ray.get([c.start.remote(), d.start.remote(), p.start.remote()])
 
-    from malib.rollout.rollout_worker import RolloutWorker
+    from malib.rollout.pb_rolloutworker import RolloutWorker
 
     print("mock done")
 

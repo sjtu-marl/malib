@@ -183,7 +183,7 @@ class PokerParallelEnv(Environment):
             aid: self.env.action_space(aid) for aid in self.env.possible_agents
         }
         self.is_sequential = True
-        self.max_step = 2**63
+        self.max_step = 2 ** 63
 
     @property
     def agent_selection(self):

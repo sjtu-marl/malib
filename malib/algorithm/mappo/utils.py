@@ -13,11 +13,11 @@ def init_fc_weights(m, init_method, gain=1.0):
 def huber_loss(e, d):
     a = (abs(e) <= d).float()
     b = (e > d).float()
-    return a * e**2 / 2 + b * d * (abs(e) - d / 2)
+    return a * e ** 2 / 2 + b * d * (abs(e) - d / 2)
 
 
 def mse_loss(e):
-    return (e**2) / 2
+    return (e ** 2) / 2
 
 
 class PopArt(nn.Module):
@@ -64,7 +64,7 @@ class PopArt(nn.Module):
         debiased_mean_sq = self.running_mean_sq / self.debiasing_term.clamp(
             min=self.epsilon
         )
-        debiased_var = (debiased_mean_sq - debiased_mean**2).clamp(min=1e-2)
+        debiased_var = (debiased_mean_sq - debiased_mean ** 2).clamp(min=1e-2)
         return debiased_mean, debiased_var
 
     def forward(self, input_vector, train=True):
@@ -79,11 +79,11 @@ class PopArt(nn.Module):
             # subsequent batches.
             detached_input = input_vector.detach()
             batch_mean = detached_input.mean(dim=tuple(range(self.norm_axes)))
-            batch_sq_mean = (detached_input**2).mean(dim=tuple(range(self.norm_axes)))
+            batch_sq_mean = (detached_input ** 2).mean(dim=tuple(range(self.norm_axes)))
 
             if self.per_element_update:
                 batch_size = np.prod(detached_input.size()[: self.norm_axes])
-                weight = self.beta**batch_size
+                weight = self.beta ** batch_size
             else:
                 weight = self.beta
 
