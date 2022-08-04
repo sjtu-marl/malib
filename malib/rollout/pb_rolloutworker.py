@@ -57,7 +57,6 @@ class PBRolloutWorker(RolloutWorker):
     def step_rollout(
         self,
         eval_step: bool,
-        dataserver_entrypoint: str,
         runtime_config_template: Dict[str, Any],
     ):
         tasks = [
@@ -80,9 +79,7 @@ class PBRolloutWorker(RolloutWorker):
             x
             for x in self.actor_pool.map(
                 lambda a, task: a.run.remote(
-                    agent_interfaces=self.agent_interfaces,
-                    desc=task,
-                    dataserver_entrypoint=dataserver_entrypoint,
+                    agent_interfaces=self.agent_interfaces, desc=task
                 ),
                 tasks,
             )

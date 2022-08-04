@@ -264,7 +264,6 @@ class AgentInterface(RemoteInterface, ABC):
     def train(
         self,
         data_request_identifier: str,
-        stopping_conditions: Dict[str, Any],
         reset_state: bool = True,
     ) -> Dict[str, Any]:
         """Executes training task and returns the final interface state.
@@ -312,7 +311,6 @@ class AgentInterface(RemoteInterface, ABC):
                         global_step=self._total_step,
                         prefix=f"Training/{self._runtime_id}",
                     )
-                # TODO(ming): collect mean loss maybe
                 self.sync_remote_parameters()
                 self._total_epoch += 1
             self._active_tups.popleft()
@@ -320,7 +318,9 @@ class AgentInterface(RemoteInterface, ABC):
             Logger.warning(
                 f"training pipe is terminated. caused by: {traceback.format_exc()}"
             )
-            ray.get(self._offline_dataset.end_consumer_pipe.remote())
+            ray.get(
+                self._offline_dataset.end_consumer_pipe.remote(data_request_identifier)
+            )
 
         Logger.info(
             "training meets stopping condition after {} epoch(s), {} iteration(s)".format(

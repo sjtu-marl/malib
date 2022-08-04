@@ -23,7 +23,7 @@
 # SOFTWARE.
 
 from argparse import Namespace
-from typing import Type, Any, List, Dict, Tuple, Callable
+from typing import Any, List, Dict, Tuple
 from types import LambdaType
 from collections import defaultdict
 

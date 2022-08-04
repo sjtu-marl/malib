@@ -186,8 +186,6 @@ class TrainingManager(Manager):
                 k: self._interfaces[k].add_policies(n=ns[k]) for k in interface_ids
             }
 
-        # Logger.debug(f"newest strategy spec dict: {strategy_spec_dict}")
-
         return strategy_spec_dict
 
     def run(self, data_request_identifiers: Dict[str, str]):
@@ -210,6 +208,12 @@ class TrainingManager(Manager):
                         self._stopping_conditions["training"],
                     )
                 )
+
+    def retrive_results(self):
+        while len(self.pending_tasks) > 0:
+            dones, self.pending_tasks = ray.wait(self.pending_tasks)
+            for done in ray.get(dones):
+                yield done
 
     def terminate(self) -> None:
         """Terminate all training actors."""

@@ -154,21 +154,13 @@ class RolloutWorkerManager(Manager):
     def simulate(self, task_list):
         """Parse simulation task and dispatch it to available workers"""
 
-        self.pending_tasks = self._actor_pool.map(
-            lambda actor, task: actor.simulate.remote(
-                runtime_strategy_specs_list=[task]
-            ),
-            task_list,
-        )
-
-    # def wait(self):
-    #     try:
-    #         for task in self.pending_tasks:
-    #             if self._force_stop:
-    #                 self.terminate()
-    #                 break
-    #     except Exception:
-    #         traceback.print_exc()
+        for task in task_list:
+            self._actor_pool.submit(
+                lambda actor, task: actor.simulate.remote(
+                    runtime_strategy_specs_list=[task]
+                ),
+                task,
+            )
 
     def rollout(self, task_list: List[Dict[str, Any]]) -> None:
         """Start rollout task without blocking.
@@ -184,15 +176,30 @@ class RolloutWorkerManager(Manager):
         for task in task_list:
             validate_strategy_specs(task["strategy_specs"])
 
-        self.pending_tasks = self._actor_pool.map(
-            lambda actor, task: actor.rollout.remote(
-                runtime_strategy_specs=task["strategy_specs"],
-                stopping_conditions=self.stopping_conditions["rollout"],
-                trainable_agents=task["trainable_agents"],
-                data_entrypoints=task["data_entrypoints"],
-            ),
-            task_list,
-        )
+        while self._actor_pool.has_next():
+            try:
+                self._actor_pool.get_next(timeout=0)
+            except TimeoutError:
+                pass
+
+        for task in task_list:
+            self._actor_pool.submit(
+                lambda actor, task: actor.rollout.remote(
+                    runtime_strategy_specs=task["strategy_specs"],
+                    stopping_conditions=self.stopping_conditions["rollout"],
+                    trainable_agents=task["trainable_agents"],
+                    data_entrypoints=task["data_entrypoints"],
+                ),
+                task,
+            )
+
+    def retrive_results(self):
+        try:
+            while self._actor_pool.has_next():
+                yield self._actor_pool.get_next()
+        except Exception as e:
+            print(traceback.format_exc())
+            raise e
 
     def terminate(self):
         """Stop all remote workers"""

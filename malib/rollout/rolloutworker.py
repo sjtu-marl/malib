@@ -435,9 +435,7 @@ class RolloutWorker(RemoteInterface):
         start_time = time.time()
         while self.is_running():
             eval_step = (epoch + 1) % self.worker_runtime_config["eval_interval"] == 0
-            results = self.step_rollout(
-                eval_step, self.experiment_tag, runtime_config_template
-            )
+            results = self.step_rollout(eval_step, runtime_config_template)
             total_timesteps += results["total_timesteps"]
             eval_results = results.get("evaluation", None)
 
@@ -488,14 +486,12 @@ class RolloutWorker(RemoteInterface):
     def step_rollout(
         self,
         eval_step: bool,
-        dataserver_entrypoint: str,
         runtime_config: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         """The logic function to run rollout. Users must implment this method.
 
         Args:
             eval_step (bool): Indicate evaluation or not.
-            buffer_desc (BufferDescription): The instance of buffer description, for data send.
             runtime_config (Dict[str, Any]): Runtime configurations to control the amount of sampled data. Keys include:
             - `flag`: indicate the task type, the value is rollout.
             - `max_step`: indicates the maximum length of an episode.

@@ -193,8 +193,6 @@ class RayInferenceClient(RemoteInterface):
         self,
         agent_interfaces: Dict[AgentID, RayInferenceWorkerSet],
         desc: Dict[str, Any],
-        dataserver_entrypoint: str = None,
-        reset: bool = False,
     ) -> Dict[str, Any]:
         """Executes environment runner to collect training data or run purely simulation/evaluation.
 
@@ -204,8 +202,6 @@ class RayInferenceClient(RemoteInterface):
         Args:
             agent_interfaces (Dict[AgentID, InferenceWorkerSet]): A dict of agent interface server.
             desc (Dict[str, Any]): Task description.
-            dataserver_entrypoint (str, optional): Dataserver entrypoint, to identify online dataset servers for different experiments. Defaults to None.
-            reset (bool, optional): Reset connection if existing connect detected. Defaults to False.
 
         Returns:
             Dict[str, Any]: A dict of simulation results.

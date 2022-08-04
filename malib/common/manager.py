@@ -24,33 +24,13 @@ class Manager(ABC):
     def workers(self) -> List[RemoteInterface]:
         raise NotImplementedError
 
+    def retrive_results(self):
+        raise NotImplementedError
+
     def wait(self):
         collected_rets = []
-
-        try:
-            if isinstance(self.pending_tasks, List):
-                while len(self.pending_tasks) > 0:
-                    if self._force_stop:
-                        self.terminate()
-                        break
-                    else:
-                        dones, self.pending_tasks = ray.wait(self.pending_tasks)
-                        collected_rets.extend(ray.get(dones))
-            elif isinstance(self.pending_tasks, Generator):
-                for task in self.pending_tasks:
-                    if isinstance(task, list):
-                        collected_rets.extend(task)
-                    else:
-                        collected_rets.append(task)
-                    if self._force_stop:
-                        self.terminate()
-                        break
-            else:
-                raise ValueError("Unknow type: {}".format(self.pending_tasks))
-        except Exception as e:
-            traceback.print_exc()
-            raise e
-
+        for res in self.retrive_results():
+            collected_rets.append(res)
         return collected_rets
 
     def cancel_pending_tasks(self):
