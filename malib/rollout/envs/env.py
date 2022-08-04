@@ -1,5 +1,4 @@
-from typing import ChainMap, Dict, List, Any, Union, Tuple, Sequence
-from collections import defaultdict
+from typing import Dict, List, Any, Union, Tuple, Sequence
 
 import uuid
 import gym
@@ -7,7 +6,6 @@ import copy
 import numpy as np
 
 from malib.utils.typing import AgentID
-from malib.utils.episode import Episode
 from malib.utils.general import flatten_dict
 
 
@@ -198,17 +196,6 @@ class Environment:
         res1 = flatten_dict(self.episode_metrics)
         res2 = flatten_dict(self.custom_metrics)
         return {**res1, **res2}
-
-
-class SequentialEnv(Environment):
-    def __init__(self, **configs):
-        super(SequentialEnv, self).__init__(**configs)
-        self.is_sequential = True
-        self.max_step = 2 ** 63
-
-    @property
-    def agent_selection(self):
-        raise NotImplementedError
 
 
 # TODO(ming): test required
