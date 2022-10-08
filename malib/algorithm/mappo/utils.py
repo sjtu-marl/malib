@@ -1,4 +1,25 @@
-# -*- coding: utf-8 -*-
+# MIT License
+
+# Copyright (c) 2021 MARL @ SJTU
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 from torch import nn
 import torch
 import numpy as np
@@ -13,11 +34,11 @@ def init_fc_weights(m, init_method, gain=1.0):
 def huber_loss(e, d):
     a = (abs(e) <= d).float()
     b = (e > d).float()
-    return a * e ** 2 / 2 + b * d * (abs(e) - d / 2)
+    return a * e**2 / 2 + b * d * (abs(e) - d / 2)
 
 
 def mse_loss(e):
-    return (e ** 2) / 2
+    return (e**2) / 2
 
 
 class PopArt(nn.Module):
@@ -64,7 +85,7 @@ class PopArt(nn.Module):
         debiased_mean_sq = self.running_mean_sq / self.debiasing_term.clamp(
             min=self.epsilon
         )
-        debiased_var = (debiased_mean_sq - debiased_mean ** 2).clamp(min=1e-2)
+        debiased_var = (debiased_mean_sq - debiased_mean**2).clamp(min=1e-2)
         return debiased_mean, debiased_var
 
     def forward(self, input_vector, train=True):
@@ -79,11 +100,11 @@ class PopArt(nn.Module):
             # subsequent batches.
             detached_input = input_vector.detach()
             batch_mean = detached_input.mean(dim=tuple(range(self.norm_axes)))
-            batch_sq_mean = (detached_input ** 2).mean(dim=tuple(range(self.norm_axes)))
+            batch_sq_mean = (detached_input**2).mean(dim=tuple(range(self.norm_axes)))
 
             if self.per_element_update:
                 batch_size = np.prod(detached_input.size()[: self.norm_axes])
-                weight = self.beta ** batch_size
+                weight = self.beta**batch_size
             else:
                 weight = self.beta
 
