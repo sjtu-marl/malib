@@ -25,3 +25,5 @@
 from .pb_rolloutworker import RolloutWorker
 from .inference.pipe.client import InferenceClient
 from .inference.pipe.server import InferenceWorkerSet
+
+__all__ = ["RolloutWorker", "InferenceClient", "InferenceWorkerSet"]

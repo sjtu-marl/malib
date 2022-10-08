@@ -220,7 +220,6 @@ class Environment:
         return {**res1, **res2}
 
 
-# TODO(ming): test required
 class Wrapper(Environment):
     """Wraps the environment to allow a modular transformation"""
 
