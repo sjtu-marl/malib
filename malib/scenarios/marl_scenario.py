@@ -83,7 +83,10 @@ class MARLScenario(Scenario):
 
 
 def execution_plan(
-    experiment_tag: str, scenario: Scenario, recall_resource: bool = True
+    experiment_tag: str,
+    scenario: Scenario,
+    recall_resource: bool = True,
+    verbose: bool = True,
 ):
     if hasattr(scenario, "training_manager"):
         training_manager: TrainingManager = scenario.training_manager
@@ -98,6 +101,7 @@ def execution_plan(
             log_dir=scenario.log_dir,
             remote_mode=True,
             resource_config=scenario.resource_config["training"],
+            verbose=verbose,
         )
 
     if hasattr(scenario, "rollout_manager"):
@@ -112,6 +116,7 @@ def execution_plan(
             env_desc=scenario.env_desc,
             log_dir=scenario.log_dir,
             resource_config=scenario.resource_config["rollout"],
+            verbose=verbose,
         )
 
     strategy_specs = training_manager.add_policies(n=scenario.num_policy_each_interface)

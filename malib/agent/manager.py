@@ -55,6 +55,7 @@ class TrainingManager(Manager):
         log_dir: str,
         remote_mode: bool = True,
         resource_config: Dict[str, Any] = None,
+        verbose: bool = True,
     ):
         """Create an TrainingManager instance which is responsible for the multi agent training
         tasks execution and rollout task requests sending.
@@ -72,7 +73,7 @@ class TrainingManager(Manager):
             remote_mode (bool, Optional): Init agent interfaces as remote actor or not. Default is True.
         """
 
-        super().__init__()
+        super().__init__(verbose=verbose)
 
         resource_config = resource_config or DEFAULT_RESOURCE_CONFIG
 
@@ -112,6 +113,7 @@ class TrainingManager(Manager):
                 governed_agents=tuple(agents),
                 trainer_config=training_config["trainer_config"],
                 custom_config=training_config.get("custom_config"),
+                verbose=verbose,
             )
 
         # ensure all interfaces have been started up

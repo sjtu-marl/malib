@@ -188,6 +188,7 @@ class RolloutWorker(RemoteInterface):
         rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
         simulate_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
         resource_config: Dict[str, Any] = None,
+        verbose: bool = True,
     ):
         """Create a instance for simulations, rollout and evaluation. This base class initializes \
             all necessary servers and workers for rollouts. Including remote agent interfaces, \
@@ -208,6 +209,7 @@ class RolloutWorker(RemoteInterface):
             simulate_callback (Callable[[ray.ObjectRef, Dict[str, Any]], Any]): Callback function for simulation task, users can determine \
                 how to coordinate with coordinator here. Defaults by None, indicating no coordination.
             resource_config (Dict[str, Any], optional): Computional resource configuration, if not be specified, will load default configuraiton. Defaults to None.
+            verbose (bool, optional): Enable logging or not. Defaults to True.
         """
 
         self.worker_indentifier = f"rolloutworker_{os.getpid()}"
@@ -285,6 +287,7 @@ class RolloutWorker(RemoteInterface):
         self.simulate_callback = simulate_callback or default_simulate_callback
         self.tb_writer = tensorboard.SummaryWriter(log_dir=log_dir)
         self.experiment_tag = experiment_tag
+        self.verbose = verbose
 
     def init_agent_interfaces(
         self, env_desc: Dict[str, Any], runtime_ids: Sequence[AgentID]
@@ -458,8 +461,9 @@ class RolloutWorker(RemoteInterface):
             eval_results = results.get("evaluation", None)
 
             if eval_results is not None:
-                formatted_results = pprint.pformat(eval_results)
-                Logger.info(f"Evaluation at epoch: {epoch}\n{formatted_results}")
+                if self.verbose:
+                    formatted_results = pprint.pformat(eval_results)
+                    Logger.info(f"Evaluation at epoch: {epoch}\n{formatted_results}")
                 write_to_tensorboard(
                     self.tb_writer,
                     eval_results,

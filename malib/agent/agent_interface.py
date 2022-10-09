@@ -67,6 +67,7 @@ class AgentInterface(RemoteInterface, ABC):
         trainer_config: Dict[str, Any],
         custom_config: Dict[str, Any] = None,
         local_buffer_config: Dict = None,
+        verbose: bool = True,
     ):
         """Construct agent interface for training.
 
@@ -83,14 +84,16 @@ class AgentInterface(RemoteInterface, ABC):
             trainer_config (Dict[str, Any]): Trainer configuration.
             custom_config (Dict[str, Any], optional): A dict of custom configuration. Defaults to None.
             local_buffer_config (Dict, optional): A dict for local buffer configuration. Defaults to None.
+            verbose (bool, True): Enable logging or not. Defaults to True.
         """
 
-        print("\tray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
-        print(
-            "\tCUDA_VISIBLE_DEVICES: {}".format(
-                os.environ.get("CUDA_VISIBLE_DEVICES", [])
+        if verbose:
+            print("\tray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
+            print(
+                "\tCUDA_VISIBLE_DEVICES: {}".format(
+                    os.environ.get("CUDA_VISIBLE_DEVICES", [])
+                )
             )
-        )
 
         local_buffer_config = local_buffer_config or {}
         device = torch.device("cuda" if ray.get_gpu_ids() else "cpu")
@@ -137,6 +140,7 @@ class AgentInterface(RemoteInterface, ABC):
         self._offline_dataset: OfflineDataset = None
         self._parameter_server: ParameterServer = None
         self._active_tups = deque()
+        self.verbose = verbose
 
     def connect(self):
         """Connect backend server"""
@@ -322,11 +326,12 @@ class AgentInterface(RemoteInterface, ABC):
                 self._offline_dataset.end_consumer_pipe.remote(data_request_identifier)
             )
 
-        Logger.info(
-            "training meets stopping condition after {} epoch(s), {} iteration(s)".format(
-                self._total_epoch, self._total_step
+        if self.verbose:
+            Logger.info(
+                "training meets stopping condition after {} epoch(s), {} iteration(s)".format(
+                    self._total_epoch, self._total_step
+                )
             )
-        )
         return self.get_interface_state()
 
     def reset(self):

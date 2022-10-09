@@ -112,6 +112,7 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
         log_dir=scenario.log_dir,
         remote_mode=True,
         resource_config=scenario.resource_config["training"],
+        verbose=False,
     )
 
     rollout_manager = RolloutWorkerManager(
@@ -123,6 +124,7 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
         env_desc=scenario.env_desc,
         log_dir=scenario.log_dir,
         resource_config=scenario.resource_config["rollout"],
+        verbose=False,
     )
 
     payoff_manager = PayoffManager(
@@ -146,7 +148,9 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
         scenario.prob_list_each = equilibrium
 
         # run best response training tasks
-        info = marl_execution_plan(experiment_tag, scenario, recall_resource=False)
+        info = marl_execution_plan(
+            experiment_tag, scenario, recall_resource=False, verbose=False
+        )
 
         # extend payoff tables with brs
         strategy_specs: Dict[str, StrategySpec] = info["strategy_specs"]

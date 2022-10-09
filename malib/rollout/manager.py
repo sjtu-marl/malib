@@ -81,6 +81,7 @@ class RolloutWorkerManager(Manager):
         env_desc: Dict[str, Any],
         log_dir: str,
         resource_config: Dict[str, Any] = None,
+        verbose: bool = True,
     ):
         """Construct a manager for multiple rollout workers.
 
@@ -92,9 +93,10 @@ class RolloutWorkerManager(Manager):
             env_desc (Dict[str, Any]): Environment description.
             log_dir (str): Log directory.
             resource_config (Dict[str, Any], optional): A dict that describes the resource config. Defaults to None.
+            verbose (bool, optional): Enable logging or not. Defaults to True.
         """
 
-        super().__init__()
+        super().__init__(verbose=verbose)
 
         rollout_worker_cls = PBRolloutWorker
         worker_cls = rollout_worker_cls.as_remote(num_cpus=0, num_gpus=0)
@@ -111,6 +113,7 @@ class RolloutWorkerManager(Manager):
                     rollout_callback=None,
                     simulate_callback=None,
                     resource_config=resource_config,
+                    verbose=verbose,
                 )
             )
 

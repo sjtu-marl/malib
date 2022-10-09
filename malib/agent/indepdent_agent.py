@@ -22,6 +22,7 @@ class IndependentAgent(AgentInterface):
         trainer_config: Dict[str, Any],
         custom_config: Dict[str, Any] = None,
         local_buffer_config: Dict = None,
+        verbose: bool = True,
     ):
         super().__init__(
             experiment_tag,
@@ -34,6 +35,7 @@ class IndependentAgent(AgentInterface):
             trainer_config,
             custom_config,
             local_buffer_config,
+            verbose,
         )
 
     def multiagent_post_process(

@@ -32,9 +32,10 @@ from malib.remote.interface import RemoteInterface
 
 class Manager(ABC):
     @abstractmethod
-    def __init__(self):
+    def __init__(self, verbose: bool):
         self._force_stop = False
         self.pending_tasks = []
+        self.verbose = verbose
 
     def is_running(self):
         return len(self.pending_tasks) > 0
