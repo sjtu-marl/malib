@@ -62,6 +62,8 @@ setup(
         "hiredis==2.0.0",
         "frozendict==2.3.0",
         "numba>=0.56.0",
+        "matpltolib>=3.5.3",
+        "networkx>=2.6.3",
     ],
     extras_require={
         "dev": [

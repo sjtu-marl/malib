@@ -23,9 +23,10 @@
 # SOFTWARE.
 
 from typing import List, Union, Sequence, Dict, Tuple, Any, Callable
+
 import copy
-import itertools
 import logging
+import warnings
 
 import nashpy as nash
 import numpy as np
@@ -38,7 +39,7 @@ from malib.common.strategy_spec import StrategySpec
 try:
     from open_spiel.python.egt import alpharank, utils as alpharank_utils
 except ImportError as e:
-    logging.warning(
+    warnings.warning(
         "Cannot import alpharank utils, if you wanna run meta game experiments, please install open_spiel before that."
     )
 
