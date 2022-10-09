@@ -26,14 +26,10 @@ subprocess). It is responsible for the resources management of worker instances,
 will be assigned with rollout tasks sent from the `CoordinatorServer`.
 """
 
-from argparse import Namespace
-import traceback
 from typing import Dict, Tuple, Any, Callable, Set, List
 from collections import defaultdict
 
-import hashlib
-import time
-
+import traceback
 import ray
 import numpy as np
 
@@ -74,11 +70,6 @@ def validate_strategy_specs(specs: Dict[str, StrategySpec]):
             )
 
 
-DEFAULT_RESOURCE_CONFIG = dict(
-    num_cpus=None, num_gpus=None, memory=None, object_store_memory=None, resources=None
-)
-
-
 class RolloutWorkerManager(Manager):
     def __init__(
         self,
@@ -106,8 +97,7 @@ class RolloutWorkerManager(Manager):
         super().__init__()
 
         rollout_worker_cls = PBRolloutWorker
-        resource_config = resource_config or DEFAULT_RESOURCE_CONFIG
-        worker_cls = rollout_worker_cls.as_remote(**resource_config)
+        worker_cls = rollout_worker_cls.as_remote(num_cpus=0, num_gpus=0)
         workers = []
 
         for i in range(num_worker):
@@ -120,6 +110,7 @@ class RolloutWorkerManager(Manager):
                     log_dir=log_dir,
                     rollout_callback=None,
                     simulate_callback=None,
+                    resource_config=resource_config,
                 )
             )
 
@@ -216,6 +207,15 @@ class RolloutWorkerManager(Manager):
             )
 
     def retrive_results(self):
+        """Retrieve task results
+
+        Raises:
+            e: Any exceptions.
+
+        Yields:
+            Any: Task results.
+        """
+
         try:
             while self._actor_pool.has_next():
                 yield self._actor_pool.get_next()

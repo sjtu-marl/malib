@@ -101,7 +101,7 @@ class DQNPolicy(Policy):
     def compute_action(
         self,
         observation: torch.Tensor,
-        action_mask: Union[torch.Tensor, None],
+        act_mask: Union[torch.Tensor, None],
         evaluate: bool,
         hidden_state: Any = None,
         **kwargs
@@ -110,7 +110,7 @@ class DQNPolicy(Policy):
 
         Args:
             observation (DataArray): The observation batched data with shape=(n_batch, *obs_shape).
-            action_mask (DataArray): The action mask batched with shape=(n_batch, *mask_shape).
+            act_mask (DataArray): The action mask batched with shape=(n_batch, *mask_shape).
             evaluate (bool): Turn off exploration or not.
             state (Any, Optional): The hidden state. Default by None.
         """
@@ -119,12 +119,12 @@ class DQNPolicy(Policy):
             if self.agent_dimension > 0:
                 # reshape to (n_batch * agent_dimension, shape)
                 observation = observation.reshape((-1,) + self.preprocessor.shape)
-                if action_mask is not None:
-                    action_mask = action_mask.reshape(-1, self._action_space.n)
+                if act_mask is not None:
+                    act_mask = act_mask.reshape(-1, self._action_space.n)
             logits, state = self.critic(observation)
 
             # do masking
-            action_probs = misc.masked_logits(logits, mask=action_mask)
+            action_probs = misc.masked_logits(logits, mask=act_mask)
             action_probs = misc.gumbel_softmax(logits, hard=True)
 
         if not evaluate:
@@ -133,12 +133,12 @@ class DQNPolicy(Policy):
                     np.ones((len(observation), self._action_space.n))
                     / self._action_space.n
                 )
-                if action_mask is not None:
+                if act_mask is not None:
                     legal_actions = np.array(
                         [
                             idx
                             for idx in range(self._action_space.n)
-                            if action_mask[0][idx] > 0
+                            if act_mask[0][idx] > 0
                         ],
                         dtype=np.int32,
                     )
@@ -192,9 +192,9 @@ class DQNPolicy(Policy):
     ) -> np.ndarray:
         values, _ = self.critic(observation)
         values = values.detach().cpu().numpy()
-        if "action_mask" in kwargs:
-            action_mask = kwargs["action_mask"]
-            values[action_mask] = -1e9
+        if "act_mask" in kwargs:
+            act_mask = kwargs["act_mask"]
+            values[act_mask] = -1e9
         return values
 
     def reset(self, **kwargs):

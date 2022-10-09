@@ -60,7 +60,7 @@ from malib.rollout.inference.ray.client import RayInferenceClient
 PARAMETER_GET_TIMEOUT = 3
 MAX_PARAMETER_GET_RETRIES = 10
 DEFAULT_RESOURCE_CONFIG = dict(
-    inference_server=dict(num_cpu=1, num_gpus=0),
+    inference_server=dict(num_cpus=1, num_gpus=0),
     inference_client=dict(num_cpus=0, num_gpus=0),
 )
 

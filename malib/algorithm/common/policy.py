@@ -184,7 +184,7 @@ class Policy(metaclass=ABCMeta):
     def compute_action(
         self,
         observation: torch.Tensor,
-        action_mask: Union[torch.Tensor, None],
+        act_mask: Union[torch.Tensor, None],
         evaluate: bool,
         hidden_state: Any = None,
         **kwargs,

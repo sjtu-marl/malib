@@ -88,7 +88,7 @@ class PGPolicy(Policy):
     def compute_action(
         self,
         observation: torch.Tensor,
-        action_mask: Union[torch.Tensor, None],
+        act_mask: Union[torch.Tensor, None],
         evaluate: bool,
         hidden_state: Any = None,
         **kwargs
@@ -98,10 +98,10 @@ class PGPolicy(Policy):
             if isinstance(logits, tuple):
                 dist = self.dist_fn.proba_distribution(*logits)
             else:
-                dist = self.dist_fn.proba_distribution(logits, action_mask=action_mask)
+                dist = self.dist_fn.proba_distribution(logits, action_mask=act_mask)
             if evaluate:
                 if self.action_type == "discrete":
-                    act = misc.masked_logits(logits, mask=action_mask).argmax(-1)
+                    act = misc.masked_logits(logits, mask=act_mask).argmax(-1)
                 elif self.action_type == "continuous":
                     act = logits[0]
             else:
