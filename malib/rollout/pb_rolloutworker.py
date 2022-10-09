@@ -72,24 +72,21 @@ class PBRolloutWorker(RolloutWorker):
 
     def step_simulation(
         self,
-        runtime_strategy_specs_list: List[Dict[str, StrategySpec]],
+        runtime_strategy_specs: Dict[str, StrategySpec],
         runtime_config_template: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """Step simulation task with a given list of strategy spec dicts.
 
         Args:
-            runtime_strategy_specs_list (List[Dict[str, StrategySpec]]): A list of strategy spec dicts, each for one task.
+            runtime_strategy_specs (Dict[str, StrategySpec]): A strategy spec dicts.
             runtime_config_template (Dict[str, Any]): Runtime configuration template.
 
         Returns:
-            List[Dict[str, Any]]: A list of results, one for each task.
+            Dict[str, Any]: A list of results, one for each task.
         """
 
-        tasks = []
-        for strategy_specs in runtime_strategy_specs_list:
-            task = runtime_config_template.copy()
-            task["strategy_specs"] = strategy_specs
-            tasks.append(task)
+        task = runtime_config_template.copy()
+        task["strategy_specs"] = runtime_strategy_specs
 
         # we should keep dimension as tasks.
         rets = [
@@ -99,8 +96,8 @@ class PBRolloutWorker(RolloutWorker):
                     agent_interfaces=self.agent_interfaces,
                     desc=task,
                 ),
-                tasks,
+                [task],
             )
-        ]
+        ][0]
 
         return rets

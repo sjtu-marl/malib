@@ -170,7 +170,7 @@ class RolloutWorkerManager(Manager):
         for task in task_list:
             self._actor_pool.submit(
                 lambda actor, task: actor.simulate.remote(
-                    runtime_strategy_specs_list=[task]
+                    runtime_strategy_specs_list=task
                 ),
                 task,
             )
