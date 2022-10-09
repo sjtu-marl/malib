@@ -21,7 +21,7 @@
 # SOFTWARE.
 
 import traceback
-from typing import List, Generator
+from typing import List, Generator, Any
 from abc import abstractmethod, ABC
 
 import ray
@@ -49,7 +49,13 @@ class Manager(ABC):
     def retrive_results(self):
         raise NotImplementedError
 
-    def wait(self):
+    def wait(self) -> List[Any]:
+        """Wait workers to be terminated, and retrieve the executed results.
+
+        Returns:
+            List[Any]: A list of results.
+        """
+
         collected_rets = []
         for res in self.retrive_results():
             collected_rets.append(res)

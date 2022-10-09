@@ -55,7 +55,6 @@ class RayInferenceWorkerSet(RemoteInterface):
         action_space: gym.Space,
         parameter_server: ParameterServer,
         governed_agents: List[AgentID],
-        force_weight_update: bool = False,
     ) -> None:
         self.runtime_agent_id = agent_id
         self.observation_space = observation_space

@@ -22,22 +22,23 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from re import L
-import traceback
 from typing import Dict, Any, List, Sequence
 from collections import defaultdict
 
+import traceback
 import numpy as np
 
 from malib.utils.typing import AgentID, EnvID
 
 
 class Episode:
+    """Agent episode tracking"""
+
     CUR_OBS = "obs"
     NEXT_OBS = "obs_next"
     ACTION = "act"
-    ACTION_MASK = "action_mask"
-    NEXT_ACTION_MASK = "action_mask_next"
+    ACTION_MASK = "act_mask"
+    NEXT_ACTION_MASK = "act_mask_next"
     REWARD = "rew"
     DONE = "done"
     ACTION_LOGITS = "act_logits"
@@ -59,9 +60,8 @@ class Episode:
     # model states
     RNN_STATE = "rnn_state"
 
-    def __init__(self, agents, processors):
+    def __init__(self, agents: List[AgentID], processors):
         self.processors = processors
-        # self.agent_entry = defaultdict(lambda: {aid: [] for aid in self.policy_mapping})
         self.agents = agents
         self.agent_entry = {agent: defaultdict(lambda: []) for agent in self.agents}
 
@@ -72,11 +72,24 @@ class Episode:
         self.agent_entry[__k] = v
 
     def record_policy_step(self, policy_rets: Dict[AgentID, Dict[str, Any]]):
+        """Save policy outputs.
+
+        Args:
+            policy_rets (Dict[AgentID, Dict[str, Any]]): A dict of policy outputs, each for an agent.
+        """
+
         for agent, agent_item in policy_rets.items():
             for k, v in agent_item.items():
                 self.agent_entry[agent][k].append(v)
 
     def record_env_rets(self, env_rets: Sequence[Dict[AgentID, Any]], ignore_keys={}):
+        """Save a transiton. The given transition is a sub sequence of (obs, action_mask, reward, done, info). Users specify ignore keys to filter keys.
+
+        Args:
+            env_rets (Sequence[Dict[AgentID, Any]]): A transition.
+            ignore_keys (dict, optional): . Defaults to {}.
+        """
+
         for i, key in enumerate(
             [
                 Episode.CUR_OBS,
@@ -120,7 +133,7 @@ class Episode:
                         tmp[k] = v
             except Exception as e:
                 print(traceback.format_exc())
-                continue
+                raise e
             res[agent] = tmp
         # agent trajectory length check
         for agent, trajectory in res.items():
@@ -132,6 +145,8 @@ class Episode:
 
 
 class NewEpisodeDict(defaultdict):
+    """Episode dict, for trajectory tracking for a bunch of environments."""
+
     def __missing__(self, env_id):
         if self.default_factory is None:
             raise KeyError(env_id)
@@ -142,12 +157,25 @@ class NewEpisodeDict(defaultdict):
     def record_env_rets(
         self, env_outputs: Dict[EnvID, Sequence[Dict[AgentID, Any]]], ignore_keys={}
     ):
+        """Save returns of environments.
+
+        Args:
+            env_outputs (Dict[EnvID, Sequence[Dict[AgentID, Any]]]): A dict of environment returns.
+            ignore_keys (dict, optional): Oh, I forget the functionality. Defaults to {}.
+        """
+
         for env_id, env_output in env_outputs.items():
             self[env_id].record_env_rets(env_output, ignore_keys)
 
     def record_policy_step(
         self, env_policy_outputs: Dict[EnvID, Dict[AgentID, Dict[str, Any]]]
     ):
+        """Save policy outputs.
+
+        Args:
+            env_policy_outputs (Dict[EnvID, Dict[AgentID, Dict[str, Any]]]): A dict of policy outputs, each item is a dict related to an environment.
+        """
+
         for env_id, policy_outputs in env_policy_outputs.items():
             self[env_id].record_policy_step(policy_outputs)
 

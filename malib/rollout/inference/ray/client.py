@@ -137,26 +137,26 @@ class RayInferenceClient(RemoteInterface):
             custom_config.get("inference_server", "local") == "local"
         )
 
-        if use_internal_server:
-            runtime_obs_spaces = {}
-            runtime_act_spaces = {}
+        # if use_internal_server:
+        #     runtime_obs_spaces = {}
+        #     runtime_act_spaces = {}
 
-            for rid, agents in self.agent_group.items():
-                runtime_obs_spaces[rid] = obs_spaces[agents[0]]
-                runtime_act_spaces[rid] = act_spaces[agents[0]]
+        #     for rid, agents in self.agent_group.items():
+        #         runtime_obs_spaces[rid] = obs_spaces[agents[0]]
+        #         runtime_act_spaces[rid] = act_spaces[agents[0]]
 
-            self.agent_interfaces = {
-                runtime_id: RayInferenceWorkerSet(
-                    agent_id=runtime_id,
-                    observation_space=runtime_obs_spaces[runtime_id],
-                    action_space=runtime_act_spaces[runtime_id],
-                    parameter_server=custom_config["parameter_server"],
-                    governed_agents=self.agent_group[runtime_id],
-                )
-                for runtime_id in runtime_agent_ids
-            }
-        else:
-            self.agent_interfaces = None
+        #     self.agent_interfaces = {
+        #         runtime_id: RayInferenceWorkerSet(
+        #             agent_id=runtime_id,
+        #             observation_space=runtime_obs_spaces[runtime_id],
+        #             action_space=runtime_act_spaces[runtime_id],
+        #             parameter_server=custom_config["parameter_server"],
+        #             governed_agents=self.agent_group[runtime_id],
+        #         )
+        #         for runtime_id in runtime_agent_ids
+        #     }
+        # else:
+        #     self.agent_interfaces = None
 
     def add_envs(self, maximum: int) -> int:
         """Create environments, if env is an instance of VectorEnv, add these \
@@ -200,7 +200,7 @@ class RayInferenceClient(RemoteInterface):
             Only simulation/evaluation tasks return evaluation information.
 
         Args:
-            agent_interfaces (Dict[AgentID, InferenceWorkerSet]): A dict of agent interface server.
+            agent_interfaces (Dict[AgentID, InferenceWorkerSet]): A dict of agent interface servers.
             desc (Dict[str, Any]): Task description.
 
         Returns:
@@ -229,7 +229,7 @@ class RayInferenceClient(RemoteInterface):
 
         eval_results, performance = env_runner(
             self,
-            self.agent_interfaces or agent_interfaces,
+            agent_interfaces,
             request,
             server_runtime_config,
             writer_info_dict=desc.get("writer_info_dict", None),
@@ -286,18 +286,17 @@ def env_runner(
             preprocessor=server_runtime_config["preprocessor"],
             preset_meta_data={"evaluate": server_runtime_config["evaluate"]},
         )
-        # record environment return at reset has been called:
-        # (obs, action_mask)
+        # obs
         episode_dict.record_env_rets(processed_env_ret)
 
         Logger.debug("env runner started...")
         start = time.time()
-        # async policy interaction
+
         cnt = 0
         while not client.env.is_terminated():
             grouped_data_frames: Dict[str, List[DataFrame]] = defaultdict(lambda: [])
             for agent, dataframe in dataframes.items():
-                # map runtime to agent
+                # map agent to runtime handler
                 runtime_id = client.training_agent_mapping(agent)
                 grouped_data_frames[runtime_id].append(dataframe)
 
@@ -339,6 +338,7 @@ def env_runner(
                     preprocessor=server_runtime_config["preprocessor"],
                     preset_meta_data={"evaluate": server_runtime_config["evaluate"]},
                 )
+                # obs, rew, done
                 episode_dict.record_env_rets(processed_env_ret)
 
             cnt += 1

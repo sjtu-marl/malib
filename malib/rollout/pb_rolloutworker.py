@@ -34,26 +34,6 @@ from malib.utils.logging import Logger
 class PBRolloutWorker(RolloutWorker):
     """For experience collection and simulation, the operating unit is env.AgentInterface"""
 
-    def __init__(
-        self,
-        experiment_tag: Any,
-        env_desc: Dict[str, Any],
-        agent_mapping_func: Callable,
-        runtime_config: Dict[str, Any],
-        log_dir: str,
-        rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
-        simulate_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
-    ):
-        super().__init__(
-            experiment_tag,
-            env_desc,
-            agent_mapping_func,
-            runtime_config,
-            log_dir,
-            rollout_callback,
-            simulate_callback,
-        )
-
     def step_rollout(
         self,
         eval_step: bool,

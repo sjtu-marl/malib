@@ -59,6 +59,11 @@ from malib.rollout.inference.ray.client import RayInferenceClient
 
 PARAMETER_GET_TIMEOUT = 3
 MAX_PARAMETER_GET_RETRIES = 10
+DEFAULT_RESOURCE_CONFIG = dict(
+    inference_server=dict(num_cpu=1, num_gpus=0),
+    inference_client=dict(num_cpus=0, num_gpus=0),
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +187,7 @@ class RolloutWorker(RemoteInterface):
         log_dir: str,
         rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
         simulate_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
+        resource_config: Dict[str, Any] = None,
     ):
         """Create a instance for simulations, rollout and evaluation. This base class initializes \
             all necessary servers and workers for rollouts. Including remote agent interfaces, \
@@ -201,6 +207,7 @@ class RolloutWorker(RemoteInterface):
                 to cordinate with coordinator here. Defaults by None, indicating no coordination.
             simulate_callback (Callable[[ray.ObjectRef, Dict[str, Any]], Any]): Callback function for simulation task, users can determine \
                 how to coordinate with coordinator here. Defaults by None, indicating no coordination.
+            resource_config (Dict[str, Any], optional): Computional resource configuration, if not be specified, will load default configuraiton. Defaults to None.
         """
 
         self.worker_indentifier = f"rolloutworker_{os.getpid()}"
@@ -214,6 +221,7 @@ class RolloutWorker(RemoteInterface):
             runtime_agent_ids.append(runtime_id)
         runtime_agent_ids = set(runtime_agent_ids)
         agent_group = dict(agent_group)
+        resource_config = resource_config or DEFAULT_RESOURCE_CONFIG
 
         # valid agent group
         validate_agent_group(
@@ -238,24 +246,36 @@ class RolloutWorker(RemoteInterface):
         self.init_servers()
 
         if runtime_config["inference_server"] == "local":
-            self.agent_interfaces = None
             self.inference_server_cls = None
-            self.inference_client_cls = RayInferenceClient.as_remote(num_cpus=1)
-        else:
-            if runtime_config["inference_server"] == "pipe":
-                self.inference_client_cls = PipeInferenceClient.as_remote(num_cpus=0)
-                self.inference_server_cls = PipeInferenceServer.as_remote(
-                    num_cpus=0
-                ).options(max_concurrency=100)
-            else:
-                self.inference_client_cls = RayInferenceClient.as_remote(num_cpus=0)
-                self.inference_server_cls = RayInferenceServer.as_remote(
-                    num_cpus=0
-                ).options(max_concurrency=100)
-
+            self.inference_client_cls = RayInferenceClient.as_remote(
+                **resource_config["inference_client"]
+            )
+        elif runtime_config["inference_server"] == "pipe":
+            self.inference_client_cls = PipeInferenceClient.as_remote(
+                **resource_config["inference_client"]
+            )
+            self.inference_server_cls = PipeInferenceServer.as_remote(
+                **resource_config["inference_server"]
+            ).options(max_concurrency=100)
             self.agent_interfaces = self.init_agent_interfaces(
                 env_desc, runtime_agent_ids
             )
+        elif runtime_config["inference_server"] == "ray":
+            self.inference_client_cls = RayInferenceClient.as_remote(
+                **resource_config["inference_client"]
+            )
+            self.inference_server_cls = RayInferenceServer.as_remote(
+                **resource_config["inference_server"]
+            ).options(max_concurrency=100)
+
+        else:
+            raise ValueError(
+                "unexpected inference server type: {}".format(
+                    runtime_config["inference_server"]
+                )
+            )
+
+        self.agent_interfaces = self.init_agent_interfaces(env_desc, runtime_agent_ids)
         self.actor_pool: ActorPool = self.init_actor_pool(
             env_desc, runtime_config, agent_mapping_func
         )
@@ -352,17 +372,15 @@ class RolloutWorker(RemoteInterface):
         return actor_pool
 
     def init_servers(self):
-        """Connect to coordinator and data servers here.
+        """Connect to data servers.
 
-        :raises RuntimeError: Reached maximum retries.
+        Raises:
+            RuntimeError: Runtime errors.
         """
 
         retries = 100
         while True:
             try:
-                # if self.coordinator is None:
-                #     self.coordinator = ray.get_actor(settings.COORDINATOR_SERVER_ACTOR)
-
                 if self.parameter_server is None:
                     self.parameter_server = ray.get_actor(
                         settings.PARAMETER_SERVER_ACTOR

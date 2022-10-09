@@ -63,7 +63,6 @@ class InferenceWorkerSet(RemoteInterface):
         action_space: gym.Space,
         parameter_server: ParameterServer,
         governed_agents: List[AgentID],
-        force_weight_update: bool = False,
     ) -> None:
         self.runtime_agent_id = agent_id
         self.observation_space = observation_space
@@ -81,7 +80,7 @@ class InferenceWorkerSet(RemoteInterface):
         marker = rwlock.RWLockFair()
 
         self.shared_wlock = marker.gen_wlock()
-        self.thread_pool.submit(_update_weights, self, force_weight_update)
+        self.thread_pool.submit(_update_weights, self)
         self.thread_pool.submit(_compute_action, self, False, marker.gen_rlock())
         self.thread_pool.submit(_compute_action, self, True, marker.gen_rlock())
 
@@ -289,7 +288,7 @@ def _compute_action(self: InferenceWorkerSet, eval_mode: bool, reader_lock: Any)
         raise e
 
 
-def _update_weights(inference_server: InferenceWorkerSet, force: bool = False) -> None:
+def _update_weights(inference_server: InferenceWorkerSet) -> None:
     """Traverse the dict of strategy spec, update policies needed.
 
     Args:
