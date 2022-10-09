@@ -18,7 +18,7 @@ from malib import settings
 from malib.utils.typing import AgentID
 from malib.rollout.envs import dummy_env
 from malib.common.strategy_spec import StrategySpec
-from malib.algorithm.random import RandomPolicy
+from malib.rl.random import RandomPolicy
 from malib.backend.offline_dataset_server import OfflineDataset
 from malib.backend.parameter_server import ParameterServer
 from tests.coordinator import FakeCoordinator

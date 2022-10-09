@@ -40,7 +40,7 @@ from malib.utils.typing import AgentID, DataFrame
 from malib.utils.timing import Timing
 from malib.utils.episode import Episode
 from malib.common.strategy_spec import StrategySpec
-from malib.algorithm.common.policy import Policy
+from malib.rl.common.policy import Policy
 from malib.backend.parameter_server import ParameterServer
 
 

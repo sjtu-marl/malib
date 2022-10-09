@@ -12,7 +12,7 @@ from ray.util.queue import Queue
 from malib.utils.timing import Timing
 from malib.utils.logging import Logger
 from malib.remote.interface import RemoteInterface
-from malib.algorithm.pg import PGPolicy
+from malib.rl.pg import PGPolicy
 from malib.rollout.envs.env import Environment
 from malib.rollout.envs.gym import env_desc_gen
 from malib.rollout.envs.vector_env import VectorEnv

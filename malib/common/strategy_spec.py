@@ -27,7 +27,7 @@ from argparse import Namespace
 
 import numpy as np
 
-from malib.algorithm.common.policy import Policy
+from malib.rl.common.policy import Policy
 from malib.utils.typing import PolicyID
 
 

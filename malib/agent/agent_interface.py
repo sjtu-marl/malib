@@ -46,7 +46,7 @@ from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
 from malib.utils.tianshou_batch import Batch
 from malib.remote.interface import RemoteInterface
-from malib.algorithm.common.trainer import Trainer
+from malib.rl.common.trainer import Trainer
 from malib.common.strategy_spec import StrategySpec
 from malib.monitor.utils import write_to_tensorboard
 

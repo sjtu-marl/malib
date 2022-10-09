@@ -9,7 +9,7 @@ shutup.please()
 from malib.runner import run
 from malib.agent import IndependentAgent
 from malib.scenarios.psro_scenario import PSROScenario
-from malib.algorithm.dqn import DQNPolicy, DQNTrainer, DEFAULT_CONFIG
+from malib.rl.dqn import DQNPolicy, DQNTrainer, DEFAULT_CONFIG
 from malib.rollout.envs.dummy_env import env_desc_gen
 
 

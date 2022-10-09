@@ -7,7 +7,7 @@ import ray
 
 from malib import settings
 from malib.common.strategy_spec import StrategySpec
-from malib.algorithm.random import RandomPolicy
+from malib.rl.random import RandomPolicy
 from malib.rollout.envs import dummy_env
 from malib.rollout.inference.pipe.client import InferenceClient
 from malib.rollout.inference.pipe.server import InferenceWorkerSet

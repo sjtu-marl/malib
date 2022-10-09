@@ -8,7 +8,7 @@ import ray
 from malib.utils.logging import Logger
 from malib.utils.timing import Timing
 from malib.remote.interface import RemoteInterface
-from malib.algorithm.pg import PGPolicy
+from malib.rl.pg import PGPolicy
 from malib.rollout.envs.env import Environment
 from malib.rollout.envs.gym import env_desc_gen
 

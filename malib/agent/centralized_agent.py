@@ -7,10 +7,10 @@ from copy import deepcopy
 
 import gym
 
-from malib.algorithm import get_algorithm_space
+from malib.rl import get_algorithm_space
 from malib.utils.typing import AgentID, PolicyID
 from malib.agent.ctde_agent import CTDEAgent
-from malib.algorithm.common.policy import Policy
+from malib.rl.common.policy import Policy
 
 
 class CentralizedAgent(CTDEAgent):
