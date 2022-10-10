@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Any, List, Callable
+from typing import Dict, Any, List, Callable, Tuple
 
 import ray
 
@@ -37,21 +37,19 @@ class PBRolloutWorker(RolloutWorker):
     def step_rollout(
         self,
         eval_step: bool,
-        runtime_config_template: Dict[str, Any],
+        rollout_config: Dict[str, Any],
+        dataset_writer_info_dict: Dict[str, Any],
     ):
-        tasks = [
-            runtime_config_template
-            for _ in range(self.worker_runtime_config["num_threads"])
-        ]
+        tasks = [rollout_config for _ in range(self.rollout_config["num_threads"])]
 
         # add tasks for evaluation
         if eval_step:
-            eval_runtime_config = runtime_config_template.copy()
+            eval_runtime_config = rollout_config.copy()
             eval_runtime_config["flag"] = "evaluation"
             tasks.extend(
                 [
                     eval_runtime_config
-                    for _ in range(self.worker_runtime_config["num_eval_threads"])
+                    for _ in range(self.rollout_config["num_eval_threads"])
                 ]
             )
 
@@ -59,7 +57,9 @@ class PBRolloutWorker(RolloutWorker):
             x
             for x in self.actor_pool.map(
                 lambda a, task: a.run.remote(
-                    agent_interfaces=self.agent_interfaces, desc=task
+                    agent_interfaces=self.agent_interfaces,
+                    rollout_config=task,
+                    dataset_writer_info_dict=dataset_writer_info_dict,
                 ),
                 tasks,
             )

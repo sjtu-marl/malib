@@ -92,8 +92,7 @@ class RayInferenceClient(RemoteInterface):
             batch_mode (str, optional): Batch mode, could be `time_step` or `episode` mode. Defaults to "time_step".
             postprocessor_types (Dict, optional): Post processor type list. Defaults to None.
             training_agent_mapping (LambdaType, optional): Agent mapping function. Defaults to None.
-            use_internal_server (bool, optional): Enabler internal server or not. Defaults to False.
-            parameter_server (ray.ObjectRef, optional): If use internal server, the parameter server must be initialized.
+            custom_config (Dict[str, Any], optional): Custom configuration. Defaults to an empty dict.
         """
 
         self.dataset_server = dataset_server
@@ -104,6 +103,7 @@ class RayInferenceClient(RemoteInterface):
         self.timer = Timing()
         self.training_agent_mapping = training_agent_mapping or (lambda agent: agent)
         self.max_env_num = max_env_num
+        self.custom_configs = custom_config
 
         agent_group = defaultdict(lambda: [])
         runtime_agent_ids = []
@@ -132,31 +132,6 @@ class RayInferenceClient(RemoteInterface):
             self.env = AsyncVectorEnv(
                 obs_spaces, act_spaces, env_cls, env_config, preset_num_envs=max_env_num
             )
-
-        use_internal_server: bool = (
-            custom_config.get("inference_server", "local") == "local"
-        )
-
-        # if use_internal_server:
-        #     runtime_obs_spaces = {}
-        #     runtime_act_spaces = {}
-
-        #     for rid, agents in self.agent_group.items():
-        #         runtime_obs_spaces[rid] = obs_spaces[agents[0]]
-        #         runtime_act_spaces[rid] = act_spaces[agents[0]]
-
-        #     self.agent_interfaces = {
-        #         runtime_id: RayInferenceWorkerSet(
-        #             agent_id=runtime_id,
-        #             observation_space=runtime_obs_spaces[runtime_id],
-        #             action_space=runtime_act_spaces[runtime_id],
-        #             parameter_server=custom_config["parameter_server"],
-        #             governed_agents=self.agent_group[runtime_id],
-        #         )
-        #         for runtime_id in runtime_agent_ids
-        #     }
-        # else:
-        #     self.agent_interfaces = None
 
     def add_envs(self, maximum: int) -> int:
         """Create environments, if env is an instance of VectorEnv, add these \
@@ -192,7 +167,8 @@ class RayInferenceClient(RemoteInterface):
     def run(
         self,
         agent_interfaces: Dict[AgentID, RayInferenceWorkerSet],
-        desc: Dict[str, Any],
+        rollout_config: Dict[str, Any],
+        dataset_writer_info_dict: Dict[str, Tuple[str, Queue]] = None,
     ) -> Dict[str, Any]:
         """Executes environment runner to collect training data or run purely simulation/evaluation.
 
@@ -201,7 +177,8 @@ class RayInferenceClient(RemoteInterface):
 
         Args:
             agent_interfaces (Dict[AgentID, InferenceWorkerSet]): A dict of agent interface servers.
-            desc (Dict[str, Any]): Task description.
+            rollout_config (Dict[str, Any]): Rollout configuration.
+            dataset_writer_info_dict (Dict[str, Tuple[str, Queue]], optional): Dataset writer info dict. Defaults to None.
 
         Returns:
             Dict[str, Any]: A dict of simulation results.
@@ -209,20 +186,17 @@ class RayInferenceClient(RemoteInterface):
 
         # reset timer, ready for monitor
         self.timer.clear()
-        task_type = desc["flag"]
+        task_type = rollout_config["flag"]
 
-        desc["custom_reset_config"] = desc.get("custom_reset_config", {})
-        server_runtime_config = desc.copy()
-        server_runtime_config.update(
-            {
-                "sample_mode": "once",
-                "preprocessor": self.preprocessor,
-                "evaluate": task_type != "rollout",
-            }
-        )
-        request = Namespace(**desc)
+        server_runtime_config = {
+            "preprocessor": self.preprocessor,
+            "strategy_specs": rollout_config["strategy_specs"],
+        }
 
         if task_type == "rollout":
+            assert (
+                dataset_writer_info_dict is not None
+            ), "rollout task has no available dataset writer"
             server_runtime_config["behavior_mode"] = BehaviorMode.EXPLORATION
         elif task_type in ["evaluation", "simulation"]:
             server_runtime_config["behavior_mode"] = BehaviorMode.EXPLOITATION
@@ -230,9 +204,9 @@ class RayInferenceClient(RemoteInterface):
         eval_results, performance = env_runner(
             self,
             agent_interfaces,
-            request,
+            rollout_config,
             server_runtime_config,
-            writer_info_dict=desc.get("writer_info_dict", None),
+            dwriter_info_dict=dataset_writer_info_dict,
         )
 
         res = performance.copy()
@@ -244,17 +218,22 @@ class RayInferenceClient(RemoteInterface):
 def env_runner(
     client: RayInferenceClient,
     servers: Dict[str, RayInferenceWorkerSet],
-    request: Namespace,
+    rollout_config: Dict[str, Any],
     server_runtime_config: Dict[str, Any],
-    writer_info_dict: Dict[str, Tuple[str, Queue]] = None,
+    dwriter_info_dict: Dict[str, Tuple[str, Queue]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, float]]:
     """The main logic of environment stepping, also for data collections.
 
     Args:
         client (InferenceClient): The inference client.
-        request (Namespace): A namespace instance which describes the request.
-        server_runtime_config (Dict[str, Any]): A dict which gives the runtime configuration of inference server.
-        writer_info_dict (Dict[str, Tuple[str, Queue]], optional): A dict maps from runtime ids to a tuple of writer info. Defaults to None.
+        rollout_config (Dict[str, Any]): Rollout configuration.
+        server_runtime_config (Dict[str, Any]): A dict which gives the runtime configuration of inference server. Keys including
+
+            - `preprocessor`: observation preprocessor.
+            - `behavior_mode`: a value of `BehaviorMode`.
+            - `strategy_spec`: a dict of strategy specs, mapping from runtime agent id to strategy spces.
+
+        dwriter_info_dict (Dict[str, Tuple[str, Queue]], optional): A dict maps from runtime ids to a tuple of dataset writer info. Defaults to None.
 
     Raises:
         e: General exceptions.
@@ -264,6 +243,7 @@ def env_runner(
     """
 
     # check whether remote server or not
+    evaluate_on = server_runtime_config["behavior_mode"] == BehaviorMode.EXPLOITATION
     remote_actor = isinstance(list(servers.values())[0], ActorHandle)
 
     try:
@@ -276,15 +256,14 @@ def env_runner(
 
         with client.timer.timeit("environment_reset"):
             env_rets = client.env.reset(
-                fragment_length=request.fragment_length,
-                max_step=request.max_step,
-                custom_reset_config=request.custom_reset_config,
+                fragment_length=rollout_config["fragment_length"],
+                max_step=rollout_config["max_step"],
             )
 
         processed_env_ret, dataframes = process_env_rets(
             env_rets,
             preprocessor=server_runtime_config["preprocessor"],
-            preset_meta_data={"evaluate": server_runtime_config["evaluate"]},
+            preset_meta_data={"evaluate": evaluate_on},
         )
         # obs
         episode_dict.record_env_rets(processed_env_ret)
@@ -336,17 +315,17 @@ def env_runner(
                 processed_env_ret, dataframes = process_env_rets(
                     env_rets,
                     preprocessor=server_runtime_config["preprocessor"],
-                    preset_meta_data={"evaluate": server_runtime_config["evaluate"]},
+                    preset_meta_data={"evaluate": evaluate_on},
                 )
                 # obs, rew, done
                 episode_dict.record_env_rets(processed_env_ret)
 
             cnt += 1
 
-        if writer_info_dict is not None:
+        if dwriter_info_dict is not None:
             # episode_id: agent_id: dict_data
             episodes = episode_dict.to_numpy()
-            for rid, writer_info in writer_info_dict.items():
+            for rid, writer_info in dwriter_info_dict.items():
                 # get agents from agent group
                 agents = client.agent_group[rid]
                 batches = []

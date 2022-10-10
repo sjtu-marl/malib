@@ -38,6 +38,7 @@ def start_servers():
             .options(name=settings.OFFLINE_DATASET_ACTOR, max_concurrency=100)
             .remote(table_capacity=100)
         )
+        ray.get(offline_dataset_server.start.remote())
     except ValueError:
         Logger.warning("detected existing offline dataset server")
         offline_dataset_server = ray.get_actor(settings.OFFLINE_DATASET_ACTOR)
@@ -48,11 +49,11 @@ def start_servers():
             .options(name=settings.PARAMETER_SERVER_ACTOR, max_concurrency=100)
             .remote()
         )
+        ray.get(parameter_server.start.remote())
     except ValueError:
         Logger.warning("detected exisitng parameter server")
         parameter_server = ray.get_actor(settings.PARAMETER_SERVER_ACTOR)
 
-    ray.get([parameter_server.start.remote(), offline_dataset_server.start.remote()])
     return parameter_server, offline_dataset_server
 
 

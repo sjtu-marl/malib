@@ -183,7 +183,7 @@ class RolloutWorker(RemoteInterface):
         experiment_tag: str,
         env_desc: Dict[str, Any],
         agent_mapping_func: Callable,
-        runtime_config: Dict[str, Any],
+        rollout_config: Dict[str, Any],
         log_dir: str,
         rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
         simulate_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
@@ -198,7 +198,7 @@ class RolloutWorker(RemoteInterface):
             env_desc (Dict[str, Any]): The environment description.
             agent_mapping_func (Callable): The agent mapping function, maps environment agents to runtime ids. \
                 It is shared among all workers.
-            runtime_config (Dict[str, Any]): Basic runtime configuration to control the rollout. Keys including
+            rollout_config (Dict[str, Any]): Basic runtime configuration to control the rollout. Keys including
             * `fragment_length`: int, how many steps for each data collection and broadcasting.
             * `max_step`: int, the maximum step of each episode.
             * `num_eval_episodes`: int, the number of epsiodes for each evaluation.
@@ -237,9 +237,9 @@ class RolloutWorker(RemoteInterface):
         self.env_agents = env_desc["possible_agents"]
         self.runtime_agent_ids = runtime_agent_ids
         self.agent_group = agent_group
-        self.worker_runtime_config: Dict[str, Any] = runtime_config
+        self.rollout_config: Dict[str, Any] = rollout_config
 
-        validate_runtime_configs(self.worker_runtime_config)
+        validate_runtime_configs(self.rollout_config)
 
         self.coordinator = None
         self.dataset_server = None
@@ -247,12 +247,12 @@ class RolloutWorker(RemoteInterface):
 
         self.init_servers()
 
-        if runtime_config["inference_server"] == "local":
+        if rollout_config["inference_server"] == "local":
             self.inference_server_cls = None
             self.inference_client_cls = RayInferenceClient.as_remote(
                 **resource_config["inference_client"]
             )
-        elif runtime_config["inference_server"] == "pipe":
+        elif rollout_config["inference_server"] == "pipe":
             self.inference_client_cls = PipeInferenceClient.as_remote(
                 **resource_config["inference_client"]
             )
@@ -262,7 +262,7 @@ class RolloutWorker(RemoteInterface):
             self.agent_interfaces = self.init_agent_interfaces(
                 env_desc, runtime_agent_ids
             )
-        elif runtime_config["inference_server"] == "ray":
+        elif rollout_config["inference_server"] == "ray":
             self.inference_client_cls = RayInferenceClient.as_remote(
                 **resource_config["inference_client"]
             )
@@ -273,13 +273,13 @@ class RolloutWorker(RemoteInterface):
         else:
             raise ValueError(
                 "unexpected inference server type: {}".format(
-                    runtime_config["inference_server"]
+                    rollout_config["inference_server"]
                 )
             )
 
         self.agent_interfaces = self.init_agent_interfaces(env_desc, runtime_agent_ids)
         self.actor_pool: ActorPool = self.init_actor_pool(
-            env_desc, runtime_config, agent_mapping_func
+            env_desc, rollout_config, agent_mapping_func
         )
 
         self.log_dir = log_dir
@@ -330,7 +330,7 @@ class RolloutWorker(RemoteInterface):
     def init_actor_pool(
         self,
         env_desc: Dict[str, Any],
-        runtime_config: Dict[str, Any],
+        rollout_config: Dict[str, Any],
         agent_mapping_func: Callable,
     ) -> ActorPool:
         """Initialize an actor pool for the management of simulation tasks. Note the size of the \
@@ -338,7 +338,7 @@ class RolloutWorker(RemoteInterface):
 
         Args:
             env_desc (Dict[str, Any]): Environment description.
-            runtime_config (Dict[str, Any]): Runtime configuration, the given keys in this configuration \
+            rollout_config (Dict[str, Any]): Runtime configuration, the given keys in this configuration \
                 include:
                 - `num_threads`: int, determines the size of this actor pool.
                 - `num_env_per_thread`: int, indicates how many environments will be created for each thread.
@@ -350,9 +350,9 @@ class RolloutWorker(RemoteInterface):
             ActorPool: An instance of `ActorPool`.
         """
 
-        num_threads = runtime_config["num_threads"]
-        num_env_per_thread = runtime_config["num_env_per_thread"]
-        num_eval_threads = runtime_config["num_eval_threads"]
+        num_threads = rollout_config["num_threads"]
+        num_env_per_thread = rollout_config["num_env_per_thread"]
+        num_eval_threads = rollout_config["num_eval_threads"]
 
         actor_pool = ActorPool(
             [
@@ -360,14 +360,10 @@ class RolloutWorker(RemoteInterface):
                     env_desc,
                     ray.get_actor(settings.OFFLINE_DATASET_ACTOR),
                     max_env_num=num_env_per_thread,
-                    use_subproc_env=runtime_config["use_subproc_env"],
-                    batch_mode=runtime_config["batch_mode"],
-                    postprocessor_types=runtime_config["postprocessor_types"],
+                    use_subproc_env=rollout_config["use_subproc_env"],
+                    batch_mode=rollout_config["batch_mode"],
+                    postprocessor_types=rollout_config["postprocessor_types"],
                     training_agent_mapping=agent_mapping_func,
-                    custom_config={
-                        "inference_server": runtime_config["inference_server"],
-                        "parameter_server": self.parameter_server,
-                    },
                 )
                 for _ in range(num_threads + num_eval_threads)
             ]
@@ -432,14 +428,13 @@ class RolloutWorker(RemoteInterface):
             )
             queue_info_dict[rid] = (queue_id, queue)
 
-        runtime_config_template = self.worker_runtime_config.copy()
-        runtime_config_template.update(
+        rollout_config = self.rollout_config.copy()
+        rollout_config.update(
             {
                 "flag": "rollout",
                 "strategy_specs": runtime_strategy_specs,
                 "trainable_agents": trainable_agents,
                 "agent_group": self.agent_group,
-                "writer_info_dict": queue_info_dict,
             }
         )
         total_timesteps = 0
@@ -455,8 +450,8 @@ class RolloutWorker(RemoteInterface):
 
         start_time = time.time()
         while self.is_running():
-            eval_step = (epoch + 1) % self.worker_runtime_config["eval_interval"] == 0
-            results = self.step_rollout(eval_step, runtime_config_template)
+            eval_step = (epoch + 1) % self.rollout_config["eval_interval"] == 0
+            results = self.step_rollout(eval_step, rollout_config, queue_info_dict)
             total_timesteps += results["total_timesteps"]
             eval_results = results.get("evaluation", None)
 
@@ -491,7 +486,7 @@ class RolloutWorker(RemoteInterface):
     def simulate(self, runtime_strategy_specs_list: List[Dict[str, StrategySpec]]):
         """Handling simulation task."""
 
-        runtime_config_template = self.worker_runtime_config.copy()
+        runtime_config_template = self.rollout_config.copy()
         runtime_config_template.update(
             {
                 "flag": "simulation",
@@ -508,13 +503,14 @@ class RolloutWorker(RemoteInterface):
     def step_rollout(
         self,
         eval_step: bool,
-        runtime_config: Dict[str, Any],
+        rollout_config: Dict[str, Any],
+        dataset_writer_info_dict: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         """The logic function to run rollout. Users must implment this method.
 
         Args:
             eval_step (bool): Indicate evaluation or not.
-            runtime_config (Dict[str, Any]): Runtime configurations to control the amount of sampled data. Keys include:
+            rollout_config (Dict[str, Any]): Runtime configurations to control the amount of sampled data. Keys include:
             - `flag`: indicate the task type, the value is rollout.
             - `max_step`: indicates the maximum length of an episode.
             - `num_episodes`: indicates how many episodes will be collected.
@@ -539,13 +535,13 @@ class RolloutWorker(RemoteInterface):
     def step_simulation(
         self,
         runtime_strategy_specs_list: List[Dict[str, StrategySpec]],
-        runtime_conig_template: Dict[str, Any],
+        rollout_config: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         """Logic function for running simulation of a list of strategy spec dict.
 
         Args:
             runtime_strategy_specs_list (List[Dict[str, StrategySpec]]): A list of strategy spec dict.
-            runtime_conig_template (Dict[str, Any]): Runtime configuration template.
+            rollout_config (Dict[str, Any]): Runtime configuration template.
 
         Raises:
             NotImplementedError: Not implemented error.

@@ -24,6 +24,7 @@
 
 from types import LambdaType
 from typing import List, Dict, Any, Tuple
+from pprint import pformat
 
 from malib.utils.logging import Logger
 from malib.utils.stopping_conditions import get_stopper
@@ -144,7 +145,7 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
     i = 0
     while True:
         Logger.info("")
-        Logger.info(f"Start Global Iteration: {i}")
+        Logger.info(f"Global Iteration: {i}")
         scenario.prob_list_each = equilibrium
 
         # run best response training tasks
@@ -166,6 +167,7 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
 
         # update probs
         equilibrium = payoff_manager.compute_equilibrium(strategy_specs)
+        Logger.info("\tequilibrium: {}".format(pformat(equilibrium)))
         i += 1
 
         if stopper.should_stop(None):

@@ -122,6 +122,8 @@ def execution_plan(
     strategy_specs = training_manager.add_policies(n=scenario.num_policy_each_interface)
 
     # define the data entrypoint to bridge the training interfaces and remote dataset
+    # TODO(ming): please explain the meaning of the data entrypoints here
+    #   seems the mapping from agents to data? rolloutworker.py::rollout
     data_entrypoints = {rid: rid for rid in training_manager.runtime_ids}
     training_manager.run(data_request_identifiers=data_entrypoints)
 

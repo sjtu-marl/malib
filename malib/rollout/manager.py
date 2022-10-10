@@ -108,7 +108,7 @@ class RolloutWorkerManager(Manager):
                     experiment_tag=experiment_tag,
                     env_desc=env_desc,
                     agent_mapping_func=agent_mapping_func,
-                    runtime_config=rollout_config,
+                    rollout_config=rollout_config,
                     log_dir=log_dir,
                     rollout_callback=None,
                     simulate_callback=None,
@@ -126,10 +126,6 @@ class RolloutWorkerManager(Manager):
             agent_groups[rid].add(agent)
         self._runtime_ids = tuple(agent_groups.keys())
         self._agent_groups = dict(agent_groups)
-
-        # for debug
-        self.observation_spaces = env_desc["observation_spaces"]
-        self.action_spaces = env_desc["action_spaces"]
         self.experiment_tag = experiment_tag
 
         assert (

@@ -56,6 +56,16 @@ class RayInferenceWorkerSet(RemoteInterface):
         parameter_server: ParameterServer,
         governed_agents: List[AgentID],
     ) -> None:
+        """Create ray-based inference server.
+
+        Args:
+            agent_id (AgentID): Runtime agent id, not environment agent id.
+            observation_space (gym.Space): Observation space related to the governed environment agents.
+            action_space (gym.Space): Action space related to the governed environment agents.
+            parameter_server (ParameterServer): Parameter server.
+            governed_agents (List[AgentID]): A list of environment agents.
+        """
+
         self.runtime_agent_id = agent_id
         self.observation_space = observation_space
         self.action_space = action_space
