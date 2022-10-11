@@ -20,10 +20,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from typing import ChainMap, Dict, Any, List, Union, Sequence
 from collections import defaultdict
 from readerwriterlock import rwlock
-from typing import ChainMap, Dict, Any, List, Union
-from asyncio.queues import Queue as PyQueue
 
 import gym
 import uuid
@@ -31,31 +30,16 @@ import ray
 
 from malib.utils.typing import AgentID, EnvID
 from malib.utils.episode import Episode
-from malib.rollout.envs import Environment
 from .vector_env import VectorEnv, SubprocVecEnv
 
 
-def start_env_thread(manager, env: Environment, sender: PyQueue, recver: PyQueue):
-    """Start environment thread.
-
-    Args:
-        env (Environment): Enivronment instance
-        queue (PyQueue): Queue.
+class AsyncVectorEnv(VectorEnv):
+    """Compared to VectorEnv, AsyncVectorEnv has some differences in the environment stepping. An AsyncVectorEnv accepts a dict \
+        of agent actions, but the environment return is determined by 'whether all actions of the current step have been collected'. \
+            In other words, an AsyncVectorEnv performs environment stepping only when all alive agents are ready. \
+                None will be returned when a sub-environment does not ready yet.
     """
 
-    try:
-        done = False
-        while not done:
-            actions = sender.get()
-            ret = env.step(actions)
-            manager._update_step_cnt()
-            recver.put(ret)
-            done = ret[3]["__all__"]
-    except Exception as e:
-        raise e
-
-
-class AsyncVectorEnv(VectorEnv):
     def __init__(
         self,
         observation_spaces: Dict[AgentID, gym.Space],
@@ -69,13 +53,19 @@ class AsyncVectorEnv(VectorEnv):
         )
         self.cached_frame = defaultdict(lambda: {})
 
-        mark = rwlock.RWLockFair()
-        self.rlock = mark.gen_rlock()
-        self.wlock = mark.gen_wlock()
-
     def _delay_step(
         self, env_id: EnvID, actions: Dict[AgentID, Any]
     ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
+        """Performs delayed environment stepping. Accepts an agent action dict relates to an environment.
+
+        Args:
+            env_id (EnvID): Environment key.
+            actions (Dict[AgentID, Any]): Agent action dict.
+
+        Returns:
+            Union[None, Dict[str, Dict[AgentID, Any]]]: When all agents are ready for the environment stepping, then return the environment returns, otherwise None.
+        """
+
         rets = None
         if env_id in self.active_envs:
             cached_frame = self.cached_frame[env_id]
@@ -89,15 +79,10 @@ class AsyncVectorEnv(VectorEnv):
 
         return rets
 
-    def step(self, actions: Dict[EnvID, Dict[AgentID, Any]]) -> Dict:
-        """Execute environment step. Note the enter environment ids could be different from the output.
-
-        :param actions: A dict of action dict.
-        :type actions: Dict[EnvID, Dict[AgentID, Any]]
-        :return: A dict of environment return dict.
-        :rtype: Dict
-        """
-
+    def step(
+        self, actions: Dict[EnvID, Dict[AgentID, Any]]
+    ) -> Dict[EnvID, Sequence[Dict[AgentID, Any]]]:
+        """Asynchrounous stepping, maybe return an empty dict of environment returns."""
         env_rets = {}
         dead_envs = []
 
@@ -146,16 +131,6 @@ class AsyncSubProcVecEnv(SubprocVecEnv):
     def _delay_step(
         self, env_id: EnvID, actions: Dict[AgentID, Any]
     ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
-        """Submit async remote task.
-
-        :param env_id: _description_
-        :type env_id: EnvID
-        :param actions: _description_
-        :type actions: Dict[AgentID, Any]
-        :return: _description_
-        :rtype: Union[None, Dict[str, Dict[AgentID, Any]]]
-        """
-
         rets = None
         cached_frame = self.cached_frame[env_id]
         for aid, action in actions.items():
@@ -168,15 +143,9 @@ class AsyncSubProcVecEnv(SubprocVecEnv):
 
         return rets
 
-    def step(self, actions: Dict[EnvID, Dict[AgentID, Any]]) -> Dict:
-        """Execute environment step. Note the enter environment ids could be different from the output.
-
-        :param actions: A dict of action dict.
-        :type actions: Dict[EnvID, Dict[AgentID, Any]]
-        :return: A dict of environment return dict.
-        :rtype: Dict
-        """
-
+    def step(
+        self, actions: Dict[EnvID, Dict[AgentID, Any]]
+    ) -> Dict[EnvID, Sequence[Dict[AgentID, Any]]]:
         env_rets = {}
         dead_envs = []
 

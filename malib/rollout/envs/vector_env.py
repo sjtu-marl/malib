@@ -143,13 +143,20 @@ class VectorEnv:
         self,
         fragment_length: int,
         max_step: int,
-        custom_reset_config: Dict[str, Any] = None,
-        trainable_mapping: Dict[AgentID, PolicyID] = None,
     ) -> Dict[EnvID, Sequence[Dict[AgentID, Any]]]:
+        """Reset a bunch of environments.
+
+        Args:
+            fragment_length (int): Total timesteps before the VectorEnv is terminated.
+            max_step (int): Maximum of episode length for each environment.
+
+        Returns:
+            Dict[EnvID, Sequence[Dict[AgentID, Any]]]: A dict of environment returns.
+        """
+
         self._limits = self.num_envs
         self._step_cnt = 0
         self._fragment_length = fragment_length
-        self._custom_reset_config = custom_reset_config
         self.max_step = max_step
         self._cached_episode_infos = {}
 
@@ -157,20 +164,27 @@ class VectorEnv:
         runtime_ids = [uuid.uuid1().hex for _ in range(self._limits)]
         self._active_envs = dict(zip(runtime_ids, self.envs[: self._limits]))
 
-        self._trainable_agents = (
-            list(trainable_mapping.keys()) if trainable_mapping is not None else None
-        )
-
         ret = {}
         for env_id, env in self.active_envs.items():
-            _ret = env.reset(max_step=max_step, custom_reset_config=custom_reset_config)
+            _ret = env.reset(max_step=max_step)
             if isinstance(_ret, Dict):
                 _ret = (_ret,)
             ret[env_id] = _ret
 
         return ret
 
-    def step(self, actions: Dict[EnvID, Dict[AgentID, Any]]) -> Dict:
+    def step(
+        self, actions: Dict[EnvID, Dict[AgentID, Any]]
+    ) -> Dict[EnvID, Sequence[Dict[AgentID, Any]]]:
+        """Environment stepping function.
+
+        Args:
+            actions (Dict[EnvID, Dict[AgentID, Any]]): A dict of action dict, one for an environment.
+
+        Returns:
+            Dict[EnvID, Sequence[Dict[AgentID, Any]]]: A dict of environment returns.
+        """
+
         active_envs = self.active_envs
 
         env_rets = {}
@@ -191,7 +205,6 @@ class VectorEnv:
             for env in dead_envs:
                 _tmp = env.reset(
                     max_step=self.max_step,
-                    custom_reset_config=self._custom_reset_config,
                 )
                 # regenerate runtime id
                 runtime_id = uuid.uuid1().hex
@@ -250,19 +263,6 @@ class VectorEnv:
     def close(self):
         for env in self._envs:
             env.close()
-
-
-def env_thread(env, sender: Queue, recver: Queue):
-    env_id = None
-
-    while True:
-        actions = recver.get()
-        ret = env.step(actions)
-        sender.put({"id": env_id, "ret": ret})
-        if ret[2]["__all__"]:
-            # reset and regen id
-            env_id = None
-            ret = env.reset()
 
 
 @ray.remote(num_cpus=0)
@@ -359,13 +359,20 @@ class SubprocVecEnv(VectorEnv):
         limits: int,
         fragment_length: int,
         max_step: int,
-        custom_reset_config: Dict[str, Any] = None,
-        trainable_mapping: Dict[AgentID, PolicyID] = None,
     ) -> Dict[EnvID, Dict[str, Dict[AgentID, Any]]]:
+        """Reset a bunch of environments.
+
+        Args:
+            limits (int): The number of activated environments.
+            fragment_length (int): Total timesteps when the SubprocVecEnv is terminated.
+            max_step (int): The maximum of episode length.
+
+        Returns:
+            Dict[EnvID, Dict[str, Dict[AgentID, Any]]]: _description_
+        """
         self._limits = limits or self.num_envs
         self._step_cnt = 0
         self._fragment_length = fragment_length
-        self._custom_reset_config = custom_reset_config
         self.max_step = max_step
 
         # clean peanding tasks
@@ -375,11 +382,6 @@ class SubprocVecEnv(VectorEnv):
         # generate runtime env ids
         runtime_ids = [uuid.uuid1().hex for _ in range(self._limits)]
         self._active_envs = dict(zip(runtime_ids, self.envs[: self._limits]))
-
-        self._trainable_agents = (
-            list(trainable_mapping.keys()) if trainable_mapping is not None else None
-        )
-
         self._step_cnt = 0
 
         ret = {}
@@ -389,7 +391,6 @@ class SubprocVecEnv(VectorEnv):
                 env.reset.remote(
                     runtime_id=env_id,
                     max_step=max_step,
-                    custom_reset_config=custom_reset_config,
                 )
             )
             ret.update(_ret)
@@ -397,9 +398,7 @@ class SubprocVecEnv(VectorEnv):
         ret = ray.get(
             [
                 env.reset.remote(
-                    runtime_id=runtime_id,
                     max_step=max_step,
-                    custom_reset_config=custom_reset_config,
                 )
                 for runtime_id, env in self._active_envs.items()
             ]
@@ -441,7 +440,6 @@ class SubprocVecEnv(VectorEnv):
                         env.reset.remote(
                             runtime_id=runtime_id,
                             max_step=self.max_step,
-                            custom_reset_config=self._custom_reset_config,
                         )
                     )
                 )
