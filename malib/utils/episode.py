@@ -31,8 +31,8 @@ import numpy as np
 from malib.utils.typing import AgentID, EnvID
 
 
-class Episode:
-    """Agent episode tracking"""
+class Episode(dict):
+    """Multi-agent episode tracking"""
 
     CUR_OBS = "obs"
     NEXT_OBS = "obs_next"
@@ -60,53 +60,51 @@ class Episode:
     # model states
     RNN_STATE = "rnn_state"
 
-    def __init__(self, agents: List[AgentID], processors):
-        self.processors = processors
+    def __init__(self, agents: List[AgentID], processors=None):
+        # self.processors = processors
         self.agents = agents
         self.agent_entry = {agent: defaultdict(lambda: []) for agent in self.agents}
 
-    def __getitem__(self, __k: str) -> Dict[AgentID, List]:
-        return self.agent_entry[__k]
-
-    def __setitem__(self, __k: str, v: Dict[AgentID, List]) -> None:
-        self.agent_entry[__k] = v
-
-    def record_policy_step(self, policy_rets: Dict[AgentID, Dict[str, Any]]):
-        """Save policy outputs.
+    def __getitem__(self, __k: AgentID) -> Dict[str, List]:
+        """Return an agent dict.
 
         Args:
-            policy_rets (Dict[AgentID, Dict[str, Any]]): A dict of policy outputs, each for an agent.
+            __k (AgentID): Registered agent id.
+
+        Returns:
+            Dict[str, List]: A dict of transitions.
         """
 
-        for agent, agent_item in policy_rets.items():
-            for k, v in agent_item.items():
-                self.agent_entry[agent][k].append(v)
+        return self.agent_entry[__k]
 
-    def record_env_rets(self, env_rets: Sequence[Dict[AgentID, Any]], ignore_keys={}):
+    def __setitem__(self, __k: AgentID, v: Dict[str, List]) -> None:
+        """Set an agent episode.
+
+        Args:
+            __k (AgentID): Agent ids
+            v (Dict[str, List]): Transition dict.
+        """
+
+        self.agent_entry[__k] = v
+
+    def record(
+        self, data: Dict[str, Dict[str, Any]], agent_first: bool, ignore_keys={}
+    ):
         """Save a transiton. The given transition is a sub sequence of (obs, action_mask, reward, done, info). Users specify ignore keys to filter keys.
 
         Args:
-            env_rets (Sequence[Dict[AgentID, Any]]): A transition.
+            data (Dict[str, Dict[AgentID, Any]]): A transition.
             ignore_keys (dict, optional): . Defaults to {}.
         """
 
-        for i, key in enumerate(
-            [
-                Episode.CUR_OBS,
-                Episode.ACTION_MASK,
-                Episode.REWARD,
-                Episode.DONE,
-                Episode.INFO,
-            ]
-        ):
-            if len(env_rets) < i + 1:
-                break
-            if key in ignore_keys:
-                continue
-            for agent, _v in env_rets[i].items():
-                if agent == "__all__":
-                    continue
-                self.agent_entry[agent][key].append(_v)
+        if agent_first:
+            for agent, kvs in data.items():
+                for k, v in kvs.items():
+                    self.agent_entry[agent][k].append(v)
+        else:
+            for k, agent_trans in data.items():
+                for agent, _v in agent_trans.items():
+                    self.agent_entry[agent][k].append(_v)
 
     def to_numpy(self) -> Dict[AgentID, Dict[str, np.ndarray]]:
         """Convert episode to numpy array-like data."""
@@ -154,30 +152,14 @@ class NewEpisodeDict(defaultdict):
             ret = self[env_id] = self.default_factory()
             return ret
 
-    def record_env_rets(
-        self, env_outputs: Dict[EnvID, Sequence[Dict[AgentID, Any]]], ignore_keys={}
+    def record(
+        self,
+        data: Dict[EnvID, Dict[str, Dict[str, Any]]],
+        agent_first: bool,
+        ignore_keys={},
     ):
-        """Save returns of environments.
-
-        Args:
-            env_outputs (Dict[EnvID, Sequence[Dict[AgentID, Any]]]): A dict of environment returns.
-            ignore_keys (dict, optional): Oh, I forget the functionality. Defaults to {}.
-        """
-
-        for env_id, env_output in env_outputs.items():
-            self[env_id].record_env_rets(env_output, ignore_keys)
-
-    def record_policy_step(
-        self, env_policy_outputs: Dict[EnvID, Dict[AgentID, Dict[str, Any]]]
-    ):
-        """Save policy outputs.
-
-        Args:
-            env_policy_outputs (Dict[EnvID, Dict[AgentID, Dict[str, Any]]]): A dict of policy outputs, each item is a dict related to an environment.
-        """
-
-        for env_id, policy_outputs in env_policy_outputs.items():
-            self[env_id].record_policy_step(policy_outputs)
+        for env_id, _data in data.items():
+            self[env_id].record(_data, agent_first, ignore_keys)
 
     def to_numpy(self) -> Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]:
         """Lossy data transformer, which converts a dict of episode to a dict of numpy array like. (some episode may be empty)"""

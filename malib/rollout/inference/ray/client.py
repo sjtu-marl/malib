@@ -265,8 +265,8 @@ def env_runner(
             preprocessor=server_runtime_config["preprocessor"],
             preset_meta_data={"evaluate": evaluate_on},
         )
-        # obs
-        episode_dict.record_env_rets(processed_env_ret)
+        # env ret is key first, not agent first: state, obs
+        episode_dict.record(processed_env_ret, agent_first=False)
 
         Logger.debug("env runner started...")
         start = time.time()
@@ -304,7 +304,7 @@ def env_runner(
                     policy_outputs, client.env
                 )
 
-                episode_dict.record_policy_step(processed_policy_outputs)
+                episode_dict.record(processed_policy_outputs, agent_first=True)
 
             with client.timer.time_avg("environment_step"):
                 env_rets = client.env.step(env_actions)
@@ -317,8 +317,8 @@ def env_runner(
                     preprocessor=server_runtime_config["preprocessor"],
                     preset_meta_data={"evaluate": evaluate_on},
                 )
-                # obs, rew, done
-                episode_dict.record_env_rets(processed_env_ret)
+                # state, obs, rew, done
+                episode_dict.record(processed_env_ret, agent_first=False)
 
             cnt += 1
 

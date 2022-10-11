@@ -43,18 +43,17 @@ def record_episode_info(func):
 class Environment:
     def __init__(self, **configs):
         self.is_sequential = False
-
         self.episode_metrics = {
             "env_step": 0,
             "episode_reward": 0.0,
             "agent_reward": {},
             "agent_step": {},
         }
+
         self.runtime_id = uuid.uuid4().hex
         # -1 means no horizon limitation
-        self.max_step = -1
+        self.max_step = 1000
         self.cnt = 0
-        self.custom_reset_config = {}
         self.episode_meta_info = {"max_step": self.max_step}
 
         if configs.get("custom_metrics") is not None:
@@ -62,8 +61,8 @@ class Environment:
         else:
             self.custom_metrics = {}
 
-        self._trainable_agents = None
         self._configs = configs
+        self._current_players = []
         self._state: Dict[str, np.ndarray] = None
 
     def record_episode_info_step(self, observations, rewards, dones, infos):
@@ -86,11 +85,6 @@ class Environment:
         raise NotImplementedError
 
     @property
-    def trainable_agents(self) -> Union[Tuple, None]:
-        """Return trainble agents, if registered return a tuple, otherwise None"""
-        return self._trainable_agents
-
-    @property
     def observation_spaces(self) -> Dict[AgentID, gym.Space]:
         """A dict of agent observation spaces"""
 
@@ -102,15 +96,12 @@ class Environment:
 
         raise NotImplementedError
 
-    def reset(
-        self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
-    ) -> Union[None, Sequence[Dict[AgentID, Any]]]:
+    def reset(self, max_step: int = None) -> Union[None, Sequence[Dict[AgentID, Any]]]:
         """Reset environment and the episode info handler here."""
 
         self.max_step = max_step or self.max_step
         self.cnt = 0
 
-        custom_reset_config = custom_reset_config or self.custom_reset_config
         self.episode_metrics = {
             "env_step": 0,
             "episode_reward": 0.0,
@@ -120,7 +111,6 @@ class Environment:
         self.episode_meta_info.update(
             {
                 "max_step": self.max_step,
-                "custom_config": copy.deepcopy(custom_reset_config),
                 "env_done": False,
             }
         )
@@ -263,14 +253,8 @@ class Wrapper(Environment):
     def render(self, *args, **kwargs):
         return self.env.render()
 
-    def reset(
-        self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
-    ) -> Union[None, Tuple[Dict[AgentID, Any]]]:
-        ret = self.env.reset(max_step, custom_reset_config)
-
-        if isinstance(ret, dict):
-            ret = (ret,)
-
+    def reset(self, max_step: int = None) -> Union[None, Tuple[Dict[AgentID, Any]]]:
+        ret = self.env.reset(max_step)
         return ret
 
     def collect_info(self) -> Dict[str, Any]:
@@ -353,12 +337,8 @@ class GroupWrapper(Wrapper):
 
         raise NotImplementedError
 
-    def reset(
-        self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
-    ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
-        rets = super(GroupWrapper, self).reset(
-            max_step=max_step, custom_reset_config=custom_reset_config
-        )
+    def reset(self, max_step: int = None) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
+        rets = super(GroupWrapper, self).reset(max_step=max_step)
         state = self.build_state_from_observation(rets[0])
         self.set_state(state)
         observations = rets[0]
@@ -367,6 +347,7 @@ class GroupWrapper(Wrapper):
             for gid, agents in self.agent_groups.items()
         }
         grouped_action_masks = self.action_mask_extract(grouped_obs)
+        # FIXME(ming): return states and obs, not obs and masks
         return (grouped_obs, grouped_action_masks)
 
     def action_mask_extract(self, raw_observations: Dict[str, Any]):

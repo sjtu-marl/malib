@@ -69,7 +69,13 @@ class GymEnv(Environment):
 
         # agent done or achieving_max_step_done
         agent = self._default_agent
-        return {agent: observations}, {agent: rewards}, {agent: dones}, {agent: infos}
+        return (
+            None,
+            {agent: observations},
+            {agent: rewards},
+            {agent: dones},
+            {agent: infos},
+        )
 
     def render(self, *args, **kwargs):
         self._env.render()
@@ -80,7 +86,7 @@ class GymEnv(Environment):
         )
 
         observation = self._env.reset()
-        return ({self._default_agent: observation},)
+        return None, {self._default_agent: observation}
 
     def close(self):
         pass
