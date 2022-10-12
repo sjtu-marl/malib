@@ -88,7 +88,7 @@ def parse_rollout_info(raw_statistics: List[Dict[str, Any]]) -> Dict[str, Any]:
         # when task mode is `simualtion` or `evaluation`, then
         #   evaluation result is not empty.
         if "evaluation" in e:
-            evaluation.extend(e.pop("evaluation"))
+            evaluation.extend(e["evaluation"])
 
         for k, v in e.items():
             if k == "total_timesteps":

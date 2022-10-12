@@ -31,7 +31,7 @@ import numpy as np
 from malib.utils.typing import AgentID, EnvID
 
 
-class Episode(dict):
+class Episode:
     """Multi-agent episode tracking"""
 
     CUR_OBS = "obs"
@@ -116,19 +116,17 @@ class Episode(dict):
                 for k, v in agent_trajectory.items():
                     if k == Episode.CUR_OBS:
                         # move to next obs
-                        tmp[Episode.NEXT_OBS] = v[1:]
-                        tmp[Episode.CUR_OBS] = v[:-1]
+                        tmp[Episode.NEXT_OBS] = np.stack(v[1:])
+                        tmp[Episode.CUR_OBS] = np.stack(v[:-1])
                     elif k == Episode.CUR_STATE:
                         # move to next state
-                        tmp[Episode.NEXT_STATE] = v[1:]
-                        tmp[Episode.CUR_STATE] = v[:-1]
-                    elif k == Episode.INFO:
-                        continue
+                        tmp[Episode.NEXT_STATE] = np.stack(v[1:])
+                        tmp[Episode.CUR_STATE] = np.stack(v[:-1])
                     elif k == Episode.ACTION_MASK:
-                        tmp[Episode.ACTION_MASK] = v[:-1]
-                        tmp[Episode.NEXT_ACTION_MASK] = v[1:]
+                        tmp[Episode.ACTION_MASK] = np.stack(v[:-1])
+                        tmp[Episode.NEXT_ACTION_MASK] = np.stack(v[1:])
                     else:
-                        tmp[k] = v
+                        tmp[k] = np.stack(v)
             except Exception as e:
                 print(traceback.format_exc())
                 raise e

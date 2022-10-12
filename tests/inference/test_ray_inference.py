@@ -7,6 +7,7 @@ import ray
 from malib.backend.parameter_server import ParameterServer
 
 from malib.rollout.envs.dummy_env import env_desc_gen
+from malib.rollout.rolloutworker import parse_rollout_info
 from malib.utils.typing import AgentID, PolicyID
 from malib.agent.indepdent_agent import IndependentAgent
 from malib.common.strategy_spec import StrategySpec
@@ -135,7 +136,6 @@ def test_env_runner(env_desc, algorithms, trainer_config, learner_cls):
         start_ray_info = ray.init(num_cpus=3)
 
     parameter_server, dataset_server = start_servers()
-
     scenario: MARLScenario = build_marl_scenario(
         algorithms,
         env_desc,
@@ -200,3 +200,8 @@ def test_env_runner(env_desc, algorithms, trainer_config, learner_cls):
         server_runtime_config=server_runtime_config,
         dwriter_info_dict=dwriter_info_dict,
     )
+
+    x = parse_rollout_info([{"evaluation": eval_results}])
+    import pdb
+
+    pdb.set_trace()

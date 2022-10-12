@@ -65,7 +65,7 @@ class Environment:
         self._current_players = []
         self._state: Dict[str, np.ndarray] = None
 
-    def record_episode_info_step(self, observations, rewards, dones, infos):
+    def record_episode_info_step(self, state, observations, rewards, dones, infos):
         reward_ph = self.episode_metrics["agent_reward"]
         step_ph = self.episode_metrics["agent_step"]
         for aid, r in rewards.items():
@@ -151,13 +151,10 @@ class Environment:
         """
 
         self.cnt += 1
-        rets = list(self.time_step(actions))
-        rets[2]["__all__"] = self.env_done_check(rets[2])
+        rets = tuple(self.time_step(actions))
+        rets[3]["__all__"] = self.env_done_check(rets[3])
         self.record_episode_info_step(*rets)
-        observations = rets[0]
-        action_masks = self.action_mask_extract(observations)
-        rets = tuple([rets[0], action_masks] + rets[1:])
-        # obs, action_mask, reward, done, info.
+        # state, obs, action_mask, reward, done, info.
         return rets
 
     def set_state(self, state: Dict[str, np.ndarray]):

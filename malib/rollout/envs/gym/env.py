@@ -80,10 +80,8 @@ class GymEnv(Environment):
     def render(self, *args, **kwargs):
         self._env.render()
 
-    def reset(self, max_step: int = None, custom_reset_config: Dict[str, Any] = None):
-        super(GymEnv, self).reset(
-            max_step=max_step, custom_reset_config=custom_reset_config
-        )
+    def reset(self, max_step: int = None):
+        super(GymEnv, self).reset(max_step=max_step)
 
         observation = self._env.reset()
         return None, {self._default_agent: observation}

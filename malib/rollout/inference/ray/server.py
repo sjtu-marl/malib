@@ -106,6 +106,8 @@ class RayInferenceWorkerSet(RemoteInterface):
             self.runtime_agent_id,
         )
 
+        assert len(dataframes) > 0
+
         for dataframe in dataframes:
             with timer.time_avg("others"):
                 agent_id = dataframe.identifier
@@ -148,7 +150,9 @@ class RayInferenceWorkerSet(RemoteInterface):
                     rets[Episode.ACTION_LOGITS],
                     rets[Episode.ACTION_DIST],
                     rets[Episode.RNN_STATE],
-                ) = policy.compute_action(observation=observation, **kwargs)
+                ) = policy.compute_action(
+                    observation=observation.reshape(batch_size, -1), **kwargs
+                )
 
             # compute state value
             with timer.time_avg("compute_value"):

@@ -27,6 +27,8 @@ from collections import defaultdict
 
 import numpy as np
 
+from gym import spaces
+
 from malib.utils.typing import AgentID, DataFrame, EnvID
 from malib.utils.episode import Episode
 from malib.utils.preprocessor import Preprocessor
@@ -62,52 +64,54 @@ def process_env_rets(
     alive_env_ids = []
     env_rets_to_save = {}
 
+    # env_ret: state, obs, rew, done, info
     for env_id, ret in env_rets.items():
         # state, obs, reward, done, info
-        agents = list(ret[0].keys())
+        agents = list(ret[1].keys())
+
         processed_obs = {
             agent: preprocessor[agent].transform(raw_obs)
-            for agent, raw_obs in ret[0].items()
+            for agent, raw_obs in ret[1].items()
         }
+        env_rets_to_save[env_id] = {Episode.CUR_OBS: processed_obs}
         if ret[0] is not None:
             for agent, _state in ret[0].items():
                 agent_state_list[agent].append(_state)
-        if "action_mask" in list(preprocessor.values())[0].original_space:
+            env_rets_to_save[env_id][Episode.CUR_STATE] = ret[0]
+        original_obs_space = list(preprocessor.values())[0].original_space
+        if (
+            isinstance(original_obs_space, spaces.Dict)
+            and "action_mask" in original_obs_space
+        ):
             # TODO(ming): handling action_mask here
             action_mask = {}
             for agent, env_obs in ret[1].items():
                 agent_action_mask_list[agent].append(env_obs["action_mask"])
                 action_mask[agent] = env_obs["action_mask"]
-            env_rets_to_save[env_id] = (ret[0], processed_obs, action_mask) + ret[2:]
-        else:
-            env_rets_to_save[env_id] = (
-                ret[0],
-                processed_obs,
-            ) + ret[2:]
+            env_rets_to_save[env_id][Episode.ACTION_MASK] = action_mask
 
         # check done
         if len(ret) > 2:
-            all_done = ret[3]["__all__"]
-            if all_done:
-                continue  # environment is terminated, has no need to proced dones.
-            else:
-                ret[3].pop("__all__")
-                for agent, done in ret[3].items():
-                    agent_dones_list[agent].append(done)
+            env_rets_to_save[env_id][Episode.REWARD] = ret[2]
+            is_alive = not ret[3].pop("__all__")
+            for agent, done in ret[3].items():
+                agent_dones_list[agent].append(done)
+            env_rets_to_save[env_id][Episode.DONE] = ret[3]
         else:
+            is_alive = True
             for agent in agents:
                 # XXX(ming): tuple for group?
-                if isinstance(ret[0][agent], Tuple):
+                if isinstance(ret[1][agent], Tuple):
                     agent_dones_list[agent].append([False] * len(ret[0][agent]))
                 else:
                     agent_dones_list[agent].append(False)
 
-        for agent, obs in processed_obs.items():
-            agent_obs_list[agent].append(obs)
-
         # collect agents and alive env ids here
-        all_agents.update(agents)
-        alive_env_ids.append(env_id)
+        if is_alive:
+            all_agents.update(agents)
+            for agent, obs in processed_obs.items():
+                agent_obs_list[agent].append(obs)
+            alive_env_ids.append(env_id)
 
     for agent in all_agents:
         stacked_obs = np.stack(agent_obs_list[agent])

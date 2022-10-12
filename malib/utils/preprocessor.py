@@ -223,7 +223,7 @@ class BoxFlattenPreprocessor(Preprocessor):
             array = np.vstack(data)
             return array
         else:
-            array = np.asarray(data).reshape((-1,) + self.shape)
+            array = np.asarray(data).reshape(self.shape)
         return array
 
     def write(self, array, offset, data):

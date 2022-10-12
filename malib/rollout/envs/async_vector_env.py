@@ -104,10 +104,7 @@ class AsyncVectorEnv(VectorEnv):
 
         if not self.is_terminated() and len(dead_envs) > 0:
             for env in dead_envs:
-                _tmp = env.reset(
-                    max_step=self.max_step,
-                    custom_reset_config=self._custom_reset_config,
-                )
+                _tmp = env.reset(max_step=self.max_step)
                 runtime_id = uuid.uuid1().hex
                 self._active_envs[runtime_id] = env
                 env_rets[runtime_id] = _tmp

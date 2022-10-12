@@ -304,6 +304,8 @@ def env_runner(
                     policy_outputs, client.env
                 )
 
+                assert len(env_actions) > 0, "inference server may be stucked."
+
                 episode_dict.record(processed_policy_outputs, agent_first=True)
 
             with client.timer.time_avg("environment_step"):

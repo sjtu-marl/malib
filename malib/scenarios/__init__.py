@@ -37,12 +37,3 @@ paradigm_catalog = _ScenarioCatalog()
 
 
 __all__ = ["scenario_catalog"]
-
-# add all modules in this directory to __all__
-__all__.extend(
-    [
-        import_module(f".{f.stem}", __package__)
-        for f in Path(__file__).parent.glob("*.py")
-        if "__" not in f.stem
-    ]
-)
