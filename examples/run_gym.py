@@ -29,7 +29,7 @@ if __name__ == "__main__":
         "custom_config": {},
     }
     rollout_config = {
-        "fragment_length": 2000,  # every thread
+        "fragment_length": 2000,  # determine the size of sended data block
         "max_step": 200,
         "num_eval_episodes": 10,
         "num_threads": 2,

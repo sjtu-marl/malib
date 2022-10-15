@@ -39,6 +39,8 @@ class Episode:
     ACTION = "act"
     ACTION_MASK = "act_mask"
     NEXT_ACTION_MASK = "act_mask_next"
+    PRE_REWARD = "pre_rew"
+    PRE_DONE = "pre_done"
     REWARD = "rew"
     DONE = "done"
     ACTION_LOGITS = "act_logits"
@@ -111,29 +113,28 @@ class Episode:
 
         res = {}
         for agent, agent_trajectory in self.agent_entry.items():
+            if len(agent_trajectory[Episode.CUR_OBS]) < 2:
+                continue
+
             tmp = {}
             try:
                 for k, v in agent_trajectory.items():
-                    if k == Episode.CUR_OBS:
+                    if k in [Episode.CUR_OBS, Episode.CUR_STATE, Episode.ACTION_MASK]:
                         # move to next obs
-                        tmp[Episode.NEXT_OBS] = np.stack(v[1:])
-                        tmp[Episode.CUR_OBS] = np.stack(v[:-1])
-                    elif k == Episode.CUR_STATE:
-                        # move to next state
-                        tmp[Episode.NEXT_STATE] = np.stack(v[1:])
-                        tmp[Episode.CUR_STATE] = np.stack(v[:-1])
-                    elif k == Episode.ACTION_MASK:
-                        tmp[Episode.ACTION_MASK] = np.stack(v[:-1])
-                        tmp[Episode.NEXT_ACTION_MASK] = np.stack(v[1:])
+                        tmp[f"{k}_next"] = np.stack(v[1:])
+                        tmp[k] = np.stack(v[:-1])
+                    elif k in [Episode.PRE_DONE, Episode.PRE_REWARD]:
+                        # ignore 'pre_'
+                        tmp[k[4:]] = np.stack(v[1:])
                     else:
                         tmp[k] = np.stack(v)
             except Exception as e:
                 print(traceback.format_exc())
                 raise e
             res[agent] = tmp
+
         # agent trajectory length check
         for agent, trajectory in res.items():
-            assert "rew" in trajectory, trajectory.keys()
             expected_length = len(trajectory[Episode.CUR_OBS])
             for k, v in trajectory.items():
                 assert len(v) == expected_length, (len(v), k, expected_length)
@@ -168,4 +169,44 @@ class NewEpisodeDict(defaultdict):
             if len(tmp) == 0:
                 continue
             res[k] = tmp
+        return res
+
+
+import copy
+
+
+class NewEpisodeList:
+    def __init__(self, num: int, agents: List[AgentID]) -> None:
+        self.num = num
+        self.agents = agents
+        self.episodes = [Episode(agents) for _ in range(num)]
+        self.episode_buffer = []
+
+    def record(
+        self,
+        data: List[Dict[str, Dict[str, Any]]],
+        agent_first: bool,
+        is_episode_done: List[bool],
+        ignore_keys={},
+    ):
+        for i, (episode, _data) in enumerate(zip(self.episodes, data)):
+            episode.record(_data, agent_first, ignore_keys)
+            if is_episode_done[i] and not agent_first:
+                self.episode_buffer.append(episode)
+                new_episode = Episode(self.agents)
+                tmp = {k: copy.deepcopy(v) for k, v in _data.items()}
+                new_episode.record(tmp, agent_first, ignore_keys)
+                self.episodes[i] = new_episode
+
+    def to_numpy(self) -> Dict[AgentID, Dict[str, np.ndarray]]:
+        """Lossy data transformer, which converts a dict of episode to a dict of numpy array like. (some episode may be empty)"""
+
+        res = []
+
+        for v in self.episode_buffer:
+            tmp: Dict[AgentID, Dict[str, np.ndarray]] = v.to_numpy()
+            if len(tmp) == 0:
+                continue
+            res.append(tmp)
+
         return res

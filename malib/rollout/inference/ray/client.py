@@ -39,12 +39,11 @@ from ray.actor import ActorHandle
 from malib.utils.logging import Logger
 
 from malib.utils.typing import AgentID, DataFrame, BehaviorMode
-from malib.utils.episode import Episode, NewEpisodeDict
+from malib.utils.episode import Episode, NewEpisodeDict, NewEpisodeList
 from malib.utils.preprocessor import Preprocessor, get_preprocessor
 from malib.utils.timing import Timing
 from malib.remote.interface import RemoteInterface
-from malib.rollout.envs.vector_env import VectorEnv
-from malib.rollout.envs.async_vector_env import AsyncVectorEnv, AsyncSubProcVecEnv
+from malib.rollout.envs.vector_env import VectorEnv, SubprocVecEnv
 from malib.rollout.inference.ray.server import RayInferenceWorkerSet
 from malib.rollout.inference.utils import process_env_rets, process_policy_outputs
 
@@ -125,11 +124,11 @@ class RayInferenceClient(RemoteInterface):
         }
 
         if use_subproc_env:
-            self.env = AsyncSubProcVecEnv(
+            self.env = SubprocVecEnv(
                 obs_spaces, act_spaces, env_cls, env_config, preset_num_envs=max_env_num
             )
         else:
-            self.env = AsyncVectorEnv(
+            self.env = VectorEnv(
                 obs_spaces, act_spaces, env_cls, env_config, preset_num_envs=max_env_num
             )
 
@@ -247,12 +246,12 @@ def env_runner(
     remote_actor = isinstance(list(servers.values())[0], ActorHandle)
 
     try:
-        episode_dict = NewEpisodeDict(
-            lambda: Episode(
-                agents=client.env.possible_agents,
-                processors=server_runtime_config["preprocessor"],
+        if dwriter_info_dict is not None:
+            episodes = NewEpisodeList(
+                num=client.env.num_envs, agents=client.env.possible_agents
             )
-        )
+        else:
+            episodes = None
 
         with client.timer.timeit("environment_reset"):
             env_rets = client.env.reset(
@@ -260,22 +259,25 @@ def env_runner(
                 max_step=rollout_config["max_step"],
             )
 
-        processed_env_ret, dataframes = process_env_rets(
+        # TODO(ming): do not use async stepping here
+        env_dones, processed_env_ret, dataframes = process_env_rets(
             env_rets,
             preprocessor=server_runtime_config["preprocessor"],
             preset_meta_data={"evaluate": evaluate_on},
         )
         # env ret is key first, not agent first: state, obs
-        episode_dict.record(processed_env_ret, agent_first=False)
+        if episodes is not None:
+            episodes.record(
+                processed_env_ret, agent_first=False, is_episode_done=env_dones
+            )
 
-        Logger.debug("env runner started...")
         start = time.time()
-
         cnt = 0
+
         while not client.env.is_terminated():
+            # group dataframes by runtime ids.
             grouped_data_frames: Dict[str, List[DataFrame]] = defaultdict(lambda: [])
             for agent, dataframe in dataframes.items():
-                # map agent to runtime handler
                 runtime_id = client.training_agent_mapping(agent)
                 grouped_data_frames[runtime_id].append(dataframe)
 
@@ -300,13 +302,17 @@ def env_runner(
                     }
 
             with client.timer.time_avg("process_policy_output"):
+                # TODO(ming): do not use async stepping
                 env_actions, processed_policy_outputs = process_policy_outputs(
                     policy_outputs, client.env
                 )
 
-                assert len(env_actions) > 0, "inference server may be stucked."
-
-                episode_dict.record(processed_policy_outputs, agent_first=True)
+                if episodes is not None:
+                    episodes.record(
+                        processed_policy_outputs,
+                        agent_first=True,
+                        is_episode_done=env_dones,
+                    )
 
             with client.timer.time_avg("environment_step"):
                 env_rets = client.env.step(env_actions)
@@ -314,24 +320,28 @@ def env_runner(
                     dataframes = {}
                     continue
                 # merge RNN states here
-                processed_env_ret, dataframes = process_env_rets(
+                env_dones, processed_env_ret, dataframes = process_env_rets(
                     env_rets,
                     preprocessor=server_runtime_config["preprocessor"],
                     preset_meta_data={"evaluate": evaluate_on},
                 )
                 # state, obs, rew, done
-                episode_dict.record(processed_env_ret, agent_first=False)
+                if episodes is not None:
+                    episodes.record(
+                        processed_env_ret, agent_first=False, is_episode_done=env_dones
+                    )
 
             cnt += 1
 
         if dwriter_info_dict is not None:
             # episode_id: agent_id: dict_data
-            episodes = episode_dict.to_numpy()
+            episodes = episodes.to_numpy()
             for rid, writer_info in dwriter_info_dict.items():
                 # get agents from agent group
                 agents = client.agent_group[rid]
                 batches = []
-                for episode in episodes.values():
+                # FIXME(ming): multi-agent is wrong!
+                for episode in episodes:
                     agent_buffer = [episode[aid] for aid in agents]
                     batches.append(agent_buffer)
                 writer_info[-1].put_nowait_batch(batches)
@@ -343,7 +353,7 @@ def env_runner(
 
     performance = client.timer.todict()
     performance["FPS"] = client.env.batched_step_cnt / (end - start)
-    eval_results = list(rollout_info.values())
+    eval_results = rollout_info
     performance["total_timesteps"] = client.env.batched_step_cnt
 
     return eval_results, performance

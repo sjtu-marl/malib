@@ -54,7 +54,7 @@ class DQNTrainer(Trainer):
         ).view(-1)
 
         next_state_q, _ = self.target_critic(batch.obs_next.squeeze())
-        next_action_mask = batch.get("action_mask_next", None)
+        next_action_mask = batch.get("act_mask_next", None)
 
         if next_action_mask is not None:
             illegal_action_mask = 1.0 - next_action_mask
@@ -63,6 +63,12 @@ class DQNTrainer(Trainer):
             next_state_q += illegal_action_logits
 
         next_state_action_values = next_state_q.max(-1)[0]
+        assert batch.rew.shape == batch.done.shape == next_state_action_values.shape, (
+            batch.rew.shape,
+            batch.done.shape,
+            next_state_action_values.shape,
+        )
+
         assert batch.rew.shape == batch.done.shape == next_state_action_values.shape, (
             batch.rew.shape,
             batch.done.shape,

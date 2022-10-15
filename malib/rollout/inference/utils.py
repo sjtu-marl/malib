@@ -36,10 +36,10 @@ from malib.rollout.envs.vector_env import VectorEnv
 
 
 def process_env_rets(
-    env_rets: Dict[EnvID, Dict[str, Dict[AgentID, Any]]],
+    env_rets: List[Tuple["states", "observations", "rewards", "dones", "infos"]],
     preprocessor: Dict[AgentID, Preprocessor],
     preset_meta_data: Dict[str, Any],
-) -> Tuple[Dict[EnvID, Tuple], Dict[AgentID, DataFrame]]:
+):
     """Process environment returns, generally, for the observation transformation.
 
     Args:
@@ -61,11 +61,11 @@ def process_env_rets(
     agent_state_list = defaultdict(lambda: [])
 
     all_agents = set()
-    alive_env_ids = []
-    env_rets_to_save = {}
+    env_rets_list_to_save = []
+    env_dones = []
 
     # env_ret: state, obs, rew, done, info
-    for env_id, ret in env_rets.items():
+    for ret in env_rets:
         # state, obs, reward, done, info
         agents = list(ret[1].keys())
 
@@ -73,45 +73,41 @@ def process_env_rets(
             agent: preprocessor[agent].transform(raw_obs)
             for agent, raw_obs in ret[1].items()
         }
-        env_rets_to_save[env_id] = {Episode.CUR_OBS: processed_obs}
+
+        all_agents.update(agents)
+        for agent, obs in processed_obs.items():
+            agent_obs_list[agent].append(obs)
+
+        env_rets_to_save = {Episode.CUR_OBS: processed_obs}
+
         if ret[0] is not None:
             for agent, _state in ret[0].items():
                 agent_state_list[agent].append(_state)
-            env_rets_to_save[env_id][Episode.CUR_STATE] = ret[0]
+            env_rets_to_save[Episode.CUR_STATE] = ret[0]
+
         original_obs_space = list(preprocessor.values())[0].original_space
         if (
             isinstance(original_obs_space, spaces.Dict)
             and "action_mask" in original_obs_space
         ):
-            # TODO(ming): handling action_mask here
             action_mask = {}
             for agent, env_obs in ret[1].items():
                 agent_action_mask_list[agent].append(env_obs["action_mask"])
                 action_mask[agent] = env_obs["action_mask"]
-            env_rets_to_save[env_id][Episode.ACTION_MASK] = action_mask
+            env_rets_to_save[Episode.ACTION_MASK] = action_mask
 
-        # check done
-        if len(ret) > 2:
-            env_rets_to_save[env_id][Episode.REWARD] = ret[2]
-            is_alive = not ret[3].pop("__all__")
-            for agent, done in ret[3].items():
-                agent_dones_list[agent].append(done)
-            env_rets_to_save[env_id][Episode.DONE] = ret[3]
-        else:
-            is_alive = True
-            for agent in agents:
-                # XXX(ming): tuple for group?
-                if isinstance(ret[1][agent], Tuple):
-                    agent_dones_list[agent].append([False] * len(ret[0][agent]))
-                else:
-                    agent_dones_list[agent].append(False)
+        env_rets_to_save[Episode.PRE_REWARD] = ret[2]
+        for agent, done in ret[3].items():
+            if agent == "__all__":
+                env_done = done
+                continue
+            agent_dones_list[agent].append(done)
+        env_rets_to_save[Episode.PRE_DONE] = {
+            k: v for k, v in ret[3].items() if k != "__all__"
+        }
 
-        # collect agents and alive env ids here
-        if is_alive:
-            all_agents.update(agents)
-            for agent, obs in processed_obs.items():
-                agent_obs_list[agent].append(obs)
-            alive_env_ids.append(env_id)
+        env_dones.append(env_done)
+        env_rets_list_to_save.append(env_rets_to_save)
 
     for agent in all_agents:
         stacked_obs = np.stack(agent_obs_list[agent])
@@ -135,7 +131,7 @@ def process_env_rets(
                 Episode.CUR_STATE: stacked_state,
             },
             meta_data={
-                "environment_ids": alive_env_ids,
+                "env_num": len(env_rets_list_to_save),
                 "evaluate": preset_meta_data["evaluate"],
                 "data_shapes": {
                     Episode.CUR_OBS: stacked_obs.shape[1:],
@@ -150,7 +146,7 @@ def process_env_rets(
             },
         )
 
-    return env_rets_to_save, dataframes
+    return env_dones, env_rets_list_to_save, dataframes
 
 
 def process_policy_outputs(
@@ -166,25 +162,29 @@ def process_policy_outputs(
         Tuple[Dict[EnvID, Dict[AgentID, Any]], Dict[EnvID, Dict[AgentID, Dict[str, Any]]]]: A tuple of 1. Agent action by environments, 2.
     """
 
-    rets = defaultdict(lambda: defaultdict(lambda: {}))  # env_id, str, agent, any
+    rets = []  # env_id, str, agent, any
     for dataframes in raw_output.values():
         for dataframe in dataframes:
             agent = dataframe.identifier
             data = dataframe.data
-            env_ids = dataframe.meta_data["environment_ids"]
+            env_num = dataframe.meta_data["env_num"]
+
+            if len(rets) == 0:
+                rets = [defaultdict(dict) for _ in range(env_num)]
+
             assert isinstance(data, dict)
+
             for k, v in data.items():
                 if k == Episode.RNN_STATE:
-                    for i, env_id in enumerate(env_ids):
+                    for i in range(env_num):
                         if v is None:
                             continue
-                        rets[env_id][agent][k] = [_v[i] for _v in v]
+                        rets[i][agent][k] = [_v[i] for _v in v]
                 else:
-                    for env_id, _v in zip(env_ids, v):
-                        rets[env_id][agent][k] = _v
+                    for i, _v in enumerate(v):
+                        rets[i][agent][k] = _v
 
-    # process action with action adapter
-    env_actions: Dict[EnvID, Dict[AgentID, Any]] = env.action_adapter(rets)
+    env_actions: Dict[AgentID, np.ndarray] = env.action_adapter(rets)
 
     return env_actions, rets
 

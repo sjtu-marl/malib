@@ -37,18 +37,19 @@ from ray.util.queue import Queue
 from malib.remote.interface import RemoteInterface
 from malib.utils.logging import Logger
 from malib.utils.tianshou_batch import Batch
-from malib.utils.tianshou_replay import ReplayBuffer
+from malib.utils.replay_buffer import ReplayBuffer
 
 
 def write_table(marker: rwlock.RWLockFair, buffer: ReplayBuffer, writer: Queue):
     wlock = marker.gen_wlock()
     while True:
         try:
-            batch: Union[Batch, List[Batch]] = writer.get()
+            batches: Union[Batch, List[Batch]] = writer.get()
             with wlock:
-                if isinstance(batch, List):
-                    batch = batch[0]
-                buffer.add_episode(batch)
+                if not isinstance(batches, List):
+                    batches = [batches]
+                for e in batches:
+                    buffer.add_batch(e)
         except Exception as e:
             Logger.warning(f"writer queue dead for: {traceback.format_exc()}")
             break

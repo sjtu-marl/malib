@@ -74,7 +74,6 @@ class RayInferenceWorkerSet(RemoteInterface):
         self.thread_pool = ThreadPoolExecutor()
         self.governed_agents = governed_agents
         self.policies: Dict[str, Policy] = {}
-        self.policy_version: Dict[str, int] = {}
         self.strategy_spec_dict: Dict[str, StrategySpec] = {}
 
     def shutdown(self):
@@ -112,7 +111,7 @@ class RayInferenceWorkerSet(RemoteInterface):
             with timer.time_avg("others"):
                 agent_id = dataframe.identifier
                 spec = strategy_specs[agent_id]
-                batch_size = len(dataframe.meta_data["environment_ids"])
+                batch_size = dataframe.meta_data["env_num"]
                 spec_policy_id = spec.sample()
                 policy_id = f"{spec.id}/{spec_policy_id}"
                 policy: Policy = self.policies[policy_id]
@@ -137,12 +136,10 @@ class RayInferenceWorkerSet(RemoteInterface):
                     self.parameter_server.get_weights.remote(
                         spec_id=spec.id,
                         spec_policy_id=spec_policy_id,
-                        cur_version=self.policy_version[policy_id],
                     )
                 )
                 if info["weights"] is not None:
                     self.policies[policy_id].load_state_dict(info["weights"])
-                    self.policy_version[policy_id] = info["version"] + 1
 
             with timer.time_avg("compute_action"):
                 (
@@ -184,7 +181,6 @@ class RayInferenceWorkerSet(RemoteInterface):
             if policy_id not in self.policies:
                 policy = strategy_spec.gen_policy()
                 self.policies[policy_id] = policy
-                self.policy_version[policy_id] = -1
 
 
 def _get_initial_states(self, client_id, observation, policy: Policy, identifier):

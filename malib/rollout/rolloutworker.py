@@ -47,10 +47,6 @@ from malib.utils.stopping_conditions import get_stopper
 from malib.common.strategy_spec import StrategySpec
 from malib.remote.interface import RemoteInterface
 from malib.monitor.utils import write_to_tensorboard
-from malib.rollout.inference.pipe.server import (
-    InferenceWorkerSet as PipeInferenceServer,
-)
-from malib.rollout.inference.pipe.client import InferenceClient as PipeInferenceClient
 from malib.rollout.inference.ray.server import (
     RayInferenceWorkerSet as RayInferenceServer,
 )
@@ -252,16 +248,6 @@ class RolloutWorker(RemoteInterface):
             self.inference_client_cls = RayInferenceClient.as_remote(
                 **resource_config["inference_client"]
             )
-        elif rollout_config["inference_server"] == "pipe":
-            self.inference_client_cls = PipeInferenceClient.as_remote(
-                **resource_config["inference_client"]
-            )
-            self.inference_server_cls = PipeInferenceServer.as_remote(
-                **resource_config["inference_server"]
-            ).options(max_concurrency=100)
-            self.agent_interfaces = self.init_agent_interfaces(
-                env_desc, runtime_agent_ids
-            )
         elif rollout_config["inference_server"] == "ray":
             self.inference_client_cls = RayInferenceClient.as_remote(
                 **resource_config["inference_client"]
@@ -455,8 +441,15 @@ class RolloutWorker(RemoteInterface):
             total_timesteps += results["total_timesteps"]
             eval_results = results.get("evaluation", None)
 
+            performance["rollout_iter_rate"] = (epoch + 1) / (time.time() - start_time)
+            performance["rollout_FPS"] = results["FPS"]
+            performance["ave_rollout_FPS"] = (
+                performance["ave_rollout_FPS"] * epoch + results["FPS"]
+            ) / (epoch + 1)
+
             if eval_results is not None:
                 if self.verbose:
+                    eval_results["performance"] = performance
                     formatted_results = pprint.pformat(eval_results)
                     Logger.info(f"Evaluation at epoch: {epoch}\n{formatted_results}")
                 write_to_tensorboard(
@@ -465,12 +458,6 @@ class RolloutWorker(RemoteInterface):
                     global_step=total_timesteps,
                     prefix="Evaluation",
                 )
-
-            performance["rollout_iter_rate"] = (epoch + 1) / (time.time() - start_time)
-            performance["rollout_FPS"] = results["FPS"]
-            performance["ave_rollout_FPS"] = (
-                performance["ave_rollout_FPS"] * epoch + results["FPS"]
-            ) / (epoch + 1)
 
             write_to_tensorboard(
                 self.tb_writer, performance, global_step=epoch, prefix="Performance"

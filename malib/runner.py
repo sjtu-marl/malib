@@ -31,12 +31,12 @@ from malib.backend.offline_dataset_server import OfflineDataset
 from malib.backend.parameter_server import ParameterServer
 
 
-def start_servers():
+def start_servers(data_table_capacity: int = 100000):
     try:
         offline_dataset_server = (
             OfflineDataset.as_remote(num_cpus=0)
             .options(name=settings.OFFLINE_DATASET_ACTOR, max_concurrency=100)
-            .remote(table_capacity=100)
+            .remote(table_capacity=data_table_capacity)
         )
         ray.get(offline_dataset_server.start.remote())
     except ValueError:

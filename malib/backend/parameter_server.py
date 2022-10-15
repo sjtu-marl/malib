@@ -39,47 +39,34 @@ class Table:
         policy_cls = policy_meta_data["policy_cls"]
         optim_config = policy_meta_data.get("optim_config")
         plist = Namespace(**policy_meta_data["kwargs"])
-        self.policy = policy_cls(
-            observation_space=plist.observation_space,
-            action_space=plist.action_space,
-            model_config=plist.model_config,
-            custom_config=plist.custom_config,
-            **plist.kwargs,
-        )
+        self.state_dict = None
         if optim_config is not None:
             self.optimizer: torch.optim.Optimizer = getattr(
                 torch.optim, optim_config["type"]
             )(self.policy.parameters(), lr=optim_config["lr"])
         else:
             self.optimizer: torch.optim.Optimizer = None
-        self.cur_version = 0
-        self.cur_version = -1
         self.lock = Lock()
 
     def set_weights(self, state_dict):
         with self.lock:
-            self.cur_version += 1
-            self.policy.load_state_dict(state_dict)
+            self.state_dict = state_dict
 
     def apply_gradients(self, *gradients):
-        with self.lock:
-            summed_gradients = [
-                np.stack(gradient_zip).sum(axis=0) for gradient_zip in zip(*gradients)
-            ]
-            self.optimizer.zero_grad()
-            for g, p in zip(summed_gradients, self.policy.parameters()):
-                if g is not None:
-                    p.grad = torch.from_numpy(g.copy())
-            self.optimizer.step()
+        raise NotImplementedError
+        # with self.lock:
+        #     summed_gradients = [
+        #         np.stack(gradient_zip).sum(axis=0) for gradient_zip in zip(*gradients)
+        #     ]
+        #     self.optimizer.zero_grad()
+        #     for g, p in zip(summed_gradients, self.policy.parameters()):
+        #         if g is not None:
+        #             p.grad = torch.from_numpy(g.copy())
+        #     self.optimizer.step()
 
-    def get_weights(self, request_version):
+    def get_weights(self):
         with self.lock:
-            if request_version >= self.cur_version:
-                return self.cur_version, None
-            else:
-                return self.cur_version, {
-                    k: v for k, v in self.policy.state_dict().items()
-                }
+            return self.state_dict
 
 
 class ParameterServer(RemoteInterface):
@@ -94,9 +81,7 @@ class ParameterServer(RemoteInterface):
     def apply_gradients(self, table_name: str, gradients: Sequence[Any]):
         self.tables[table_name].apply_gradients(*gradients)
 
-    def get_weights(
-        self, spec_id: str, spec_policy_id: str, cur_version: int
-    ) -> Dict[str, Any]:
+    def get_weights(self, spec_id: str, spec_policy_id: str) -> Dict[str, Any]:
         """Request for weight retrive, return a dict includes keys: `spec_id`, `spec_policy_id` and `weights`.
 
         Args:
@@ -108,12 +93,11 @@ class ParameterServer(RemoteInterface):
         """
 
         table_name = f"{spec_id}/{spec_policy_id}"
-        version, weights = self.tables[table_name].get_weights(cur_version)
+        weights = self.tables[table_name].get_weights()
         return {
             "spec_id": spec_id,
             "spec_policy_id": spec_policy_id,
             "weights": weights,
-            "version": version,
         }
 
     def set_weights(

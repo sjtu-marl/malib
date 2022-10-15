@@ -222,9 +222,7 @@ class AgentInterface(RemoteInterface, ABC):
         for spec_pid in self._strategy_spec.policy_ids:
             pid = f"{self._strategy_spec.id}/{spec_pid}"
             task = self._parameter_server.get_weights.remote(
-                spec_id=self._strategy_spec.id,
-                spec_policy_id=spec_pid,
-                state_dict=self._policies[pid],
+                spec_id=self._strategy_spec.id, spec_policy_id=spec_pid
             )
             pending_tasks.append(task)
 

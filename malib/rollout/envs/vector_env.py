@@ -22,16 +22,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from collections import ChainMap
+from collections import ChainMap, defaultdict
 from typing import Tuple, Dict, Any, List, Callable, Sequence
 
 import uuid
 
 import gym
 import ray
+import numpy as np
 
 from ray.actor import ActorHandle
-from ray.util.queue import Queue
 
 from malib.utils.logging import Logger
 from malib.utils.typing import (
@@ -65,35 +65,32 @@ class VectorEnv:
         self.observation_spaces = observation_spaces
         self.action_spaces = action_spaces
         self.possible_agents = list(observation_spaces.keys())
+        self.cached_episode_infos = {}
+        self.fragment_length = None
+        self.step_cnt = 0
 
-        self._num_envs = preset_num_envs
         self._creator = creator
         self._configs = configs.copy()
         self._envs: List[Environment] = []
-        self._step_cnt = 0
-        self._limits = len(self._envs)
-        self._fragment_length = None
-        self._active_envs = {}
-        self._cached_episode_infos = {}
         self._action_adapter = creator.action_adapter
 
         self.add_envs(num=preset_num_envs)
 
     @property
     def batched_step_cnt(self) -> int:
-        return self._step_cnt
+        return self.step_cnt
 
     @property
     def num_envs(self) -> int:
         """The total number of environments"""
 
-        return self._num_envs
+        return len(self._envs)
 
     @property
     def envs(self) -> List[Environment]:
         """Return a limited list of enviroments"""
 
-        return self._envs[: self._limits]
+        return self._envs
 
     @property
     def env_creator(self):
@@ -102,14 +99,6 @@ class VectorEnv:
     @property
     def env_configs(self):
         return self._configs
-
-    @property
-    def limits(self):
-        return self._limits
-
-    @property
-    def active_envs(self) -> Dict[EnvID, Environment]:
-        return self._active_envs
 
     @classmethod
     def from_envs(cls, envs: List[Environment], config: Dict[str, Any]):
@@ -130,20 +119,18 @@ class VectorEnv:
 
         if envs and len(envs) > 0:
             for env in envs:
-                self._envs.append(env)
-                self._num_envs += 1
+                self.envs.append(env)
             Logger.debug(f"added {len(envs)} exisiting environments.")
         elif num > 0:
             for _ in range(num):
-                self._envs.append(self.env_creator(**self.env_configs))
-                self._num_envs += 1
+                self.envs.append(self.env_creator(**self.env_configs))
             Logger.debug(f"created {num} new environments.")
 
     def reset(
         self,
         fragment_length: int,
         max_step: int,
-    ) -> Dict[EnvID, Sequence[Dict[AgentID, Any]]]:
+    ) -> List[Tuple["states", "observations"]]:
         """Reset a bunch of environments.
 
         Args:
@@ -154,28 +141,24 @@ class VectorEnv:
             Dict[EnvID, Sequence[Dict[AgentID, Any]]]: A dict of environment returns.
         """
 
-        self._limits = self.num_envs
-        self._step_cnt = 0
-        self._fragment_length = fragment_length
+        self.step_cnt = 0
+        self.fragment_length = fragment_length
         self.max_step = max_step
-        self._cached_episode_infos = {}
+        self.cached_episode_infos = []
 
-        # generate runtime env ids
-        runtime_ids = [uuid.uuid1().hex for _ in range(self._limits)]
-        self._active_envs = dict(zip(runtime_ids, self.envs[: self._limits]))
-
-        ret = {}
-        for env_id, env in self.active_envs.items():
-            _ret = env.reset(max_step=max_step)
-            if isinstance(_ret, Dict):
-                _ret = (_ret,)
-            ret[env_id] = _ret
+        ret = []
+        for env in self.envs:
+            state, obs = env.reset(max_step=max_step)
+            reward = dict.fromkeys(obs.keys(), 0.0)
+            dones = dict.fromkeys(obs.keys(), False)
+            dones["__all__"] = False
+            ret.append((state, obs, reward, dones))
 
         return ret
 
     def step(
-        self, actions: Dict[EnvID, Dict[AgentID, Any]]
-    ) -> Dict[EnvID, Sequence[Dict[AgentID, Any]]]:
+        self, actions: Dict[AgentID, np.ndarray]
+    ) -> List[Tuple["states", "observations", "rewards", "dones", "infos"]]:
         """Environment stepping function.
 
         Args:
@@ -185,79 +168,51 @@ class VectorEnv:
             Dict[EnvID, Sequence[Dict[AgentID, Any]]]: A dict of environment returns.
         """
 
-        active_envs = self.active_envs
+        env_rets = []
 
-        env_rets = {}
-        dead_envs = []
-        # FIXME(ming): (keyerror, sometimes) the env_id in actions is not an active environment.
-        for env_id, _actions in actions.items():
-            ret = active_envs[env_id].step(_actions)
-            env_done = ret[3]["__all__"]
-            env = self.active_envs[env_id]
-            self._update_step_cnt()
+        for i, env in enumerate(self.envs):
+            _actions = {k: v[i] for k, v in actions.items()}
+            state, obs, rew, done, info = env.step(_actions)
+            env_done = done["__all__"]
+            self.step_cnt += 1
             if env_done:
-                env = active_envs.pop(env_id)
-                dead_envs.append(env)
-                self._cached_episode_infos[env_id] = env.collect_info()
-            env_rets[env_id] = ret
-
-        if not self.is_terminated() and len(dead_envs) > 0:
-            for env in dead_envs:
-                _tmp = env.reset(
-                    max_step=self.max_step,
-                )
-                # regenerate runtime id
-                runtime_id = uuid.uuid1().hex
-                self._active_envs[runtime_id] = env
-                env_rets[runtime_id] = _tmp
+                # replace ret with the new started obs
+                self.cached_episode_infos.append(env.collect_info())
+                state, obs = env.reset(max_step=self.max_step)
+            env_rets.append((state, obs, rew, done))
         return env_rets
 
-    def _update_step_cnt(self, ava_agents: List[AgentID] = None):
-        if isinstance(self._step_cnt, int):
-            self._step_cnt += 1
-        else:
-            raise NotImplementedError
-
     def is_terminated(self):
-        if isinstance(self._step_cnt, int):
-            return self._step_cnt >= self._fragment_length
+        if isinstance(self.step_cnt, int):
+            return self.step_cnt >= self.fragment_length
         else:
             raise NotImplementedError
             # return self._step_cnt[self._trainable_agents] >= self._fragment_length
 
     def action_adapter(
-        self, policy_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]
-    ) -> Dict[EnvID, Dict[AgentID, Any]]:
+        self, policy_outputs: List[Dict[str, Dict[AgentID, Any]]]
+    ) -> List[Dict[AgentID, Any]]:
 
         # since activ_envs maybe updated after self.step, so we should use keys
         # in self.active_envs
-        res = {
-            env_id: {
-                agent: v[Episode.ACTION][0]
-                if v[Episode.ACTION].shape == (1,)
-                else v[Episode.ACTION]
-                for agent, v in policy_output.items()
-            }
-            for env_id, policy_output in policy_outputs.items()
-        }
-
+        res = defaultdict(list)
+        for e in policy_outputs:
+            for agent, v in e.items():
+                res[agent].append(v[Episode.ACTION].squeeze())
+        # them stack
+        res = dict(res)
+        for k, v in res.items():
+            res[k] = np.stack(v)
         return res
 
-    def collect_info(self, truncated=False) -> Dict[EnvID, Dict[str, Any]]:
+    def collect_info(self) -> Dict[EnvID, Dict[str, Any]]:
         """Collect information of each episode since last running.
-
-        Args:
-            truncated (bool, optional): Deprecated argument. Defaults to False.
 
         Returns:
             Dict[EnvID, Dict[str, Any]]: A dict of episode informations, mapping from environment ids to dicts.
         """
 
-        ret = self._cached_episode_infos
-        for runtime_id, env in self.active_envs.items():
-            if env.cnt > 0 and (runtime_id not in ret):
-                ret[runtime_id] = env.collect_info()
-
+        ret = self.cached_episode_infos.copy()
         return ret
 
     def close(self):
@@ -296,168 +251,4 @@ class _RemoteEnv:
 
 
 class SubprocVecEnv(VectorEnv):
-    def __init__(
-        self,
-        observation_spaces: Dict[AgentID, gym.Space],
-        action_spaces: Dict[AgentID, gym.Space],
-        creator: type,
-        configs: Dict[str, Any],
-    ):
-        # modify creator as remote creator
-        self.pending_tasks = []
-
-        super(SubprocVecEnv, self).__init__(
-            observation_spaces, action_spaces, creator, configs
-        )
-
-    def action_adapter(
-        self, policy_outputs: Dict[EnvID, Dict[str, Dict[AgentID, Any]]]
-    ) -> Dict[EnvID, Dict[AgentID, Any]]:
-        res = {}
-
-        # since activ_envs maybe updated after self.step, so we should use keys
-        # in self.active_envs
-        res = ray.get(
-            [
-                self.active_envs[env_id].action_adapter.remote(policy_output)
-                for env_id, policy_output in policy_outputs.items()
-            ]
-        )
-        res = ChainMap(*res)
-
-        return res
-
-    def add_envs(self, envs: List = None, num: int = 0):
-        """Add existin envs to remote actor"""
-
-        # num_env_pool = self.num_envs
-
-        if envs and len(envs) > 0:
-            for env in envs:
-                if isinstance(env, ActorHandle):
-                    self._envs.append(env)
-                else:
-                    self._envs.append(ray.get(_RemoteEnv.from_env(env).remote()))
-
-                self._num_envs += 1
-            Logger.debug(f"added {len(envs)} exisiting environments.")
-        elif num > 0:
-            # num = min(
-            #     self.max_num_envs - self.num_envs, max(0, self.max_num_envs - num)
-            # )
-            for _ in range(num):
-                self._envs.append(
-                    _RemoteEnv.remote(
-                        creater=self.env_creator, env_config=self.env_configs
-                    )
-                )
-                self._num_envs += 1
-            Logger.info(f"created {num} new environments.")
-
-    def reset(
-        self,
-        limits: int,
-        fragment_length: int,
-        max_step: int,
-    ) -> Dict[EnvID, Dict[str, Dict[AgentID, Any]]]:
-        """Reset a bunch of environments.
-
-        Args:
-            limits (int): The number of activated environments.
-            fragment_length (int): Total timesteps when the SubprocVecEnv is terminated.
-            max_step (int): The maximum of episode length.
-
-        Returns:
-            Dict[EnvID, Dict[str, Dict[AgentID, Any]]]: _description_
-        """
-        self._limits = limits or self.num_envs
-        self._step_cnt = 0
-        self._fragment_length = fragment_length
-        self.max_step = max_step
-
-        # clean peanding tasks
-        if len(self.pending_tasks) > 0:
-            _ = ray.get(self.pending_tasks)
-
-        # generate runtime env ids
-        runtime_ids = [uuid.uuid1().hex for _ in range(self._limits)]
-        self._active_envs = dict(zip(runtime_ids, self.envs[: self._limits]))
-        self._step_cnt = 0
-
-        ret = {}
-
-        for env_id, env in self.active_envs.items():
-            _ret = ray.get(
-                env.reset.remote(
-                    runtime_id=env_id,
-                    max_step=max_step,
-                )
-            )
-            ret.update(_ret)
-
-        ret = ray.get(
-            [
-                env.reset.remote(
-                    max_step=max_step,
-                )
-                for runtime_id, env in self._active_envs.items()
-            ]
-        )
-        ret = ChainMap(*ret)
-
-        return ret
-
-    def step(self, actions: Dict[AgentID, List]) -> Dict:
-
-        for env_id, _actions in actions.items():
-            self.pending_tasks.append(self.active_envs[env_id].step.remote(_actions))
-
-        ready_tasks = []
-        # XXX(ming): should raise a warning, if too many retries.
-        while len(ready_tasks) < 1:
-            ready_tasks, self.pending_tasks = ray.wait(
-                self.pending_tasks, num_returns=len(self.pending_tasks), timeout=0.5
-            )
-        rets = dict(ChainMap(*ray.get(ready_tasks)))
-        self._step_cnt += len(rets)
-
-        # FIXME(ming): (runtime error, sometimes) dictionary changed size during iteration
-        dead_envs = []
-        for env_id, _ret in rets.items():
-            dones = _ret[Episode.DONE]
-            env_done = any(dones.values())
-            if env_done:
-                # reset and assign a new runtime
-                env = self._active_envs.pop(env_id)
-                runtime_id = uuid.uuid1().hex
-                self.active_envs[runtime_id] = env
-                dead_envs.append(env)
-
-        if not self.is_terminated() and len(dead_envs) > 0:
-            for env in dead_envs:
-                rets.update(
-                    ray.get(
-                        env.reset.remote(
-                            runtime_id=runtime_id,
-                            max_step=self.max_step,
-                        )
-                    )
-                )
-
-        return rets
-
-    def collect_info(self, truncated=False) -> List[Dict[str, Any]]:
-        # XXX(ziyu): We can add a new param 'truncated' to determine whether to add
-        # the nonterminal env_info into rets.
-        ret = self._cached_episode_infos
-        additional = ray.get(
-            [env.collect_info.remote() for env in self.active_envs.values()]
-        )
-        additional = ChainMap(*additional)
-        ret.update(additional)
-        return ret
-
-    def close(self):
-        for env in self.envs:
-            # assert isinstance(env, ActorHandle)
-            env.__ray_terminate__.remote()
+    pass
