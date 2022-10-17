@@ -151,8 +151,11 @@ class Environment:
         """
 
         self.cnt += 1
-        rets = tuple(self.time_step(actions))
+        rets = list(self.time_step(actions))
         rets[3]["__all__"] = self.env_done_check(rets[3])
+        if rets[3]["__all__"]:
+            rets[3] = {k: True for k in rets[3].keys()}
+        rets = tuple(rets)
         self.record_episode_info_step(*rets)
         # state, obs, action_mask, reward, done, info.
         return rets

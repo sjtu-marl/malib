@@ -316,10 +316,6 @@ def env_runner(
 
             with client.timer.time_avg("environment_step"):
                 env_rets = client.env.step(env_actions)
-                if len(env_rets) < 1:
-                    dataframes = {}
-                    continue
-                # merge RNN states here
                 env_dones, processed_env_ret, dataframes = process_env_rets(
                     env_rets,
                     preprocessor=server_runtime_config["preprocessor"],

@@ -175,6 +175,10 @@ class VectorEnv:
             state, obs, rew, done, info = env.step(_actions)
             env_done = done["__all__"]
             self.step_cnt += 1
+
+            if self.is_terminated():
+                env_done = True
+
             if env_done:
                 # replace ret with the new started obs
                 self.cached_episode_infos.append(env.collect_info())

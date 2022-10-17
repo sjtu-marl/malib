@@ -126,6 +126,8 @@ class Episode:
                     elif k in [Episode.PRE_DONE, Episode.PRE_REWARD]:
                         # ignore 'pre_'
                         tmp[k[4:]] = np.stack(v[1:])
+                        if k == Episode.PRE_DONE:
+                            assert v[-1], v
                     else:
                         tmp[k] = np.stack(v)
             except Exception as e:
