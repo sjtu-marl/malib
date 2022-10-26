@@ -1,21 +1,23 @@
-from typing import Any
+# MIT License
 
-from malib.rl.common.trainer import Trainer
-from .loss import SACLoss
+# Copyright (c) 2021 MARL @ SJTU
 
+# Author: Ming Zhou
 
-class SACTrainer(Trainer):
-    def __init__(self, tid):
-        super(SACTrainer, self).__init__(tid)
-        self._loss = SACLoss()
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
 
-    def preprocess(self, batch, **kwargs) -> Any:
-        return batch
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
 
-    def optimize(self, batch):
-        self.loss.zero_grad()
-        if hasattr(self, "main_id"):
-            batch = batch[self.main_id]
-        loss_stats = self.loss(batch)
-        self.loss.step()
-        return loss_stats
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
