@@ -48,27 +48,6 @@ from malib.rollout.inference.ray.server import RayInferenceWorkerSet
 from malib.rollout.inference.utils import process_env_rets, process_policy_outputs
 
 
-def recieve(queue: Dict[str, Queue], block: bool = False) -> Dict[AgentID, DataFrame]:
-    """Recieves message from remote servers. If block, then wait until not empty.
-
-    Args:
-        queue (Dict[str, Queue]): A dict of queues, mapping from runtime ids to queues.
-        block (bool, optional): Sync mode or not. Defaults to False.
-
-    Returns:
-        Dict[AgentID, DataFrame]: A dict of frames, mapping from agent ids to dataframes.
-    """
-
-    rets = {}
-    for runtime_id, v in queue.items():
-        if block:
-            rets[runtime_id] = v.get()
-        else:
-            if not v.empty():
-                rets[runtime_id] = v.get_nowait()
-    return rets
-
-
 class RayInferenceClient(RemoteInterface):
     def __init__(
         self,
@@ -259,9 +238,8 @@ def env_runner(
                 max_step=rollout_config["max_step"],
             )
 
-        # TODO(ming): do not use async stepping here
         env_dones, processed_env_ret, dataframes = process_env_rets(
-            env_rets,
+            env_rets=env_rets,
             preprocessor=server_runtime_config["preprocessor"],
             preset_meta_data={"evaluate": evaluate_on},
         )
@@ -317,7 +295,7 @@ def env_runner(
             with client.timer.time_avg("environment_step"):
                 env_rets = client.env.step(env_actions)
                 env_dones, processed_env_ret, dataframes = process_env_rets(
-                    env_rets,
+                    env_rets=env_rets,
                     preprocessor=server_runtime_config["preprocessor"],
                     preset_meta_data={"evaluate": evaluate_on},
                 )

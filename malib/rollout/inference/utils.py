@@ -187,14 +187,3 @@ def process_policy_outputs(
     env_actions: Dict[AgentID, np.ndarray] = env.action_adapter(rets)
 
     return env_actions, rets
-
-
-def merge_env_rets(rets, next_rets):
-    r: Dict[EnvID, Dict] = {}
-    for e in [rets, next_rets]:
-        for env_id, ret in e.items():
-            if env_id not in r:
-                r[env_id] = ret
-            else:
-                r[env_id].update(ret)
-    return r

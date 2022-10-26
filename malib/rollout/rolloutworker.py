@@ -223,7 +223,7 @@ class RolloutWorker(RemoteInterface):
 
         # valid agent group
         validate_agent_group(
-            agent_group,
+            agent_group=agent_group,
             full_keys=env_desc["possible_agents"],
             observation_spaces=env_desc["observation_spaces"],
             action_spaces=env_desc["action_spaces"],
