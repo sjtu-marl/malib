@@ -24,7 +24,6 @@ from typing import Dict, List, Any, Union, Tuple, Sequence
 
 import uuid
 import gym
-import copy
 import numpy as np
 
 from malib.utils.typing import AgentID
@@ -261,7 +260,6 @@ class Wrapper(Environment):
         return self.env.collect_info()
 
 
-# TODO(ming): test required.
 class GroupWrapper(Wrapper):
     def __init__(
         self,
