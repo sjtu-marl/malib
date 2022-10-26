@@ -1,12 +1,32 @@
+# MIT License
+
+# Copyright (c) 2021 MARL @ SJTU
+
+# Author: Ming Zhou
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 """
 Independent agent interface, for independent algorithms training. Policy/Trainer adding rule: one policy one trainer.
 """
 
 from typing import Dict, Tuple, Any, Callable, List, Union
-
-import shutup
-
-shutup.please()
 
 from malib.utils.typing import AgentID
 from malib.utils.tianshou_batch import Batch
@@ -26,6 +46,7 @@ class IndependentAgent(AgentInterface):
         trainer_config: Dict[str, Any],
         custom_config: Dict[str, Any] = None,
         local_buffer_config: Dict = None,
+        verbose: bool = True,
     ):
         super().__init__(
             experiment_tag,
@@ -38,6 +59,7 @@ class IndependentAgent(AgentInterface):
             trainer_config,
             custom_config,
             local_buffer_config,
+            verbose,
         )
 
     def multiagent_post_process(

@@ -47,6 +47,7 @@ class MARLScenario(Scenario):
         stopping_conditions: Dict[str, Any] = None,
         dataset_config: Dict[str, Any] = None,
         parameter_server_config: Dict[str, Any] = None,
+        resource_config: Dict[str, Any] = None,
     ):
         """Construct a learning scenario for MARL training.
 
@@ -78,10 +79,14 @@ class MARLScenario(Scenario):
         )
         self.num_worker = num_worker
         self.num_policy_each_interface = 1
+        self.resource_config = resource_config or {"training": None, "rollout": None}
 
 
 def execution_plan(
-    experiment_tag: str, scenario: Scenario, recall_resource: bool = True
+    experiment_tag: str,
+    scenario: Scenario,
+    recall_resource: bool = True,
+    verbose: bool = True,
 ):
     if hasattr(scenario, "training_manager"):
         training_manager: TrainingManager = scenario.training_manager
@@ -95,6 +100,8 @@ def execution_plan(
             training_config=scenario.training_config,
             log_dir=scenario.log_dir,
             remote_mode=True,
+            resource_config=scenario.resource_config["training"],
+            verbose=verbose,
         )
 
     if hasattr(scenario, "rollout_manager"):
@@ -108,11 +115,15 @@ def execution_plan(
             rollout_config=scenario.rollout_config,
             env_desc=scenario.env_desc,
             log_dir=scenario.log_dir,
+            resource_config=scenario.resource_config["rollout"],
+            verbose=verbose,
         )
 
     strategy_specs = training_manager.add_policies(n=scenario.num_policy_each_interface)
 
     # define the data entrypoint to bridge the training interfaces and remote dataset
+    # TODO(ming): please explain the meaning of the data entrypoints here
+    #   seems the mapping from agents to data? rolloutworker.py::rollout
     data_entrypoints = {rid: rid for rid in training_manager.runtime_ids}
     training_manager.run(data_request_identifiers=data_entrypoints)
 

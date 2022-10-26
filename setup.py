@@ -1,3 +1,25 @@
+# MIT License
+
+# Copyright (c) 2021 MARL @ SJTU
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 from os import path
 from setuptools import setup, find_packages
 
@@ -18,8 +40,8 @@ setup(
     python_requires=">=3.7",
     install_requires=[
         "wrapt",
-        "ray==1.8.0",
-        "pettingzoo==1.13.1",
+        "ray==1.13.0",
+        "pettingzoo==1.19.0",
         "grpcio-tools",
         "protobuf3-to-dict",
         "pickle5",
@@ -31,7 +53,7 @@ setup(
         "pymongo",
         "psutil",
         "pyecharts",
-        "open_spiel==1.0.2",
+        "open_spiel>=1.0.2",
         "supersuit==3.3.1",
         "multi-agent-ale-py==0.1.11",
         "autorom==0.4.2",
@@ -39,6 +61,9 @@ setup(
         "mujoco_py",
         "hiredis==2.0.0",
         "frozendict==2.3.0",
+        "numba>=0.56.0",
+        "matpltolib>=3.5.3",
+        "networkx>=2.6.3",
     ],
     extras_require={
         "dev": [

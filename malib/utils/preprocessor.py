@@ -65,6 +65,10 @@ class Preprocessor(metaclass=ABCMeta):
         self._original_space = space
         self._size = 0
 
+    @property
+    def original_space(self) -> spaces.Space:
+        return self._original_space
+
     @abstractmethod
     def transform(self, data, nested=False) -> DataTransferType:
         """Transform original data to feet the preprocessed shape. Nested works for nested array."""
@@ -219,7 +223,7 @@ class BoxFlattenPreprocessor(Preprocessor):
             array = np.vstack(data)
             return array
         else:
-            array = np.asarray(data).reshape((-1,) + self.shape)
+            array = np.asarray(data).reshape(self.shape)
         return array
 
     def write(self, array, offset, data):

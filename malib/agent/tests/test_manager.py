@@ -38,7 +38,7 @@ from malib.utils.typing import AgentID
 from malib.agent import IndependentAgent
 from malib.agent.manager import TrainingManager
 from malib.scenarios.marl_scenario import MARLScenario
-from malib.algorithm.random import RandomPolicy, RandomTrainer, DEFAULT_CONFIG
+from malib.rl.random import RandomPolicy, RandomTrainer, DEFAULT_CONFIG
 from malib.backend.offline_dataset_server import OfflineDataset
 from malib.backend.parameter_server import ParameterServer
 

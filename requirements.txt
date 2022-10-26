@@ -21,7 +21,6 @@ mujoco_py
 hiredis==2.0.0
 frozendict==2.3.0
 dm-tree==0.1.7
-dm-reverb[tensorflow]==0.6.1
 numba==0.55.2
 black==22.3.0
 shutup

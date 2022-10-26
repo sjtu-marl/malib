@@ -1,3 +1,25 @@
+# MIT License
+
+# Copyright (c) 2021 MARL @ SJTU
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 import time
 import ray
 
@@ -9,13 +31,14 @@ from malib.backend.offline_dataset_server import OfflineDataset
 from malib.backend.parameter_server import ParameterServer
 
 
-def start_servers():
+def start_servers(data_table_capacity: int = 100000):
     try:
         offline_dataset_server = (
             OfflineDataset.as_remote(num_cpus=0)
             .options(name=settings.OFFLINE_DATASET_ACTOR, max_concurrency=100)
-            .remote(table_capacity=100)
+            .remote(table_capacity=data_table_capacity)
         )
+        ray.get(offline_dataset_server.start.remote())
     except ValueError:
         Logger.warning("detected existing offline dataset server")
         offline_dataset_server = ray.get_actor(settings.OFFLINE_DATASET_ACTOR)
@@ -26,11 +49,11 @@ def start_servers():
             .options(name=settings.PARAMETER_SERVER_ACTOR, max_concurrency=100)
             .remote()
         )
+        ray.get(parameter_server.start.remote())
     except ValueError:
         Logger.warning("detected exisitng parameter server")
         parameter_server = ray.get_actor(settings.PARAMETER_SERVER_ACTOR)
 
-    ray.get([parameter_server.start.remote(), offline_dataset_server.start.remote()])
     return parameter_server, offline_dataset_server
 
 
@@ -47,6 +70,8 @@ def run(scenario: Scenario):
         Logger.info("Ray cluster resources info: {}".format(ray.cluster_resources()))
 
         parameter_server, offline_dataset_server = start_servers()
+        scenario.parameter_server = parameter_server
+        scenario.offline_dataset_server = offline_dataset_server
 
         experiment_tag = f"malib-{scenario.name}-{time.time()}"
 

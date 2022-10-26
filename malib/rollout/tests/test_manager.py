@@ -5,7 +5,7 @@ import ray
 
 from malib.utils.typing import PolicyID
 from malib.common.strategy_spec import StrategySpec
-from malib.algorithm.random import RandomPolicy
+from malib.rl.random import RandomPolicy
 from malib.rollout.manager import RolloutWorkerManager
 from malib.rollout.envs.gym import env_desc_gen
 from malib.runner import start_servers

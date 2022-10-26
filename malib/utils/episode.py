@@ -22,22 +22,25 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from re import L
-import traceback
 from typing import Dict, Any, List, Sequence
 from collections import defaultdict
 
+import traceback
 import numpy as np
 
 from malib.utils.typing import AgentID, EnvID
 
 
 class Episode:
+    """Multi-agent episode tracking"""
+
     CUR_OBS = "obs"
     NEXT_OBS = "obs_next"
     ACTION = "act"
-    ACTION_MASK = "action_mask"
-    NEXT_ACTION_MASK = "action_mask_next"
+    ACTION_MASK = "act_mask"
+    NEXT_ACTION_MASK = "act_mask_next"
+    PRE_REWARD = "pre_rew"
+    PRE_DONE = "pre_done"
     REWARD = "rew"
     DONE = "done"
     ACTION_LOGITS = "act_logits"
@@ -59,72 +62,81 @@ class Episode:
     # model states
     RNN_STATE = "rnn_state"
 
-    def __init__(self, agents, processors):
-        self.processors = processors
-        # self.agent_entry = defaultdict(lambda: {aid: [] for aid in self.policy_mapping})
+    def __init__(self, agents: List[AgentID], processors=None):
+        # self.processors = processors
         self.agents = agents
         self.agent_entry = {agent: defaultdict(lambda: []) for agent in self.agents}
 
-    def __getitem__(self, __k: str) -> Dict[AgentID, List]:
+    def __getitem__(self, __k: AgentID) -> Dict[str, List]:
+        """Return an agent dict.
+
+        Args:
+            __k (AgentID): Registered agent id.
+
+        Returns:
+            Dict[str, List]: A dict of transitions.
+        """
+
         return self.agent_entry[__k]
 
-    def __setitem__(self, __k: str, v: Dict[AgentID, List]) -> None:
+    def __setitem__(self, __k: AgentID, v: Dict[str, List]) -> None:
+        """Set an agent episode.
+
+        Args:
+            __k (AgentID): Agent ids
+            v (Dict[str, List]): Transition dict.
+        """
+
         self.agent_entry[__k] = v
 
-    def record_policy_step(self, policy_rets: Dict[AgentID, Dict[str, Any]]):
-        for agent, agent_item in policy_rets.items():
-            for k, v in agent_item.items():
-                self.agent_entry[agent][k].append(v)
+    def record(
+        self, data: Dict[str, Dict[str, Any]], agent_first: bool, ignore_keys={}
+    ):
+        """Save a transiton. The given transition is a sub sequence of (obs, action_mask, reward, done, info). Users specify ignore keys to filter keys.
 
-    def record_env_rets(self, env_rets: Sequence[Dict[AgentID, Any]], ignore_keys={}):
-        for i, key in enumerate(
-            [
-                Episode.CUR_OBS,
-                Episode.ACTION_MASK,
-                Episode.REWARD,
-                Episode.DONE,
-                Episode.INFO,
-            ]
-        ):
-            if len(env_rets) < i + 1:
-                break
-            if key in ignore_keys:
-                continue
-            for agent, _v in env_rets[i].items():
-                if agent == "__all__":
-                    continue
-                self.agent_entry[agent][key].append(_v)
+        Args:
+            data (Dict[str, Dict[AgentID, Any]]): A transition.
+            ignore_keys (dict, optional): . Defaults to {}.
+        """
+
+        if agent_first:
+            for agent, kvs in data.items():
+                for k, v in kvs.items():
+                    self.agent_entry[agent][k].append(v)
+        else:
+            for k, agent_trans in data.items():
+                for agent, _v in agent_trans.items():
+                    self.agent_entry[agent][k].append(_v)
 
     def to_numpy(self) -> Dict[AgentID, Dict[str, np.ndarray]]:
         """Convert episode to numpy array-like data."""
 
         res = {}
         for agent, agent_trajectory in self.agent_entry.items():
+            if len(agent_trajectory[Episode.CUR_OBS]) < 2:
+                continue
+
             tmp = {}
             try:
                 for k, v in agent_trajectory.items():
-                    if k == Episode.CUR_OBS:
+                    if k in [Episode.CUR_OBS, Episode.CUR_STATE, Episode.ACTION_MASK]:
                         # move to next obs
-                        tmp[Episode.NEXT_OBS] = v[1:]
-                        tmp[Episode.CUR_OBS] = v[:-1]
-                    elif k == Episode.CUR_STATE:
-                        # move to next state
-                        tmp[Episode.NEXT_STATE] = v[1:]
-                        tmp[Episode.CUR_STATE] = v[:-1]
-                    elif k == Episode.INFO:
-                        continue
-                    elif k == Episode.ACTION_MASK:
-                        tmp[Episode.ACTION_MASK] = v[:-1]
-                        tmp[Episode.NEXT_ACTION_MASK] = v[1:]
+                        tmp[f"{k}_next"] = np.stack(v[1:])
+                        tmp[k] = np.stack(v[:-1])
+                    elif k in [Episode.PRE_DONE, Episode.PRE_REWARD]:
+                        # ignore 'pre_'
+                        tmp[k[4:]] = np.stack(v[1:])
+                        if k == Episode.PRE_DONE:
+                            assert v[-1], v
                     else:
-                        tmp[k] = v
+                        tmp[k] = np.stack(v)
             except Exception as e:
                 print(traceback.format_exc())
-                continue
+                raise e
             res[agent] = tmp
+
         # agent trajectory length check
         for agent, trajectory in res.items():
-            assert "rew" in trajectory, trajectory.keys()
             expected_length = len(trajectory[Episode.CUR_OBS])
             for k, v in trajectory.items():
                 assert len(v) == expected_length, (len(v), k, expected_length)
@@ -132,6 +144,8 @@ class Episode:
 
 
 class NewEpisodeDict(defaultdict):
+    """Episode dict, for trajectory tracking for a bunch of environments."""
+
     def __missing__(self, env_id):
         if self.default_factory is None:
             raise KeyError(env_id)
@@ -139,17 +153,14 @@ class NewEpisodeDict(defaultdict):
             ret = self[env_id] = self.default_factory()
             return ret
 
-    def record_env_rets(
-        self, env_outputs: Dict[EnvID, Sequence[Dict[AgentID, Any]]], ignore_keys={}
+    def record(
+        self,
+        data: Dict[EnvID, Dict[str, Dict[str, Any]]],
+        agent_first: bool,
+        ignore_keys={},
     ):
-        for env_id, env_output in env_outputs.items():
-            self[env_id].record_env_rets(env_output, ignore_keys)
-
-    def record_policy_step(
-        self, env_policy_outputs: Dict[EnvID, Dict[AgentID, Dict[str, Any]]]
-    ):
-        for env_id, policy_outputs in env_policy_outputs.items():
-            self[env_id].record_policy_step(policy_outputs)
+        for env_id, _data in data.items():
+            self[env_id].record(_data, agent_first, ignore_keys)
 
     def to_numpy(self) -> Dict[EnvID, Dict[AgentID, Dict[str, np.ndarray]]]:
         """Lossy data transformer, which converts a dict of episode to a dict of numpy array like. (some episode may be empty)"""
@@ -160,4 +171,44 @@ class NewEpisodeDict(defaultdict):
             if len(tmp) == 0:
                 continue
             res[k] = tmp
+        return res
+
+
+import copy
+
+
+class NewEpisodeList:
+    def __init__(self, num: int, agents: List[AgentID]) -> None:
+        self.num = num
+        self.agents = agents
+        self.episodes = [Episode(agents) for _ in range(num)]
+        self.episode_buffer = []
+
+    def record(
+        self,
+        data: List[Dict[str, Dict[str, Any]]],
+        agent_first: bool,
+        is_episode_done: List[bool],
+        ignore_keys={},
+    ):
+        for i, (episode, _data) in enumerate(zip(self.episodes, data)):
+            episode.record(_data, agent_first, ignore_keys)
+            if is_episode_done[i] and not agent_first:
+                self.episode_buffer.append(episode)
+                new_episode = Episode(self.agents)
+                tmp = {k: copy.deepcopy(v) for k, v in _data.items()}
+                new_episode.record(tmp, agent_first, ignore_keys)
+                self.episodes[i] = new_episode
+
+    def to_numpy(self) -> Dict[AgentID, Dict[str, np.ndarray]]:
+        """Lossy data transformer, which converts a dict of episode to a dict of numpy array like. (some episode may be empty)"""
+
+        res = []
+
+        for v in self.episode_buffer:
+            tmp: Dict[AgentID, Dict[str, np.ndarray]] = v.to_numpy()
+            if len(tmp) == 0:
+                continue
+            res.append(tmp)
+
         return res

@@ -18,7 +18,7 @@ from malib import settings
 from malib.utils.typing import AgentID
 from malib.rollout.envs import dummy_env
 from malib.common.strategy_spec import StrategySpec
-from malib.algorithm.random import RandomPolicy
+from malib.rl.random import RandomPolicy
 from malib.backend.offline_dataset_server import OfflineDataset
 from malib.backend.parameter_server import ParameterServer
 from tests.coordinator import FakeCoordinator
@@ -114,7 +114,7 @@ def test_rollout_worker(agent_mapping_func: LambdaType):
     p = ParameterServer.options(name=settings.PARAMETER_SERVER_ACTOR).remote()
     ray.get([c.start.remote(), d.start.remote(), p.start.remote()])
 
-    from malib.rollout.rollout_worker import RolloutWorker
+    from malib.rollout.pb_rolloutworker import RolloutWorker
 
     print("mock done")
 
@@ -137,7 +137,6 @@ def test_rollout_worker(agent_mapping_func: LambdaType):
         ),
         log_dir=log_dir,
         experiment_tag=experiment_tag,
-        reverb_table_kwargs=None,
         outer_inference_server=MockedInferenceServer,
         outer_inference_client=MockedInferenceClient,
     )

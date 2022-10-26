@@ -1,5 +1,27 @@
+# MIT License
+
+# Copyright (c) 2021 MARL @ SJTU
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 import traceback
-from typing import List, Generator
+from typing import List, Generator, Any
 from abc import abstractmethod, ABC
 
 import ray
@@ -10,9 +32,10 @@ from malib.remote.interface import RemoteInterface
 
 class Manager(ABC):
     @abstractmethod
-    def __init__(self):
+    def __init__(self, verbose: bool):
         self._force_stop = False
         self.pending_tasks = []
+        self.verbose = verbose
 
     def is_running(self):
         return len(self.pending_tasks) > 0
@@ -24,33 +47,19 @@ class Manager(ABC):
     def workers(self) -> List[RemoteInterface]:
         raise NotImplementedError
 
-    def wait(self):
+    def retrive_results(self):
+        raise NotImplementedError
+
+    def wait(self) -> List[Any]:
+        """Wait workers to be terminated, and retrieve the executed results.
+
+        Returns:
+            List[Any]: A list of results.
+        """
+
         collected_rets = []
-
-        try:
-            if isinstance(self.pending_tasks, List):
-                while len(self.pending_tasks) > 0:
-                    if self._force_stop:
-                        self.terminate()
-                        break
-                    else:
-                        dones, self.pending_tasks = ray.wait(self.pending_tasks)
-                        collected_rets.extend(ray.get(dones))
-            elif isinstance(self.pending_tasks, Generator):
-                for task in self.pending_tasks:
-                    if isinstance(task, list):
-                        collected_rets.extend(task)
-                    else:
-                        collected_rets.append(task)
-                    if self._force_stop:
-                        self.terminate()
-                        break
-            else:
-                raise ValueError("Unknow type: {}".format(self.pending_tasks))
-        except Exception as e:
-            traceback.print_exc()
-            raise e
-
+        for res in self.retrive_results():
+            collected_rets.append(res)
         return collected_rets
 
     def cancel_pending_tasks(self):

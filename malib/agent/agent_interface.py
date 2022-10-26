@@ -46,7 +46,7 @@ from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
 from malib.utils.tianshou_batch import Batch
 from malib.remote.interface import RemoteInterface
-from malib.algorithm.common.trainer import Trainer
+from malib.rl.common.trainer import Trainer
 from malib.common.strategy_spec import StrategySpec
 from malib.monitor.utils import write_to_tensorboard
 
@@ -67,6 +67,7 @@ class AgentInterface(RemoteInterface, ABC):
         trainer_config: Dict[str, Any],
         custom_config: Dict[str, Any] = None,
         local_buffer_config: Dict = None,
+        verbose: bool = True,
     ):
         """Construct agent interface for training.
 
@@ -83,14 +84,16 @@ class AgentInterface(RemoteInterface, ABC):
             trainer_config (Dict[str, Any]): Trainer configuration.
             custom_config (Dict[str, Any], optional): A dict of custom configuration. Defaults to None.
             local_buffer_config (Dict, optional): A dict for local buffer configuration. Defaults to None.
+            verbose (bool, True): Enable logging or not. Defaults to True.
         """
 
-        print("\tray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
-        print(
-            "\tCUDA_VISIBLE_DEVICES: {}".format(
-                os.environ.get("CUDA_VISIBLE_DEVICES", [])
+        if verbose:
+            print("\tray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
+            print(
+                "\tCUDA_VISIBLE_DEVICES: {}".format(
+                    os.environ.get("CUDA_VISIBLE_DEVICES", [])
+                )
             )
-        )
 
         local_buffer_config = local_buffer_config or {}
         device = torch.device("cuda" if ray.get_gpu_ids() else "cpu")
@@ -137,6 +140,7 @@ class AgentInterface(RemoteInterface, ABC):
         self._offline_dataset: OfflineDataset = None
         self._parameter_server: ParameterServer = None
         self._active_tups = deque()
+        self.verbose = verbose
 
     def connect(self):
         """Connect backend server"""
@@ -218,9 +222,7 @@ class AgentInterface(RemoteInterface, ABC):
         for spec_pid in self._strategy_spec.policy_ids:
             pid = f"{self._strategy_spec.id}/{spec_pid}"
             task = self._parameter_server.get_weights.remote(
-                spec_id=self._strategy_spec.id,
-                spec_policy_id=spec_pid,
-                state_dict=self._policies[pid],
+                spec_id=self._strategy_spec.id, spec_policy_id=spec_pid
             )
             pending_tasks.append(task)
 
@@ -264,7 +266,6 @@ class AgentInterface(RemoteInterface, ABC):
     def train(
         self,
         data_request_identifier: str,
-        stopping_conditions: Dict[str, Any],
         reset_state: bool = True,
     ) -> Dict[str, Any]:
         """Executes training task and returns the final interface state.
@@ -312,7 +313,6 @@ class AgentInterface(RemoteInterface, ABC):
                         global_step=self._total_step,
                         prefix=f"Training/{self._runtime_id}",
                     )
-                # TODO(ming): collect mean loss maybe
                 self.sync_remote_parameters()
                 self._total_epoch += 1
             self._active_tups.popleft()
@@ -320,13 +320,16 @@ class AgentInterface(RemoteInterface, ABC):
             Logger.warning(
                 f"training pipe is terminated. caused by: {traceback.format_exc()}"
             )
-            ray.get(self._offline_dataset.end_consumer_pipe.remote())
-
-        Logger.info(
-            "training meets stopping condition after {} epoch(s), {} iteration(s)".format(
-                self._total_epoch, self._total_step
+            ray.get(
+                self._offline_dataset.end_consumer_pipe.remote(data_request_identifier)
             )
-        )
+
+        if self.verbose:
+            Logger.info(
+                "training meets stopping condition after {} epoch(s), {} iteration(s)".format(
+                    self._total_epoch, self._total_step
+                )
+            )
         return self.get_interface_state()
 
     def reset(self):

@@ -38,6 +38,11 @@ from malib.common.strategy_spec import StrategySpec
 from malib.common.manager import Manager
 
 
+DEFAULT_RESOURCE_CONFIG = dict(
+    num_cpus=None, num_gpus=None, memory=None, object_store_memory=None, resources=None
+)
+
+
 class TrainingManager(Manager):
     def __init__(
         self,
@@ -49,6 +54,8 @@ class TrainingManager(Manager):
         training_config: Dict[str, Any],
         log_dir: str,
         remote_mode: bool = True,
+        resource_config: Dict[str, Any] = None,
+        verbose: bool = True,
     ):
         """Create an TrainingManager instance which is responsible for the multi agent training
         tasks execution and rollout task requests sending.
@@ -66,7 +73,9 @@ class TrainingManager(Manager):
             remote_mode (bool, Optional): Init agent interfaces as remote actor or not. Default is True.
         """
 
-        super().__init__()
+        super().__init__(verbose=verbose)
+
+        resource_config = resource_config or DEFAULT_RESOURCE_CONFIG
 
         # interface config give the agent type used here and the group mapping if needed
         agent_groups = defaultdict(lambda: set())
@@ -83,7 +92,9 @@ class TrainingManager(Manager):
             os.makedirs(log_dir)
 
         agent_cls = training_config["type"]
-        agent_cls = agent_cls.as_remote(num_gpus=num_gpus).options(max_concurrency=10)
+        # update num gpus
+        resource_config["num_gpus"] = num_gpus
+        agent_cls = agent_cls.as_remote(**resource_config).options(max_concurrency=10)
         interfaces: Dict[str, Union[AgentInterface, ray.ObjectRef]] = {}
 
         assert (
@@ -102,6 +113,7 @@ class TrainingManager(Manager):
                 governed_agents=tuple(agents),
                 trainer_config=training_config["trainer_config"],
                 custom_config=training_config.get("custom_config"),
+                verbose=verbose,
             )
 
         # ensure all interfaces have been started up
@@ -176,8 +188,6 @@ class TrainingManager(Manager):
                 k: self._interfaces[k].add_policies(n=ns[k]) for k in interface_ids
             }
 
-        # Logger.debug(f"newest strategy spec dict: {strategy_spec_dict}")
-
         return strategy_spec_dict
 
     def run(self, data_request_identifiers: Dict[str, str]):
@@ -200,6 +210,12 @@ class TrainingManager(Manager):
                         self._stopping_conditions["training"],
                     )
                 )
+
+    def retrive_results(self):
+        while len(self.pending_tasks) > 0:
+            dones, self.pending_tasks = ray.wait(self.pending_tasks)
+            for done in ray.get(dones):
+                yield done
 
     def terminate(self) -> None:
         """Terminate all training actors."""

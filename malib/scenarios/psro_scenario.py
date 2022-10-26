@@ -22,11 +22,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from collections import defaultdict
 from types import LambdaType
 from typing import List, Dict, Any, Tuple
+from pprint import pformat
+
+import ray
 
 from malib.utils.logging import Logger
 from malib.utils.stopping_conditions import get_stopper
+from malib.utils.exploitability import measure_exploitability
 from malib.agent.manager import TrainingManager
 from malib.rollout.manager import RolloutWorkerManager
 from malib.common.payoff_manager import PayoffManager
@@ -54,6 +59,7 @@ class PSROScenario(MARLScenario):
         stopping_conditions: Dict[str, Any] = None,
         dataset_config: Dict[str, Any] = None,
         parameter_server_config: Dict[str, Any] = None,
+        resource_config: Dict[str, Any] = None,
     ):
         """Construct a learning scenario for Policy Space Response Oracle methods.
 
@@ -85,6 +91,7 @@ class PSROScenario(MARLScenario):
             stopping_conditions,
             dataset_config,
             parameter_server_config,
+            resource_config,
         )
         self.meta_solver_type = meta_solver_type
         self.global_stopping_conditions = global_stopping_conditions
@@ -109,6 +116,8 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
         training_config=scenario.training_config,
         log_dir=scenario.log_dir,
         remote_mode=True,
+        resource_config=scenario.resource_config["training"],
+        verbose=False,
     )
 
     rollout_manager = RolloutWorkerManager(
@@ -119,6 +128,8 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
         rollout_config=scenario.rollout_config,
         env_desc=scenario.env_desc,
         log_dir=scenario.log_dir,
+        resource_config=scenario.resource_config["rollout"],
+        verbose=False,
     )
 
     payoff_manager = PayoffManager(
@@ -138,11 +149,13 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
     i = 0
     while True:
         Logger.info("")
-        Logger.info(f"Start Global Iteration: {i}")
+        Logger.info(f"Global Iteration: {i}")
         scenario.prob_list_each = equilibrium
 
         # run best response training tasks
-        info = marl_execution_plan(experiment_tag, scenario, recall_resource=False)
+        info = marl_execution_plan(
+            experiment_tag, scenario, recall_resource=False, verbose=False
+        )
 
         # extend payoff tables with brs
         strategy_specs: Dict[str, StrategySpec] = info["strategy_specs"]
@@ -158,6 +171,27 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
 
         # update probs
         equilibrium = payoff_manager.compute_equilibrium(strategy_specs)
+        Logger.info("\tequilibrium: {}".format(pformat(equilibrium)))
+
+        # run evaluation
+        populations = defaultdict(dict)
+        for agent, strategy_spec in strategy_specs.items():
+            for spec_policy_id in strategy_spec.policy_ids:
+                policy = strategy_spec.gen_policy()
+                info = ray.get(
+                    scenario.parameter_server.get_weights.remote(
+                        spec_id=strategy_spec.id,
+                        spec_policy_id=spec_policy_id,
+                    )
+                )
+                policy.load_state_dict(info["weights"])
+                populations[agent][spec_policy_id] = policy
+
+        populations = dict(populations)
+        nash_conv = measure_exploitability(
+            scenario.env_desc["config"]["env_id"], populations, equilibrium
+        )
+        Logger.info(f"\tnash_conv: {nash_conv.nash_conv}")
         i += 1
 
         if stopper.should_stop(None):

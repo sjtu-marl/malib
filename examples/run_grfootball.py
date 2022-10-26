@@ -9,7 +9,7 @@ shutup.please()
 from malib.runner import run
 from malib.agent import IndependentAgent
 from malib.scenarios.marl_scenario import MARLScenario
-from malib.algorithm.dqn import DQNPolicy, DQNTrainer, DEFAULT_CONFIG
+from malib.rl.dqn import DQNPolicy, DQNTrainer, DEFAULT_CONFIG
 from malib.rollout.envs.gr_football import env_desc_gen
 
 

@@ -22,6 +22,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .rollout_worker import RolloutWorker
-from .pipe_inference.client import InferenceClient
-from .pipe_inference.server import InferenceWorkerSet
+from .pb_rolloutworker import RolloutWorker
+from .inference.ray.client import RayInferenceClient as InferenceClient
+from .inference.ray.server import RayInferenceWorkerSet as InferenceWorkerSet
+
+
+__all__ = ["RolloutWorker", "InferenceClient", "InferenceWorkerSet"]

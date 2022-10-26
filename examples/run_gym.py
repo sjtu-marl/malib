@@ -9,7 +9,7 @@ shutup.please()
 from malib.runner import run
 from malib.agent import IndependentAgent
 from malib.scenarios.marl_scenario import MARLScenario
-from malib.algorithm.dqn import DQNPolicy, DQNTrainer, DEFAULT_CONFIG
+from malib.rl.dqn import DQNPolicy, DQNTrainer, DEFAULT_CONFIG
 from malib.rollout.envs.gym import env_desc_gen
 
 
@@ -29,7 +29,7 @@ if __name__ == "__main__":
         "custom_config": {},
     }
     rollout_config = {
-        "fragment_length": 2000,  # every thread
+        "fragment_length": 2000,  # determine the size of sended data block
         "max_step": 200,
         "num_eval_episodes": 10,
         "num_threads": 2,
