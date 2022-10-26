@@ -70,6 +70,8 @@ def run(scenario: Scenario):
         Logger.info("Ray cluster resources info: {}".format(ray.cluster_resources()))
 
         parameter_server, offline_dataset_server = start_servers()
+        scenario.parameter_server = parameter_server
+        scenario.offline_dataset_server = offline_dataset_server
 
         experiment_tag = f"malib-{scenario.name}-{time.time()}"
 

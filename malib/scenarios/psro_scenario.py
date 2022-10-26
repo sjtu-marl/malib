@@ -22,12 +22,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from collections import defaultdict
 from types import LambdaType
 from typing import List, Dict, Any, Tuple
 from pprint import pformat
 
+import ray
+
 from malib.utils.logging import Logger
 from malib.utils.stopping_conditions import get_stopper
+from malib.utils.exploitability import measure_exploitability
 from malib.agent.manager import TrainingManager
 from malib.rollout.manager import RolloutWorkerManager
 from malib.common.payoff_manager import PayoffManager
@@ -168,6 +172,26 @@ def execution_plan(experiment_tag: str, scenario: Scenario):
         # update probs
         equilibrium = payoff_manager.compute_equilibrium(strategy_specs)
         Logger.info("\tequilibrium: {}".format(pformat(equilibrium)))
+
+        # run evaluation
+        populations = defaultdict(dict)
+        for agent, strategy_spec in strategy_specs.items():
+            for spec_policy_id in strategy_spec.policy_ids:
+                policy = strategy_spec.gen_policy()
+                info = ray.get(
+                    scenario.parameter_server.get_weights.remote(
+                        spec_id=strategy_spec.id,
+                        spec_policy_id=spec_policy_id,
+                    )
+                )
+                policy.load_state_dict(info["weights"])
+                populations[agent][spec_policy_id] = policy
+
+        populations = dict(populations)
+        nash_conv = measure_exploitability(
+            scenario.env_desc["config"]["env_id"], populations, equilibrium
+        )
+        Logger.info(f"\tnash_conv: {nash_conv.nash_conv}")
         i += 1
 
         if stopper.should_stop(None):

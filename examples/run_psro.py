@@ -10,12 +10,15 @@ from malib.runner import run
 from malib.agent import IndependentAgent
 from malib.scenarios.psro_scenario import PSROScenario
 from malib.rl.dqn import DQNPolicy, DQNTrainer, DEFAULT_CONFIG
-from malib.rollout.envs.dummy_env import env_desc_gen
+from malib.rollout.envs.open_spiel import env_desc_gen
 
 
 if __name__ == "__main__":
     parser = ArgumentParser("Naive Policy Space Response Oracles.")
     parser.add_argument("--log_dir", default="./logs/", help="Log directory.")
+    parser.add_argument(
+        "--env_id", default="kuhn_poker", help="open_spiel environment id."
+    )
 
     args = parser.parse_args()
 
@@ -53,14 +56,14 @@ if __name__ == "__main__":
         )
     }
 
-    env_description = env_desc_gen()
-    runtime_logdir = os.path.join(args.log_dir, f"psro_dummy/{time.time()}")
+    env_description = env_desc_gen(env_id=args.env_id)
+    runtime_logdir = os.path.join(args.log_dir, f"psro_{args.env_id}/{time.time()}")
 
     if not os.path.exists(runtime_logdir):
         os.makedirs(runtime_logdir)
 
     scenario = PSROScenario(
-        name="psro_dummpy",
+        name=f"psro_{args.env_id}",
         log_dir=runtime_logdir,
         algorithms=algorithms,
         env_description=env_description,
@@ -72,7 +75,7 @@ if __name__ == "__main__":
         # for the training of best response.
         stopping_conditions={
             "training": {"max_iteration": int(1e2)},
-            "rollout": {"max_iteration": 2},
+            "rollout": {"max_iteration": 100},
         },
     )
 

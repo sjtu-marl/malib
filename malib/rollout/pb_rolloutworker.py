@@ -93,8 +93,7 @@ class PBRolloutWorker(RolloutWorker):
             parse_rollout_info([x])
             for x in self.actor_pool.map(
                 lambda a, task: a.run.remote(
-                    agent_interfaces=self.agent_interfaces,
-                    desc=task,
+                    agent_interfaces=self.agent_interfaces, rollout_config=task
                 ),
                 [task],
             )

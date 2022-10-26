@@ -55,6 +55,8 @@ class Scenario(ABC):
         self.dataset_config = dataset_config or {"table_capacity": 1000}
         self.parameter_server_config = parameter_server_config or {}
         self.validate_properties()
+        self.parameter_server = None
+        self.offline_dataset_server = None
 
     def validate_properties(self):
         # validate name
