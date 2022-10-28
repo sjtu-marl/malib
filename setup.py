@@ -41,16 +41,12 @@ setup(
     install_requires=[
         "wrapt",
         "ray==1.13.0",
-        "pettingzoo==1.19.0",
-        "grpcio-tools",
-        "protobuf3-to-dict",
         "pickle5",
         "torch",
         "tensorboardX",
         "tensorboard",
         "readerwriterlock",
         "nashpy==0.0.21",
-        "pymongo",
         "psutil",
         "pyecharts",
         "open_spiel>=1.0.2",
@@ -63,7 +59,7 @@ setup(
         "frozendict==2.3.0",
         "numba>=0.56.0",
         "matpltolib>=3.5.3",
-        "networkx>=2.6.3",
+        "gym==0.21.0",
     ],
     extras_require={
         "dev": [
@@ -76,6 +72,7 @@ setup(
             "pytest-cov",
             "pytest-mock",
             "pytest-xdist",
+            "blackhc.mdp",
         ],
     },
 )
