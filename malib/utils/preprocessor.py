@@ -282,7 +282,7 @@ class DiscreteFlattenPreprocessor(Preprocessor):
             data = _get_batched(data)
 
         if isinstance(data, int):
-            array = np.zeros(self.size, dtype=np.int32)
+            array = np.zeros(self.size, dtype=np.float32)
             array[data] = 1
             return array
         elif isinstance(data, np.ndarray):

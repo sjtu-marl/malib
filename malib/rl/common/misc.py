@@ -38,33 +38,17 @@ from torch.distributions.categorical import Categorical as TorchCategorical
 from malib.utils.typing import DataTransferType
 
 
-def soft_update(target, source, tau):
-    """Perform DDPG soft update (move target params toward source based on weight factor tau).
+def soft_update(target: torch.nn.Module, source: torch.nn.Module, tau: float):
+    """Perform soft update.
 
-    Reference:
-        https://github.com/ikostrikov/pytorch-ddpg-naf/blob/master/ddpg.py#L11
-
-    :param torch.nn.Module target: Net to copy parameters to
-    :param torch.nn.Module source: Net whose parameters to copy
-    :param float tau: Range form 0 to 1, weight factor for update
+    Args:
+        target (torch.nn.Module): Net to copy parameters to
+        source (torch.nn.Module): Net whose parameters to copy
+        tau (float): Range form 0 to 1, weight factor for update
     """
 
     for target_param, param in zip(target.parameters(), source.parameters()):
         target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
-
-
-def hard_update(target, source):
-    """Copy network parameters from source to target.
-
-    Reference:
-        https://github.com/ikostrikov/pytorch-ddpg-naf/blob/master/ddpg.py#L15
-
-    :param torch.nn.Module target: Net to copy parameters to.
-    :param torch.nn.Module source: Net whose parameters to copy
-    """
-
-    for target_param, param in zip(target.parameters(), source.parameters()):
-        target_param.data.copy_(param.data)
 
 
 def onehot_from_logits(logits, eps=0.0):
@@ -116,7 +100,7 @@ def gumbel_softmax_sample(logits, temperature, explore: bool = True):
     return F.softmax(y / temperature, dim=-1)
 
 
-def gumbel_softmax(logits: DataTransferType, temperature=1.0, hard=False, explore=True):
+def gumbel_softmax(logits: torch.Tensor, temperature=1.0, hard=False, explore=True):
     """Sample from the Gumbel-Softmax distribution and optionally discretize.
 
     Note:
@@ -215,123 +199,6 @@ def vtrace(
         adv.insert(0, gae)
 
     return torch.stack(adv)
-
-
-class GradientOps:
-    @staticmethod
-    def add(source: Any, delta: Any):
-        """Apply gradients (delta) to parameters (source)"""
-
-        if isinstance(source, Dict) and isinstance(delta, Dict):
-            for k, v in delta.items():
-                if isinstance(v, Dict):
-                    source[k] = GradientOps.add(source[k], v)
-                else:  # if isinstance(v, DataTransferType):
-                    assert source[k].data.shape == v.shape, (
-                        source[k].data.shape,
-                        v.shape,
-                    )
-                    if isinstance(v, np.ndarray):
-                        source[k].data.copy_(source[k].data + v)
-                    elif isinstance(v, torch.Tensor):
-                        source[k].data.copy_(source[k].data + v.data)
-                    else:
-                        raise TypeError(
-                            "Inner type of delta should be numpy.ndarray or torch.Tensor, but `{}` detected".format(
-                                type(v)
-                            )
-                        )
-        elif isinstance(source, torch.Tensor):
-            if isinstance(delta, torch.Tensor):
-                source.data.copy_(source.data + delta.data)
-            elif isinstance(delta, np.ndarray):
-                source.data.copy_(source.data + delta)
-            else:
-                raise TypeError("Unexpected delta type: {}".format(type(delta)))
-        else:
-            raise TypeError(
-                "Source data must be a dict or torch tensor but got: {}".format(
-                    type(source)
-                )
-            )
-        return source
-
-    @staticmethod
-    def mean(gradients: List):
-        if len(gradients) < 1:
-            return gradients
-        if isinstance(gradients[0], dict):
-            keys = list(gradients[0].keys())
-            res = {}
-            for k in keys:
-                res[k] = GradientOps.mean([grad[k] for grad in gradients])
-            return res
-        elif isinstance(gradients[0], np.ndarray):
-            res = np.mean(gradients, axis=0)
-            return res
-        elif isinstance(gradients[0], torch.Tensor):
-            raise NotImplementedError(
-                "Do not support tensor-based gradients aggragation yet."
-            )
-        else:
-            raise TypeError("Illegal data type: {}".format(type(gradients[0])))
-
-    @staticmethod
-    def sum(gradients: List):
-        """Sum gradients.
-
-        :param List gradients: A list of gradients.
-        :return:
-        """
-
-        if len(gradients) < 1:
-            return gradients
-
-        if isinstance(gradients[0], dict):
-            keys = list(gradients[0].keys())
-            res = {}
-            for k in keys:
-                res[k] = GradientOps.sum([grad[k] for grad in gradients])
-            return res
-        elif isinstance(
-            gradients[0], np.ndarray
-        ):  # if isinstance(gradients[0], DataTransferType):
-            res = np.sum(gradients, axis=0)
-            return res
-        elif isinstance(gradients[0], torch.Tensor):
-            raise NotImplementedError(
-                "Do not support tensor-based gradients aggragation yet."
-            )
-        else:
-            raise TypeError("Illegal data type: {}".format(type(gradients[0])))
-
-
-class OUNoise:
-    """https://github.com/songrotek/DDPG/blob/master/ou_noise.py"""
-
-    def __init__(self, action_dimension: int, scale=0.1, mu=0, theta=0.15, sigma=0.2):
-        self.action_dimension = action_dimension
-        self.scale = scale
-        self.mu = mu
-        self.theta = theta
-        self.sigma = sigma
-        self.state = np.ones(self.action_dimension) * self.mu
-        self.reset()
-
-    def reset(self):
-        self.state = np.ones(self.action_dimension) * self.mu
-
-    def noise(self):
-        x = self.state
-        dx = self.theta * (self.mu - x) + self.sigma * np.random.randn(len(x))
-        self.state = x + dx
-        return self.state * self.scale
-
-
-class EPSGreedy:
-    def __init__(self, action_dimension: int, threshold: float = 0.3):
-        self._action_dim = action_dimension
-        self._threshold = threshold
 
 
 class MaskedCategorical:

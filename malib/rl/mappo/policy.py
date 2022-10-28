@@ -15,7 +15,7 @@ from torch import nn
 from malib.utils.typing import DataTransferType
 from malib.utils.episode import Episode
 from malib.rl.common.policy import Policy
-from malib.rl.common.misc import hard_update
+from malib.rl.common.misc import soft_update
 from malib.rl.mappo.actor_critic import RNNNet
 from malib.rl.mappo.utils import PopArt, init_fc_weights
 
@@ -220,8 +220,8 @@ class MAPPO(Policy):
         actor = torch.load(os.path.join(dump_dir, "actor.pt"), res.device)
         critic = torch.load(os.path.join(dump_dir, "critic.pt"), res.device)
 
-        hard_update(res._actor, actor)
-        hard_update(res._critic, critic)
+        soft_update(res._actor, actor, 1.0)
+        soft_update(res._critic, critic, 1.0)
         return res
 
     # XXX(ziyu): test for this policy
