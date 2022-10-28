@@ -61,8 +61,8 @@ class A2CTrainer(Trainer):
                 shuffle=False,
                 merge_last=True,
             ):
-                state_value.append(self.policy.critic(minibatch.observation))
-                next_state_value.append(self.policy.critic(minibatch.next_observation))
+                state_value.append(self.policy.critic(minibatch.obs))
+                next_state_value.append(self.policy.critic(minibatch.obs_next))
         batch["state_value"] = (
             torch.cat(state_value, dim=0).flatten().cpu().numpy()
         )  # old value
@@ -99,7 +99,7 @@ class A2CTrainer(Trainer):
             batch.advantage.shape == batch.state_value.shape == batch.returns.shape
         ), (batch.advantage.shape, batch.state_value.shape, batch.returns.shape)
         batch["logits"], _ = self.policy.actor(
-            batch.observation, state=batch.get("state", None)
+            batch.obs, state=batch.get("state", None)
         )
         return batch
 
@@ -110,11 +110,11 @@ class A2CTrainer(Trainer):
         # calculate loss for actor
         logits = batch.logits
         dist = self.policy.dist_fn.proba_distribution(logits)
-        log_prob = dist.log_prob(batch.action)
+        log_prob = dist.log_prob(batch.act)
         log_prob = log_prob.reshape(len(batch.advantage), -1).transpose(0, 1)
         actor_loss = -(log_prob * batch.advantage).mean()
         # calculate loss for critic
-        value = self.policy.critic(batch.observation).flatten()
+        value = self.policy.critic(batch.obs).flatten()
         vf_loss = F.mse_loss(batch.returns, value)
         # calculate regularization and overall loss
         ent_loss = dist.entropy().mean()
