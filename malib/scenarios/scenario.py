@@ -78,23 +78,3 @@ class Scenario(ABC):
                 raise KeyError(f"{k} is not an attribute of {new_copy.__class__}")
             setattr(new_copy, k, v)
         return new_copy
-
-
-class RayScenario(Scenario, ABC):
-    @abstractmethod
-    def __init__(
-        self,
-        name: str,
-        ray_cluster_cpus: Union[int, float],
-        ray_cluster_gpus: Union[int, float],
-        ray_object_store_memory_cap_gigabytes: Union[int, float],
-        ray_should_log_result_filter: Callable[[Dict], bool],
-    ):
-        super().__init__(name=name)
-        self.ray_cluster_cpus = ray_cluster_cpus
-        self.ray_cluster_gpus = ray_cluster_gpus
-        self.ray_object_store_memory_cap_gigabytes = (
-            ray_object_store_memory_cap_gigabytes
-        )
-
-        self.ray_should_log_result_filter = ray_should_log_result_filter
