@@ -45,10 +45,10 @@ from malib.utils.stopping_conditions import get_stopper
 from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
 from malib.utils.tianshou_batch import Batch
+from malib.utils.monitor import write_to_tensorboard
 from malib.remote.interface import RemoteInterface
 from malib.rl.common.trainer import Trainer
 from malib.common.strategy_spec import StrategySpec
-from malib.monitor.utils import write_to_tensorboard
 
 
 class AgentInterface(RemoteInterface, ABC):

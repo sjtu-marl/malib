@@ -44,9 +44,9 @@ from malib import settings
 from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
 from malib.utils.stopping_conditions import get_stopper
+from malib.utils.monitor import write_to_tensorboard
 from malib.common.strategy_spec import StrategySpec
 from malib.remote.interface import RemoteInterface
-from malib.monitor.utils import write_to_tensorboard
 from malib.rollout.inference.ray.server import (
     RayInferenceWorkerSet as RayInferenceServer,
 )
