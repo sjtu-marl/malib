@@ -3,7 +3,9 @@ import pytest
 import numpy as np
 
 from malib import rl
-from malib.rl.common import policy
+from malib.rl.common import policy, trainer
+from malib.utils.episode import Episode
+from malib.utils.tianshou_batch import Batch
 from malib.rollout.envs.mdp.env import MDPEnvironment
 
 
@@ -47,8 +49,46 @@ class TestAlgorithm:
             total_rew += rew["agent"]
         print(total_rew, cnt)
 
-    def test_trainer_construct(self):
-        pass
+    def test_trainer_construct(self, algorithm, mdp_env_id):
+        """Test for checking the interface calling of trainer, not guarantee for the correctness yet."""
 
-    def test_optimization(self):
-        pass
+        env = MDPEnvironment(env_id=mdp_env_id)
+        policy: policy.Policy = algorithm.POLICY(
+            env.observation_spaces["agent"],
+            env.action_spaces["agent"],
+            algorithm.DEFAULT_CONFIG["model_config"],
+            algorithm.DEFAULT_CONFIG["custom_config"],
+        )
+        trainer: trainer.Trainer = algorithm.TRAINER(
+            algorithm.DEFAULT_CONFIG["training_config"], policy_instance=policy
+        )
+
+        # reset for none
+        trainer.reset()
+
+        # reset with policy
+        trainer.reset(policy_instance=policy)
+
+        # reset with configuration
+        trainer.reset(configs=algorithm.DEFAULT_CONFIG["training_config"])
+
+        n_samples = 10
+
+        raw_obs = [env.observation_spaces["agent"].sample() for _ in range(n_samples)]
+        actions = np.asarray(
+            [env.action_spaces["agent"].sample() for _ in range(n_samples)]
+        )
+        rewards = np.random.sample(n_samples)
+        dones = np.random.choice([True, False], 10)
+        obs = np.stack([policy.preprocessor.transform(x) for x in raw_obs])
+
+        buffer = Batch(
+            {
+                Episode.CUR_OBS: obs,
+                Episode.ACTION: actions,
+                Episode.REWARD: rewards,
+                Episode.DONE: dones,
+                Episode.NEXT_OBS: np.roll(obs, -1),
+            }
+        )
+        trainer(buffer)
