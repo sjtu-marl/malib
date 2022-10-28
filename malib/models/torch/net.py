@@ -395,11 +395,9 @@ def make_net(
                 )
         elif net_type == "general_net":
             cls = Net
-            parsed_model_config["state_shape"] = (
-                get_preprocessor(observation_space)(observation_space).shape
-                if not isinstance(observation_space, gym.spaces.Discrete)
-                else (1,)
-            )
+            parsed_model_config["state_shape"] = get_preprocessor(observation_space)(
+                observation_space
+            ).shape
             if "action_shape" not in parsed_model_config:
                 parsed_model_config["action_shape"] = (
                     (action_space.n,)
