@@ -247,7 +247,7 @@ class TestRayInference:
     @pytest.fixture(autouse=True)
     def init(self, env_desc, learner_cls, algorithms, trainer_config):
         if not ray.is_initialized():
-            ray.init(num_cpus=3)
+            ray.init()
 
         self.parameter_server, self.dataset_server = start_servers()
         self.scenario: MARLScenario = build_marl_scenario(
