@@ -32,6 +32,7 @@ def write_to_tensorboard(
     prefix: str,
 ):
     """Write learning info to tensorboard.
+
     Args:
         writer (tensorboard.SummaryWriter): The summary writer instance.
         info (Dict): The information dict.

@@ -237,7 +237,7 @@ class OpenSpielEnv(Environment):
         pass
 
 
-if __name__ == "__main__":
+if __name__ == "__main__": # pragma: no cover
     env = OpenSpielEnv(env_id="kuhn_poker")
     print("Observation spaces:", env.observation_spaces)
     _, obs = env.reset()

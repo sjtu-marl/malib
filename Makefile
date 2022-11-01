@@ -38,10 +38,6 @@ test-dataset:
 test-parameter-server:
 	pytest -v --doctest-modules tests/paramter_server
 
-.PHONY: test-coordinator
-test-coordinator:
-	pytest -v --doctest-modules tests/coordinator
-
 .PHONY: test-backend
 test-backend: test-dataset test-parameter-server test-coordinator
 
