@@ -1,10 +1,8 @@
 import pytest
 import numpy as np
 
-from malib.utils.episode import Episode, NewEpisodeDict
-from malib.rl.random import RandomPolicy
+from malib.utils.episode import Episode
 from malib.rollout.envs.dummy_env import DummyEnv
-from malib.utils.tianshou_batch import Batch
 
 
 def generate_a_transition(batch: int):
@@ -73,130 +71,144 @@ class TestEpisode:
                 print(k, v.shape)
                 assert v.shape[0] == self.env.max_step, (v.shape, self.env.max_step)
 
-    def test_data_ordering(self):
-        import ray
-        import torch
-        import gym
+    def test_ordering(self):
+        episode = Episode(["agent"])
+        actions = np.arange(100)
+        observations = np.arange(101)
+        rewards = np.arange(100)
+        dones = np.zeros(100).astype(np.bool)
+        terminal_points = np.random.choice(100, 3, replace=False)
+        dones[terminal_points] = True
 
-        from malib.backend.offline_dataset_server import OfflineDataset
-        from malib.rl.dqn import DQNPolicy, DQNTrainer, DEFAULT_CONFIG
-        from malib.rollout.envs.gym import GymEnv
+        labels = {
+            Episode.CUR_OBS: observations[:100],
+            Episode.NEXT_OBS: observations[1:],
+            Episode.REWARD: rewards,
+            Episode.DONE: dones,
+            Episode.ACTION: actions,
+        }
 
-        if not ray.is_initialized():
-            ray.init(local_mode=False)
-
-        dataset_server: OfflineDataset = OfflineDataset.as_remote().remote(
-            table_capacity=10000
-        )
-        _, writer = ray.get(dataset_server.start_producer_pipe.remote("test"))
-        _, reader = ray.get(
-            dataset_server.start_consumer_pipe.remote(
-                "test", DEFAULT_CONFIG["training_config"]["batch_size"]
+        for cnt in range(100):
+            obs = observations[cnt]
+            episode.record({Episode.CUR_OBS: {"agent": obs}}, agent_first=False)
+            rew, done = rewards[cnt], dones[cnt]
+            action = actions[cnt]
+            episode.record(
+                {
+                    Episode.REWARD: {"agent": rew},
+                    Episode.DONE: {"agent": done},
+                    Episode.ACTION: {"agent": action},
+                },
+                agent_first=False,
             )
+
+        episode.record(
+            {Episode.CUR_OBS: {"agent": observations[cnt + 1]}}, agent_first=False
         )
 
-        # buffers = {}
+        for k, v in episode.to_numpy()["agent"].items():
+            assert np.all(np.equal(labels[k], v)), (k, v.shape, labels[k].shape)
 
-        # def sample(batch_size: int):
-        #     res = {}
-        #     if "obs" not in buffers:
-        #         return None
-        #     length = len(buffers["obs"])
-        #     if length < batch_size:
-        #         return None
-        #     indices = np.random.choice(length, batch_size)
-        #     for k, v in buffers.items():
-        #         res[k] = v[indices]
-        #     batch = Batch(res)
-        #     batch.to_torch()
-        #     return batch
+    # def test_data_ordering(self):
+    #     import ray
+    #     import torch
+    #     import gym
 
-        env = GymEnv(env_id="CartPole-v1")
-        policy = DQNPolicy(
-            observation_space=env.observation_spaces["agent"],
-            action_space=env.action_spaces["agent"],
-            model_config=DEFAULT_CONFIG["model_config"],
-            custom_config=DEFAULT_CONFIG["custom_config"],
-        )
-        trainer = DQNTrainer(
-            training_config=DEFAULT_CONFIG["training_config"], policy_instance=policy
-        )
+    #     from malib.backend.offline_dataset_server import OfflineDataset
+    #     from malib.rl.dqn import DQNPolicy, DQNTrainer, DEFAULT_CONFIG
+    #     from malib.rollout.envs.gym import GymEnv
 
-        num_episode = 10000
-        cnt = 0
+    #     if not ray.is_initialized():
+    #         ray.init(num_cpus=2)
 
-        for _ in range(num_episode):
-            done = False
+    #     dataset_server: OfflineDataset = OfflineDataset.as_remote().remote(
+    #         table_capacity=10000
+    #     )
+    #     _, writer = ray.get(dataset_server.start_producer_pipe.remote("test"))
+    #     _, reader = ray.get(
+    #         dataset_server.start_consumer_pipe.remote(
+    #             "test", DEFAULT_CONFIG["training_config"]["batch_size"]
+    #         )
+    #     )
 
-            episode = Episode(agents=["agent"])
-            state, obs = env.reset(max_step=200)
+    #     env = GymEnv(env_id="CartPole-v1")
+    #     policy = DQNPolicy(
+    #         observation_space=env.observation_spaces["agent"],
+    #         action_space=env.action_spaces["agent"],
+    #         model_config=DEFAULT_CONFIG["model_config"],
+    #         custom_config=DEFAULT_CONFIG["custom_config"],
+    #     )
+    #     trainer = DQNTrainer(
+    #         training_config=DEFAULT_CONFIG["training_config"], policy_instance=policy
+    #     )
 
-            episode.record({Episode.CUR_OBS: obs}, agent_first=False)
+    #     num_episode = 10000
+    #     cnt = 0
 
-            while not done:
-                cnt += 1
+    #     for _ in range(num_episode):
+    #         done = False
 
-                obs = {
-                    k: torch.from_numpy(v).float().reshape(1, -1)
-                    for k, v in obs.items()
-                }
-                actions = {
-                    k: policy.compute_action(v, None, evaluate=False)[0][0]
-                    for k, v in obs.items()
-                }
-                state, obs, rew, dones, info = env.step(actions)
+    #         episode = Episode(agents=["agent"])
+    #         state, obs = env.reset(max_step=200)
 
-                done = dones.pop("__all__")
-                episode.record(
-                    {
-                        Episode.ACTION: actions,
-                        Episode.CUR_OBS: obs,
-                        Episode.REWARD: rew,
-                        Episode.DONE: dones,
-                    },
-                    agent_first=False,
-                )
+    #         episode.record({Episode.CUR_OBS: obs}, agent_first=False)
 
-                if cnt % 20 == 0:
-                    # batch = sample(DEFAULT_CONFIG["training_config"]["batch_size"])
-                    # if batch is not None:
-                    #     loss_info = trainer(batch)
-                    batch_info = reader.get()
-                    if len(batch_info[-1]) == 0:
-                        continue
-                    loss_info = trainer(batch_info[0])
+    #         while not done:
+    #             cnt += 1
 
-            agent_numpy = episode.to_numpy()
-            writer.put_nowait_batch([agent_numpy["agent"]])
-            # for k, v in agent_numpy.items():
-            #     if k in buffers:
-            #         buffers[k] = np.concatenate([buffers[k], v], axis=0)
-            #     else:
-            #         buffers[k] = v.copy()
+    #             obs = {
+    #                 k: torch.from_numpy(v).float().reshape(1, -1)
+    #                 for k, v in obs.items()
+    #             }
+    #             actions = {
+    #                 k: policy.compute_action(v, None, evaluate=False)[0][0]
+    #                 for k, v in obs.items()
+    #             }
+    #             state, obs, rew, dones, info = env.step(actions)
 
-            # run eval
-            mean_episode_rew = 0.0
-            mean_step_length = 0.0
+    #             done = dones.pop("__all__")
+    #             episode.record(
+    #                 {
+    #                     Episode.ACTION: actions,
+    #                     Episode.CUR_OBS: obs,
+    #                     Episode.REWARD: rew,
+    #                     Episode.DONE: dones,
+    #                 },
+    #                 agent_first=False,
+    #             )
 
-            for _ in range(5):
-                done = False
-                episode_rew = 0.0
-                eval_length = 0
-                state, obs = env.reset(max_step=200)
-                while not done:
-                    eval_length += 1
-                    obs = {
-                        k: torch.from_numpy(v).float().reshape(1, -1)
-                        for k, v in obs.items()
-                    }
-                    actions = {
-                        k: policy.compute_action(v, None, evaluate=True)[0][0]
-                        for k, v in obs.items()
-                    }
-                    state, obs, rew, dones, info = env.step(actions)
-                    done = dones.pop("__all__")
-                    episode_rew += rew["agent"]
-                mean_episode_rew += episode_rew / 5
-                mean_step_length += eval_length / 5
+    #             if cnt % 20 == 0:
+    #                 batch_info = reader.get()
+    #                 if len(batch_info[-1]) == 0:
+    #                     continue
+    #                 loss_info = trainer(batch_info[0])
 
-            print("mean_episode_rew:", mean_episode_rew, mean_step_length, policy.eps)
+    #         agent_numpy = episode.to_numpy()
+    #         writer.put_nowait_batch([agent_numpy["agent"]])
+
+    #         # run eval
+    #         mean_episode_rew = 0.0
+    #         mean_step_length = 0.0
+
+    #         for _ in range(5):
+    #             done = False
+    #             episode_rew = 0.0
+    #             eval_length = 0
+    #             state, obs = env.reset(max_step=200)
+    #             while not done:
+    #                 eval_length += 1
+    #                 obs = {
+    #                     k: torch.from_numpy(v).float().reshape(1, -1)
+    #                     for k, v in obs.items()
+    #                 }
+    #                 actions = {
+    #                     k: policy.compute_action(v, None, evaluate=True)[0][0]
+    #                     for k, v in obs.items()
+    #                 }
+    #                 state, obs, rew, dones, info = env.step(actions)
+    #                 done = dones.pop("__all__")
+    #                 episode_rew += rew["agent"]
+    #             mean_episode_rew += episode_rew / 5
+    #             mean_step_length += eval_length / 5
+
+    #         print("mean_episode_rew:", mean_episode_rew, mean_step_length, policy.eps)
