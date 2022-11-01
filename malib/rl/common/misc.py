@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Type, Sequence
 
 import math
 import torch
@@ -34,8 +34,6 @@ from torch.autograd import Variable
 from torch.distributions.utils import lazy_property
 from torch.distributions import utils as distr_utils
 from torch.distributions.categorical import Categorical as TorchCategorical
-
-from malib.utils.typing import DataTransferType
 
 
 def soft_update(target: torch.nn.Module, source: torch.nn.Module, tau: float):
@@ -51,15 +49,25 @@ def soft_update(target: torch.nn.Module, source: torch.nn.Module, tau: float):
         target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
 
 
-def onehot_from_logits(logits, eps=0.0):
+def onehot_from_logits(logits: torch.Tensor, eps=0.0):
     """
     Given batch of logits, return one-hot sample using epsilon greedy strategy
     (based on given epsilon)
     """
+
+    if not isinstance(logits, torch.Tensor):
+        raise TypeError(
+            f"the logits should be an instance of `torch.Tensor`, while the given type is {type(logits)}"
+        )
+
+    if not 0.0 <= eps <= 1.0:
+        raise ValueError(f"eps should locate in [0, 1], while the given value is {eps}")
+
     # get best (according to current policy) actions in one-hot form
     argmax_acs = (logits == logits.max(-1, keepdim=True)[0]).float()
     if eps == 0.0:
         return argmax_acs
+
     # get random actions in one-hot form
     rand_acs = Variable(
         torch.eye(logits.shape[1])[
@@ -67,237 +75,99 @@ def onehot_from_logits(logits, eps=0.0):
         ],
         requires_grad=False,
     )
-    # chooses between best and random actions using epsilon greedy
-    return torch.stack(
-        [
-            argmax_acs[i] if r > eps else rand_acs[i]
-            for i, r in enumerate(torch.rand(logits.shape[0]))
-        ]
+
+    is_random = (torch.rand(logits.shape[0]) <= eps).float().reshape(-1, 1)
+
+    assert len(rand_acs.shape) == len(argmax_acs.shape) == len(is_random.shape), (
+        rand_acs.shape,
+        argmax_acs.shape,
+        is_random.shape,
     )
 
+    return (1 - is_random) * argmax_acs + is_random * rand_acs
+    # chooses between best and random actions using epsilon greedy
 
-def sample_gumbel(shape, eps=1e-20, tens_type=torch.FloatTensor):
-    """Sample from Gumbel(0, 1).
 
-    Note:
-        modified for PyTorch from https://github.com/ericjang/gumbel-softmax/blob/master/Categorical%20VAE.ipynb
+def sample_gumbel(
+    shape: torch.Size, eps: float = 1e-20, tens_type: Type = torch.FloatTensor
+) -> torch.Tensor:
+    """Sample noise from an uniform distribution withe a given shape. Note the returned tensor is deactivated for gradients computation.
+
+    Args:
+        shape (torch.Size): Target shape.
+        eps (float, optional): Tolerance to avoid NaN. Defaults to 1e-20.
+        tens_type (Type, optional): Indicates the data type of the sampled noise. Defaults to torch.FloatTensor.
+
+    Returns:
+        torch.Tensor: A tensor as sampled noise.
     """
 
     U = Variable(tens_type(*shape).uniform_(), requires_grad=False)
+
+    # U + eps to avoid raising NaN error
     return -torch.log(-torch.log(U + eps) + eps)
 
 
-def gumbel_softmax_sample(logits, temperature, explore: bool = True):
-    """Draw a sample from the Gumbel-Softmax distribution.
-
-    Note:
-        modified for PyTorch from https://github.com/ericjang/gumbel-softmax/blob/master/Categorical%20VAE.ipynb
-    """
-
-    y = logits
-    if explore:
-        y += sample_gumbel(logits.shape, tens_type=type(logits.data))
-    return F.softmax(y / temperature, dim=-1)
-
-
-def gumbel_softmax(logits: torch.Tensor, temperature=1.0, hard=False, explore=True):
-    """Sample from the Gumbel-Softmax distribution and optionally discretize.
-
-    Note:
-        modified for PyTorch from https://github.com/ericjang/gumbel-softmax/blob/master/Categorical%20VAE.ipynb
-
-    :param DataTransferType logits: Unnormalized log-probs.
-    :param float temperature: Non-negative scalar.
-    :param bool hard: If ture take argmax, but differentiate w.r.t. soft sample y
-    :returns [batch_size, n_class] sample from the Gumbel-Softmax distribution. If hard=True, then the returned sample
-        will be one-hot, otherwise it will be a probability distribution that sums to 1 across classes
-    """
-    y = gumbel_softmax_sample(logits, temperature, explore)
-    if hard:
-        y_hard = onehot_from_logits(y)
-        y = (y_hard - y).detach() + y
-    return y
-
-
 def masked_logits(logits: torch.Tensor, mask: torch.Tensor):
-    logits = F.normalize(logits)
     if mask is not None:
+        assert isinstance(mask, torch.Tensor), type(mask)
+        assert mask.shape == logits.shape, (mask.shape, logits.shape)
         logits = torch.clamp(logits - (1.0 - mask) * 1e9, -1e9, 1e9)
     return logits
 
 
-def masked_softmax(logits: torch.Tensor, mask: torch.Tensor):
-    probs = F.softmax(logits, dim=-1) * mask
-    probs = probs + (mask.sum(dim=-1, keepdim=True) == 0.0).to(dtype=torch.float32)
-    Z = probs.sum(dim=-1, keepdim=True)
-    return probs / Z
-
-
-def monte_carlo_discounted(rewards, dones, gamma: float) -> torch.Tensor:
-    running_add = 0
-    returns = []
-
-    for step in reversed(range(len(rewards))):
-        running_add = rewards[step] + (1.0 - dones[step]) * gamma * running_add
-        returns.insert(0, running_add)
-
-    return torch.stack(returns)
-
-
-def temporal_difference(reward, next_value, done, gamma: float) -> torch.Tensor:
-    q_values = reward + (1.0 - done) * gamma * next_value
-    return q_values
-
-
-def generalized_advantage_estimation(
-    values: torch.Tensor,
-    rewards: torch.Tensor,
-    next_values: torch.Tensor,
-    dones: torch.Tensor,
-    gamma: float,
-    lam: float,
-):
-    gae = 0
-    adv = []
-
-    delta = rewards + (1.0 - dones) * gamma * next_values - values
-    for step in reversed(range(len(rewards))):
-        gae = delta[step] + (1.0 - dones[step]) * gamma * lam * gae
-        adv.insert(0, gae)
-
-    return torch.stack(adv)
-
-
-def vtrace(
-    values: torch.Tensor,
-    rewards: torch.Tensor,
-    next_values: torch.Tensor,
-    dones: torch.Tensor,
-    log_probs: torch.Tensor,
-    worker_logprobs: torch.Tensor,
-    gamma: float,
-    lam: float,
+def softmax(
+    logits: torch.Tensor,
+    temperature: float,
+    mask: torch.Tensor = None,
+    explore: bool = True,
 ) -> torch.Tensor:
-    gae = 0
-    adv = []
+    """Apply softmax to the given logits. With distribution density control and optional exploration noise.
 
-    limit = torch.FloatTensor([1.0]).to(values.device)
-    ratio = torch.min(limit, (worker_logprobs - log_probs).sum().exp())
+    Args:
+        logits (torch.Tensor): Logits tensor.
+        temperature (float): Temperature controls the distribution density.
+        mask (torch.Tensor, optional): Applying action mask if not None. Defaults to None.
+        explore (bool, optional): Add noise to the generated distribution or not. Defaults to True.
 
-    assert rewards.shape == dones.shape == next_values.shape == values.shape, (
-        rewards.shape,
-        dones.shape,
-        next_values.shape,
-        values.shape,
-    )
-    delta = rewards + (1.0 - dones) * gamma * next_values - values
-    delta = ratio * delta
+    Raises:
+        TypeError: Logits should be a `torch.Tensor`.
 
-    for step in reversed(range(len(rewards))):
-        gae = (1.0 - dones[step]) * gamma * lam * gae
-        gae = delta[step] + ratio * gae
-        adv.insert(0, gae)
+    Returns:
+        torch.Tensor: softmax tensor, shaped as (batch_size, n_classes).
+    """
 
-    return torch.stack(adv)
+    if not isinstance(logits, torch.Tensor):
+        raise TypeError(
+            f"logits should be a `torch.Tensor`, while the given is {type(logits)}"
+        )
+
+    logits = logits / temperature
+
+    if explore:
+        logits = logits + sample_gumbel(logits.shape, tens_type=type(logits.data))
+
+    logits = masked_logits(logits, mask)
+
+    return F.softmax(logits, dim=-1)
 
 
-class MaskedCategorical:
-    def __init__(self, scores, mask=None):
-        self.mask = mask
-        if mask is None:
-            self.cat_distr = TorchCategorical(F.softmax(scores, dim=-1))
-            self.n = scores.shape[0]
-            self.log_n = math.log(self.n)
-        else:
-            self.n = self.mask.sum(dim=-1)
-            self.log_n = (self.n + 1e-17).log()
-            self.cat_distr = TorchCategorical(
-                MaskedCategorical.masked_softmax(scores, self.mask)
-            )
+def gumbel_softmax(
+    logits: torch.Tensor, temperature=1.0, mask: torch.Tensor = None, explore=False
+) -> torch.Tensor:
+    """Convert a softmax to one hot but gradients computation will be kept.
 
-    @lazy_property
-    def probs(self):
-        return self.cat_distr.probs
+    Args:
+        logits (torch.Tensor): Raw logits tensor.
+        temperature (float, optional): Temperature to control the distribution density. Defaults to 1.0.
+        mask (torch.Tensor, optional): Action masking. Defaults to None.
+        explore (bool, optional): Enable noise adding or not. Defaults to True.
 
-    @lazy_property
-    def logits(self):
-        return self.cat_distr.logits
+    Returns:
+        torch.Tensor: Genearted gumbel softmax, shaped as (batch_size, n_classes)
+    """
 
-    @lazy_property
-    def entropy(self):
-        if self.mask is None:
-            return self.cat_distr.entropy() * (self.n != 1)
-        else:
-            entropy = -torch.sum(
-                self.cat_distr.logits * self.cat_distr.probs * self.mask, dim=-1
-            )
-            does_not_have_one_category = (self.n != 1.0).to(dtype=torch.float32)
-            # to make sure that the entropy is precisely zero when there is only one category
-            return entropy * does_not_have_one_category
-
-    @lazy_property
-    def normalized_entropy(self):
-        return self.entropy / (self.log_n + 1e-17)
-
-    def sample(self):
-        return self.cat_distr.sample()
-
-    def rsample(self, temperature=None, gumbel_noise=None):
-        if gumbel_noise is None:
-            with torch.no_grad():
-                uniforms = torch.empty_like(self.probs).uniform_()
-                uniforms = distr_utils.clamp_probs(uniforms)
-                gumbel_noise = -(-uniforms.log()).log()
-            # TODO(ming): This is used for debugging (to get the same samples) and is not differentiable.
-            # gumbel_noise = None
-            # _sample = self.cat_distr.sample()
-            # sample = torch.zeros_like(self.probs)
-            # sample.scatter_(-1, _sample[:, None], 1.0)
-            # return sample, gumbel_noise
-
-        elif gumbel_noise.shape != self.probs.shape:
-            raise ValueError
-
-        if temperature is None:
-            with torch.no_grad():
-                scores = self.logits + gumbel_noise
-                scores = MaskedCategorical.masked_softmax(scores, self.mask)
-                sample = torch.zeros_like(scores)
-                sample.scatter_(-1, scores.argmax(dim=-1, keepdim=True), 1.0)
-                return sample, gumbel_noise
-        else:
-            scores = (self.logits + gumbel_noise) / temperature
-            sample = MaskedCategorical.masked_softmax(scores, self.mask)
-            return sample, gumbel_noise
-
-    def log_prob(self, value):
-        if value.dtype == torch.long:
-            if self.mask is None:
-                return self.cat_distr.log_prob(value)
-            else:
-                return self.cat_distr.log_prob(value) * (self.n != 0.0).to(
-                    dtype=torch.float32
-                )
-        else:
-            max_values, mv_idxs = value.max(dim=-1)
-            relaxed = (max_values - torch.ones_like(max_values)).sum().item() != 0.0
-            if relaxed:
-                raise ValueError(
-                    "The log_prob can't be calculated for the relaxed sample!"
-                )
-            return self.cat_distr.log_prob(mv_idxs) * (self.n != 0.0).to(
-                dtype=torch.float32
-            )
-
-    @staticmethod
-    def masked_softmax(logits, mask):
-        """
-        This method will return valid probability distribution for the particular instance if its corresponding row
-        in the `mask` matrix is not a zero vector. Otherwise, a uniform distribution will be returned.
-        This is just a technical workaround that allows `Categorical` class usage.
-        If probs doesn't sum to one there will be an exception during sampling.
-        """
-        probs = F.softmax(logits, dim=-1) * mask
-        probs = probs + (mask.sum(dim=-1, keepdim=True) == 0.0).to(dtype=torch.float32)
-        Z = probs.sum(dim=-1, keepdim=True)
-        return probs / Z
+    y = softmax(logits, temperature, mask, explore)
+    y_hard = onehot_from_logits(y)
+    y = (y_hard - y).detach() + y
+    return y

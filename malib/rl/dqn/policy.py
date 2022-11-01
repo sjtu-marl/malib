@@ -123,9 +123,8 @@ class DQNPolicy(Policy):
                     act_mask = act_mask.reshape(-1, self._action_space.n)
             logits, state = self.critic(observation)
 
-            # do masking
-            action_probs = misc.masked_logits(logits, mask=act_mask)
-            action_probs = misc.gumbel_softmax(logits, hard=True)
+            # do masking, and mute logits noising
+            action_probs = misc.gumbel_softmax(logits, mask=act_mask)
 
         if not evaluate:
             if np.random.random() < self.eps:
