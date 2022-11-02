@@ -41,7 +41,6 @@ from torch.utils import tensorboard
 from malib import settings
 from malib.backend.offline_dataset_server import OfflineDataset
 from malib.backend.parameter_server import ParameterServer
-from malib.utils.stopping_conditions import get_stopper
 from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
 from malib.utils.tianshou_batch import Batch
