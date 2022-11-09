@@ -319,6 +319,7 @@ class AgentInterface(RemoteInterface, ABC):
             Logger.warning(
                 f"training pipe is terminated. caused by: {traceback.format_exc()}"
             )
+            # close the data pipeline
             ray.get(
                 self._offline_dataset.end_consumer_pipe.remote(data_request_identifier)
             )
