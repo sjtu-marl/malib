@@ -313,7 +313,7 @@ def _parse_model_config_from_dict(**kwargs) -> Dict[str, Any]:
         elif k in ["softmax", "concat"]:
             res[k] = bool(v)
         elif k == ["dueling_param", "actor", "critic", "net"]:
-            res[k] = v if k is not "dueling_param" else copy.deepcopy(v)
+            res[k] = v if k != "dueling_param" else copy.deepcopy(v)
         elif k == ["state_shape", "action_shape"]:
             if isinstance(v, Sequence):
                 res[k] = [int(_v) for _v in v]

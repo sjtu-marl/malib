@@ -338,36 +338,39 @@ class TestRayInference:
     #     self.training_manager.cancel_pending_tasks()
     #     # self.training_manager.terminate()
 
-    def test_env_runner(self):
-        """This function tests env runner"""
+    # def test_env_runner(self):
+    #     """This function tests env runner"""
 
-        self.training_manager.run(self.data_entrypoints)
+    #     self.training_manager.run(self.data_entrypoints)
 
-        rollout_config = self.scenario.rollout_config.copy()
-        rollout_config["flag"] = "rollout"
+    #     rollout_config = self.scenario.rollout_config.copy()
+    #     rollout_config["flag"] = "rollout"
 
-        server_runtime_config = {
-            "strategy_specs": self.strategy_specs,
-            "behavior_mode": BehaviorMode.EXPLOITATION,
-            "preprocessor": self.client.preprocessor,
-        }
+    #     server_runtime_config = {
+    #         "strategy_specs": self.strategy_specs,
+    #         "behavior_mode": BehaviorMode.EXPLOITATION,
+    #         "preprocessor": self.client.preprocessor,
+    #     }
 
-        dwriter_info_dict = dict.fromkeys(self.data_entrypoints.keys(), None)
+    #     dwriter_info_dict = dict.fromkeys(self.data_entrypoints.keys(), None)
 
-        for rid, identifier in self.data_entrypoints.items():
-            queue_id, queue = ray.get(
-                self.dataset_server.start_producer_pipe.remote(name=identifier)
-            )
-            dwriter_info_dict[rid] = (queue_id, queue)
+    #     for rid, identifier in self.data_entrypoints.items():
+    #         queue_id, queue = ray.get(
+    #             self.dataset_server.start_producer_pipe.remote(name=identifier)
+    #         )
+    #         dwriter_info_dict[rid] = (queue_id, queue)
 
-        for _ in range(2):
-            eval_results, performance_results = env_runner(
-                self.client,
-                self.servers,
-                rollout_config,
-                server_runtime_config,
-                dwriter_info_dict,
-            )
-            eval_results = parse_rollout_info([{"evaluation": eval_results}])
-            print(eval_results["evaluation"])
-            print(performance_results)
+    #     for _ in range(2):
+    #         eval_results, performance_results = env_runner(
+    #             self.client,
+    #             self.servers,
+    #             rollout_config,
+    #             server_runtime_config,
+    #             dwriter_info_dict,
+    #         )
+    #         eval_results = parse_rollout_info([{"evaluation": eval_results}])
+    #         print(eval_results["evaluation"])
+    #         print(performance_results)
+
+    #     for rid, identifier in self.data_entrypoints.items():
+    #         ray.get(self.dataset_server.end_producer_pipe.remote(identifier))

@@ -25,9 +25,10 @@ from argparse import ArgumentParser
 
 import os
 import time
-import shutup
 
-shutup.please()
+# import shutup
+
+# shutup.please()
 
 from malib.runner import run
 from malib.agent import IndependentAgent

@@ -26,6 +26,7 @@ from argparse import Namespace
 from typing import Dict, Any, Sequence
 from threading import Lock
 
+import traceback
 import torch
 import numpy as np
 
@@ -117,11 +118,14 @@ class ParameterServer(RemoteInterface):
             str: Table name.
         """
 
-        with self.lock:
-            for policy_id in strategy_spec.policy_ids:
-                table_name = f"{strategy_spec.id}/{policy_id}"
-                if table_name in self.tables:
-                    continue
-                meta_data = strategy_spec.get_meta_data().copy()
-                self.tables[table_name] = Table(meta_data)
-        return table_name
+        try:
+            with self.lock:
+                for policy_id in strategy_spec.policy_ids:
+                    table_name = f"{strategy_spec.id}/{policy_id}"
+                    if table_name in self.tables:
+                        continue
+                    meta_data = strategy_spec.get_meta_data().copy()
+                    self.tables[table_name] = Table(meta_data)
+            return table_name
+        except Exception as e:
+            raise e

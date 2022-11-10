@@ -93,17 +93,21 @@ class TestTrainingManager:
             ray.init()
 
         try:
-            offline_dataset_server = OfflineDataset.options(
-                name=settings.OFFLINE_DATASET_ACTOR
-            ).remote(table_capacity=100)
+            offline_dataset_server = (
+                OfflineDataset.as_remote(num_cpus=0)
+                .options(name=settings.OFFLINE_DATASET_ACTOR)
+                .remote(table_capacity=100)
+            )
         except ValueError:
             print("detected existing offline dataset server")
             offline_dataset_server = ray.get_actor(settings.OFFLINE_DATASET_ACTOR)
 
         try:
-            parameter_server = ParameterServer.options(
-                name=settings.PARAMETER_SERVER_ACTOR
-            ).remote()
+            parameter_server = (
+                ParameterServer.as_remote(num_cpus=1)
+                .options(name=settings.PARAMETER_SERVER_ACTOR)
+                .remote()
+            )
         except ValueError:
             print("detected exisitng parameter server")
             parameter_server = ray.get_actor(settings.PARAMETER_SERVER_ACTOR)
@@ -118,8 +122,15 @@ class TestTrainingManager:
             "custom_config": custom_training_config,
         }
 
+        self.parameter_server = parameter_server
+        self.offline_dataset_server = offline_dataset_server
+
         self.training_manager = TrainingManager(
             experiment_tag="test_training_manager",
+            stopping_conditions={
+                "training": {"max_iteration": 1000},
+                "rollout": {"max_iteration": 100, "minimum_reward_improvement": 1.0},
+            },
             algorithms=algorithms,
             env_desc=env_desc,
             agent_mapping_func=agent_mapping_func,

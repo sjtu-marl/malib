@@ -289,7 +289,7 @@ class SquashedDiagGaussianDistribution(DiagGaussianDistribution):
         )
         # Squash correction (from original SAC implementation)
         # this comes from the fact that tanh is bijective and differentiable
-        log_prob -= torch.sum(torch.log(1 - actions**2 + self.epsilon), dim=1)
+        log_prob -= torch.sum(torch.log(1 - actions ** 2 + self.epsilon), dim=1)
         return log_prob
 
     def entropy(self) -> Optional[torch.Tensor]:
@@ -646,7 +646,7 @@ class StateDependentNoiseDistribution(Distribution):
         """
         # Stop gradient if we don't want to influence the features
         self._latent_sde = latent_sde if self.learn_features else latent_sde.detach()
-        variance = torch.mm(self._latent_sde**2, self.get_std(log_std) ** 2)
+        variance = torch.mm(self._latent_sde ** 2, self.get_std(log_std) ** 2)
         self.distribution = Normal(mean_actions, torch.sqrt(variance + self.epsilon))
         return self
 

@@ -30,6 +30,11 @@ test:
 	pytest --cov-config=.coveragerc --cov=malib --cov-report html --doctest-modules tests
 	rm -f .coverage.*
 
+.PHONY: test-verbose
+test-verbose:
+	pytest --cov-config=.coveragerc --cov=malib --cov-report html --doctest-modules tests -v -s
+	rm -f .coverage.*
+
 .PHONY: test-dataset
 test-dataset:
 	pytest -v --doctest-modules tests/dataset
