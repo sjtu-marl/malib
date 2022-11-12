@@ -64,7 +64,7 @@ setup(
     ],
     extras_require={
         "dev": [
-            "black==20.8b1",
+            "black==22.3.0",
             "pytest",
             "sphinx",
             "sphinx-rtd-theme",

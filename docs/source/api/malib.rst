@@ -13,14 +13,13 @@ Subpackages
    :maxdepth: 2
 
    malib.agent
-   malib.algorithm
    malib.backend
-   malib.envs
-   malib.evaluator
-   malib.gt
-   malib.manager
+   malib.common
+   malib.models
+   malib.remote
+   malib.rl
    malib.rollout
-   malib.rpc
+   malib.scenarios
    malib.utils
 
 Submodules

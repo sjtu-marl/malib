@@ -26,9 +26,7 @@ from argparse import Namespace
 from typing import Dict, Any, Sequence
 from threading import Lock
 
-import traceback
 import torch
-import numpy as np
 
 from malib.common.strategy_spec import StrategySpec
 from malib.remote.interface import RemoteInterface
@@ -39,7 +37,7 @@ class Table:
     def __init__(self, policy_meta_data: Dict[str, Any]):
         policy_cls = policy_meta_data["policy_cls"]
         optim_config = policy_meta_data.get("optim_config")
-        plist = Namespace(**policy_meta_data["kwargs"])
+        policy_init_kwargs = Namespace(**policy_meta_data["kwargs"])
         self.state_dict = None
         if optim_config is not None:
             self.optimizer: torch.optim.Optimizer = getattr(
@@ -49,23 +47,26 @@ class Table:
             self.optimizer: torch.optim.Optimizer = None
         self.lock = Lock()
 
-    def set_weights(self, state_dict):
+    def set_weights(self, state_dict: Dict[str, Any]):
+        """Update weights with given weights.
+
+        Args:
+            state_dict (Dict[str, Any]): A dict of weights
+        """
+
         with self.lock:
             self.state_dict = state_dict
 
     def apply_gradients(self, *gradients):
         raise NotImplementedError
-        # with self.lock:
-        #     summed_gradients = [
-        #         np.stack(gradient_zip).sum(axis=0) for gradient_zip in zip(*gradients)
-        #     ]
-        #     self.optimizer.zero_grad()
-        #     for g, p in zip(summed_gradients, self.policy.parameters()):
-        #         if g is not None:
-        #             p.grad = torch.from_numpy(g.copy())
-        #     self.optimizer.step()
 
-    def get_weights(self):
+    def get_weights(self) -> Dict[str, Any]:
+        """Retrive model weights.
+
+        Returns:
+            Dict[str, Any]: Weights dict
+        """
+
         with self.lock:
             return self.state_dict
 

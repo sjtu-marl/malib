@@ -17,9 +17,13 @@ format:
 	# pip install black==20.8b1
 	black .
 
-.PHONY: docs
-docs:
+.PHONY: docs-compile
+docs-compile:
 	(cd docs; make clean html)
+
+.PHONY: docs-view
+docs-view:
+	python -m http.server 8000 -d docs/build/html/
 
 .PHONY: rm-pycache
 rm-pycache:

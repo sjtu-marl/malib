@@ -17,5 +17,4 @@ Submodules
    malib.agent.centralized_agent
    malib.agent.ctde_agent
    malib.agent.indepdent_agent
-   malib.agent.indepdent_irl_agent
-   malib.agent.sync_agent
+   malib.agent.manager

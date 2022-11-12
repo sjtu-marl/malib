@@ -6,33 +6,24 @@ malib.utils package
    :undoc-members:
    :show-inheritance:
 
-Subpackages
------------
-
-.. toctree::
-   :maxdepth: 2
-
-   malib.utils.configs
-   malib.utils.io_wrapper
-   malib.utils.logger
-
 Submodules
 ----------
 
 .. toctree::
    :maxdepth: 2
 
-   malib.utils.aggregators
-   malib.utils.convert
+   malib.utils.data
    malib.utils.episode
-   malib.utils.errors
-   malib.utils.formatter
+   malib.utils.exploitability
    malib.utils.general
-   malib.utils.metrics
-   malib.utils.model_utils
+   malib.utils.logging
+   malib.utils.monitor
    malib.utils.notations
    malib.utils.preprocessor
-   malib.utils.stoppers
+   malib.utils.replay_buffer
+   malib.utils.schedules
+   malib.utils.stopping_conditions
    malib.utils.tasks_register
+   malib.utils.tianshou_batch
+   malib.utils.timing
    malib.utils.typing
-   malib.utils.visualizer_shortcut

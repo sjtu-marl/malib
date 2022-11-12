@@ -8,11 +8,11 @@ API Documentation
    :caption: Contents
 
    api/malib.agent
-   api/malib.algorithm
    api/malib.backend
-   api/malib.envs
-   api/malib.evaluator
-   api/malib.gt
-   api/malib.manager
+   api/malib.common
+   api/malib.models
+   api/malib.remote
+   api/malib.rl
    api/malib.rollout
-   
+   api/malib.scenarios
+   api/malib.utils
