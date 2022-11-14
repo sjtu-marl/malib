@@ -8,9 +8,26 @@ MALib: Parallel Framework for PB-MARL
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents
 
    intro
    installation
    quick_start
-   api_doc
+
+.. toctree::
+   :maxdepth: 1
+   :caption: API Documentation
+
+   api_agent_index
+   api_rl_index
+   api_rollout_index
+   api_scenario_index
+   api_dataserver_index
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Development
+
+   contributing/index
+   stability
+   changelog
+   license

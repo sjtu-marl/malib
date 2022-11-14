@@ -1,7 +1,7 @@
 Introduction
 ============
 
-MALib is a parallel framework of population-based learning nested with (multi-agent) reinforcement learning (RL) methods, such as Policy Space Response Oracle, Self-Play, and Neural Fictitious Self-Play. MALib provides higher-level abstractions of MARL training paradigms, which enables efficient code reuse and flexible deployments on different distributed computing paradigms. The design of MALib also strives to promote the research of other multi-agent learning research, including multi-agent imitation learning and model-based RL.
+MALib is a parallel framework for population-based learning methods including Policy Space Response Oracle, Self-Play, Neural Fictitious Self-Play, etc. which are nested with (multi-agent) reinforcement learning algorithms. MALib provides higher-level abstractions of MARL training paradigms, enabling efficient code reuse and flexible deployments on distributed strategies. The design of MALib also strives to promote the research of other multi-agent learning research, including multi-agent imitation learning and model-based RL.
 
 .. figure:: ../imgs/Architecture.png
     :align: center
@@ -9,29 +9,22 @@ MALib is a parallel framework of population-based learning nested with (multi-ag
     Overview of the MALib architecture.
 
 
-Population-based MARL (PB-MARL)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Feature Overview
+----------------
 
-In general, a PB-MARL algorithm will start from an initialized policy set and the distribution over the policies (**step 1**), then find new policies (**step 2**) via (MA)RL algorithms. After that, the policy set will be updated with new policies, also the policy distribution (**step 3**), and follow with (MA)RL tasks over expanded policy combinations (**step 4**). This process will be cyclically executed until meeting the convergence such as an estimated Nash Equilibrium, then output the final policy distribution.
+The key features of MALib are listed as follows:
 
-.. figure:: ../imgs/pb_marl.png
-    :scale: 35%
-    :align: center
+* :ref:`concepts-doc`
 
-    The auto-curriculum learning paradigm of PB-MARL. 
+* :ref:`marl-abstraction-doc`
 
+* :ref:`distributed-strategies-doc`
 
-The key features of MALib include:
+* :ref:`environments-doc`
 
-* **Pytorch-based algorithm implementation**: All algorithms implemented in MALib are based on `PyTorch <https://pytorch.org/>`_.
-* **Popular distributed computing RL framework support**: MALib support multiple distributed computing RL frameworks, including asynchronous  
-* **Provide comprehensive multi-agent RL training interfaces**: MALib implemented abstractions of several popular MARL training paradigms, aims to accelerate the development of algorithms on, and make users focus on the development of core algorithms, not training flow customization. 
-
-
-Before getting start, please make sure you've installed MALib by following the :ref:`installation`. :ref:`quick-start` gives some basic examples. As for the API documentation, users can refer to :ref:`api-doc`.
 
 Citing MALib
-^^^^^^^^^^^^
+------------
 
 If you use MALib in your work, please cite the accompanying `paper <https://yingwen.io/malib.pdf>`_.
 

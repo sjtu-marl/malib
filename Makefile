@@ -34,6 +34,10 @@ test:
 	pytest --cov-config=.coveragerc --cov=malib --cov-report html --doctest-modules tests
 	rm -f .coverage.*
 
+.PYTHON: coverage-view
+coverage-view:
+	python -m http.server 8000 -d cov_html
+
 .PHONY: test-verbose
 test-verbose:
 	pytest --cov-config=.coveragerc --cov=malib --cov-report html --doctest-modules tests -v -s

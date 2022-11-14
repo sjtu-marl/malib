@@ -59,7 +59,7 @@ apidoc_extra_args = [
     "--maxdepth=2",
 ]
 
-exclude_patterns = ["tests/", "test*.py", "envs/multiagent_mujoco", "envs/star_craft2"]
+exclude_patterns = ["tests/", "test*.py"]
 
 # ensure __init__ is always documented
 autoclass_content = "both"

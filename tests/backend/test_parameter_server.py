@@ -102,6 +102,9 @@ def test_parameter_server(optim_config, policy_cls, rl_default_config):
     )
     server.create_table(strategy_spec=strategy_spec)
 
+    # try to create repeated table: should jump over
+    server.create_table(strategy_spec=strategy_spec)
+
     # set weights
     server.set_weights(
         spec_id=strategy_spec.id,
