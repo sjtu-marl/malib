@@ -28,6 +28,5 @@ MALib: Parallel Framework for PB-MARL
    :caption: Development
 
    contributing/index
-   stability
    changelog
    license

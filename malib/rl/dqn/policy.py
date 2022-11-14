@@ -109,8 +109,8 @@ class DQNPolicy(Policy):
         """Compute action in rollout stage. Do not support vector mode yet.
 
         Args:
-            observation (DataArray): The observation batched data with shape=(n_batch, *obs_shape).
-            act_mask (DataArray): The action mask batched with shape=(n_batch, *mask_shape).
+            observation (DataArray): The observation batched data with shape=(n_batch, obs_shape).
+            act_mask (DataArray): The action mask batched with shape=(n_batch, mask_shape).
             evaluate (bool): Turn off exploration or not.
             state (Any, Optional): The hidden state. Default by None.
         """

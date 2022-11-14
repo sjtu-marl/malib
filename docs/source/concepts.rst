@@ -41,6 +41,14 @@ A scenario defines a population-based learning paradigm, it brings all MALib com
 
     run(scenario)
 
+Available Scenarios
+^^^^^^^^^^^^^^^^^^^
+
+* :ref:`marl-scenario-doc`
+
+* :ref:`psro-scenario-doc`
+
+* :ref:`league-training-doc`
 
 
 Reinforcement Learning Algorithms
