@@ -10,7 +10,10 @@ MALib Key Concepts
 
 This page will help you to understand the workflow of MALib to train a population-based reinforcement learning algorithm. As for implementing such an algorithm instance, key components including :python:`Policy`, :python:`Evaluator`, :python:`RolloutWorkerManager` and :python:`AgentInterfaceManager`. Functionally, the :python:`AgentInterfaceManager` is responsible for a cluster of :python:`AgentInterface`, while the :python:`RolloutWorkerManager` for a cluster of :python:`RolloutWorker`. The :python:`Policy` is implemented as a behavior interface that packs models that parameterize an agent policy. As for the nested reinforcement learning algorithm, we depart it as a coordination of :python:`AgentInterfaceManage` and :python:`RolloutWorkerManager`. We pack all of them as a scenario which isolates the details of components interaction.
 
-[show a diagram here to explain the framework]
+.. figure:: ../imgs/key_concept_first.png
+    :align: center
+
+    Overview of the interaction between Managers
 
 
 Scenarios
@@ -120,7 +123,11 @@ Rollout Management
 
 The management of rollout workers is implemented as :python:`RolloutWorkerManger` in :doc:`api/malib.rollout.manager`. As the training cases involve multiple agents, MALib creates independent rollout workers for each training agent to achieve as much efficiency as possible. Each :python:`RolloutWorker` encapsulates an actor pool that contains multiople inference CS instance(s).
 
-[show picture here]
+.. figure:: ../imgs/rollout_cs.png
+    :align: center
+
+    Overview of the interaction between Managers
+
 
 Rollout Worker
 ^^^^^^^^^^^^^^
@@ -150,6 +157,11 @@ Training Management
 -------------------
 
 In the case of population-based and multi-agent learning, the basic management unit would be a policy pool, and there would be a training interface that is responsible for the training or evolution of each of them. As we observed, in most existing population-based RL algorithms,  the training of each agent is often isolated, i.e., no interaction between the populations in the training stage. The management of training policies is implemented as :python:`TrainingManager` in :doc:`api/malib.agent.manager`. In multi-agent cases, there would be multiple simultaneous training job for the agents. As we've introduced the mechanism of :python:`RolloutWorkerManger` in previous section, each :python:`AgentInterface` has at least one :python:`RolloutWorker`.
+
+.. figure:: ../imgs/training_manager.png
+    :align: center
+
+    Overview of the interaction between Managers
 
 AgentInterface
 ^^^^^^^^^^^^^^
