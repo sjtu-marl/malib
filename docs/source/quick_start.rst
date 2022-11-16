@@ -60,8 +60,8 @@ PSRO cooperates `empirical game-theoretical analysis <https://www.aaai.org/Paper
 Though the training workflow seems so complex in speaking (and the above illustration), MALib divides it into several independent components. Therefore, you can quickly launch such training with lines of code as follows.
 
 
-Setup the Underlying (MA)RL Algorithm
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Setup Underlying RL Algorithm
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 PSRO requires an underlying RL algorithm to find the best response at each learning iteration, so the first step is to determine which RL algorithm you want to use in your training.
 
@@ -79,7 +79,7 @@ PSRO requires an underlying RL algorithm to find the best response at each learn
         )
     }
 
-MALib integrates many kinds of (MA)RL algorithms, which follows the policy and model interfaces as `Tianshou <https://github.com/thu-ml/tianshou>`_. Thus, users can easily migrate and test standard RL algorithms in the population-based learning cases, free from RL algorithm reproduction. In this example, we choose `Deep Q-learning Networks (DQN) <https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf>`_. 
+MALib integrates many kinds of (MA)RL algorithms, which follow the policy and model interfaces as `Tianshou <https://github.com/thu-ml/tianshou>`_. Thus, users can easily migrate and test standard RL algorithms in population-based learning cases, free from RL algorithm reproduction. In this example, we choose `Deep Q-learning Networks (DQN) <https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf>`_. 
 
 A key concept in MALib is that the devide of training paradigms, policy behavior and loss computation. The above algorithm configuration includes both ``DQNPolicy`` and ``DQNTrainer``, they are implemented for policy behavior definition and loss computation respectively. As the policy and loss coniguration has been given, the next thing is to determine the training paradigm. Since the DQN is an independent learning algorithm, we use ``IndependentAgent`` as the best choice as follow:
 
