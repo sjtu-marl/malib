@@ -1,37 +1,21 @@
-from .policy import MAPPO
-from .trainer import MAPPOTrainer
-from .loss import MAPPOLoss
+# MIT License
 
-NAME = "MAPPO"
-TRAINER = MAPPOTrainer
-POLICY = MAPPO
-LOSS = None
+# Copyright (c) 2021 MARL @ SJTU
 
-__all__ = ["NAME", "TRAINER", "POLICY"]
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
 
-CONFIG = {
-    "training": {
-        "critic_lr": 3e-4,
-        "actor_lr": 3e-4,
-        "opti_eps": 1.0e-5,
-        "weight_decay": 0.0,
-        "batch_size": 64,
-    },
-    "policy": {
-        "gamma": 0.99,
-        "use_q_head": False,
-        "ppo_epoch": 4,
-        "num_mini_batch": 1,
-        "return_mode": "gae",
-        "gae": {"gae_lambda": 0.95},
-        "vtrace": {"clip_rho_threshold": 1.0, "clip_pg_rho_threshold": 1.0},
-        # this is not used, instead it is fixed to last hidden in actor/critic
-        "use_rnn": False,
-        "rnn_layer_num": 1,
-        "rnn_data_chunk_length": 16,
-        "use_feature_normalization": True,
-        "use_popart": True,
-        "popart_beta": 0.99999,
-        "entropy_coef": 1.0e-2,
-    },
-}
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.

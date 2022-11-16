@@ -19,18 +19,3 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
-from .env import MAAtari
-
-
-def env_desc_gen(**config):
-    env = MAAtari(**config)
-    env_desc = {
-        "creator": MAAtari,
-        "possible_agents": env.possible_agents,
-        "action_spaces": env.action_spaces,
-        "observation_spaces": env.observation_spaces,
-        "config": config,
-    }
-    env.close()
-    return env_desc

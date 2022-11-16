@@ -59,7 +59,7 @@ setup(
         "frozendict==2.3.0",
         "numba>=0.56.0",
         "matplotlib>=3.5.3",
-        "gym==0.21.0",
+        "gym==0.23.0",
         "h5py==3.7.0",
     ],
     extras_require={

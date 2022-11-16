@@ -79,10 +79,10 @@ def test_datatable_read_and_write(read_size: int, write_size: int):
 
     print("queues have been killed")
 
-    write_thread.join()
-    print("write_thread has been closed")
     read_thread.join()
     print("read thread has been closed")
+    write_thread.join()
+    print("write_thread has been closed")
 
 
 def test_offline_dataset():

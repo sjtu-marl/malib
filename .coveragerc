@@ -3,30 +3,24 @@ branch = False
 omit = 
 	# ignore typings and base class
 	*/__init__.py
-	malib/envs/smarts/*
-	malib/envs/env.py
-	malib/rollout/base_worker.py
-	malib/evaluator/base_evaluator.py
-	# ignore random policy, just for test
+	malib/rollout/envs/gr_football/*
+	malib/rollout/envs/mpe/*
+	malib/rollout/envs/star_craft2/*
 	malib/rl/random/*
 	malib/utils/*
-	# ignore cli
+	malib/scenarios/league_training_scenario.py
 	malib/runner.py
+	malib/models/*
+	malib/common/distributions.py
 
 
 [report]
 skip_empty = True
 omit =
-	malib/envs/smarts/*
-	malib/algorithm/imitation/*
 	malib/settings.py
 	malib/registration.py
-	malib/backend/coordinator/light_server.py
-	# deprecated
-	malib/backend/datapool/data_array.py
-	malib/algorithm/common/reward.py
 	malib/utils/*
-	malib/rpc/*
+	malib/models/*
 
 [html]
 directory = cov_html
