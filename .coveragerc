@@ -3,23 +3,15 @@ branch = False
 omit = 
 	# ignore typings and base class
 	*/__init__.py
-	malib/agent/agent_interface.py
-	malib/backend/coordinator/base_coordinator.py
 	malib/envs/smarts/*
 	malib/envs/env.py
 	malib/rollout/base_worker.py
 	malib/evaluator/base_evaluator.py
-	# ignore imitation training suit
-	malib/algorithm/imitation/*
-	malib/algorithm/common/reward.py
 	# ignore random policy, just for test
-	malib/algorithm/random/*
+	malib/rl/random/*
 	malib/utils/*
-	malib/rpc/*
 	# ignore cli
 	malib/runner.py
-	# no usage
-	malib/rollout/sync_rollout_worker.py
 
 
 [report]
