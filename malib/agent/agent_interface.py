@@ -299,6 +299,7 @@ class AgentInterface(RemoteInterface, ABC):
                     data_request_identifier
                 ]
 
+                # XXX(ming): what if queue has been killed by remote server?
                 batch_info = reader_info[-1].get()
                 if len(batch_info[-1]) == 0:
                     continue

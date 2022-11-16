@@ -59,8 +59,8 @@ def build_marl_scenario(
         "custom_config": {},
     }
     rollout_config = {
-        "fragment_length": 2000,  # every thread
-        "max_step": 200,
+        "fragment_length": 200,  # every thread
+        "max_step": 20,
         "num_eval_episodes": 10,
         "num_threads": 2,
         "num_env_per_thread": 5,
@@ -233,6 +233,39 @@ def rollout_func(
         cnt += 1
 
 
+from malib import settings
+
+
+@pytest.fixture(autouse=True)
+def dataset_server():
+    try:
+        server = (
+            OfflineDataset.as_remote(num_cpus=0)
+            .options(name=settings.OFFLINE_DATASET_ACTOR, max_concurrency=100)
+            .remote(table_capacity=10000)
+        )
+        ray.get(server.start.remote())
+    except ValueError:
+        server = ray.get_actor(settings.OFFLINE_DATASET_ACTOR)
+
+    return server
+
+
+@pytest.fixture(autouse=True)
+def parameter_server():
+    try:
+        server = (
+            ParameterServer.as_remote(num_cpus=1)
+            .options(name=settings.PARAMETER_SERVER_ACTOR, max_concurrency=100)
+            .remote()
+        )
+        ray.get(server.start.remote())
+    except ValueError:
+        server = ray.get_actor(settings.PARAMETER_SERVER_ACTOR)
+
+    return server
+
+
 @pytest.mark.parametrize(
     "env_desc",
     [
@@ -243,136 +276,123 @@ def rollout_func(
 )
 @pytest.mark.parametrize("learner_cls", [IndependentAgent])
 @pytest.mark.parametrize("algorithms,trainer_config", [dqn()])
-class TestRayInference:
-    @pytest.fixture(autouse=True)
-    def init(self, env_desc, learner_cls, algorithms, trainer_config):
-        if not ray.is_initialized():
-            ray.init()
+def test_inference_mechanism(
+    env_desc, learner_cls, algorithms, trainer_config, dataset_server, parameter_server
+):
+    scenario: MARLScenario = build_marl_scenario(
+        algorithms,
+        env_desc,
+        learner_cls,
+        trainer_config,
+        agent_mapping_func=lambda agent: agent,
+        runtime_logdir="./logs",
+    )
+    client, servers = generate_cs(scenario, dataset_server, parameter_server)
+    training_manager = TrainingManager(
+        experiment_tag=scenario.name,
+        stopping_conditions=scenario.stopping_conditions,
+        algorithms=scenario.algorithms,
+        env_desc=scenario.env_desc,
+        agent_mapping_func=scenario.agent_mapping_func,
+        training_config=scenario.training_config,
+        log_dir=scenario.log_dir,
+        remote_mode=True,
+        resource_config=scenario.resource_config["training"],
+        verbose=True,
+    )
+    data_entrypoints = {k: k for k in training_manager.agent_groups.keys()}
 
-        self.parameter_server, self.dataset_server = start_servers()
-        self.scenario: MARLScenario = build_marl_scenario(
-            algorithms,
-            env_desc,
-            learner_cls,
-            trainer_config,
-            agent_mapping_func=lambda agent: agent,
-            runtime_logdir="./logs",
+    # add policies and start training
+    strategy_specs = training_manager.add_policies(n=scenario.num_policy_each_interface)
+    training_manager = training_manager
+    strategy_specs = strategy_specs
+    data_entrypoints = data_entrypoints
+
+    # training_manager.run(data_entrypoints)
+
+    rollout_config = scenario.rollout_config.copy()
+    rollout_config["flag"] = "rollout"
+
+    server_runtime_config = {
+        "strategy_specs": strategy_specs,
+        "behavior_mode": BehaviorMode.EXPLOITATION,
+        "preprocessor": client.preprocessor,
+    }
+
+    dwriter_info_dict = dict.fromkeys(data_entrypoints.keys(), None)
+
+    for rid, identifier in data_entrypoints.items():
+        queue_id, queue = ray.get(
+            dataset_server.start_producer_pipe.remote(name=identifier)
         )
-        self.client, self.servers = generate_cs(
-            self.scenario, self.dataset_server, self.parameter_server
-        )
-        training_manager = TrainingManager(
-            experiment_tag=self.scenario.name,
-            stopping_conditions=self.scenario.stopping_conditions,
-            algorithms=self.scenario.algorithms,
-            env_desc=self.scenario.env_desc,
-            agent_mapping_func=self.scenario.agent_mapping_func,
-            training_config=self.scenario.training_config,
-            log_dir=self.scenario.log_dir,
-            remote_mode=True,
-            resource_config=self.scenario.resource_config["training"],
-            verbose=True,
-        )
-        data_entrypoints = {k: k for k in training_manager.agent_groups.keys()}
+        dwriter_info_dict[rid] = (queue_id, queue)
 
-        # add policies and start training
-        strategy_specs = training_manager.add_policies(
-            n=self.scenario.num_policy_each_interface
-        )
-        self.training_manager = training_manager
-        self.strategy_specs = strategy_specs
-        self.data_entrypoints = data_entrypoints
+    eval_results, performance_results = env_runner(
+        client,
+        servers,
+        rollout_config,
+        server_runtime_config,
+        dwriter_info_dict,
+    )
+    eval_results = parse_rollout_info([{"evaluation": eval_results}])
+    print(eval_results["evaluation"])
+    print(performance_results)
 
-    # def test_inference_pipeline(self):
-    #     """This function tests the inference pipeline without using default env runner"""
+    for rid, identifier in data_entrypoints.items():
+        ray.get(dataset_server.end_producer_pipe.remote(identifier))
 
-    #     self.training_manager.run(self.data_entrypoints)
 
-    #     rollout_config = self.scenario.rollout_config.copy()
-    #     rollout_config["flag"] = "rollout"
-    #     server_runtime_config = {
-    #         "strategy_specs": self.strategy_specs,
-    #         "behavior_mode": BehaviorMode.EXPLOITATION,
-    #         "preprocessor": self.client.preprocessor,
-    #     }
+# def test_inference_pipeline(self):
+#     """This function tests the inference pipeline without using default env runner"""
 
-    #     dwriter_info_dict = dict.fromkeys(self.data_entrypoints.keys(), None)
+#     training_manager.run(data_entrypoints)
 
-    #     for rid, identifier in self.data_entrypoints.items():
-    #         queue_id, queue = ray.get(
-    #             self.dataset_server.start_producer_pipe.remote(name=identifier)
-    #         )
-    #         dwriter_info_dict[rid] = (queue_id, queue)
+#     rollout_config = scenario.rollout_config.copy()
+#     rollout_config["flag"] = "rollout"
+#     server_runtime_config = {
+#         "strategy_specs": strategy_specs,
+#         "behavior_mode": BehaviorMode.EXPLOITATION,
+#         "preprocessor": client.preprocessor,
+#     }
 
-    #     # collect episodes and run training
-    #     rollout_env = self.client.env
-    #     for n_epoch in range(2):
-    #         episode_dict = NewEpisodeDict(
-    #             lambda: Episode(agents=self.scenario.env_desc["possible_agents"])
-    #         )
-    #         rollout_func(
-    #             episode_dict,
-    #             self.client,
-    #             self.servers,
-    #             rollout_config,
-    #             server_runtime_config,
-    #             False,
-    #         )
+#     dwriter_info_dict = dict.fromkeys(data_entrypoints.keys(), None)
 
-    #         episodes = episode_dict.to_numpy()
-    #         for rid, writer_info in dwriter_info_dict.items():
-    #             agents = self.client.agent_group[rid]
-    #             batches = []
-    #             for episode in episodes.values():
-    #                 agent_buffer = [episode[aid] for aid in agents]
-    #                 batches.append(agent_buffer)
-    #             writer_info[-1].put_nowait_batch(batches)
-    #         rollout_info = self.client.env.collect_info()
-    #         eval_results = list(rollout_info.values())
-    #         rollout_res = parse_rollout_info([{"evaluation": eval_results}])
+#     for rid, identifier in data_entrypoints.items():
+#         queue_id, queue = ray.get(
+#             dataset_server.start_producer_pipe.remote(name=identifier)
+#         )
+#         dwriter_info_dict[rid] = (queue_id, queue)
 
-    #         print("epoch: {}\nrollout_res: {}\n".format(n_epoch, rollout_res))
+#     # collect episodes and run training
+#     rollout_env = client.env
+#     for n_epoch in range(2):
+#         episode_dict = NewEpisodeDict(
+#             lambda: Episode(agents=scenario.env_desc["possible_agents"])
+#         )
+#         rollout_func(
+#             episode_dict,
+#             client,
+#             servers,
+#             rollout_config,
+#             server_runtime_config,
+#             False,
+#         )
 
-    #         self.client.env = rollout_env
+#         episodes = episode_dict.to_numpy()
+#         for rid, writer_info in dwriter_info_dict.items():
+#             agents = client.agent_group[rid]
+#             batches = []
+#             for episode in episodes.values():
+#                 agent_buffer = [episode[aid] for aid in agents]
+#                 batches.append(agent_buffer)
+#             writer_info[-1].put_nowait_batch(batches)
+#         rollout_info = client.env.collect_info()
+#         eval_results = list(rollout_info.values())
+#         rollout_res = parse_rollout_info([{"evaluation": eval_results}])
 
-    #     self.training_manager.cancel_pending_tasks()
-    #     # self.training_manager.terminate()
+#         print("epoch: {}\nrollout_res: {}\n".format(n_epoch, rollout_res))
 
-    def test_env_runner(self):
-        """This function tests env runner"""
+#         client.env = rollout_env
 
-        self.training_manager.run(self.data_entrypoints)
-
-        rollout_config = self.scenario.rollout_config.copy()
-        rollout_config["flag"] = "rollout"
-
-        server_runtime_config = {
-            "strategy_specs": self.strategy_specs,
-            "behavior_mode": BehaviorMode.EXPLOITATION,
-            "preprocessor": self.client.preprocessor,
-        }
-
-        dwriter_info_dict = dict.fromkeys(self.data_entrypoints.keys(), None)
-
-        for rid, identifier in self.data_entrypoints.items():
-            queue_id, queue = ray.get(
-                self.dataset_server.start_producer_pipe.remote(name=identifier)
-            )
-            dwriter_info_dict[rid] = (queue_id, queue)
-
-        for _ in range(2):
-            eval_results, performance_results = env_runner(
-                self.client,
-                self.servers,
-                rollout_config,
-                server_runtime_config,
-                dwriter_info_dict,
-            )
-            eval_results = parse_rollout_info([{"evaluation": eval_results}])
-            print(eval_results["evaluation"])
-            print(performance_results)
-
-        for rid, identifier in self.data_entrypoints.items():
-            ray.get(self.dataset_server.end_producer_pipe.remote(identifier))
-
-        ray.shutdown()
+#     training_manager.cancel_pending_tasks()
+#     # training_manager.terminate()

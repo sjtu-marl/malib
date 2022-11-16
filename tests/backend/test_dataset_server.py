@@ -98,3 +98,9 @@ def test_offline_dataset():
 
     server.end_consumer_pipe(name=cname)
     server.end_producer_pipe(name=pname)
+
+    if pqueue.actor is not None:
+        pqueue.shutdown()
+
+    if cqueue.actor is not None:
+        cqueue.shutdown()

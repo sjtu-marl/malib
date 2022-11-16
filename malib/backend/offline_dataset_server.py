@@ -121,12 +121,16 @@ class OfflineDataset(RemoteInterface):
                 **kwargs,
             )
             marker = rwlock.RWLockFair()
-            writer = Queue(actor_options={"num_cpus": 0})
 
             self.buffers[name] = buffer
             self.markers[name] = marker
+
+        if name not in self.writer_queues:
+            writer = Queue(actor_options={"num_cpus": 0})
             self.writer_queues[name] = writer
-            self.thread_pool.submit(write_table, marker, buffer, writer)
+            self.thread_pool.submit(
+                write_table, self.markers[name], self.buffers[name], writer
+            )
 
         return name, self.writer_queues[name]
 
