@@ -41,14 +41,13 @@ from torch.utils import tensorboard
 from malib import settings
 from malib.backend.offline_dataset_server import OfflineDataset
 from malib.backend.parameter_server import ParameterServer
-from malib.utils.stopping_conditions import get_stopper
 from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
 from malib.utils.tianshou_batch import Batch
+from malib.utils.monitor import write_to_tensorboard
 from malib.remote.interface import RemoteInterface
 from malib.rl.common.trainer import Trainer
 from malib.common.strategy_spec import StrategySpec
-from malib.monitor.utils import write_to_tensorboard
 
 
 class AgentInterface(RemoteInterface, ABC):
@@ -320,6 +319,7 @@ class AgentInterface(RemoteInterface, ABC):
             Logger.warning(
                 f"training pipe is terminated. caused by: {traceback.format_exc()}"
             )
+            # close the data pipeline
             ray.get(
                 self._offline_dataset.end_consumer_pipe.remote(data_request_identifier)
             )

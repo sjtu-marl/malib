@@ -40,4 +40,5 @@ DEFAULT_CONFIG = {
         "preprocess_net": {"net_type": None, "config": {"hidden_sizes": [64]}},
         "hidden_sizes": [64],
     },
+    "custom_config": {},
 }

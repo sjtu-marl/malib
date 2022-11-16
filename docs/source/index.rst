@@ -8,9 +8,33 @@ MALib: Parallel Framework for PB-MARL
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents
+   :caption: Tutorials
 
    intro
-   installation
    quick_start
-   api_doc
+   concepts
+   marl-abstration
+   distributed-strategies
+   environments
+
+.. toctree::
+   :maxdepth: 1
+   :caption: API Documentation
+
+   api/malib.agent
+   api/malib.backend
+   api/malib.common
+   api/malib.models
+   api/malib.remote
+   api/malib.rl
+   api/malib.rollout
+   api/malib.scenarios
+   api/malib.utils
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Development
+
+   contributing/index
+   changelog
+   license

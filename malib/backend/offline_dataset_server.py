@@ -51,7 +51,6 @@ def write_table(marker: rwlock.RWLockFair, buffer: ReplayBuffer, writer: Queue):
                 for e in batches:
                     buffer.add_batch(e)
         except Exception as e:
-            Logger.warning(f"writer queue dead for: {traceback.format_exc()}")
             break
 
 
@@ -68,12 +67,18 @@ def read_table(
                     batch, indices = [], np.array([], int)
             reader.put_nowait((batch, indices))
         except Exception as e:
-            Logger.warning(f"reader queue dead for: {traceback.format_exc()}")
             break
 
 
 class OfflineDataset(RemoteInterface):
     def __init__(self, table_capacity: int, max_consumer_size: int = 1024) -> None:
+        """Construct an offline datataset. It maintans a dict of datatable, each for a training instance.
+
+        Args:
+            table_capacity (int): Table capacity, it indicates the buffer size of each data table.
+            max_consumer_size (int, optional): Defines the maximum of concurrency. Defaults to 1024.
+        """
+
         self.tb_capacity = table_capacity
         self.reader_queues: Dict[str, Queue] = {}
         self.writer_queues: Dict[str, Queue] = {}
@@ -93,6 +98,19 @@ class OfflineDataset(RemoteInterface):
         sample_avail: bool = False,
         **kwargs,
     ) -> Tuple[str, Queue]:
+        """Start a producer pipeline and create a datatable if not exisits.
+
+        Args:
+            name (str): The name of datatable need to access
+            stack_num (int, optional): Indicates how many steps are stacked in a single data sample. Defaults to 1.
+            ignore_obs_next (bool, optional): Ignore the next observation or not. Defaults to False.
+            save_only_last_obs (bool, optional): Either save only the last observation frame. Defaults to False.
+            sample_avail (bool, optional): Sample action maks or not. Defaults to False.
+
+        Returns:
+            Tuple[str, Queue]: A tuple of table name and queue for insert samples.
+        """
+
         if name not in self.buffers:
             buffer = ReplayBuffer(
                 size=self.tb_capacity,
@@ -113,11 +131,27 @@ class OfflineDataset(RemoteInterface):
         return name, self.writer_queues[name]
 
     def end_producer_pipe(self, name: str):
+        """Kill a producer pipe with given name.
+
+        Args:
+            name (str): The name of related data table.
+        """
+
         if name in self.writer_queues:
             queue = self.writer_queues.pop(name)
-            ray.kill(queue)
+            queue.shutdown()
 
     def start_consumer_pipe(self, name: str, batch_size: int) -> Tuple[str, Queue]:
+        """Start a consumer pipeline, if there is no such a table that named as `name`, the function will be stucked until the table has been created.
+
+        Args:
+            name (str): Name of datatable.
+            batch_size (int): Batch size.
+
+        Returns:
+            Tuple[str, Queue]: A tuple of table name and queue for retrieving samples.
+        """
+
         queue_id = f"{name}_{time.time()}"
         queue = Queue(actor_options={"num_cpus": 0})
         self.reader_queues[queue_id] = queue
@@ -130,6 +164,12 @@ class OfflineDataset(RemoteInterface):
         return queue_id, queue
 
     def end_consumer_pipe(self, name: str):
+        """Kill a consumer pipeline with given table name.
+
+        Args:
+            name (str): Name of related datatable.
+        """
+
         if name in self.reader_queues:
             queue = self.reader_queues.pop(name)
-            ray.kill(queue)
+            queue.shutdown()

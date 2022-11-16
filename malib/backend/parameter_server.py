@@ -26,9 +26,10 @@ from argparse import Namespace
 from typing import Dict, Any, Sequence
 from threading import Lock
 
+import itertools
 import torch
-import numpy as np
 
+from malib.rl.common.policy import Policy
 from malib.common.strategy_spec import StrategySpec
 from malib.remote.interface import RemoteInterface
 from malib.utils.logging import Logger
@@ -38,33 +39,45 @@ class Table:
     def __init__(self, policy_meta_data: Dict[str, Any]):
         policy_cls = policy_meta_data["policy_cls"]
         optim_config = policy_meta_data.get("optim_config")
-        plist = Namespace(**policy_meta_data["kwargs"])
+        policy_init_kwargs = Namespace(**policy_meta_data["kwargs"])
         self.state_dict = None
         if optim_config is not None:
+            self.policy: Policy = policy_cls(
+                observation_space=policy_init_kwargs.observation_space,
+                action_space=policy_init_kwargs.action_space,
+                model_config=policy_init_kwargs.model_config,
+                custom_config=policy_init_kwargs.custom_config,
+                **policy_init_kwargs.kwargs,
+            )
+            parameters = [list(v) for v in self.policy.parameters().values()]
+            parameters = itertools.chain(*parameters)
             self.optimizer: torch.optim.Optimizer = getattr(
                 torch.optim, optim_config["type"]
-            )(self.policy.parameters(), lr=optim_config["lr"])
+            )(parameters, lr=optim_config["lr"])
         else:
             self.optimizer: torch.optim.Optimizer = None
         self.lock = Lock()
 
-    def set_weights(self, state_dict):
+    def set_weights(self, state_dict: Dict[str, Any]):
+        """Update weights with given weights.
+
+        Args:
+            state_dict (Dict[str, Any]): A dict of weights
+        """
+
         with self.lock:
             self.state_dict = state_dict
 
     def apply_gradients(self, *gradients):
         raise NotImplementedError
-        # with self.lock:
-        #     summed_gradients = [
-        #         np.stack(gradient_zip).sum(axis=0) for gradient_zip in zip(*gradients)
-        #     ]
-        #     self.optimizer.zero_grad()
-        #     for g, p in zip(summed_gradients, self.policy.parameters()):
-        #         if g is not None:
-        #             p.grad = torch.from_numpy(g.copy())
-        #     self.optimizer.step()
 
-    def get_weights(self):
+    def get_weights(self) -> Dict[str, Any]:
+        """Retrive model weights.
+
+        Returns:
+            Dict[str, Any]: Weights dict
+        """
+
         with self.lock:
             return self.state_dict
 
@@ -79,7 +92,17 @@ class ParameterServer(RemoteInterface):
         Logger.info("Parameter server started")
 
     def apply_gradients(self, table_name: str, gradients: Sequence[Any]):
-        self.tables[table_name].apply_gradients(*gradients)
+        """Apply gradients to a data table.
+
+        Args:
+            table_name (str): The specified table name.
+            gradients (Sequence[Any]): Given gradients to update parameters.
+
+        Raises:
+            NotImplementedError: Not implemented yet.
+        """
+
+        raise NotImplementedError
 
     def get_weights(self, spec_id: str, spec_policy_id: str) -> Dict[str, Any]:
         """Request for weight retrive, return a dict includes keys: `spec_id`, `spec_policy_id` and `weights`.
@@ -103,6 +126,14 @@ class ParameterServer(RemoteInterface):
     def set_weights(
         self, spec_id: str, spec_policy_id: str, state_dict: Dict[str, Any]
     ):
+        """Set weights to a parameter table. The table name will be defined as `{spec_id}/{spec_policy_id}`
+
+        Args:
+            spec_id (str): StrategySpec id.
+            spec_policy_id (str): Policy id in the specified strategy spec.
+            state_dict (Dict[str, Any]): A dict that specify the parameters.
+        """
+
         table_name = f"{spec_id}/{spec_policy_id}"
         self.tables[table_name].set_weights(state_dict)
 
@@ -114,7 +145,7 @@ class ParameterServer(RemoteInterface):
             strategy_spec (StrategySpec): A startegy spec instance.
 
         Returns:
-            str: Table name.
+            str: Table name formatted as `{startegy_spec_id}/{policy_id}`.
         """
 
         with self.lock:

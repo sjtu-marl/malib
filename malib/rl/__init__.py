@@ -21,3 +21,12 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
+from . import a2c
+from . import discrete_sac
+from . import dqn
+from . import pg
+from . import ppo
+from . import sac
+from . import qmix
+from . import maddpg

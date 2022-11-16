@@ -110,7 +110,12 @@ class StrategySpec:
         )
 
     def get_meta_data(self) -> Dict[str, Any]:
-        """Return meta data.
+        """Return meta data. Keys in meta-data contains
+
+        - policy_cls: policy class type
+        - kwargs: a dict of parameters for policy construction
+        - experiment_tag: a string for experiment identification
+        - optim_config: optional, a dict for optimizer construction
 
         Returns:
             Dict[str, Any]: A dict of meta data.

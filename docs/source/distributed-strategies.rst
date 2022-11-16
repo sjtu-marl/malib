@@ -1,0 +1,27 @@
+.. _distributed-strategies-doc:
+
+Distributed Strategies
+======================
+
+MALib has included typical distributed strategies that have been applied in existing distributed reinforcement learning algorithms. As MALib departs the implementation of rollout and training, it can easily distribute different distributed strategies by calling different ``AgentInterface``.
+
+
+Single-stream Training
+----------------------
+
+
+
+Multi-stream Training
+---------------------
+
+
+
+Synchronous Updates
+^^^^^^^^^^^^^^^^^^^
+
+
+
+
+Asynchronous Updates
+^^^^^^^^^^^^^^^^^^^^
+

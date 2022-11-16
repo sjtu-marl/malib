@@ -1,0 +1,42 @@
+name: MALib CI
+
+on: [push, pull_request]
+
+jobs:
+  formatting:
+    runs-on: ubuntu-latest
+    name: Check Formatting
+    steps:
+    - uses: actions/checkout@v1
+    - name: Set up python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8.0
+    - name: Run black code formatter
+      run: |
+        cd $GITHUB_WORKSPACE
+        pip3 install --upgrade pip
+        pip3 install black==22.3.0
+        black --check .
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: Set up python 3.8
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8.0
+    - name: Install requirements
+      run: |
+        pip install -e .
+        pip install -e .[dev]
+    - name: Run tests and collect coverage
+      run: make test
+    - name: Upload coverage reports to Codecov
+      run: |
+        # Replace `linux` below with the appropriate OS
+        # Options are `alpine`, `linux`, `macos`, `windows`
+        curl -Os https://uploader.codecov.io/latest/linux/codecov
+        chmod +x codecov
+        ./codecov -t ${CODECOV_TOKEN}

@@ -6,14 +6,38 @@ malib.rollout package
    :undoc-members:
    :show-inheritance:
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   malib.rollout.envs
+   malib.rollout.inference
+
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rollout.manager module
+----------------------------
 
-   malib.rollout.base_worker
-   malib.rollout.postprocessor
-   malib.rollout.rollout_func
-   malib.rollout.rollout_worker
-   malib.rollout.sync_rollout_worker
+.. automodule:: malib.rollout.manager
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rollout.pb\_rolloutworker module
+--------------------------------------
+
+.. automodule:: malib.rollout.pb_rolloutworker
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rollout.rolloutworker module
+----------------------------------
+
+.. automodule:: malib.rollout.rolloutworker
+   :members:
+   :undoc-members:
+   :show-inheritance:

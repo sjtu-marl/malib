@@ -6,11 +6,21 @@ malib.backend package
    :undoc-members:
    :show-inheritance:
 
-Subpackages
------------
+Submodules
+----------
 
-.. toctree::
-   :maxdepth: 2
+malib.backend.offline\_dataset\_server module
+---------------------------------------------
 
-   malib.backend.coordinator
-   malib.backend.datapool
+.. automodule:: malib.backend.offline_dataset_server
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.backend.parameter\_server module
+--------------------------------------
+
+.. automodule:: malib.backend.parameter_server
+   :members:
+   :undoc-members:
+   :show-inheritance:

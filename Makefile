@@ -17,9 +17,13 @@ format:
 	# pip install black==20.8b1
 	black .
 
-.PHONY: docs
-docs:
+.PHONY: docs-compile
+docs-compile:
 	(cd docs; make clean html)
+
+.PHONY: docs-view
+docs-view:
+	python -m http.server 8000 -d docs/build/html/
 
 .PHONY: rm-pycache
 rm-pycache:
@@ -30,6 +34,15 @@ test:
 	pytest --cov-config=.coveragerc --cov=malib --cov-report html --doctest-modules tests
 	rm -f .coverage.*
 
+.PYTHON: coverage-view
+coverage-view:
+	python -m http.server 8000 -d cov_html
+
+.PHONY: test-verbose
+test-verbose:
+	pytest --cov-config=.coveragerc --cov=malib --cov-report html --doctest-modules tests -v -s
+	rm -f .coverage.*
+
 .PHONY: test-dataset
 test-dataset:
 	pytest -v --doctest-modules tests/dataset
@@ -37,10 +50,6 @@ test-dataset:
 .PHONY: test-parameter-server
 test-parameter-server:
 	pytest -v --doctest-modules tests/paramter_server
-
-.PHONY: test-coordinator
-test-coordinator:
-	pytest -v --doctest-modules tests/coordinator
 
 .PHONY: test-backend
 test-backend: test-dataset test-parameter-server test-coordinator

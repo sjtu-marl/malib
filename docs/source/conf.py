@@ -39,26 +39,33 @@ release = "v0.1.0"
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    "sphinx.ext.napoleon",  # add napoleon to extension list to support numpy and google-style docstring
     "sphinx_rtd_theme",  # theme
     "sphinx.ext.autodoc",  # automatically extract docs from docstrings
     "sphinx.ext.coverage",  # make coverage generates documentation coverage reports
     "sphinx.ext.viewcode",  # link to sourcecode from docs
     # "sphinx.ext.grahviz", # graphviz
     "sphinxcontrib.apidoc",
+    "sphinx.ext.doctest",
+    "sphinx.ext.intersphinx",
+    "sphinx.ext.mathjax",
+    "sphinx.ext.ifconfig",
+    "sphinx.ext.githubpages",
+    # "sphinxcontrib.bibtex",
 ]
 
 apidoc_module_dir = os.path.join(__location__, "malib")
-apidoc_exclude_paths = ["setup.py"]
+# apidoc_exclude_paths = ["setup.py"]
 apidoc_module_first = True
-apidoc_extra_args = [
-    "--force",
-    "--separate",
-    "--ext-viewcode",
-    "--doc-project=MALib",
-    "--maxdepth=2",
-]
+# apidoc_extra_args = [
+#     "--force",
+#     "--separate",
+#     "--ext-viewcode",
+#     "--doc-project=MALib",
+#     "--maxdepth=2",
+# ]
 
-exclude_patterns = ["tests/", "test*.py", "envs/multiagent_mujoco", "envs/star_craft2"]
+exclude_patterns = ["tests/", "test*.py"]
 
 # ensure __init__ is always documented
 autoclass_content = "both"
@@ -69,7 +76,7 @@ templates_path = ["_templates"]
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = []
+exclude_patterns = ["_build"]
 
 
 # -- Options for HTML output -------------------------------------------------
