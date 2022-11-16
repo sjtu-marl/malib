@@ -21,3 +21,17 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
+from malib.scenarios.scenario import Scenario
+from malib.scenarios.marl_scenario import (
+    execution_plan as marl_execution_plan,
+    MARLScenario,
+)
+
+
+class LeagueTrainingScenario(MARLScenario):
+    pass
+
+
+def execution_plan(experiment_tag: str, scenario: Scenario):
+    raise NotImplementedError
