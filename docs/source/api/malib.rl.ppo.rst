@@ -9,8 +9,18 @@ malib.rl.ppo package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rl.ppo.policy module
+--------------------------
 
-   malib.rl.ppo.policy
-   malib.rl.ppo.trainer
+.. automodule:: malib.rl.ppo.policy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.ppo.trainer module
+---------------------------
+
+.. automodule:: malib.rl.ppo.trainer
+   :members:
+   :undoc-members:
+   :show-inheritance:

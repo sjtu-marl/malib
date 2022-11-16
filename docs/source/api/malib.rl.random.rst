@@ -9,9 +9,26 @@ malib.rl.random package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rl.random.config module
+-----------------------------
 
-   malib.rl.random.config
-   malib.rl.random.policy
-   malib.rl.random.random_trainer
+.. automodule:: malib.rl.random.config
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.random.policy module
+-----------------------------
+
+.. automodule:: malib.rl.random.policy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.random.random\_trainer module
+--------------------------------------
+
+.. automodule:: malib.rl.random.random_trainer
+   :members:
+   :undoc-members:
+   :show-inheritance:

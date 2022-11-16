@@ -9,8 +9,18 @@ malib.rl.discrete\_sac package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rl.discrete\_sac.policy module
+------------------------------------
 
-   malib.rl.discrete_sac.policy
-   malib.rl.discrete_sac.trainer
+.. automodule:: malib.rl.discrete_sac.policy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.discrete\_sac.trainer module
+-------------------------------------
+
+.. automodule:: malib.rl.discrete_sac.trainer
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -9,9 +9,26 @@ malib.models.torch package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.models.torch.continuous module
+------------------------------------
 
-   malib.models.torch.continuous
-   malib.models.torch.discrete
-   malib.models.torch.net
+.. automodule:: malib.models.torch.continuous
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.models.torch.discrete module
+----------------------------------
+
+.. automodule:: malib.models.torch.discrete
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.models.torch.net module
+-----------------------------
+
+.. automodule:: malib.models.torch.net
+   :members:
+   :undoc-members:
+   :show-inheritance:

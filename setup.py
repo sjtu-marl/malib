@@ -69,6 +69,7 @@ setup(
             "sphinx",
             "sphinx-rtd-theme",
             "sphinxcontrib-apidoc",
+            "sphinxcontrib-bibtex",
             "pytest-profiling",
             "pytest-cov",
             "pytest-mock",

@@ -9,10 +9,34 @@ malib.common package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.common.distributions module
+---------------------------------
 
-   malib.common.distributions
-   malib.common.manager
-   malib.common.payoff_manager
-   malib.common.strategy_spec
+.. automodule:: malib.common.distributions
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.common.manager module
+---------------------------
+
+.. automodule:: malib.common.manager
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.common.payoff\_manager module
+-----------------------------------
+
+.. automodule:: malib.common.payoff_manager
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.common.strategy\_spec module
+----------------------------------
+
+.. automodule:: malib.common.strategy_spec
+   :members:
+   :undoc-members:
+   :show-inheritance:

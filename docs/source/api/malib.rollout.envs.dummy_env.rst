@@ -9,7 +9,10 @@ malib.rollout.envs.dummy\_env package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rollout.envs.dummy\_env.env module
+----------------------------------------
 
-   malib.rollout.envs.dummy_env.env
+.. automodule:: malib.rollout.envs.dummy_env.env
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -9,8 +9,18 @@ malib.rollout.envs.gr\_football package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rollout.envs.gr\_football.env module
+------------------------------------------
 
-   malib.rollout.envs.gr_football.env
-   malib.rollout.envs.gr_football.wrappers
+.. automodule:: malib.rollout.envs.gr_football.env
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rollout.envs.gr\_football.wrappers module
+-----------------------------------------------
+
+.. automodule:: malib.rollout.envs.gr_football.wrappers
+   :members:
+   :undoc-members:
+   :show-inheritance:

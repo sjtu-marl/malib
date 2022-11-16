@@ -10,14 +10,17 @@ Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 4
 
    malib.rollout.inference.ray
 
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rollout.inference.utils module
+------------------------------------
 
-   malib.rollout.inference.utils
+.. automodule:: malib.rollout.inference.utils
+   :members:
+   :undoc-members:
+   :show-inheritance:

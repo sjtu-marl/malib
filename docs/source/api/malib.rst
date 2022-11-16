@@ -10,7 +10,7 @@ Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 4
 
    malib.agent
    malib.backend
@@ -25,9 +25,26 @@ Subpackages
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.registration module
+-------------------------
 
-   malib.registration
-   malib.runner
-   malib.settings
+.. automodule:: malib.registration
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.runner module
+-------------------
+
+.. automodule:: malib.runner
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.settings module
+---------------------
+
+.. automodule:: malib.settings
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -9,7 +9,10 @@ malib.rollout.envs.maatari package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rollout.envs.maatari.env module
+-------------------------------------
 
-   malib.rollout.envs.maatari.env
+.. automodule:: malib.rollout.envs.maatari.env
+   :members:
+   :undoc-members:
+   :show-inheritance:

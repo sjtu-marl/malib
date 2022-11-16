@@ -9,9 +9,26 @@ malib.rl.dqn package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rl.dqn.config module
+--------------------------
 
-   malib.rl.dqn.config
-   malib.rl.dqn.policy
-   malib.rl.dqn.trainer
+.. automodule:: malib.rl.dqn.config
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.dqn.policy module
+--------------------------
+
+.. automodule:: malib.rl.dqn.policy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.dqn.trainer module
+---------------------------
+
+.. automodule:: malib.rl.dqn.trainer
+   :members:
+   :undoc-members:
+   :show-inheritance:

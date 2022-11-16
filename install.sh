@@ -21,5 +21,5 @@ conda clean -i
 conda install pytorch cudatoolkit=11.3 -c pytorch -y
 pip config set global.index-url https://mirror.sjtu.edu.cn/pypi/web/simple
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -e .
 #./install_sc2.sh

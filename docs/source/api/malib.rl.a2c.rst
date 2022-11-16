@@ -9,9 +9,26 @@ malib.rl.a2c package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rl.a2c.config module
+--------------------------
 
-   malib.rl.a2c.config
-   malib.rl.a2c.policy
-   malib.rl.a2c.trainer
+.. automodule:: malib.rl.a2c.config
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.a2c.policy module
+--------------------------
+
+.. automodule:: malib.rl.a2c.policy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.a2c.trainer module
+---------------------------
+
+.. automodule:: malib.rl.a2c.trainer
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -9,7 +9,10 @@ malib.rollout.envs.mpe package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rollout.envs.mpe.env module
+---------------------------------
 
-   malib.rollout.envs.mpe.env
+.. automodule:: malib.rollout.envs.mpe.env
+   :members:
+   :undoc-members:
+   :show-inheritance:

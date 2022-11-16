@@ -5,8 +5,8 @@
   :class: highlight
 
 
-MALib Key Concepts
-==================
+Key Concepts
+============
 
 This page will help you to understand the workflow of MALib to train a population-based reinforcement learning algorithm. As for implementing such an algorithm instance, key components including :python:`Policy`, :python:`Evaluator`, :python:`RolloutWorkerManager` and :python:`AgentInterfaceManager`. Functionally, the :python:`AgentInterfaceManager` is responsible for a cluster of :python:`AgentInterface`, while the :python:`RolloutWorkerManager` for a cluster of :python:`RolloutWorker`. The :python:`Policy` is implemented as a behavior interface that packs models that parameterize an agent policy. As for the nested reinforcement learning algorithm, we depart it as a coordination of :python:`AgentInterfaceManage` and :python:`RolloutWorkerManager`. We pack all of them as a scenario which isolates the details of components interaction.
 

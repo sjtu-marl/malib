@@ -10,7 +10,7 @@ Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 4
 
    malib.rollout.envs.dummy_env
    malib.rollout.envs.gr_football
@@ -24,8 +24,18 @@ Subpackages
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rollout.envs.env module
+-----------------------------
 
-   malib.rollout.envs.env
-   malib.rollout.envs.vector_env
+.. automodule:: malib.rollout.envs.env
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rollout.envs.vector\_env module
+-------------------------------------
+
+.. automodule:: malib.rollout.envs.vector_env
+   :members:
+   :undoc-members:
+   :show-inheritance:

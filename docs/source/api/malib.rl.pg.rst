@@ -9,9 +9,26 @@ malib.rl.pg package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rl.pg.config module
+-------------------------
 
-   malib.rl.pg.config
-   malib.rl.pg.policy
-   malib.rl.pg.trainer
+.. automodule:: malib.rl.pg.config
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.pg.policy module
+-------------------------
+
+.. automodule:: malib.rl.pg.policy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.pg.trainer module
+--------------------------
+
+.. automodule:: malib.rl.pg.trainer
+   :members:
+   :undoc-members:
+   :show-inheritance:

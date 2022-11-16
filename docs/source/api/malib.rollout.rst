@@ -10,7 +10,7 @@ Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 4
 
    malib.rollout.envs
    malib.rollout.inference
@@ -18,9 +18,26 @@ Subpackages
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rollout.manager module
+----------------------------
 
-   malib.rollout.manager
-   malib.rollout.pb_rolloutworker
-   malib.rollout.rolloutworker
+.. automodule:: malib.rollout.manager
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rollout.pb\_rolloutworker module
+--------------------------------------
+
+.. automodule:: malib.rollout.pb_rolloutworker
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rollout.rolloutworker module
+----------------------------------
+
+.. automodule:: malib.rollout.rolloutworker
+   :members:
+   :undoc-members:
+   :show-inheritance:

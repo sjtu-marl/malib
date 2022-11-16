@@ -9,9 +9,26 @@ malib.rl.common package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rl.common.misc module
+---------------------------
 
-   malib.rl.common.misc
-   malib.rl.common.policy
-   malib.rl.common.trainer
+.. automodule:: malib.rl.common.misc
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.common.policy module
+-----------------------------
+
+.. automodule:: malib.rl.common.policy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.common.trainer module
+------------------------------
+
+.. automodule:: malib.rl.common.trainer
+   :members:
+   :undoc-members:
+   :show-inheritance:

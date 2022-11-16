@@ -9,7 +9,10 @@ malib.rollout.envs.open\_spiel package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rollout.envs.open\_spiel.env module
+-----------------------------------------
 
-   malib.rollout.envs.open_spiel.env
+.. automodule:: malib.rollout.envs.open_spiel.env
+   :members:
+   :undoc-members:
+   :show-inheritance:

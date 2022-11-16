@@ -9,7 +9,10 @@ malib.rollout.envs.mdp package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rollout.envs.mdp.env module
+---------------------------------
 
-   malib.rollout.envs.mdp.env
+.. automodule:: malib.rollout.envs.mdp.env
+   :members:
+   :undoc-members:
+   :show-inheritance:

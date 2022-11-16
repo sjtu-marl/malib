@@ -9,8 +9,18 @@ malib.rollout.inference.ray package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rollout.inference.ray.client module
+-----------------------------------------
 
-   malib.rollout.inference.ray.client
-   malib.rollout.inference.ray.server
+.. automodule:: malib.rollout.inference.ray.client
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rollout.inference.ray.server module
+-----------------------------------------
+
+.. automodule:: malib.rollout.inference.ray.server
+   :members:
+   :undoc-members:
+   :show-inheritance:

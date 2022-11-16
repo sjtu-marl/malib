@@ -2,12 +2,12 @@
 <div align=center><img src="docs/imgs/logo.svg" width="35%"></div>
 
 
-# MALib: A parallel framework for population-based multi-agent reinforcement learning
+# MALib: A parallel framework for population-based reinforcement learning
 
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/sjtu-marl/malib/blob/main/LICENSE)
 [![Documentation Status](https://readthedocs.org/projects/malib/badge/?version=latest)](https://malib.readthedocs.io/en/latest/?badge=latest)
 
-MALib is a parallel framework of population-based learning nested with (multi-agent) reinforcement learning (RL) methods, such as Policy Space Response Oracle, Self-Play and Neural Fictitious Self-Play. MALib provides higher-level abstractions of MARL training paradigms, which enables efficient code reuse and flexible deployments on different distributed computing paradigms. The design of MALib also strives to promote the research of other multi-agent learning, including multi-agent imitation learning and model-based MARL.
+MALib is a parallel framework of population-based learning nested with reinforcement learning methods, such as Policy Space Response Oracle, Self-Play, and Neural Fictitious Self-Play. MALib provides higher-level abstractions of MARL training paradigms, which enables efficient code reuse and flexible deployments on different distributed computing paradigms.
 
 ![architecture](docs/imgs/Architecture.svg)
 
@@ -28,11 +28,10 @@ conda activate malib
 
 MALib integrates many popular reinforcement learning environments, we list some of them as follows.
 
+- [OpenSpiel](https://github.com/deepmind/open_spiel): A framework for Reinforcement Learning in games, it provides plenty of environments for the research of game theory.
+- [Gym](https://github.com/openai/gym): An open source environment collections for developing and comparing reinforcement learning algorithms.
 - [Google Research Football](https://github.com/google-research/football): RL environment based on open-source game Gameplay Football.
 - [SMAC](https://github.com/oxwhirl/smac): An environment for research in the field of collaborative multi-agent reinforcement learning (MARL) based on Blizzard's StarCraft II RTS game.
-- [Gym](https://github.com/openai/gym): An open source environment collections for developing and comparing reinforcement learning algorithms.
-- [PettingZoo](https://github.com/Farama-Foundation/PettingZoo): Gym for multi-agent reinforcement learning.
-- [OpenSpiel](https://github.com/deepmind/open_spiel): A framework for Reinforcement Learning in games, it provides plenty of environments for the research of game theory.
 
 In addition, users can customize environments with MALib's environment interfaces. Please refer to our documentation.
 
@@ -49,9 +48,9 @@ cd malib
 export PYTHONPATH=./
 ```
 
-- Training PSRO with running `python examples/run_psro.py`
-- Training Gym example with running `python examples/run_gym.py`
-- Training Google Research Football cases you can run `python examples/run_grfootball.py`. It runs single agent training by default, you can activate group training with `--use_group`.
+- Running PSRO example: `python examples/run_psro.py`
+- Running RL example: `python examples/run_gym.py`
+
 ## Documentation
 
 See [MALib Docs](https://malib.readthedocs.io/)

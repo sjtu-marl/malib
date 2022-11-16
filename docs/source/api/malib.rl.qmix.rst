@@ -9,8 +9,18 @@ malib.rl.qmix package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rl.qmix.q\_mixer module
+-----------------------------
 
-   malib.rl.qmix.q_mixer
-   malib.rl.qmix.trainer
+.. automodule:: malib.rl.qmix.q_mixer
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.qmix.trainer module
+----------------------------
+
+.. automodule:: malib.rl.qmix.trainer
+   :members:
+   :undoc-members:
+   :show-inheritance:

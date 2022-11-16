@@ -9,7 +9,10 @@ malib.remote package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.remote.interface module
+-----------------------------
 
-   malib.remote.interface
+.. automodule:: malib.remote.interface
+   :members:
+   :undoc-members:
+   :show-inheritance:

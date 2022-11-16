@@ -9,7 +9,10 @@ malib.rollout.envs.gym package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rollout.envs.gym.env module
+---------------------------------
 
-   malib.rollout.envs.gym.env
+.. automodule:: malib.rollout.envs.gym.env
+   :members:
+   :undoc-members:
+   :show-inheritance:

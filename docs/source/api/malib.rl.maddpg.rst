@@ -9,8 +9,18 @@ malib.rl.maddpg package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rl.maddpg.loss module
+---------------------------
 
-   malib.rl.maddpg.loss
-   malib.rl.maddpg.trainer
+.. automodule:: malib.rl.maddpg.loss
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.maddpg.trainer module
+------------------------------
+
+.. automodule:: malib.rl.maddpg.trainer
+   :members:
+   :undoc-members:
+   :show-inheritance:

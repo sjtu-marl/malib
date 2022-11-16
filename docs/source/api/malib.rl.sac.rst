@@ -9,8 +9,18 @@ malib.rl.sac package
 Submodules
 ----------
 
-.. toctree::
-   :maxdepth: 2
+malib.rl.sac.policy module
+--------------------------
 
-   malib.rl.sac.policy
-   malib.rl.sac.trainer
+.. automodule:: malib.rl.sac.policy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.rl.sac.trainer module
+---------------------------
+
+.. automodule:: malib.rl.sac.trainer
+   :members:
+   :undoc-members:
+   :show-inheritance:
