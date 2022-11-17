@@ -32,7 +32,7 @@ jobs:
         pip install -e .
         pip install -e .[dev]
     - name: Run tests and collect coverage
-      run: make test
+      run: make test-verbose
     - name: Upload coverage reports to Codecov
       run: |
         # Replace `linux` below with the appropriate OS
