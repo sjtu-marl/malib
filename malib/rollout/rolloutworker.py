@@ -290,6 +290,9 @@ class RolloutWorker(RemoteInterface):
         """
 
         # interact with environment
+        if self.inference_server_cls is None:
+            return None
+
         obs_spaces = env_desc["observation_spaces"]
         act_spaces = env_desc["action_spaces"]
 
@@ -435,6 +438,7 @@ class RolloutWorker(RemoteInterface):
         self.set_running(True)
 
         start_time = time.time()
+        # TODO(ming): share the stopping conditions here
         while self.is_running():
             eval_step = (epoch + 1) % self.rollout_config["eval_interval"] == 0
             results = self.step_rollout(eval_step, rollout_config, queue_info_dict)
