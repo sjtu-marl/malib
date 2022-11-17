@@ -19,7 +19,7 @@ This page will help you to understand the workflow of MALib to train a populatio
 Scenarios
 ---------
 
-A scenario defines indicates a training instance, it brings all MALib components and the resource management together. Users can create their own scenario by inheriting the ``Scenario`` class, as we have implemented two standard scenarios under the :doc:`api/malib.scenarios`. To deployment a scenario as an instance, you only need to implement an scenario instance like ``PSROScenario``, then load it to the runner interface that locates under :doc:`api/malib.runner`. An example is listed as follow
+A scenario defines indicates a training instance, it brings all MALib components and the resource management together. Users can create their own scenario by inheriting the ``Scenario`` class, as we have implemented two standard scenarios under the :doc:`api/malib.scenarios`. To deploy a scenario as an instance, you only need to implement an scenario instance like ``PSROScenario``, then load it to the runner interface that locates under :doc:`api/malib.runner`. An example is listed as follow
 
 .. code-block:: python
 

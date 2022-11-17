@@ -35,41 +35,45 @@ from dataclasses import dataclass
 from malib.utils.typing import AgentID, PolicyID
 from malib.common.strategy_spec import StrategySpec
 
-try:
-    from open_spiel.python.egt import alpharank, utils as alpharank_utils
-except ImportError as e:
-    warnings.warning(
-        "Cannot import alpharank utils, if you wanna run meta game experiments, please install open_spiel before that."
-    )
+from open_spiel.python.egt import alpharank, utils as alpharank_utils
 
 
 class DefaultSolver:
     """A Solver to find certain solution concept, e.g. nash equilibrium."""
 
     def __init__(self, solve_method="fictitious_play"):
-        """Initialze the solver
+        """Construct a meta solver.
 
-        :param solve_method: a string to tell which solve method should be used, "fictious_play" or "alpharank",default="fictitous_play".
+        Args:
+            solve_method (str, optional): a string to tell which solve method should be used, "fictious_play" or "alpharank". Defaults to "fictitious_play".
         """
+
         self._solve_method = solve_method
 
-    def fictitious_play(self, payoffs_seq):
-        """solve the game with fictitious play, only suppoort 2-player games
+    def fictitious_play(self, payoffs_seq: List[np.ndarray]) -> List[List[float]]:
+        """Solve the game with fictitious play, only suppoort 2-player games
 
-        :param payoffs_seq: a sequence of the game's payoff matrix, which can be of length one or two, when of length one, just as take [M, -M] as input
-        :return: the nash equilirium computed by fictious play, which order is corresponding to *payoff_seq*
+        Args:
+            payoffs_seq (List[np.ndarray]): A sequence of the game's payoff matrix, which can be of length one or two, when of length one, just as take [M, -M] as inpu
+
+        Returns:
+            List[List[float]]: the nash equilirium computed by fictious play, which order is corresponding to *payoff_seq*
         """
+
         game = nash.Game(*payoffs_seq)
 
         *_, eqs = iter(game.fictitious_play(iterations=10000))
         eqs = [tuple(map(lambda x: x / np.sum(x), eqs))]
         return eqs[0]
 
-    def alpharank(self, payoffs_seq):
+    def alpharank(self, payoffs_seq: List[np.ndarray]) -> List[List[float]]:
         """Use alpharank to solve the game, for more details, you can check https://github.com/deepmind/open_spiel/blob/master/docs/alpha_rank.md
 
-        :param payoffs_seq: a sequence of empirical payoffs
-        :return: the solution computed by alpharank, which is a sequnce of np.ndarray of probability in each population
+        Args:
+            payoffs_seq (List[np.ndarray]): A sequence of empirical payoffs
+
+        Returns:
+            List[List[float]]: the solution computed by alpharank, which is a sequnce of np.ndarray of probability in each population
         """
 
         def remove_epsilon_negative_probs(probs, epsilon=1e-9):
@@ -129,7 +133,16 @@ class DefaultSolver:
 
         return marginals
 
-    def solve(self, payoffs_seq):
+    def solve(self, payoffs_seq: List[np.ndarray]) -> List[List[float]]:
+        """Solve meta game which defined by payoffs_seq, then return a list of meta-strategies.
+
+        Args:
+            payoffs_seq (List[np.ndarray]): A list of payoff matrices.
+
+        Returns:
+            List[List[float]]: A list of meta-strategies.
+        """
+
         if self._solve_method == "fictitious_play" and len(payoffs_seq) == 2:
             return self.fictitious_play(payoffs_seq)
         elif self._solve_method == "alpharank":  # when number of players > 2
@@ -137,16 +150,49 @@ class DefaultSolver:
 
 
 class SimulationFlag:
-    def __init__(self, data):
+    def __init__(self, data: np.ndarray):
+        """Construct a simulation flag instance with a given table.
+
+        Note:
+            The data type of given table should be `bool`
+
+        Args:
+            data (np.ndarray): An np-array like simulation table.
+        """
+
         self._data = data
+        assert self._data.dtype == bool, self._data.dtype
 
     @property
-    def data(self):
+    def data(self) -> np.ndarray:
+        """Return the inner meta table.
+
+        Returns:
+            np.ndarray: The meata table.
+        """
+
         return self._data
 
+    @property
+    def shape(self) -> Sequence[int]:
+        """Return a tuple that defines the shape of simulation table.
+
+        Returns:
+            Sequence[int]: A sequence of int that indicates the shape of simulation table.
+        """
+
+        return self._data.shape
+
     @data.setter
-    def data(self, value):
+    def data(self, value: np.ndarray):
+        """Set meta data with given value
+
+        Args:
+            value (np.ndarray): An np-array like data table.
+        """
+
         self._data = value
+        assert self._data.dtype == bool, self._data.dtype
 
 
 @dataclass
@@ -167,7 +213,8 @@ class PayoffTable:
                 len(self.agents),
             )
         else:
-            self.table = np.zeros([0] * len(self.agents), dtype=np.float32)
+            # XXX(ming): should be as the same shape as simulation table?
+            self.table = np.zeros(self.shared_simulation_flag.shape, dtype=np.float32)
 
     def __getitem__(self, key: Dict[str, Sequence[PolicyID]]) -> np.ndarray:
         """Return a sub matrix"""
@@ -203,16 +250,24 @@ class PayoffTable:
         idx = self._get_combination_index(population_mapping)
         self.shared_simulation_flag.data[idx] = True
 
-    def expand_table(self, pad_info):
-        """Expand payoff table along my axis."""
+    def expand_table(self, pad_info: List[Sequence[int]]):
+        """Expand payoff table with given padding information.
 
-        # head and tail
+        Note:
+            The given padding information should follows the rule that expands axes righthand, which means \
+                each padding sequence as the item in `pad_info` should start from 0, and end with a non-negative integer.
+
+        Args:
+            pad_info (List[Sequence[int]]): A list of padding sequence
+        """
 
         if not any(self.table.shape):
             pad_info = [(0, 1)] * len(self.agents)
         self.table = np.pad(self.table, pad_info)
+
         # check whether there is need to expand
         if self.shared_simulation_flag.data.shape != self.table.shape:
+            # FIXME(ming): update shared simulation flagging should make sure the consistency
             self.shared_simulation_flag.data = np.pad(
                 self.shared_simulation_flag.data, pad_info
             )
@@ -253,13 +308,33 @@ class PayoffManager:
     def __init__(
         self,
         agent_names: Sequence[str],
-        agent_mapping_func: Callable,
+        agent_mapping_func: Callable[[AgentID], str],
         solve_method="fictitious_play",
     ):
-        """Construct a payoff manager.
+        """Construct a payoff manager that maintains payoff tables for all involved players.
+
+        Note:
+            The `agent_mapping_func` should keep consistency with the learning workflow, i.e., \
+                the mapping space should be equivalent to the `AgentInterface` naming space.
+
+        Examples:
+            >>> agents = [f'player_{i}' for i in range(3)]
+            >>> agent_mapping_func = lambda agent: agent
+            >>> solve_method = 'fictitious_play'
+            >>> manager = PayoffManager(agents, agent_mapping_func, solve_method)
+            >>> # update payoff tables after population evaluation
+            >>> # suppose the evaluation result is related to a dict of strategy specs
+            >>> strategy_specs = {agent: StrategySpec() for agent in agents}
+            >>> # and the evaluation results is a dict that contains `evaluation`
+            >>> eval_results = {'evaluation': {f'agent_reward/{agent}_mean': 1. for agent in agents}}
+            >>> # update payoff accepts a list of tuple
+            >>> mananger.update_payoff([(strategy_specs, eval_results)])
+            >>> # or retrive policy combinations that require simulations
+            >>> manager.get_matchups_eval_needed()
 
         Args:
             agent_names (Sequence[str]): a sequence of names which indicate players in the game
+            agent_mapping_func (Callable[[AgentID], str]): A mapping function that maps an agent id to a resulted identifier.
             solve_method (str, optional): The method used to solve the game, "fictitious_play" or "alpharank". Defaults to "fictitious_play".
         """
 
@@ -271,12 +346,9 @@ class PayoffManager:
             np.zeros([0] * len(self.agents), dtype=bool)
         )
 
-        # a map for each player in which is a list
-        # self._policy = {an: [] for an in agent_names}
-        # self._policy_idx = {an: {} for an in agent_names}
-        # self._policy_config = {an: [] for an in agent_names}
-
         # table for each player
+        # FIXME(ming): there is an implicit bug that the shared_simulation_flag is not realy shared
+        #   between the payoff tables, since each table will update their simulation flag independently.
         self._payoff_tables = {
             agent: PayoffTable(
                 agent, self.agents, shared_simulation_flag=self.shared_simulation_flag
@@ -284,12 +356,10 @@ class PayoffManager:
             for agent in self.agents
         }
 
-        # a list store equilibria, in which is a dict of the
-        #  population distribution of each player
         self._equilibrium = {}
 
     @property
-    def payoffs(self) -> Dict[AgentID, PayoffTable]:
+    def payoffs(self) -> Dict[AgentID, PayoffTable]:  # pragma: no cover
         """Return a copy of payoff tables.
 
         Returns:
@@ -299,10 +369,16 @@ class PayoffManager:
         return self._payoff_tables.copy()
 
     @property
-    def equilibrium_cache(self):
+    def equilibrium_cache(self):  # pragma: no cover
         return self._equilibrium
 
     def expand(self, strategy_specs: Dict[str, StrategySpec]):
+        """Expand payoff tables for each player, and preset the value as zeros.
+
+        Args:
+            strategy_specs (Dict[str, StrategySpec]): A dict mapping from runtime ids to StrategySpecs.
+        """
+
         agent_pids = {}
         for agent in self.agents:
             rid = self.agent_mapping_func(agent)
@@ -313,18 +389,23 @@ class PayoffManager:
         for agent in self.agents:
             self._payoff_tables[agent][agent_pids] = 0.0
 
-    def check_done(self, population_mapping: Dict):
+    def check_done(self, population_mapping: Dict[str, Sequence[PolicyID]]) -> bool:
         """Check whether all payoff values have been updated, a population_mapping
         will be hashed as a key to retrieve the simulation status table shared by
         related agents.
 
-        :param Dict population_mapping: a dict of (agent_name, policy
+        Args:
+            population_mapping (Dict[str, Sequence[PolicyID]]): A dict mapping from agent ids to a sequence of policy ids.
+
+        Returns:
+            bool: Indicates whether the simualtions have been all done for this population mapping.
         """
 
         # XXX(ming): another more efficient method is to check simulation done with
         #  sub-matrix extraction
         #  >>> policy_comb_idx = self._get_combination_index(policy_mapping)
         #  >>> all_done = np.alltrue(simulation[policy_comb_idx])
+
         all_done = True
         for agent in population_mapping.keys():
             all_done = self._payoff_tables[agent].is_simulation_done(population_mapping)
@@ -511,17 +592,6 @@ class PayoffManager:
             Dict[AgentID, Dict[PolicyID, Union[float, np.ndarray]]]: The Nash equilibrium.
         """
 
-        # Get the equilibrium stored in the payoff manager
-
-        # :param Dict[AgentID,Sequence[PolicyID]] population_mapping: a dict from agent_name to a sequence of policy ids
-        # :return: the nash equilibrium which is a dict from agent_name to a dict from policy id to float
-        # >>> eqbm = {"player_0": {"policy_0": 1.0, "policy_1": 0.0}, "player_1": {"policy_0": 0.3, "policy_1": 0.7}}
-        # >>> population_mapping = {"player_0": ["policy_0", "policy_1"], "player_1": ["policy_0", "policy_1"]}
-        # >>> self.update_equilibrium(population_mapping, eqbm)
-        # >>> self.get_equilibrium(population_mapping)
-        # ... {"player_0": {"policy_0": 1.0, "policy_1": 0.0}, "player_1": {"policy_0": 0.3, "policy_1": 0.7}}
-        #
-
         hash_key = self._hash_population_mapping(population_mapping)
         agent = list(population_mapping.keys())[0]
         assert hash_key in self._equilibrium, (
@@ -549,34 +619,6 @@ class PayoffManager:
                 ans += pid + ","
             ans += ";"
         return ans
-
-    # def _get_pending_matchups(
-    #     self, agent_name: AgentID, policy_id: PolicyID, policy_config: Dict[str, Any]
-    # ) -> List[Dict]:
-    #     """Generate match description with policy combinations"""
-
-    #     agent_policy_list = []
-    #     for an in self.agents:
-    #         if an == agent_name:
-    #             agent_policy_list.append([(policy_id, policy_config)])
-    #         else:
-    #             # skip empty policy
-    #             if len(self._policy[an]) == 0:
-    #                 continue
-    #             # append all other agent policies
-    #             agent_policy_list.append(
-    #                 list(zip(self._policy[an], self._policy_config[an]))
-    #             )
-
-    #     # if other agents has no available policies, return an empty list
-    #     if len(agent_policy_list) < len(self.agents):
-    #         return []
-
-    #     pending_comb_list = [comb for comb in itertools.product(*agent_policy_list)]
-    #     return [
-    #         {an: pending_comb[i] for i, an in enumerate(self.agents)}
-    #         for pending_comb in pending_comb_list
-    #     ]
 
     def get_matchups_eval_needed(
         self, specs_template: Dict[str, StrategySpec]
@@ -609,25 +651,25 @@ class PayoffManager:
             res.append(specs)
         return res
 
-    def get_pending_matchups(
-        self, agent_name: AgentID, policy_id: PolicyID, policy_config: Dict[str, Any]
-    ) -> List[Dict]:
-        """Add a new policy for an agent and get the needed matches.
+    # def get_pending_matchups(
+    #     self, agent_name: AgentID, policy_id: PolicyID, policy_config: Dict[str, Any]
+    # ) -> List[Dict]:
+    #     """Add a new policy for an agent and get the needed matches.
 
-        :param AgentID agent_name: the agent name for which a new policy will be added
-        :param PolicyID policy_id: the policy to be added
-        :param Dict[str,Any] policy_config: the config of the added policy
-        :return: a list of match combinations, each is a dict from agent_name to a tuple of policy_id and policy_config
-        """
-        if policy_id in self._policy[agent_name]:
-            return []
+    #     :param AgentID agent_name: the agent name for which a new policy will be added
+    #     :param PolicyID policy_id: the policy to be added
+    #     :param Dict[str,Any] policy_config: the config of the added policy
+    #     :return: a list of match combinations, each is a dict from agent_name to a tuple of policy_id and policy_config
+    #     """
+    #     if policy_id in self._policy[agent_name]:
+    #         return []
 
-        # May have some problems for concurrent version, but we have no demand for a concurrent payoff table ...
-        # self._policy_idx[agent_name][policy_id] = len(self._policy[agent_name])
-        # self._policy[agent_name].append(policy_id)
-        # self._policy_config[agent_name].append(policy_config)
+    #     # May have some problems for concurrent version, but we have no demand for a concurrent payoff table ...
+    #     # self._policy_idx[agent_name][policy_id] = len(self._policy[agent_name])
+    #     # self._policy[agent_name].append(policy_id)
+    #     # self._policy_config[agent_name].append(policy_config)
 
-        # policy_mapping_list = self._get_pending_matchups(agent_name, policy_id, policy_config)
-        # generate strategy specs list here
+    #     # policy_mapping_list = self._get_pending_matchups(agent_name, policy_id, policy_config)
+    #     # generate strategy specs list here
 
-        return None
+    #     return None

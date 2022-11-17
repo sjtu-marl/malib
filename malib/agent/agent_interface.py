@@ -141,10 +141,10 @@ class AgentInterface(RemoteInterface, ABC):
         self._active_tups = deque()
         self.verbose = verbose
 
-    def connect(self):
+    def connect(self, max_tries: int = 10):
         """Connect backend server"""
 
-        while True:
+        while max_tries > 0:
             try:
                 if self._parameter_server is None:
                     self._parameter_server = ray.get_actor(
@@ -157,6 +157,7 @@ class AgentInterface(RemoteInterface, ABC):
                 break
             except Exception as e:
                 Logger.debug(f"{e}")
+                max_tries -= 1
                 time.sleep(1)
                 continue
 
@@ -192,10 +193,10 @@ class AgentInterface(RemoteInterface, ABC):
 
         return self._strategy_spec
 
-    def get_algorithm(self, key) -> Any:
+    def get_algorithm(self, key) -> Any: # pragma: no cover
         return self._algorithms[key]
 
-    def get_algorthms(self) -> Dict[str, Any]:
+    def get_algorthms(self) -> Dict[str, Any]: # pragma: no_cover
         return self._algorithms
 
     def push(self):

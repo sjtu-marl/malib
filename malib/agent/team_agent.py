@@ -25,5 +25,5 @@
 from malib.agent.agent_interface import AgentInterface
 
 
-class AsyncAgent(AgentInterface):
+class TeamAgent(AgentInterface):
     pass
