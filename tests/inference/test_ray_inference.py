@@ -60,7 +60,10 @@ def dqn():
             DQNPolicy,
             DQNTrainer,
             # model configuration, None for default
-            {},
+            {
+                "net_type": "general_net",
+                "config": {"hidden_sizes": [64, 64]},
+            },
             {},
         )
     }
@@ -86,7 +89,7 @@ def build_marl_scenario(
         "max_step": 20,
         "num_eval_episodes": 10,
         "num_threads": 2,
-        "num_env_per_thread": 5,
+        "num_env_per_thread": 2,
         "num_eval_threads": 1,
         "use_subproc_env": False,
         "batch_mode": "time_step",
@@ -268,8 +271,8 @@ def data_servers():
     "env_desc",
     [
         gym_env_desc_gen(env_id="CartPole-v1"),
-        open_spiel_env_desc_gen(env_id="kuhn_poker"),
-        mdp_env_desc_gen(env_id="two_round_dmdp"),
+        # open_spiel_env_desc_gen(env_id="kuhn_poker"),
+        # mdp_env_desc_gen(env_id="two_round_dmdp"),
     ],
 )
 @pytest.mark.parametrize("learner_cls", [IndependentAgent])
@@ -301,7 +304,6 @@ def test_inference_mechanism(env_desc, learner_cls, algorithms, trainer_config):
 
     # add policies and start training
     strategy_specs = training_manager.add_policies(n=scenario.num_policy_each_interface)
-    training_manager = training_manager
     strategy_specs = strategy_specs
     data_entrypoints = data_entrypoints
 
