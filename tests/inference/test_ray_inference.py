@@ -1,3 +1,27 @@
+# MIT License
+
+# Copyright (c) 2021 MARL @ SJTU
+
+# Author: Ming Zhou
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 from multiprocessing.util import is_exiting
 from typing import Callable, Dict, Any, List, Tuple
 from argparse import Namespace
@@ -8,7 +32,6 @@ import ray
 
 from malib.agent.agent_interface import AgentInterface
 from malib.agent.manager import TrainingManager
-from malib.backend.offline_dataset_server import OfflineDataset
 from malib.backend.parameter_server import ParameterServer
 
 # from malib.rollout.envs.dummy_env import env_desc_gen
@@ -233,37 +256,12 @@ def rollout_func(
         cnt += 1
 
 
-from malib import settings
+def data_servers():
+    if not ray.is_initialized():
+        ray.init()
 
-
-@pytest.fixture(autouse=True)
-def dataset_server():
-    try:
-        server = (
-            OfflineDataset.as_remote(num_cpus=0)
-            .options(name=settings.OFFLINE_DATASET_ACTOR, max_concurrency=100)
-            .remote(table_capacity=10000)
-        )
-        ray.get(server.start.remote())
-    except ValueError:
-        server = ray.get_actor(settings.OFFLINE_DATASET_ACTOR)
-
-    return server
-
-
-@pytest.fixture(autouse=True)
-def parameter_server():
-    try:
-        server = (
-            ParameterServer.as_remote(num_cpus=1)
-            .options(name=settings.PARAMETER_SERVER_ACTOR, max_concurrency=100)
-            .remote()
-        )
-        ray.get(server.start.remote())
-    except ValueError:
-        server = ray.get_actor(settings.PARAMETER_SERVER_ACTOR)
-
-    return server
+    parameter_server, offline_dataset_server = start_servers()
+    return parameter_server, offline_dataset_server
 
 
 @pytest.mark.parametrize(
@@ -276,9 +274,8 @@ def parameter_server():
 )
 @pytest.mark.parametrize("learner_cls", [IndependentAgent])
 @pytest.mark.parametrize("algorithms,trainer_config", [dqn()])
-def test_inference_mechanism(
-    env_desc, learner_cls, algorithms, trainer_config, dataset_server, parameter_server
-):
+def test_inference_mechanism(env_desc, learner_cls, algorithms, trainer_config):
+    parameter_server, dataset_server = data_servers()
     scenario: MARLScenario = build_marl_scenario(
         algorithms,
         env_desc,
@@ -307,8 +304,6 @@ def test_inference_mechanism(
     training_manager = training_manager
     strategy_specs = strategy_specs
     data_entrypoints = data_entrypoints
-
-    # training_manager.run(data_entrypoints)
 
     rollout_config = scenario.rollout_config.copy()
     rollout_config["flag"] = "rollout"
@@ -340,6 +335,10 @@ def test_inference_mechanism(
 
     for rid, identifier in data_entrypoints.items():
         ray.get(dataset_server.end_producer_pipe.remote(identifier))
+
+    ray.kill(parameter_server)
+    ray.kill(dataset_server)
+    ray.shutdown()
 
 
 # def test_inference_pipeline(self):

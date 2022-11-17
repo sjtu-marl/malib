@@ -12,6 +12,8 @@ omit =
 	malib/runner.py
 	malib/models/*
 	malib/common/distributions.py
+	malib/agent/team_agent.py
+	malib/agent/async_agent.py
 
 
 [report]

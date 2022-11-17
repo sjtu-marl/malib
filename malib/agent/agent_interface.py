@@ -193,10 +193,10 @@ class AgentInterface(RemoteInterface, ABC):
 
         return self._strategy_spec
 
-    def get_algorithm(self, key) -> Any: # pragma: no cover
+    def get_algorithm(self, key) -> Any:  # pragma: no cover
         return self._algorithms[key]
 
-    def get_algorthms(self) -> Dict[str, Any]: # pragma: no_cover
+    def get_algorthms(self) -> Dict[str, Any]:  # pragma: no_cover
         return self._algorithms
 
     def push(self):

@@ -22,7 +22,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Test agent interface start up here"""
 
 from types import LambdaType
 from typing import Dict, Any, Dict, List, Set, Tuple, Type
@@ -33,14 +32,12 @@ import ray
 
 from collections import defaultdict
 
-from malib import settings
+from malib.runner import start_servers
 from malib.utils.typing import AgentID
 from malib.agent import IndependentAgent
 from malib.agent.manager import TrainingManager
 from malib.scenarios.marl_scenario import MARLScenario
 from malib.rl.random import RandomPolicy, RandomTrainer, DEFAULT_CONFIG
-from malib.backend.offline_dataset_server import OfflineDataset
-from malib.backend.parameter_server import ParameterServer
 
 
 def default_algorithms():
@@ -70,8 +67,7 @@ def agent_mapping_one_to_one(
     "training_type,custom_training_config", [(IndependentAgent, {})]
 )
 class TestTrainingManager:
-    @pytest.fixture(autouse=True)
-    def init(
+    def test_policy_add(
         self,
         algorithms: Dict[str, Any],
         env_desc: Dict[str, Any],
@@ -92,29 +88,7 @@ class TestTrainingManager:
         if not ray.is_initialized():
             ray.init()
 
-        try:
-            offline_dataset_server = (
-                OfflineDataset.as_remote(num_cpus=0)
-                .options(name=settings.OFFLINE_DATASET_ACTOR)
-                .remote(table_capacity=100)
-            )
-        except ValueError:
-            print("detected existing offline dataset server")
-            offline_dataset_server = ray.get_actor(settings.OFFLINE_DATASET_ACTOR)
-
-        try:
-            parameter_server = (
-                ParameterServer.as_remote(num_cpus=1)
-                .options(name=settings.PARAMETER_SERVER_ACTOR)
-                .remote()
-            )
-        except ValueError:
-            print("detected exisitng parameter server")
-            parameter_server = ray.get_actor(settings.PARAMETER_SERVER_ACTOR)
-
-        ray.get(
-            [parameter_server.start.remote(), offline_dataset_server.start.remote()]
-        )
+        parameter_server, offline_dataset_server = start_servers()
 
         training_config = {
             "type": training_type,
@@ -151,7 +125,5 @@ class TestTrainingManager:
             target_agent_groups.keys(),
         )
 
-    def test_policy_add(self):
-        """Test policy adding function"""
-
         self.training_manager.add_policies(n=1)
+        ray.shutdown()

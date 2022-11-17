@@ -65,7 +65,7 @@ def read_table(
                     batch, indices = buffer.sample(batch_size)
                 else:
                     batch, indices = [], np.array([], int)
-            reader.put_nowait((batch, indices))
+                reader.put_nowait((batch, indices))
         except Exception as e:
             break
 
