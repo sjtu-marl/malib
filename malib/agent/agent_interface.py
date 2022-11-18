@@ -23,14 +23,15 @@
 # SOFTWARE.
 
 
-from abc import ABC, abstractmethod
-import traceback
 from typing import Dict, Any, Tuple, Callable, Type, List
+from abc import ABC, abstractmethod
+from collections import deque
 
 import os
+import copy
 import time
+import traceback
 
-from collections import deque
 
 import torch
 import ray
@@ -141,19 +142,29 @@ class AgentInterface(RemoteInterface, ABC):
         self._active_tups = deque()
         self.verbose = verbose
 
-    def connect(self, max_tries: int = 10):
-        """Connect backend server"""
+    def connect(
+        self,
+        max_tries: int = 10,
+        dataset_server_ref: str = None,
+        parameter_server_ref: str = None,
+    ):
+        """Try to connect with backend, i.e., parameter server and offline dataset server. If the reference of dataset server or parameter server is not been given, then the agent will use default settings.
+
+        Args:
+            max_tries (int, optional): Maximum of trails. Defaults to 10.
+            dataset_server_ref (str, optional): Name of ray-based dataset server. Defaults to None.
+            parameter_server_ref (str, optional): Name of ray-based parameter server. Defaults to None.
+        """
+
+        parameter_server_ref = parameter_server_ref or settings.PARAMETER_SERVER_ACTOR
+        dataset_server_ref = dataset_server_ref or settings.OFFLINE_DATASET_ACTOR
 
         while max_tries > 0:
             try:
                 if self._parameter_server is None:
-                    self._parameter_server = ray.get_actor(
-                        settings.PARAMETER_SERVER_ACTOR
-                    )
+                    self._parameter_server = ray.get_actor(parameter_server_ref)
                 if self._offline_dataset is None:
-                    self._offline_dataset = ray.get_actor(
-                        settings.OFFLINE_DATASET_ACTOR
-                    )
+                    self._offline_dataset = ray.get_actor(dataset_server_ref)
                 break
             except Exception as e:
                 Logger.debug(f"{e}")
@@ -193,11 +204,29 @@ class AgentInterface(RemoteInterface, ABC):
 
         return self._strategy_spec
 
-    def get_algorithm(self, key) -> Any:  # pragma: no cover
-        return self._algorithms[key]
+    def get_algorithm(self, key: str) -> Any:  # pragma: no cover
+        """Return a copy of algorithm configuration with given key, if not exist, raise KeyError.
+
+        Args:
+            key (str): Algorithm configuration reference key.
+
+        Raises:
+            KeyError: No such an algorithm configuration relates to the give key.
+
+        Returns:
+            Any: Algorithm configuration, mabe a dict.
+        """
+
+        return copy.deepcopy(self._algorithms[key])
 
     def get_algorthms(self) -> Dict[str, Any]:  # pragma: no_cover
-        return self._algorithms
+        """Return a copy of full algorithm configurations.
+
+        Returns:
+            Dict[str, Any]: Full algorithm configurations.
+        """
+
+        return copy.deepcopy(self._algorithms)
 
     def push(self):
         """Push local weights to remote server"""
@@ -245,7 +274,13 @@ class AgentInterface(RemoteInterface, ABC):
             Dict[str, Any]: A merged buffer dict.
         """
 
-    def get_interface_state(self):
+    def get_interface_state(self) -> Dict[str, Any]:
+        """Return a dict that describes the current learning state.
+
+        Returns:
+            Dict[str, Any]: A dict of learning state.
+        """
+
         return {
             "total_step": self._total_step,
             "total_epoch": self._total_epoch,
@@ -254,6 +289,8 @@ class AgentInterface(RemoteInterface, ABC):
         }
 
     def sync_remote_parameters(self):
+        """Push latest network parameters of active policies to remote parameter server."""
+
         top_active_tup = self._active_tups[0]
         ray.get(
             self._parameter_server.set_weights.remote(
