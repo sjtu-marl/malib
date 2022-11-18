@@ -467,6 +467,7 @@ class RolloutWorker(RemoteInterface):
                 self.tb_writer, performance, global_step=epoch, prefix="Performance"
             )
 
+            # once call should stop, iteration += 1
             if stopper.should_stop(results):
                 break
             epoch += 1
@@ -474,7 +475,7 @@ class RolloutWorker(RemoteInterface):
         self.rollout_callback(self.coordinator, results)
         return results
 
-    def simulate(self, runtime_strategy_specs_list: List[Dict[str, StrategySpec]]):
+    def simulate(self, runtime_strategy_specs: Dict[str, StrategySpec]):
         """Handling simulation task."""
 
         runtime_config_template = self.rollout_config.copy()
@@ -484,8 +485,8 @@ class RolloutWorker(RemoteInterface):
             }
         )
 
-        results: List[Dict[str, Any]] = self.step_simulation(
-            runtime_strategy_specs_list, runtime_config_template
+        results: Dict[str, Any] = self.step_simulation(
+            runtime_strategy_specs, runtime_config_template
         )
 
         self.simulate_callback(self.coordinator, results)
@@ -525,20 +526,20 @@ class RolloutWorker(RemoteInterface):
 
     def step_simulation(
         self,
-        runtime_strategy_specs_list: List[Dict[str, StrategySpec]],
+        runtime_strategy_specs: Dict[str, StrategySpec],
         rollout_config: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """Logic function for running simulation of a list of strategy spec dict.
 
         Args:
-            runtime_strategy_specs_list (List[Dict[str, StrategySpec]]): A list of strategy spec dict.
+            runtime_strategy_specs (Dict[str, StrategySpec]): A strategy spec dict.
             rollout_config (Dict[str, Any]): Runtime configuration template.
 
         Raises:
             NotImplementedError: Not implemented error.
 
         Returns:
-            List[Dict[str, Any]]: A list of evaluation results, one for each strategy spec dict.
+            Dict[str, Any]: A evaluation results.
         """
 
         raise NotImplementedError

@@ -21,3 +21,8 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
+from malib.rollout.envs.gym import GymEnv
+from malib.rollout.envs.dummy_env import DummyEnv
+from malib.rollout.envs.mdp import MDPEnvironment
+from malib.rollout.envs.open_spiel import OpenSpielEnv
