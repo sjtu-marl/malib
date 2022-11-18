@@ -30,15 +30,6 @@ from malib.utils.typing import AgentID
 from malib.utils.general import flatten_dict
 
 
-def record_episode_info(func):
-    def wrap(self, actions):
-        rets = func(self, actions)
-        self.record_episode_info_step(rets)
-        return rets
-
-    return wrap
-
-
 class Environment:
     def __init__(self, **configs):
         self.is_sequential = False
@@ -64,7 +55,24 @@ class Environment:
         self._current_players = []
         self._state: Dict[str, np.ndarray] = None
 
-    def record_episode_info_step(self, state, observations, rewards, dones, infos):
+    def record_episode_info_step(
+        self,
+        state: Any,
+        observations: Dict[AgentID, Any],
+        rewards: Dict[AgentID, Any],
+        dones: Dict[AgentID, bool],
+        infos: Any,
+    ):
+        """Analyze timestep and record it as episode information.
+
+        Args:
+            state (Any): Environment state.
+            observations (Dict[AgentID, Any]): A dict of agent observations
+            rewards (Dict[AgentID, Any]): A dict of agent rewards.
+            dones (Dict[AgentID, bool]): A dict of done signals.
+            infos (Any): Information.
+        """
+
         reward_ph = self.episode_metrics["agent_reward"]
         step_ph = self.episode_metrics["agent_step"]
         for aid, r in rewards.items():
@@ -121,32 +129,25 @@ class Environment:
         done2 = self.cnt >= self.max_step > 0
         return done1 or done2
 
-    def action_mask_extract(self, raw_observations: Dict[str, Any]):
-        action_masks = {}
-        for agent, obs in raw_observations.items():
-            if isinstance(obs, dict) and "action_mask" in obs:
-                action_masks[agent] = np.asarray(obs["action_mask"], dtype=np.int32)
-        return action_masks
-
     def step(
         self, actions: Dict[AgentID, Any]
     ) -> Tuple[
         Dict[AgentID, Any],
-        Dict[AgentID, np.ndarray],
+        Dict[AgentID, Any],
         Dict[AgentID, float],
         Dict[AgentID, bool],
-        Dict[AgentID, Any],
+        Any,
     ]:
-        """Return a tuple of (obs, action_mask, reward, done, info).
+        """Return a 5-tuple as (state, observation, reward, done, info). Each item is a dict maps from agent id to entity.
 
         Note:
-            If envrionment has state return, it will be included in the info dict.
+            If state return of this environment is not activated, the return state would be None.
 
         Args:
             actions (Dict[AgentID, Any]): A dict of agent actions.
 
         Returns:
-            Tuple[ Dict[AgentID, Any], Dict[AgentID, np.ndarray], Dict[AgentID, float], Dict[AgentID, bool], Dict[AgentID, Any]]: A 5-tuple.
+            Tuple[ Dict[AgentID, Any], Dict[AgentID, Any], Dict[AgentID, float], Dict[AgentID, bool], Any]: A tuple follows the order as (state, observation, reward, done, info).
         """
 
         self.cnt += 1
@@ -156,14 +157,8 @@ class Environment:
             rets[3] = {k: True for k in rets[3].keys()}
         rets = tuple(rets)
         self.record_episode_info_step(*rets)
-        # state, obs, action_mask, reward, done, info.
+        # state, obs, reward, done, info.
         return rets
-
-    def set_state(self, state: Dict[str, np.ndarray]):
-        self._state = state
-
-    def get_state(self) -> Union[None, Dict[str, np.ndarray]]:
-        return self._state
 
     def time_step(
         self, actions: Dict[AgentID, Any]
@@ -213,11 +208,16 @@ class Wrapper(Environment):
     """Wraps the environment to allow a modular transformation"""
 
     def __init__(self, env: Environment):
+        """Construct a wrapper for a given enviornment instance.
+
+        Args:
+            env (Environment): Environment instance.
+        """
+
         self.env = env
         self.max_step = self.env.max_step
         self.cnt = self.env.cnt
         self.episode_meta_info = self.env.episode_meta_info
-        self.custom_reset_config = self.env.custom_reset_config
         self.custom_metrics = self.env.custom_metrics
         self.runtime_id = self.env.runtime_id
         self.is_sequential = self.env.is_sequential
@@ -228,11 +228,6 @@ class Wrapper(Environment):
         return self.env.possible_agents
 
     @property
-    def trainable_agents(self) -> Union[Tuple, None]:
-        """Return trainble agents, if registered return a tuple, otherwise None"""
-        return self.env.trainable_agents
-
-    @property
     def action_spaces(self) -> Dict[AgentID, gym.Space]:
         return self.env.action_spaces
 
@@ -240,7 +235,15 @@ class Wrapper(Environment):
     def observation_spaces(self) -> Dict[AgentID, gym.Space]:
         return self.env.observation_spaces
 
-    def time_step(self, actions: Dict[AgentID, Any]):
+    def step(
+        self, actions: Dict[AgentID, Any]
+    ) -> Tuple[
+        Dict[AgentID, Any],
+        Dict[AgentID, Any],
+        Dict[AgentID, float],
+        Dict[AgentID, bool],
+        Any,
+    ]:
         return self.env.step(actions)
 
     def close(self):

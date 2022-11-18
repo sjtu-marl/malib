@@ -98,7 +98,11 @@ class TestVectorEnv:
         fragment_length = max_step * preset_num_envs
 
         rets = venv.reset(fragment_length=fragment_length, max_step=max_step)
-        action_spaces: Dict[str, spaces.Space] = env_desc["action_spaces"]
+        action_spaces: Dict[str, spaces.Space] = venv.envs[0].action_spaces
+        observation_spaces: Dict[str, spaces.Space] = venv.envs[0].observation_spaces
+        agents = venv.envs[0].possible_agents
+
+        assert set(agents) == set(venv.possible_agents), (agents, venv.possible_agents)
 
         while not venv.is_terminated():
             # TODO(ming): should consider action mask
