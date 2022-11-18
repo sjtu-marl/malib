@@ -22,18 +22,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Sequence, Dict, Any, Callable, List
+from typing import Dict, Any
 
 import pytest
 import ray
 
 from gym import spaces
 from pytest_mock import MockerFixture
-from ray.util import ActorPool
 
-from malib.utils.typing import AgentID
 from malib.common.strategy_spec import StrategySpec
-from malib.rollout.rolloutworker import RolloutWorker
 from malib.rollout.manager import RolloutWorkerManager
 from malib.utils.mocker_utils import FakeRolloutWorker
 
@@ -122,16 +119,41 @@ class TestRolloutManager:
 
         ray.shutdown()
 
-    # def test_simulation_task_send(self, n_players: int):
-    #     if not ray.is_initialized():
-    #         ray.init()
+    def test_simulation_task_send(
+        self, mocker: MockerFixture, n_players: int, inference_server_type: str
+    ):
+        if not ray.is_initialized():
+            ray.init()
 
-    #     agents = [f"player_{i}" for i in range(n_players)]
-    #     manager = create_manager(
-    #         stopping_conditions={"rollout": {}},
-    #         rollout_config=None,
-    #         env_desc={"possible_agents": agents},
-    #     )
+        agents = [f"player_{i}" for i in range(n_players)]
+        manager = create_manager(
+            mocker,
+            stopping_conditions={"rollout": {"max_iteration": 2}},
+            rollout_config={
+                "fragment_length": 100,
+                "max_step": 10,
+                "num_eval_episodes": 2,
+                "num_threads": 1,
+                "num_env_per_thread": 1,
+                "num_eval_threads": 1,
+                "use_subproc_env": False,
+                "batch_mode": "timestep",
+                "postprocessor_types": None,
+                "eval_interval": 2,
+                "inference_server": inference_server_type,
+            },
+            env_desc={
+                "possible_agents": agents,
+                "observation_spaces": {
+                    agent: spaces.Box(-1, 1.0, shape=(2,)) for agent in agents
+                },
+                "action_spaces": {
+                    agent: spaces.Box(-1, 1, shape=(2,)) for agent in agents
+                },
+            },
+        )
 
-    #     manager.rollout(task_list)
-    #     ray.shutdown()
+        manager.simulate([None] * 2)
+        for result in manager.retrive_results():
+            print(result)
+        ray.shutdown()

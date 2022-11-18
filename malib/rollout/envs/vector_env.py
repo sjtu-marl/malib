@@ -23,7 +23,7 @@
 # SOFTWARE.
 
 from collections import ChainMap, defaultdict
-from typing import Tuple, Dict, Any, List, Callable, Sequence
+from typing import Tuple, Dict, Any, List, Type, Callable, Sequence
 
 import uuid
 
@@ -41,6 +41,9 @@ from malib.utils.typing import (
 )
 from malib.rollout.envs import Environment
 from malib.utils.episode import Episode
+
+
+EnvironmentType = Type[Environment]
 
 
 class VectorEnv:
@@ -93,16 +96,36 @@ class VectorEnv:
         return self._envs
 
     @property
-    def env_creator(self):
+    def env_creator(self) -> EnvironmentType:
+        """Return env creator.
+
+        Returns:
+            EnviornmentType: Class type
+        """
+
         return self._creator
 
     @property
-    def env_configs(self):
-        return self._configs
+    def env_configs(self) -> Dict[str, Any]:
+        """Return a copy of environment configuration for the construction.
+
+        Returns:
+            Dict[str, Any]: A dict of configuration.
+        """
+
+        return self._configs.copy()
 
     @classmethod
-    def from_envs(cls, envs: List[Environment], config: Dict[str, Any]):
-        """Generate vectorization environment from exisiting environments."""
+    def from_envs(cls, envs: List[Environment], config: Dict[str, Any]) -> "VectorEnv":
+        """Construct a vectorenv from a give environment list.
+
+        Args:
+            envs (List[Environment]): A list of environment instances.
+            config (Dict[str, Any]): A dict of environment configuration.
+
+        Returns:
+            VectorEnv: A VectorEnv instance.
+        """
 
         observation_spaces = envs[0].observation_spaces
         action_spaces = envs[0].action_spaces
@@ -113,8 +136,25 @@ class VectorEnv:
         return vec_env
 
     def add_envs(self, envs: List = None, num: int = 0):
-        """Add exisiting `envs` or `num` new environments to this vectorization environment.
-        If `envs` is not empty or None, the `num` will be ignored.
+        """Add exisiting `envs` or `num` new environments to this vectorization environment. If `envs` is not empty or None, the `num` will be ignored.
+
+        Examples:
+            >>> vector_env = VectorEnv(observation_spaces, action_spaces, creator, configs, preset_num_envs=0)
+            >>>
+            >>> # add existing environments to vectorenv
+            >>> envs = [creator(**configs) for _ in range(5)]
+            >>> vector_env.add_envs(envs=envs)
+            >>> print(vector_env.num_envs)
+            >>> 5
+            >>>
+            >>> # add new environments with specified number
+            >>> vector_env.add_envs(num=4)
+            >>> print(vector_env.num_envs)
+            >>> 9
+
+        Args:
+            envs (List, optional): A list of environment. Defaults to None.
+            num (int, optional): Number of enviornments need to be created. Defaults to 0.
         """
 
         if envs and len(envs) > 0:
@@ -254,5 +294,6 @@ class _RemoteEnv:
         return self
 
 
+# pragma: no cover
 class SubprocVecEnv(VectorEnv):
     pass
