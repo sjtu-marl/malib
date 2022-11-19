@@ -15,7 +15,6 @@ Subpackages
    malib.rollout.envs.dummy_env
    malib.rollout.envs.gr_football
    malib.rollout.envs.gym
-   malib.rollout.envs.mdp
    malib.rollout.envs.mpe
    malib.rollout.envs.open_spiel
    malib.rollout.envs.star_craft2

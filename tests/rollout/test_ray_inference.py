@@ -22,7 +22,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from multiprocessing.util import is_exiting
 from typing import Callable, Dict, Any, List, Tuple
 from argparse import Namespace
 from collections import defaultdict
@@ -38,7 +37,6 @@ from malib.backend.parameter_server import ParameterServer
 from malib.runner import start_servers
 from malib.rollout.envs.gym import env_desc_gen as gym_env_desc_gen
 from malib.rollout.envs.open_spiel import env_desc_gen as open_spiel_env_desc_gen
-from malib.rollout.envs.mdp import env_desc_gen as mdp_env_desc_gen
 from malib.rollout.envs.vector_env import VectorEnv
 from malib.rollout.inference.utils import process_policy_outputs
 from malib.rollout.rolloutworker import parse_rollout_info

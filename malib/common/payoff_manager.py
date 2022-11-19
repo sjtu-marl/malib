@@ -592,6 +592,17 @@ class PayoffManager:
             Dict[AgentID, Dict[PolicyID, Union[float, np.ndarray]]]: The Nash equilibrium.
         """
 
+        # Get the equilibrium stored in the payoff manager
+
+        # :param Dict[AgentID,Sequence[PolicyID]] population_mapping: a dict from agent_name to a sequence of policy ids
+        # :return: the nash equilibrium which is a dict from agent_name to a dict from policy id to float
+        # >>> eqbm = {"player_0": {"policy_0": 1.0, "policy_1": 0.0}, "player_1": {"policy_0": 0.3, "policy_1": 0.7}}
+        # >>> population_mapping = {"player_0": ["policy_0", "policy_1"], "player_1": ["policy_0", "policy_1"]}
+        # >>> self.update_equilibrium(population_mapping, eqbm)
+        # >>> self.get_equilibrium(population_mapping)
+        # ... {"player_0": {"policy_0": 1.0, "policy_1": 0.0}, "player_1": {"policy_0": 0.3, "policy_1": 0.7}}
+        #
+
         hash_key = self._hash_population_mapping(population_mapping)
         agent = list(population_mapping.keys())[0]
         assert hash_key in self._equilibrium, (
