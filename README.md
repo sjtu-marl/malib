@@ -43,9 +43,9 @@ In addition, users can customize environments with MALib's environment interface
 
 MALib integrates population-based reinforcement learning, popular deep reinforcement learning algorithms. See algorithms table [here](/algorithms.md). The supported learning scenarios are listed as follow:
 
-- [x] Single-stream PSRO scenario: for single-stream population-based reinforcement learning algorithms, cooperating with empirical game theoretical analysis methods.
-- [ ] Multi-stream PSRO scenario: for multi-stream population-based reinforcement learning algorithms, cooperating with empirical game theoretical analysis methods.
-- [x] Multi-agent Reinforcement Learning scenario: for multi-/single-agent reinforcement learning, with distributed techniques.
+- [x] Single-stream PSRO scenario: for single-stream population-based reinforcement learning algorithms, cooperating with empirical game theoretical analysis methods. See [scenarios/psro_scenario.py](/malib/scenarios/psro_scenario.py)
+- [ ] Multi-stream PSRO scenario: for multi-stream population-based reinforcement learning algorithms, cooperating with empirical game theoretical analysis methods. See [scenarios/p2sro_scenario.py](/malib/scenarios/p2sro_scenario.py)
+- [x] Multi-agent Reinforcement Learning scenario: for multi-/single-agent reinforcement learning, with distributed techniques. See [scenarios/marl_scenario.py](/malib/scenarios/marl_scenario.py)
 
 ## Quick Start
 
