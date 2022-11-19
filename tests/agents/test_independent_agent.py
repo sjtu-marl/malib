@@ -22,13 +22,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Any
+from typing import Any
+
 
 import pytest
-import ray
 
 from malib import rl
-from malib.runner import start_servers
+from malib.mocker.mocker_utils import use_ray_env
 from malib.rollout.envs.mdp import env_desc_gen
 from malib.agent.indepdent_agent import IndependentAgent
 
@@ -67,18 +67,23 @@ def start_learner(env_id: str, algorithm: Any):
 @pytest.mark.parametrize("algorithm", [rl.pg, rl.a2c, rl.dqn])
 class TestIndependentAgent:
     def test_policy_add(self, env_id, algorithm):
-        if not ray.is_initialized():
-            ray.init()
-        parameter_server, dataset_server = start_servers()
-        learners = start_learner(env_id, algorithm)
-        for learner in learners.values():
-            learner.add_policies(n=1)
-        ray.kill(parameter_server)
-        ray.kill(dataset_server)
-        ray.shutdown()
+        with use_ray_env():
+            learners = start_learner(env_id, algorithm)
+            for learner in learners.values():
+                learner.add_policies(n=1)
 
     def test_parameter_sync(self, env_id, algorithm):
-        pass
+        with use_ray_env():
+            learners = start_learner(env_id, algorithm)
+            for learner in learners.values():
+                learner.add_policies(n=1)
+                # then sync parameter to remote parameter server
+                learner.push()
+                # also pull down
+                learner.pull()
 
     def test_training_pipeline(self, env_id, algorithm):
-        pass
+        with use_ray_env():
+            learners = start_learner(env_id, algorithm)
+            for learner in learners.values():
+                learner.add_policies(n=1)

@@ -33,7 +33,7 @@ from pytest_mock import MockerFixture
 from gym import spaces
 
 from malib.runner import start_servers
-from malib.utils.mocker_utils import FakeInferenceClient, FakeInferenceServer
+from malib.mocker.mocker_utils import FakeInferenceClient, FakeInferenceServer
 
 
 def gen_rollout_config(inference_server_type: str):

@@ -32,7 +32,7 @@ from pytest_mock import MockerFixture
 
 from malib.common.strategy_spec import StrategySpec
 from malib.rollout.manager import RolloutWorkerManager
-from malib.utils.mocker_utils import FakeRolloutWorker
+from malib.mocker.mocker_utils import FakeRolloutWorker
 
 
 def create_manager(

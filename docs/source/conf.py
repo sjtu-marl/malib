@@ -65,7 +65,7 @@ apidoc_module_first = True
 #     "--maxdepth=2",
 # ]
 
-exclude_patterns = ["tests/", "test*.py"]
+exclude_patterns = ["tests/", "test*.py", "malib/mocker/"]
 
 # ensure __init__ is always documented
 autoclass_content = "both"

@@ -36,7 +36,6 @@ from malib.agent.manager import TrainingManager
 from malib.rollout.manager import RolloutWorkerManager
 from malib.common.payoff_manager import PayoffManager
 from malib.common.strategy_spec import StrategySpec
-from malib.scenarios import Scenario
 from malib.scenarios.marl_scenario import (
     execution_plan as marl_execution_plan,
     MARLScenario,
@@ -101,12 +100,29 @@ def simulate(
     rollout_manager: RolloutWorkerManager,
     strategy_specs_list: List[Dict[str, StrategySpec]],
 ) -> List[Tuple[Dict, Dict]]:
+    """Run simulations for a list of strategy spec dict. One for each policy combination.
+
+    Args:
+        rollout_manager (RolloutWorkerManager): Rollout manager instance.
+        strategy_specs_list (List[Dict[str, StrategySpec]]): A list of strategy spec dicts.
+
+    Returns:
+        List[Tuple[Dict, Dict]]: A list of tuple that composes of strategy spec dict and the corresponding evaluation results.
+    """
+
     rollout_manager.simulate(strategy_specs_list)
     ordered_results = rollout_manager.wait()
     return list(zip(strategy_specs_list, ordered_results))
 
 
-def execution_plan(experiment_tag: str, scenario: Scenario):
+def execution_plan(experiment_tag: str, scenario: PSROScenario):
+    """Execution plan for running PSRO scenario.
+
+    Args:
+        experiment_tag (str): Experiment identifier.
+        scenario (PSROScenario): PSRO Scenario instance.
+    """
+
     training_manager = TrainingManager(
         experiment_tag=experiment_tag,
         stopping_conditions=scenario.stopping_conditions,

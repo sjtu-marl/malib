@@ -237,7 +237,7 @@ class AgentInterface(RemoteInterface, ABC):
             task = self._parameter_server.set_weights.remote(
                 spec_id=self._strategy_spec.id,
                 spec_policy_id=spec_pid,
-                state_dict=self._policies[pid],
+                state_dict=self._policies[pid].state_dict(),
             )
             pending_tasks.append(task)
         while len(pending_tasks) > 0:
@@ -259,7 +259,7 @@ class AgentInterface(RemoteInterface, ABC):
             dones, pending_tasks = ray.wait(pending_tasks)
             for done in ray.get(dones):
                 pid = "{}/{}".format(done["spec_id"], done["spec_policy_id"])
-                self.policy[pid].load_state_dict(done["weights"])
+                self._policies[pid].load_state_dict(done["weights"])
 
     @abstractmethod
     def multiagent_post_process(

@@ -14,6 +14,7 @@ omit =
 	malib/common/distributions.py
 	malib/agent/team_agent.py
 	malib/agent/async_agent.py
+	malib/mocker/*
 
 
 [report]
