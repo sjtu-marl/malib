@@ -25,22 +25,6 @@ malib.agent.async\_agent module
    :undoc-members:
    :show-inheritance:
 
-malib.agent.centralized\_agent module
--------------------------------------
-
-.. automodule:: malib.agent.centralized_agent
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-malib.agent.ctde\_agent module
-------------------------------
-
-.. automodule:: malib.agent.ctde_agent
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 malib.agent.indepdent\_agent module
 -----------------------------------
 
@@ -53,6 +37,14 @@ malib.agent.manager module
 --------------------------
 
 .. automodule:: malib.agent.manager
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.agent.team\_agent module
+------------------------------
+
+.. automodule:: malib.agent.team_agent
    :members:
    :undoc-members:
    :show-inheritance:

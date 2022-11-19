@@ -6,7 +6,7 @@
 
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/sjtu-marl/malib/blob/main/LICENSE)
 [![Documentation Status](https://readthedocs.org/projects/malib/badge/?version=latest)](https://malib.readthedocs.io/en/latest/?badge=latest)
-[![Build Status](https://app.travis-ci.com/sjtu-marl/malib.svg?branch=test-cases)](https://app.travis-ci.com/sjtu-marl/malib.svg?branch=test-cases)
+[![Build Status](https://app.travis-ci.com/sjtu-marl/malib.svg?branch=main)](https://app.travis-ci.com/sjtu-marl/malib.svg?branch=main)
 [![codecov](https://codecov.io/gh/sjtu-marl/malib/branch/test-cases/graph/badge.svg?token=CJX14B2AJG)](https://codecov.io/gh/sjtu-marl/malib)
 
 MALib is a parallel framework of population-based learning nested with reinforcement learning methods, such as Policy Space Response Oracle, Self-Play, and Neural Fictitious Self-Play. MALib provides higher-level abstractions of MARL training paradigms, which enables efficient code reuse and flexible deployments on different distributed computing paradigms.
@@ -30,16 +30,22 @@ conda activate malib
 
 MALib integrates many popular reinforcement learning environments, we list some of them as follows.
 
-- [OpenSpiel](https://github.com/deepmind/open_spiel): A framework for Reinforcement Learning in games, it provides plenty of environments for the research of game theory.
-- [Gym](https://github.com/openai/gym): An open source environment collections for developing and comparing reinforcement learning algorithms.
-- [Google Research Football](https://github.com/google-research/football): RL environment based on open-source game Gameplay Football.
-- [SMAC](https://github.com/oxwhirl/smac): An environment for research in the field of collaborative multi-agent reinforcement learning (MARL) based on Blizzard's StarCraft II RTS game.
+- [x] [OpenSpiel](https://github.com/deepmind/open_spiel): A framework for Reinforcement Learning in games, it provides plenty of environments for the research of game theory.
+- [x] [Gym](https://github.com/openai/gym): An open source environment collections for developing and comparing reinforcement learning algorithms.
+- [x] [Google Research Football](https://github.com/google-research/football): RL environment based on open-source game Gameplay Football.
+- [x] [SMAC](https://github.com/oxwhirl/smac): An environment for research in the field of collaborative multi-agent reinforcement learning (MARL) based on Blizzard's StarCraft II RTS game.
+- [ ] [PettingZoo](https://github.com/Farama-Foundation/PettingZoo): A Python library for conducting research in multi-agent reinforcement learning, akin to a multi-agent version of [Gymnasium](https://github.com/Farama-Foundation/Gymnasium).
+- [ ] [DexterousHands](https://github.com/PKU-MARL/DexterousHands): An environment collection of bimanual dexterous manipulations tasks.
 
-In addition, users can customize environments with MALib's environment interfaces. Please refer to our documentation.
+See [malib/envs](/malib/envs/) for more details. In addition, users can customize environments with MALib's environment interfaces. Please refer to our documentation.
 
-## Algorithms
+## Algorithms and Scenarios
 
-MALib integrates population-based reinforcement learning, classical multi-agent and single-agent reinforcement learning algorithms. See algorithms table [here](/algorithms.md).
+MALib integrates population-based reinforcement learning, popular deep reinforcement learning algorithms. See algorithms table [here](/algorithms.md). The supported learning scenarios are listed as follow:
+
+- [x] Single-stream PSRO scenario: for single-stream population-based reinforcement learning algorithms, cooperating with empirical game theoretical analysis methods. See [scenarios/psro_scenario.py](/malib/scenarios/psro_scenario.py)
+- [ ] Multi-stream PSRO scenario: for multi-stream population-based reinforcement learning algorithms, cooperating with empirical game theoretical analysis methods. See [scenarios/p2sro_scenario.py](/malib/scenarios/p2sro_scenario.py)
+- [x] Multi-agent Reinforcement Learning scenario: for multi-/single-agent reinforcement learning, with distributed techniques. See [scenarios/marl_scenario.py](/malib/scenarios/marl_scenario.py)
 
 ## Quick Start
 
@@ -47,15 +53,29 @@ Before running examples, please ensure that you import python path as:
 
 ```bash
 cd malib
+
+# if you run malib installation with `pip install -e .`, you can ignore the path export
 export PYTHONPATH=./
 ```
 
-- Running PSRO example: `python examples/run_psro.py`
-- Running RL example: `python examples/run_gym.py`
+- Running PSRO example to start training for Kuhn Poker game: `python examples/run_psro.py`
+- Running RL example to start training for CartPole-v1 game: `python examples/run_gym.py`
 
 ## Documentation
 
-See [MALib Docs](https://malib.readthedocs.io/)
+See online documentation at [MALib Docs](https://malib.readthedocs.io/), or you can also compile a local version with compiling local files as
+
+```bash
+pip install -e .[dev]
+make docs-compile
+```
+
+Then start a web server to read the docs:
+
+```bash
+# execute following command, then the server will start at: http://localhost:8000
+make docs-view
+```
 
 ## Citing MALib
 

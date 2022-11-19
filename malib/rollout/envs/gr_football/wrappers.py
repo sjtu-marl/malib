@@ -1,82 +1,21 @@
-from collections import defaultdict
-from types import LambdaType
-from typing import Any, Dict, List
+# MIT License
 
-import gym
+# Copyright (c) 2021 MARL @ SJTU
 
-from gym import spaces
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
 
-from malib.utils.typing import AgentID
-from malib.utils.preprocessor import get_preprocessor
-from malib.rollout.envs.env import GroupWrapper
-from .env import GRFootball
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
 
-
-class GroupedFootball(GroupWrapper):
-    def __init__(self, agent_group_mapping: LambdaType, **config):
-        env = GRFootball(**config)
-        agent_groups = defaultdict(lambda: [])
-        for agent in env.possible_agents:
-            gid = agent_group_mapping(agent)
-            agent_groups[gid].append(agent)
-        agent_groups = dict(agent_groups)
-        # build agent to group
-        aid_to_gid = {}
-        for gid, agents in agent_groups.items():
-            aid_to_gid.update(dict.fromkeys(agents, gid))
-        self.aid_to_gid = aid_to_gid
-
-        agent_obs_spaces = env.observation_spaces
-        agent_act_spaces = env.action_spaces
-
-        self._observation_spaces = {
-            gid: spaces.Tuple([agent_obs_spaces[aid] for aid in agents])
-            for gid, agents in agent_groups.items()
-        }
-        self._action_spaces = {
-            gid: spaces.Tuple([agent_act_spaces[aid] for aid in agents])
-            for gid, agents in agent_groups.items()
-        }
-
-        super(GroupedFootball, self).__init__(env, aid_to_gid, agent_groups)
-
-    @property
-    def observation_spaces(self) -> Dict[str, gym.Space]:
-        return self._observation_spaces
-
-    @property
-    def action_spaces(self) -> Dict[str, gym.Space]:
-        return self._action_spaces
-
-    def build_state_from_observation(
-        self, agent_observation: Dict[AgentID, Any]
-    ) -> Dict[AgentID, Any]:
-        """Build state spaces for each group.
-
-        Args:
-            agent_observation (Dict[AgentID, Any]): A dict of agent observations.
-
-        Returns:
-            Dict[AgentID, Any]: A dict of states.
-        """
-
-        states = {}
-
-        for gid, agents in self.agent_groups.items():
-            selected_obs = tuple(agent_observation[agent] for agent in agents)
-            states[gid] = self.state_preprocessors[gid].transform(selected_obs)
-
-        return states
-
-    def build_state_spaces(self) -> Dict[str, gym.Space]:
-        state_spaces = {gid: None for gid in self.agent_groups}
-        state_preprocessors = {gid: None for gid in self.agent_groups}
-        for gid, agents in self.agent_groups.items():
-            state_preprocessor = get_preprocessor(self.observation_spaces[gid])(
-                self.observation_spaces[gid]
-            )
-            space_unit = state_preprocessor.observation_space
-            state_spaces[gid] = spaces.Tuple([space_unit] * len(agents))
-            state_preprocessors[gid] = state_preprocessor
-        self.state_preprocessors = state_preprocessors
-        return state_spaces
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.

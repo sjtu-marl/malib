@@ -82,7 +82,7 @@ class PBRolloutWorker(RolloutWorker):
             runtime_config_template (Dict[str, Any]): Runtime configuration template.
 
         Returns:
-            Dict[str, Any]: A list of results, one for each task.
+            Dict[str, Any]: Evaluation results, a dict.
         """
 
         task = runtime_config_template.copy()

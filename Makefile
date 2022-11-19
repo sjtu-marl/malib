@@ -31,7 +31,27 @@ rm-pycache:
 
 .PHONY: test
 test:
-	pytest --cov-config=.coveragerc --cov=malib --cov-report html --doctest-modules tests
+	pytest --cov-config=.coveragerc --cov=malib --cov-report term --cov-report html --doctest-modules tests
+	rm -f .coverage.*
+
+.PYTHON: test-rollout
+test-rollout:
+	pytest --cov-config=.coveragerc --cov=malib/rollout tests/rollout
+	rm -f .coverage.*
+
+.PYTHON: test-rl
+test-rl:
+	pytest --cov-config=.coveragerc --cov=malib/rl tests/rl
+	rm -f .coverage.*
+
+.PYTHON: test-backend
+test-backend:
+	pytest --cov-config=.coveragerc --cov=malib/backend tests/backend
+	rm -f .coverage.*
+
+.PYTHON: test-agents
+test-agents:
+	pytest --cov-config=.coveragerc --cov=malib/agent tests/agents
 	rm -f .coverage.*
 
 .PYTHON: coverage-view
@@ -42,31 +62,3 @@ coverage-view:
 test-verbose:
 	pytest --cov-config=.coveragerc --cov=malib --cov-report html --doctest-modules tests -v -s
 	rm -f .coverage.*
-
-.PHONY: test-dataset
-test-dataset:
-	pytest -v --doctest-modules tests/dataset
-
-.PHONY: test-parameter-server
-test-parameter-server:
-	pytest -v --doctest-modules tests/paramter_server
-
-.PHONY: test-backend
-test-backend: test-dataset test-parameter-server test-coordinator
-
-.PHONY: test-algorith
-test-algorithm:
-	pytest -v --doctest-modules tests/algorithm
-
-.PHONY: test-rollout
-test-rollout:
-	pytest -v --doctest-modules tests/rollout
-
-.PHONY: test-agent
-test-agent:
-	pytest --doctest-modules tests/agent
-
-.PHONY: test-env-api
-test-env-api:
-	pytest -v --doctest-modules tests/env_api
-

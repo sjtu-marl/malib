@@ -2,6 +2,8 @@
 
 # Copyright (c) 2021 MARL @ SJTU
 
+# Author: Ming Zhou
+
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
@@ -20,17 +22,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .env import MAAtari
+from malib.agent.agent_interface import AgentInterface
 
 
-def env_desc_gen(**config):
-    env = MAAtari(**config)
-    env_desc = {
-        "creator": MAAtari,
-        "possible_agents": env.possible_agents,
-        "action_spaces": env.action_spaces,
-        "observation_spaces": env.observation_spaces,
-        "config": config,
-    }
-    env.close()
-    return env_desc
+class TeamAgent(AgentInterface):
+    pass

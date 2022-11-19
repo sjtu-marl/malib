@@ -111,29 +111,6 @@ class RayInferenceClient(RemoteInterface):
                 obs_spaces, act_spaces, env_cls, env_config, preset_num_envs=max_env_num
             )
 
-    def add_envs(self, maximum: int) -> int:
-        """Create environments, if env is an instance of VectorEnv, add these \
-            new environment instances into it,otherwise do nothing.
-
-        Args:
-            maximum (int): Maximum limits.
-
-        Returns:
-            int: The number of nested environments.
-        """
-
-        if not isinstance(self.env, VectorEnv):
-            return 1
-
-        existing_env_num = getattr(self.env, "num_envs", 1)
-
-        if existing_env_num >= maximum:
-            return self.env.num_envs
-
-        self.env.add_envs(num=maximum - existing_env_num)
-
-        return self.env.num_envs
-
     def close(self):
         """Disconnects with inference servers and turns off environment."""
 
