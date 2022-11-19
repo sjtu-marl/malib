@@ -37,7 +37,7 @@ MALib integrates many popular reinforcement learning environments, we list some 
 - [ ] [PettingZoo](https://github.com/Farama-Foundation/PettingZoo): A Python library for conducting research in multi-agent reinforcement learning, akin to a multi-agent version of [Gymnasium](https://github.com/Farama-Foundation/Gymnasium).
 - [ ] [DexterousHands](https://github.com/PKU-MARL/DexterousHands): An environment collection of bimanual dexterous manipulations tasks.
 
-In addition, users can customize environments with MALib's environment interfaces. Please refer to our documentation.
+See [malib/envs](/malib/envs/) for more details. In addition, users can customize environments with MALib's environment interfaces. Please refer to our documentation.
 
 ## Algorithms and Scenarios
 
@@ -58,8 +58,8 @@ cd malib
 export PYTHONPATH=./
 ```
 
-- Running PSRO example: `python examples/run_psro.py`
-- Running RL example: `python examples/run_gym.py`
+- Running PSRO example to start training for Kuhn Poker game: `python examples/run_psro.py`
+- Running RL example to start training for CartPole-v1 game: `python examples/run_gym.py`
 
 ## Documentation
 
