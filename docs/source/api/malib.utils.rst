@@ -49,14 +49,6 @@ malib.utils.logging module
    :undoc-members:
    :show-inheritance:
 
-malib.utils.mocker\_utils module
---------------------------------
-
-.. automodule:: malib.utils.mocker_utils
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 malib.utils.monitor module
 --------------------------
 
