@@ -16,6 +16,7 @@ MALib: Parallel Framework for PB-MARL
    marl-abstration
    distributed-strategies
    environments
+   deployment
 
 .. toctree::
    :maxdepth: 1

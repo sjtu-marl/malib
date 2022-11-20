@@ -57,10 +57,21 @@ def start_servers(data_table_capacity: int = 100000):
     return parameter_server, offline_dataset_server
 
 
-def run(scenario: Scenario):
+def run(scenario: Scenario, cluster_address: str = "auto"):
+    """Load scenario to the execution plan and lauch a cluster. The instance will search an active \
+        cluster by default. Users can also determine the specified cluster with given `cluster_address`.
+
+    Args:
+        scenario (Scenario): Scenario instance.
+        cluster_address (str, optional): Ray cluster address. Defaults to "auto", which means the \
+            training instance will search an active cluster.
+
+    Raises:
+        TypeError: Unexpected scenario type.
+    """
 
     try:
-        start_ray_info = ray.init(address="auto")
+        start_ray_info = ray.init(address="auto", dashboard_port=8265)
     except ConnectionError:
         Logger.warning("No active cluster deteced, will create a local ray instance.")
         start_ray_info = ray.init()

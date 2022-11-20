@@ -63,14 +63,14 @@ export PYTHONPATH=./
 
 ## Documentation
 
-See online documentation at [MALib Docs](https://malib.readthedocs.io/), or you can also compile a local version with compiling local files as
+See online documentation at [MALib Docs](https://malib.readthedocs.io/), or you can also compile a local version by compiling local files as
 
 ```bash
 pip install -e .[dev]
 make docs-compile
 ```
 
-Then start a web server to read the docs:
+Then start a web server to get the docs:
 
 ```bash
 # execute following command, then the server will start at: http://localhost:8000
