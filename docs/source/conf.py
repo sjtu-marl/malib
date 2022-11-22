@@ -59,10 +59,10 @@ apidoc_module_dir = os.path.join(__location__, "malib")
 apidoc_module_first = True
 apidoc_extra_args = [
     "--force",
-#     "--separate",
-#     "--ext-viewcode",
-#     "--doc-project=MALib",
-#     "--maxdepth=2",
+    #     "--separate",
+    #     "--ext-viewcode",
+    #     "--doc-project=MALib",
+    #     "--maxdepth=2",
 ]
 
 exclude_patterns = ["tests/", "test*.py", "malib/mocker/"]
