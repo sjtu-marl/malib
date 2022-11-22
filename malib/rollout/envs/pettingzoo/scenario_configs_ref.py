@@ -2,6 +2,8 @@
 
 # Copyright (c) 2021 MARL @ SJTU
 
+# Author: Ming Zhou
+
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
@@ -20,8 +22,24 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from . import pettingzoo
-from . import mdp
-from . import open_spiel
-from . import gym
-from .env import Environment
+SCENARIO_CONFIGS = {
+    "atari.basketball_pong_v3": {
+        "num_players": 2,
+        "parallel_simulate": True,
+    },
+    "atari.boxing_v2": {
+        "parallel_simulate": True,
+    },
+    "butterfly.cooperative_pong_v5": {"parallel_simulate": True},
+    "classic.chess_v5": {"parallel_simulate": False},
+    "mpe.simple_adversary_v2": {"parallel_simulate": True},
+    # "sisl.multiwalker_v9": {
+    #     "parallel_simulate": True
+    # },
+    # "sisl.pursuite_v4": {
+    #     "parallel_simulate": True
+    # },
+    # "sisl.waterworld_v4": {
+    #     "parallel_simulate": True
+    # }
+}

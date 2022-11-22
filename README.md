@@ -34,7 +34,7 @@ MALib integrates many popular reinforcement learning environments, we list some 
 - [x] [Gym](https://github.com/openai/gym): An open source environment collections for developing and comparing reinforcement learning algorithms.
 - [x] [Google Research Football](https://github.com/google-research/football): RL environment based on open-source game Gameplay Football.
 - [x] [SMAC](https://github.com/oxwhirl/smac): An environment for research in the field of collaborative multi-agent reinforcement learning (MARL) based on Blizzard's StarCraft II RTS game.
-- [ ] [PettingZoo](https://github.com/Farama-Foundation/PettingZoo): A Python library for conducting research in multi-agent reinforcement learning, akin to a multi-agent version of [Gymnasium](https://github.com/Farama-Foundation/Gymnasium).
+- [x] [PettingZoo](https://github.com/Farama-Foundation/PettingZoo): A Python library for conducting research in multi-agent reinforcement learning, akin to a multi-agent version of [Gymnasium](https://github.com/Farama-Foundation/Gymnasium).
 - [ ] [DexterousHands](https://github.com/PKU-MARL/DexterousHands): An environment collection of bimanual dexterous manipulations tasks.
 
 See [malib/envs](/malib/envs/) for more details. In addition, users can customize environments with MALib's environment interfaces. Please refer to our documentation.
