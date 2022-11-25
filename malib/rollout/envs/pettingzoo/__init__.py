@@ -23,3 +23,25 @@
 # SOFTWARE.
 
 from .env import PettingZooEnv
+from .scenario_configs_ref import SCENARIO_CONFIGS
+
+
+def env_desc_gen(**config):
+    env_id = config["env_id"]
+    assert env_id in SCENARIO_CONFIGS, f"available env ids: {SCENARIO_CONFIGS.keys()}"
+
+    if "scenario_configs" not in config:
+        config["scenario_configs"] = SCENARIO_CONFIGS[env_id]
+
+    env = PettingZooEnv(**config)
+    env_desc = {
+        "creator": PettingZooEnv,
+        "possible_agents": env.possible_agents,
+        "action_spaces": env.action_spaces,
+        "observation_spaces": env.observation_spaces,
+        "config": config,
+    }
+
+    env.close()
+
+    return env_desc

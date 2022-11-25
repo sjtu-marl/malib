@@ -24,10 +24,33 @@
 
 import pytest
 
-
+from pytest_mock import MockerFixture
 from malib.rollout import envs
 
 
-@pytest.mark.parametrize("env_module", [envs.mdp, envs.pettingzoo, envs.gym])
-def test_api_implementation(env_module):
-    pass
+@pytest.mark.parametrize(
+    "env_module,env_id",
+    [
+        [envs.pettingzoo, "atari.basketball_pong_v3"],
+        [envs.gym, "CartPole-v1"],
+        [envs.mdp, "one_round_dmdp"],
+        [envs.open_spiel, "kuhn_poker"],
+    ],
+)
+def test_env_api(mocker: MockerFixture, env_module, env_id):
+    assert hasattr(env_module, "env_desc_gen")
+    env_desc_gen = env_module.env_desc_gen
+    desc = env_desc_gen(env_id=env_id)
+
+    env = desc["creator"](**desc["config"])
+    action_spaces = env.action_spaces
+
+    _, observations = env.reset(max_step=10)
+    done = False
+
+    cnt = 0
+    while not done:
+        actions = {k: action_spaces[k].sample() for k in observations.keys()}
+        _, observations, rewards, dones, infos = env.step(actions)
+        done = dones["__all__"]
+        cnt += 1
