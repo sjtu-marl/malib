@@ -35,7 +35,6 @@ class SC2Env(Environment):
 
         env = sc_env(**configs["scenario_configs"])
         env_info = env.get_env_info()
-
         n_obs = env_info["obs_shape"]
         num_actions = env_info["n_actions"]
         n_state = env_info["state_shape"]
