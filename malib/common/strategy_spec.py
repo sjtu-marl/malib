@@ -123,7 +123,7 @@ class StrategySpec:
 
         return self.meta_data
 
-    def gen_policy(self) -> Policy:
+    def gen_policy(self, device=None) -> Policy:
         """Generate a policy instance with the given meta data.
 
         Returns:
@@ -134,11 +134,18 @@ class StrategySpec:
         plist = self.meta_data["kwargs"]
         plist = Namespace(**plist)
 
+        custom_config = plist.custom_config.copy()
+
+        if device is not None and "cuda" in device:
+            custom_config["use_cuda"] = True
+        else:
+            custom_config["use_cuda"] = False
+
         return policy_cls(
             observation_space=plist.observation_space,
             action_space=plist.action_space,
             model_config=plist.model_config,
-            custom_config=plist.custom_config,
+            custom_config=custom_config,
             **plist.kwargs,
         )
 

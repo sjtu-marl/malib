@@ -179,7 +179,7 @@ class RayInferenceWorkerSet(RemoteInterface):
         for strategy_spec_pid in strategy_spec.policy_ids:
             policy_id = f"{strategy_spec.id}/{strategy_spec_pid}"
             if policy_id not in self.policies:
-                policy = strategy_spec.gen_policy()
+                policy = strategy_spec.gen_policy(device="cpu")
                 self.policies[policy_id] = policy
 
 

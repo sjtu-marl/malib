@@ -88,12 +88,7 @@ class AgentInterface(RemoteInterface, ABC):
         """
 
         if verbose:
-            print("\tray.get_gpu_ids(): {}".format(ray.get_gpu_ids()))
-            print(
-                "\tCUDA_VISIBLE_DEVICES: {}".format(
-                    os.environ.get("CUDA_VISIBLE_DEVICES", [])
-                )
-            )
+            print("\tAssigned GPUs: {}".format(ray.get_gpu_ids()))
 
         local_buffer_config = local_buffer_config or {}
         device = torch.device("cuda" if ray.get_gpu_ids() else "cpu")
@@ -296,7 +291,7 @@ class AgentInterface(RemoteInterface, ABC):
             self._parameter_server.set_weights.remote(
                 spec_id=top_active_tup[0],
                 spec_policy_id=top_active_tup[1],
-                state_dict=self._trainer.policy.state_dict(),
+                state_dict=self._trainer.policy.state_dict(device="cpu"),
             )
         )
 

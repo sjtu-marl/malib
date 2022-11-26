@@ -46,6 +46,7 @@ if __name__ == "__main__":
 
     trainer_config = DEFAULT_CONFIG["training_config"].copy()
     trainer_config["total_timesteps"] = int(1e6)
+    trainer_config["use_cuda"] = True
 
     training_config = {
         "type": IndependentAgent,
@@ -74,7 +75,7 @@ if __name__ == "__main__":
             DQNTrainer,
             # model configuration, None for default
             {},
-            {},
+            {"use_cuda": True},
         )
     }
 
