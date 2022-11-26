@@ -11,7 +11,7 @@ jobs:
     - name: Set up python 3.8
       uses: actions/setup-python@v2
       with:
-        python-version: 3.8.0
+        python-version: 3.8.14
     - name: Run black code formatter
       run: |
         cd $GITHUB_WORKSPACE
@@ -26,7 +26,7 @@ jobs:
     - name: Set up python 3.8
       uses: actions/setup-python@v2
       with:
-        python-version: 3.8.0
+        python-version: 3.8.14
     - name: Install requirements
       run: |
         pip install -e .
