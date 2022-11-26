@@ -6,10 +6,8 @@ import gym
 from gym import spaces
 from smac.env import StarCraft2Env as sc_env
 
-from malib.rollout.envs import Environment
-from malib.rollout.envs.env import GroupWrapper
+from malib.rollout.envs.env import Environment, GroupWrapper
 from malib.utils.typing import AgentID
-from malib.utils.episode import Episode
 
 
 agents_list = {
@@ -19,7 +17,6 @@ agents_list = {
     "2s3z": [f"Stalkers_{i}" for i in range(2)] + [f"Zealots_{i}" for i in range(3)],
     "2s5z": [f"Stalkers_{i}" for i in range(2)] + [f"Zealots_{i}" for i in range(3)],
 }
-# FIXME(ziyu): better ways or complete the rest map information
 
 
 def get_agent_names(map_name):
@@ -33,19 +30,19 @@ class SC2Env(Environment):
     def __init__(self, **configs):
         super(SC2Env, self).__init__(**configs)
 
-        env = sc_env(**configs["scenario_configs"])
+        env = sc_env(map_name=configs["env_id"])
         env_info = env.get_env_info()
+
         n_obs = env_info["obs_shape"]
         num_actions = env_info["n_actions"]
         n_state = env_info["state_shape"]
 
-        self.is_sequential = False
         self.max_step = 1000
         self.env_info = env_info
-        self.scenario_configs = configs["scenario_configs"]
+        self.scenario_configs = configs.get("scenario_configs", {})
 
         self._env = env
-        self._possible_agents = get_agent_names(self.scenario_configs["map_name"])
+        self._possible_agents = get_agent_names(configs["env_id"])
 
         n_agents = len(self.possible_agents)
 
@@ -75,8 +72,6 @@ class SC2Env(Environment):
             )
         )
 
-        self._trainable_agents = self.possible_agents
-
     @property
     def possible_agents(self) -> List[AgentID]:
         return self._possible_agents
@@ -89,18 +84,19 @@ class SC2Env(Environment):
     def action_spaces(self) -> Dict[AgentID, gym.Space]:
         return self._action_spaces
 
-    def get_state(self):
+    def get_state(self) -> np.ndarray:
         return self._env.get_state()
 
     def seed(self, seed: int = None):
-        pass
+        """Modify the default seed of underlying environment.
 
-    def reset(
-        self, max_step: int = None, custom_reset_config: Dict[str, Any] = None
-    ) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
-        super(SC2Env, self).reset(
-            max_step=max_step, custom_reset_config=custom_reset_config
-        )
+        Args:
+            seed (int, optional): Seed. Defaults to None.
+        """
+        self._env._seed = seed
+
+    def reset(self, max_step: int = None) -> Union[None, Dict[str, Dict[AgentID, Any]]]:
+        super(SC2Env, self).reset()
 
         obs_t, state = self._env.reset()
         action_mask = self._env.get_avail_actions()
@@ -108,12 +104,10 @@ class SC2Env(Environment):
             aid: {"observation": obs_t[i], "action_mask": np.array(action_mask[i])}
             for i, aid in enumerate(self.possible_agents)
         }
-        return {
-            Episode.CUR_OBS: obs,
-            Episode.ACTION_MASK: {
-                aid: _obs["action_mask"] for aid, _obs in obs.items()
-            },
-        }
+
+        # convert state to a dict of state, in agent-wise
+        agent_state = dict.fromkeys(self.possible_agents, state)
+        return agent_state, obs
 
     def time_step(self, actions: Dict[AgentID, Any]):
         act_list = [actions[aid] for aid in self.possible_agents]
@@ -137,20 +131,21 @@ class SC2Env(Environment):
             for i, aid in enumerate(self.possible_agents)
         }
 
-        return {
-            # {aid: next_state for aid in next_obs_dict},
-            Episode.NEXT_OBS: next_obs_dict,
-            Episode.ACTION_MASK: {
-                aid: _next_obs["action_mask"]
-                for aid, _next_obs in next_obs_dict.items()
-            },
-            Episode.REWARD: rew_dict,
-            Episode.DONE: done_dict,
-            # Episode.INFO: info_dict,
-        }
+        state_dict = dict.fromkeys(self.possible_agents, self.get_state())
+
+        return (state_dict, next_obs_dict, rew_dict, done_dict, info_dict)
 
     def close(self):
         self._env.close()
+
+        try:
+            import subprocess
+
+            subprocess.run(
+                ["ps", "-ef|grep StarCraft|grep -v grep|cut -c 9-15|xargs kill -9"]
+            )
+        except Exception as e:
+            print("[warning]: {}".format(e))
 
 
 def StatedSC2(**config):
@@ -181,3 +176,28 @@ def StatedSC2(**config):
             return agent_id.split("_")[0]
 
     return Wrapped(env)
+
+
+if __name__ == "__main__":
+
+    env = SC2Env(env_id="3m")
+
+    state, obs = env.reset()
+    done = False
+    cnt = 0
+
+    while not done:
+        action_masks = {agent: _obs["action_mask"] for agent, _obs in obs.items()}
+        actions = {}
+
+        for agent_id, action_mask in action_masks.items():
+            ava_actions = np.where(action_mask > 0)[0]
+            if len(ava_actions) == 0:
+                actions[agent_id] = env.action_spaces[agent_id].sample()
+            else:
+                actions[agent_id] = np.random.choice(ava_actions)
+
+        _, obs, rew, done, info = env.step(actions)
+        done = all(done.values())
+        cnt += 1
+        print(f"* step: {cnt} reward {rew}", done)

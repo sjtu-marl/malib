@@ -39,7 +39,7 @@ from malib.utils.typing import (
     EnvID,
     PolicyID,
 )
-from malib.rollout.envs import Environment
+from malib.rollout.envs.env import Environment
 from malib.utils.episode import Episode
 
 

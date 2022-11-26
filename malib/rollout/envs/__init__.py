@@ -24,4 +24,4 @@ from . import pettingzoo
 from . import mdp
 from . import open_spiel
 from . import gym
-from .env import Environment
+from . import sc2

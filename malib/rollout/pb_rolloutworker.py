@@ -22,9 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Any, List, Callable, Tuple
-
-import ray
+from typing import Dict, Any
 
 from malib.rollout.rolloutworker import RolloutWorker, parse_rollout_info
 from malib.common.strategy_spec import StrategySpec
