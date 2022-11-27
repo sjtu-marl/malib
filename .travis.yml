@@ -16,4 +16,5 @@ jobs:
 install:
   - pip install -e .
   - pip install -e .[dev]
+  - AutoROM -y
 script: make test
