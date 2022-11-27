@@ -23,7 +23,7 @@
 # SOFTWARE.
 
 
-from typing import Dict, Any, Tuple, Callable, Type, List
+from typing import Dict, Any, Tuple, Callable, Type, List, Union
 from abc import ABC, abstractmethod
 from collections import deque
 
@@ -141,6 +141,26 @@ class AgentInterface(RemoteInterface, ABC):
         self._parameter_server: ParameterServer = None
         self._active_tups = deque()
         self.verbose = verbose
+
+    @property
+    def governed_agents(self) -> Tuple[str]:
+        """Return a tuple of governed environment agents.
+
+        Returns:
+            Tuple[str]: A tuple of agent ids.
+        """
+
+        return tuple(self._governed_agents)
+
+    @property
+    def device(self) -> Union[str, torch.DeviceObjType]:
+        """Retrive device name.
+
+        Returns:
+            Union[str, torch.DeviceObjType]: Device name.
+        """
+
+        return self._device
 
     def connect(
         self,
@@ -263,12 +283,15 @@ class AgentInterface(RemoteInterface, ABC):
 
     @abstractmethod
     def multiagent_post_process(
-        self, batch: Dict[AgentID, Batch], batch_indices: List[int]
+        self,
+        batch_info: Union[
+            Dict[AgentID, Tuple[Batch, List[int]]], Tuple[Batch, List[int]]
+        ],
     ) -> Dict[str, Any]:
         """Merge agent buffer here and return the merged buffer.
 
         Args:
-            batch (Dict[AgentID, Dict[str, Any]]): Agent buffer dict.
+            batch_info (Union[Dict[AgentID, Tuple[Batch, List[int]]], Tuple[Batch, List[int]]]): Batch info, could be a dict of agent batch info or a tuple.
 
         Returns:
             Dict[str, Any]: A merged buffer dict.
@@ -341,7 +364,7 @@ class AgentInterface(RemoteInterface, ABC):
                 batch_info = reader_info[-1].get()
                 if len(batch_info[-1]) == 0:
                     continue
-                batch = self.multiagent_post_process(*batch_info)
+                batch = self.multiagent_post_process(batch_info)
                 step_info_list = self._trainer(batch)
                 for step_info in step_info_list:
                     self._total_step += 1

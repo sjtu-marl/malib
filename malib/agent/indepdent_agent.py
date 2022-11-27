@@ -22,10 +22,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""
-Independent agent interface, for independent algorithms training. Policy/Trainer adding rule: one policy one trainer.
-"""
-
 from typing import Dict, Tuple, Any, Callable, List, Union
 
 from malib.utils.typing import AgentID
@@ -63,9 +59,17 @@ class IndependentAgent(AgentInterface):
         )
 
     def multiagent_post_process(
-        self, batch: Union[Batch, Dict[AgentID, Batch]], batch_indices: List[int]
+        self,
+        batch_info: Union[
+            Dict[AgentID, Tuple[Batch, List[int]]], Tuple[Batch, List[int]]
+        ],
     ) -> Dict[str, Any]:
-        if isinstance(batch, Batch):
-            return batch
-        else:
-            raise NotImplementedError
+
+        assert isinstance(
+            batch_info, Tuple
+        ), "IndependentAgent does not support a dict of batch info"
+
+        batch = batch_info[0]
+        batch.to_torch(self.device)
+
+        return batch

@@ -18,7 +18,7 @@ Subpackages
    malib.rollout.envs.mdp
    malib.rollout.envs.open_spiel
    malib.rollout.envs.pettingzoo
-   malib.rollout.envs.star_craft2
+   malib.rollout.envs.sc2
 
 Submodules
 ----------

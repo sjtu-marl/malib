@@ -4,7 +4,7 @@ omit =
 	# ignore typings and base class
 	*/__init__.py
 	malib/rollout/envs/gr_football/*
-	malib/rollout/envs/star_craft2/*
+	malib/rollout/envs/sc2/*
 	malib/rollout/envs/env.py
 	malib/rl/random/*
 	malib/utils/*
@@ -16,6 +16,7 @@ omit =
 	malib/agent/team_agent.py
 	malib/agent/async_agent.py
 	malib/mocker/*
+	malib/rl/coma/trainer.py
 
 
 [report]

@@ -131,7 +131,7 @@ class Trainer(metaclass=ABCMeta):
         feedback = self.train(buffer)
         if not isinstance(feedback, List):
             feedback = [feedback]
-        self._counter += 1
+        self.step_counter()
         return feedback
 
     def reset(self, policy_instance=None, configs=None, learning_mode: str = None):

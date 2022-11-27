@@ -25,6 +25,7 @@
 from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple, Union, no_type_check, Sequence
 from copy import deepcopy
+from collections import defaultdict
 
 import h5py
 import torch
@@ -115,3 +116,49 @@ class ReplayBuffer:
         indices = self.sample_indices(batch_size)
         samples = {k: v[indices] for k, v in self.data.items()}
         return Batch(samples), indices
+
+
+class MultiagentReplayBuffer(ReplayBuffer):
+    def __init__(
+        self,
+        size: int,
+        stack_num: int = 1,
+        ignore_obs_next: bool = False,
+        save_only_last_obs: bool = False,
+        sample_avail: bool = False,
+        **kwargs
+    ) -> None:
+        super().__init__(
+            size, stack_num, ignore_obs_next, save_only_last_obs, sample_avail, **kwargs
+        )
+
+        self.data = defaultdict(
+            lambda: ReplayBuffer(
+                size=size,
+                stack_num=stack_num,
+                ignore_obs_next=ignore_obs_next,
+                save_only_last_obs=save_only_last_obs,
+                sample_avail=sample_avail,
+                **kwargs
+            )
+        )
+
+    def add_batch(self, data: Dict[str, Dict[str, np.ndarray]]):
+        for agent, _data in data.items():
+            self.data[agent].add_batch(_data)
+
+        size_candidates = set()
+        for e in self.data.values():
+            size_candidates.add(e.size)
+        assert len(size_candidates) == 1, (
+            size_candidates,
+            {k: v.size for k, v in self.data.items()},
+        )
+        self.size = list(self.data.values())[0].size
+
+    def sample(self, batch_size: int) -> Dict[str, Tuple[Batch, List[int]]]:
+        agent_batch_tups = {
+            agent: data.sample(batch_size) for agent, data in self.data.items()
+        }
+
+        return agent_batch_tups
