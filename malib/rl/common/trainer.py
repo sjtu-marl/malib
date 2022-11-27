@@ -84,42 +84,40 @@ class Trainer(metaclass=ABCMeta):
         """Set up optimizers here."""
 
     @abstractmethod
-    def train(self, batch: Dict[str, torch.Tensor]) -> Dict[str, float]:
+    def train(self, batch: Batch) -> Dict[str, float]:
         """Run training, and return info dict.
 
         Args:
             batch (Union[Dict[AgentID, Batch], Batch]): A dict of batch or batch
 
         Returns:
-            Dict[str, float]: A dict of information
+            Batch: A training batch of data.
         """
 
-    def post_process(
-        self, batch: Dict[str, Any], agent_filter: Sequence[AgentID]
-    ) -> Dict[str, Any]:
+    def post_process(self, batch: Batch, agent_filter: Sequence[AgentID]) -> Batch:
         """Batch post processing here.
 
         Args:
-            batch (Dict[str, Any]): Sampled batch.
+            batch (Batch): Sampled batch.
 
         Raises:
             NotImplementedError: Not implemented.
 
         Returns:
-            Dict[str, Any]: A processed batch dict.
+            Batch: A batch instance.
         """
 
         return batch
 
     def __call__(
         self,
-        buffer: Dict[str, Any],
+        buffer: Batch,
         agent_filter: Sequence[AgentID] = None,
     ) -> Dict[str, Any]:
         """Implement the training Logic here, and return the computed loss results.
 
         Args:
-            buffer (Dict[str, Any]): The give data buffer
+            buffer (Batch): The give training batch.
             agent_filter (Sequence[AgentID], Optional): Determine which agents are governed by \
                 this trainer. In single agent mode, there will be only one agents be \
                     transferred. Activated only when `sampler` is not None.

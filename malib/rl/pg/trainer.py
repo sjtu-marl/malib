@@ -44,9 +44,7 @@ class PGTrainer(Trainer):
         self.lr_scheduler: torch.optim.lr_scheduler.LambdaLR = None
         self.ret_rms = None
 
-    def post_process(
-        self, batch: Batch, agent_filter: Sequence[AgentID]
-    ) -> Dict[str, Any]:
+    def post_process(self, batch: Batch, agent_filter: Sequence[AgentID]) -> Batch:
 
         # v_s_ = np.full(indices.shape, self.ret_rms.mean)
         unnormalized_returns, _ = Postprocessor.compute_episodic_return(
@@ -65,7 +63,7 @@ class PGTrainer(Trainer):
         )
         return batch
 
-    def train(self, batch: Dict[str, torch.Tensor]) -> Dict[str, Any]:
+    def train(self, batch: Batch) -> Dict[str, Any]:
         self.optimizer.zero_grad()
         logits = batch.logits
         dist = self.policy.dist_fn.proba_distribution(logits)

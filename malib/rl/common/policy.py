@@ -305,3 +305,8 @@ class Policy(metaclass=ABCMeta):
             target = self.registered_networks[k]
             for target_param, param in zip(target.parameters(), parameters):
                 target_param.data.copy_(param.data)
+
+    def coordinate(self, state: Dict[str, torch.Tensor], message: Any) -> Any:
+        """Coordinate with other agents here"""
+
+        raise NotImplementedError

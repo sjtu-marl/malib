@@ -37,6 +37,7 @@ from malib.utils.typing import AgentID
 from malib.utils.data import to_torch
 from malib.rl.common.trainer import Trainer
 from malib.utils.data import Postprocessor
+from malib.utils.tianshou_batch import Batch
 
 
 class A2CTrainer(Trainer):
@@ -51,9 +52,7 @@ class A2CTrainer(Trainer):
         self.lr_scheduler: torch.optim.lr_scheduler.LambdaLR = None
         self.ret_rms = None
 
-    def post_process(
-        self, batch: Dict[str, Any], agent_filter: Sequence[AgentID]
-    ) -> Dict[str, Any]:
+    def post_process(self, batch: Batch, agent_filter: Sequence[AgentID]) -> Batch:
         state_value, next_state_value = [], []
         with torch.no_grad():
             for minibatch in batch.split(
@@ -103,7 +102,7 @@ class A2CTrainer(Trainer):
         )
         return batch
 
-    def train(self, batch: Dict[str, torch.Tensor]) -> Dict[str, float]:
+    def train(self, batch: Batch) -> Dict[str, float]:
         batch = Namespace(
             **{k: to_torch(v, device=self.policy.device) for k, v in batch.items()}
         )
