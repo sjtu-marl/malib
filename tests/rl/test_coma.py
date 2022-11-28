@@ -28,6 +28,7 @@ from functools import partial
 import pytest
 import gym
 import numpy as np
+import torch
 
 from gym import spaces
 
@@ -85,6 +86,8 @@ def gen_agent_batch(
 def test_centralized_critic(
     net_type: str, kwargs: Dict[str, Any], device: str, use_timestep: bool
 ):
+    if not torch.cuda.is_available():
+        device = "cpu"
     agent_batch, centralized_obs_space, batch_size, time_step = gen_agent_batch(
         [f"agent_{i}" for i in range(3)], use_timestep, device
     )
