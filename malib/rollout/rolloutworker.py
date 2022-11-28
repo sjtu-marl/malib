@@ -23,14 +23,14 @@
 # SOFTWARE.
 
 from typing import Dict, Any, List, Callable, Sequence, Tuple
+from abc import abstractmethod
+from collections import defaultdict
 
 import os
 import time
 import traceback
 import logging
 import pprint
-
-from collections import defaultdict
 
 import ray
 import gym
@@ -492,6 +492,7 @@ class RolloutWorker(RemoteInterface):
         self.simulate_callback(self.coordinator, results)
         return results
 
+    @abstractmethod
     def step_rollout(
         self,
         eval_step: bool,
@@ -522,8 +523,8 @@ class RolloutWorker(RemoteInterface):
         Returns:
             List[Dict[str, Any]]: Evaluation results, could be empty.
         """
-        raise NotImplementedError
 
+    @abstractmethod
     def step_simulation(
         self,
         runtime_strategy_specs: Dict[str, StrategySpec],
@@ -541,8 +542,6 @@ class RolloutWorker(RemoteInterface):
         Returns:
             Dict[str, Any]: A evaluation results.
         """
-
-        raise NotImplementedError
 
     def assign_episode_id(self):
         return f"eps-{self.worker_indentifier}-{time.time()}"

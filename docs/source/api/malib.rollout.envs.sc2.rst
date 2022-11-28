@@ -1,7 +1,7 @@
-malib.rollout.envs.mpe package
+malib.rollout.envs.sc2 package
 ==============================
 
-.. automodule:: malib.rollout.envs.mpe
+.. automodule:: malib.rollout.envs.sc2
    :members:
    :undoc-members:
    :show-inheritance:
@@ -9,10 +9,10 @@ malib.rollout.envs.mpe package
 Submodules
 ----------
 
-malib.rollout.envs.mpe.env module
+malib.rollout.envs.sc2.env module
 ---------------------------------
 
-.. automodule:: malib.rollout.envs.mpe.env
+.. automodule:: malib.rollout.envs.sc2.env
    :members:
    :undoc-members:
    :show-inheritance:

@@ -7,11 +7,11 @@
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/sjtu-marl/malib/blob/main/LICENSE)
 [![Documentation Status](https://readthedocs.org/projects/malib/badge/?version=latest)](https://malib.readthedocs.io/en/latest/?badge=latest)
 [![Build Status](https://app.travis-ci.com/sjtu-marl/malib.svg?branch=main)](https://app.travis-ci.com/sjtu-marl/malib.svg?branch=main)
-[![codecov](https://codecov.io/gh/sjtu-marl/malib/branch/test-cases/graph/badge.svg?token=CJX14B2AJG)](https://codecov.io/gh/sjtu-marl/malib)
+[![codecov](https://codecov.io/gh/sjtu-marl/malib/branch/main/graph/badge.svg?token=CJX14B2AJG)](https://codecov.io/gh/sjtu-marl/malib)
 
 MALib is a parallel framework of population-based learning nested with reinforcement learning methods, such as Policy Space Response Oracle, Self-Play, and Neural Fictitious Self-Play. MALib provides higher-level abstractions of MARL training paradigms, which enables efficient code reuse and flexible deployments on different distributed computing paradigms.
 
-![architecture](docs/imgs/Architecture.svg)
+![architecture](docs/imgs/architecture3.png)
 
 ## Installation
 
@@ -34,7 +34,7 @@ MALib integrates many popular reinforcement learning environments, we list some 
 - [x] [Gym](https://github.com/openai/gym): An open source environment collections for developing and comparing reinforcement learning algorithms.
 - [x] [Google Research Football](https://github.com/google-research/football): RL environment based on open-source game Gameplay Football.
 - [x] [SMAC](https://github.com/oxwhirl/smac): An environment for research in the field of collaborative multi-agent reinforcement learning (MARL) based on Blizzard's StarCraft II RTS game.
-- [ ] [PettingZoo](https://github.com/Farama-Foundation/PettingZoo): A Python library for conducting research in multi-agent reinforcement learning, akin to a multi-agent version of [Gymnasium](https://github.com/Farama-Foundation/Gymnasium).
+- [x] [PettingZoo](https://github.com/Farama-Foundation/PettingZoo): A Python library for conducting research in multi-agent reinforcement learning, akin to a multi-agent version of [Gymnasium](https://github.com/Farama-Foundation/Gymnasium).
 - [ ] [DexterousHands](https://github.com/PKU-MARL/DexterousHands): An environment collection of bimanual dexterous manipulations tasks.
 
 See [malib/envs](/malib/envs/) for more details. In addition, users can customize environments with MALib's environment interfaces. Please refer to our documentation.

@@ -22,4 +22,5 @@ conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit
 pip config set global.index-url https://mirror.sjtu.edu.cn/pypi/web/simple
 pip install --upgrade pip
 pip install -e .
+pip install git+https://github.com/oxwhirl/smac.git
 #./install_sc2.sh

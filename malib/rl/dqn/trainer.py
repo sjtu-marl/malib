@@ -37,6 +37,7 @@ from malib.utils.typing import AgentID
 from malib.rl.common import misc
 from malib.rl.common.trainer import Trainer
 from malib.utils.schedules import LinearSchedule
+from malib.utils.tianshou_batch import Batch
 
 
 class DQNTrainer(Trainer):
@@ -58,9 +59,7 @@ class DQNTrainer(Trainer):
             self.policy.critic.parameters(), lr=self.training_config["lr"]
         )
 
-    def post_process(
-        self, batch: Dict[str, Any], agent_filter: Sequence[AgentID]
-    ) -> Dict[str, np.ndarray]:
+    def post_process(self, batch: Batch, agent_filter: Sequence[AgentID]) -> Batch:
         # set exploration rate for policy
         update_eps = self.exploration.value(self.counter)
         self.policy.eps = update_eps
@@ -71,7 +70,7 @@ class DQNTrainer(Trainer):
                     batch[k] = v.reshape((-1,) + inner_shape)
         return batch
 
-    def train(self, batch: Dict[str, torch.Tensor]):
+    def train(self, batch: Batch):
         state_action_values, _ = self.policy.critic(batch.obs.squeeze())
         state_action_values = state_action_values.gather(
             -1, batch.act.long().view((-1, 1))

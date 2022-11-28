@@ -105,7 +105,40 @@ OpenSpiel_ is a collection of environments and algorithms for research in genera
 PettingZoo
 ^^^^^^^^^^
 
-coming soon ...
+`PettingZoo <https://pettingzoo.farama.org/>`_ is a Python library for conducting research in multi-agent reinforcement learning, akin to a multi-agent `Gym environment <https://github.com/Farama-Foundation/Gymnasium>`. It integrates many popular multi-agent environments, also modified multi-agent Atari games.
+
+**Available Environments**
+
+* Atari: Multi-player Atari 2600 games (cooperative, competitive and mixed sum)
+* Butterfly: Cooperative graphical games developed by us, requiring a high degree of coordination
+* Classic: Classical games including card games, board games, etc.
+* MPE: A set of simple nongraphical communication tasks, originally from https://github.com/openai/multiagent-particle-envs
+* SISL: 3 cooperative environments, originally from https://github.com/sisl/MADRL
+
+.. note::
+
+    For the use of multi-agent Atari in PettingZoo, you should run ```AutoROM`` to install rom, and ``pettiongzoo[classic]`` to support Classic games; ``pettingzoo[sisl]`` to support SISL environments.
+
+There is a file named ``scenarios_configs_re.py`` under the package of ``malib.rollout.envs.pettingzoo`` which offers a default dictionary of supported scenarios and configurations. Users can create a pettingzoo sub enviornment by giving an environment id in the form as: `{domain_id}.{scenario_id}`. The ``domain_id`` could be one of the above listed five environment ids, and the ``scenario_id`` can be found in the full list of them from the documentation of pettingzoo.
+
+.. code-block:: python
+
+    from malib.rollout.envs.pettingzoo.scenario_configs_ref import SCENARIO_CONFIGS
+
+    for env_id, scenario_configs in SCENARIO_CONFIGS.items():
+        env = PettingZooEnv(env_id=env_id, scenario_configs=scenario_configs)
+        action_spaces = env.action_spaces
+
+        _, observations = env.reset()
+        done = False
+
+        while not done:
+            actions = {k: action_spaces[k].sample() for k in observations.keys()}
+            _, observations, rewards, dones, infos = env.step(actions)
+            done = dones["__all__"]
+
+As pettingzoo supports two simulation modes, i.e., ``AECEnv`` and ``ParallelEnv``, users can switch it with specifying ``parallel_simulate`` in ``scenario_configs``. ``True`` for ``ParallelEnv``, and ``False`` for ``AECEnv``.
+
 
 SMAC: StarCraftII
 ^^^^^^^^^^^^^^^^^

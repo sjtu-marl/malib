@@ -31,6 +31,8 @@ jobs:
       run: |
         pip install -e .
         pip install -e .[dev]
+        pip install git+https://github.com/oxwhirl/smac.git
+        AutoROM -y
     - name: Run tests and collect coverage
       run: make test-verbose
     - name: Upload coverage reports to Codecov

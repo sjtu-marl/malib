@@ -19,3 +19,21 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
+from typing import Dict
+
+from .env import SC2Env
+
+
+def env_desc_gen(**config):
+    env = SC2Env(**config)
+    env_desc = {
+        "creator": SC2Env,
+        "possible_agents": env.possible_agents,
+        "action_spaces": env.action_spaces,
+        "observation_spaces": env.observation_spaces,
+        "state_spaces": env.state_spaces,
+        "config": config,
+    }
+    env.close()
+    return env_desc

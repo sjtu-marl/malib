@@ -116,7 +116,8 @@ class MLP(nn.Module):
                 dtype=torch.float32,
             )
         else:
-            obs = torch.as_tensor(obs, dtype=torch.float32)
+            obs = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+
         return self.model(obs.flatten(-1))  # type: ignore
 
 
@@ -306,15 +307,17 @@ def _parse_model_config_from_dict(**kwargs) -> Dict[str, Any]:
             res[k] = copy.deepcopy(v)
         elif k in ["norm_layer", "activation", "linear_layer"]:
             # convert str to module obj
-            if isinstance(v, Dict):
+            if isinstance(v, str):
                 res[k] = getattr(torch.nn, v)
             elif isinstance(v, Sequence):
                 res[k] = [getattr(torch.nn, _v) for _v in v]
+            else:
+                raise TypeError(f"unexpected type for model configuration: {type(v)}")
         elif k in ["softmax", "concat"]:
             res[k] = bool(v)
-        elif k == ["dueling_param", "actor", "critic", "net"]:
+        elif k in ["dueling_param", "actor", "critic", "net"]:
             res[k] = v if k != "dueling_param" else copy.deepcopy(v)
-        elif k == ["state_shape", "action_shape"]:
+        elif k in ["state_shape", "action_shape", "layer_num"]:
             if isinstance(v, Sequence):
                 res[k] = [int(_v) for _v in v]
             else:
@@ -347,7 +350,7 @@ def make_net(
     action_space: gym.Space,
     device: Device,
     net_type: str = None,
-    **kwargs
+    **kwargs,
 ) -> nn.Module:
     """Create a network instance with specific network configuration.
 

@@ -30,7 +30,7 @@ import gym
 from gym import spaces
 
 from malib.utils.typing import AgentID
-from malib.rollout.envs import Environment
+from malib.rollout.envs.env import Environment
 
 
 class DummyEnv(Environment):

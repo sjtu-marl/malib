@@ -37,10 +37,14 @@ from ray.util.queue import Queue
 from malib.remote.interface import RemoteInterface
 from malib.utils.logging import Logger
 from malib.utils.tianshou_batch import Batch
-from malib.utils.replay_buffer import ReplayBuffer
+from malib.utils.replay_buffer import ReplayBuffer, MultiagentReplayBuffer
 
 
-def write_table(marker: rwlock.RWLockFair, buffer: ReplayBuffer, writer: Queue):
+def write_table(
+    marker: rwlock.RWLockFair,
+    buffer: Union[MultiagentReplayBuffer, ReplayBuffer],
+    writer: Queue,
+):
     wlock = marker.gen_wlock()
     while True:
         try:
@@ -55,17 +59,25 @@ def write_table(marker: rwlock.RWLockFair, buffer: ReplayBuffer, writer: Queue):
 
 
 def read_table(
-    marker: rwlock.RWLockFair, buffer: ReplayBuffer, batch_size: int, reader: Queue
+    marker: rwlock.RWLockFair,
+    buffer: Union[MultiagentReplayBuffer, ReplayBuffer],
+    batch_size: int,
+    reader: Queue,
 ):
     rlock = marker.gen_rlock()
     while True:
         try:
             with rlock:
                 if len(buffer) >= batch_size:
-                    batch, indices = buffer.sample(batch_size)
+                    ret = buffer.sample(batch_size)
+                    # batch, indices = buffer.sample(batch_size)
                 else:
-                    batch, indices = [], np.array([], int)
-                reader.put_nowait((batch, indices))
+                    # batch, indices = [], np.array([], int)
+                    if isinstance(MultiagentReplayBuffer):
+                        ret = {}
+                    else:
+                        ret = ([], np.array([], int))
+                reader.put_nowait(ret)
         except Exception as e:
             break
 

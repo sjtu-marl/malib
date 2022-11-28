@@ -13,6 +13,7 @@ Subpackages
    :maxdepth: 4
 
    malib.rl.a2c
+   malib.rl.coma
    malib.rl.common
    malib.rl.discrete_sac
    malib.rl.dqn

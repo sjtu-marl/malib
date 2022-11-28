@@ -26,6 +26,9 @@ from .env import GymEnv
 
 
 def env_desc_gen(**config):
+    if "scenario_configs" not in config:
+        config["scenario_configs"] = {}
+
     env = GymEnv(**config)
     env_desc = {
         "creator": GymEnv,

@@ -62,6 +62,7 @@ setup(
         "gym==0.23.0",
         "h5py==3.7.0",
         "pygame==2.1.0",
+        "pettingzoo",
     ],
     extras_require={
         "dev": [

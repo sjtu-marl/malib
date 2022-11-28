@@ -2,6 +2,8 @@
 
 # Copyright (c) 2021 MARL @ SJTU
 
+# Author: Ming Zhou
+
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
@@ -20,8 +22,26 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from . import pettingzoo
-from . import mdp
-from . import open_spiel
-from . import gym
-from . import sc2
+from .env import PettingZooEnv
+from .scenario_configs_ref import SCENARIO_CONFIGS
+
+
+def env_desc_gen(**config):
+    env_id = config["env_id"]
+    assert env_id in SCENARIO_CONFIGS, f"available env ids: {SCENARIO_CONFIGS.keys()}"
+
+    if "scenario_configs" not in config:
+        config["scenario_configs"] = SCENARIO_CONFIGS[env_id]
+
+    env = PettingZooEnv(**config)
+    env_desc = {
+        "creator": PettingZooEnv,
+        "possible_agents": env.possible_agents,
+        "action_spaces": env.action_spaces,
+        "observation_spaces": env.observation_spaces,
+        "config": config,
+    }
+
+    env.close()
+
+    return env_desc
