@@ -40,6 +40,7 @@ class COMADiscreteCritic(nn.Module):
     def __init__(
         self,
         centralized_obs_space: gym.Space,
+        action_space: gym.Space,
         net_type: str = None,
         device: str = "cpu",
         **kwargs
@@ -48,9 +49,7 @@ class COMADiscreteCritic(nn.Module):
         self.net_type = net_type
         self.net = make_net(
             observation_space=centralized_obs_space,
-            action_space=spaces.Box(
-                low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32
-            ),
+            action_space=action_space,
             device=device,
             net_type=net_type,
             **kwargs
@@ -107,7 +106,7 @@ class COMADiscreteCritic(nn.Module):
         ori_shape = inputs.shape
         if self.net_type == "rnn":
             logits, hidden_state = self.net(inputs.view(-1, ori_shape[-1]))
-            logits = logits.reshape(ori_shape[:-1] + (1,))
+            logits = logits.reshape(ori_shape[:-1] + (-1,))
             hidden_state = {
                 k: v.reshape(ori_shape[:-1] + v.shape[1:])
                 for k, v in hidden_state.items()

@@ -121,7 +121,6 @@ def to_torch(
         raise TypeError(f"object {x} cannot be converted to torch.")
 
 
-@njit
 def _gae_return(
     v_s: np.ndarray,
     v_s_: np.ndarray,
@@ -192,8 +191,15 @@ class Postprocessor:
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
     ):
-        rew = batch["rew"]
-        done = batch["done"]
+        if isinstance(batch["rew"], torch.Tensor):
+            rew = batch["rew"].cpu().numpy()
+        else:
+            rew = batch["rew"]
+
+        if isinstance(batch["done"], torch.Tensor):
+            done = batch["done"].cpu().numpy()
+        else:
+            done = batch["done"]
 
         if next_state_value is None:
             assert np.isclose(gae_lambda, 1.0)

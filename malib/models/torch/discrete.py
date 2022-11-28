@@ -51,6 +51,7 @@ class Actor(nn.Module):
             input_dim, self.output_dim, hidden_sizes, device=self.device  # type: ignore
         )
         self.softmax_output = softmax_output
+        self.to(device)
 
     def forward(
         self,

@@ -34,48 +34,86 @@ from gym import spaces
 
 from malib.utils.episode import Episode
 from malib.utils.tianshou_batch import Batch
+from malib.rl.pg import PGPolicy
 from malib.rl.coma.critic import COMADiscreteCritic
 from malib.rl.coma.trainer import COMATrainer
 
 
 def gen_agent_batch(
-    agents: List[str], use_timestep: bool, device: str
+    agents: List[str], action_dim, use_timestep: bool, device: str
 ) -> Dict[str, Batch]:
     batches = {}
     batch_size = 64
     time_step = 100
 
+    if not use_timestep:
+        done = np.random.random((batch_size,))
+    else:
+        done = np.random.random((batch_size, time_step))
+    done = np.where(done > 0.01, False, True)
+
     for agent in agents:
         if not use_timestep:
             batch = Batch(
                 {
-                    Episode.CUR_STATE: np.random.random((batch_size, 12)),
-                    Episode.CUR_OBS: np.random.random((batch_size, 3)),
-                    Episode.ACTION: np.random.random((batch_size, 3)),
+                    Episode.CUR_STATE: np.random.random((batch_size, 12)).astype(
+                        np.float32
+                    ),
+                    Episode.CUR_OBS: np.random.random((batch_size, 3)).astype(
+                        np.float32
+                    ),
+                    Episode.ACTION: np.random.random((batch_size, action_dim)).astype(
+                        np.float32
+                    ),
+                    Episode.REWARD: np.random.random((batch_size,)).astype(np.float32),
+                    Episode.DONE: done,
+                    Episode.NEXT_STATE: np.random.random((batch_size, 12)).astype(
+                        np.float32
+                    ),
+                    Episode.NEXT_OBS: np.random.random((batch_size, 3)).astype(
+                        np.float32
+                    ),
                 }
             )
         else:
             batch = Batch(
                 {
-                    Episode.CUR_STATE: np.random.random((batch_size, time_step, 12)),
-                    Episode.CUR_OBS: np.random.random((batch_size, time_step, 3)),
-                    Episode.ACTION: np.random.random((batch_size, time_step, 3)),
+                    Episode.CUR_STATE: np.random.random(
+                        (batch_size, time_step, 12)
+                    ).astype(np.float32),
+                    Episode.CUR_OBS: np.random.random(
+                        (batch_size, time_step, 3)
+                    ).astype(np.float32),
+                    Episode.ACTION: np.random.random(
+                        (batch_size, time_step, action_dim)
+                    ).astype(np.float32),
+                    Episode.REWARD: np.random.random((batch_size, time_step)).astype(
+                        np.float32
+                    ),
+                    Episode.DONE: done,
+                    Episode.NEXT_STATE: np.random.random(
+                        (batch_size, time_step, 12)
+                    ).astype(np.float32),
+                    Episode.NEXT_OBS: np.random.random(
+                        (batch_size, time_step, 3)
+                    ).astype(np.float32),
                 }
             )
         batch.to_torch(device=device)
         batches[agent] = batch
 
     centralized_obs_space = spaces.Box(
-        low=-np.inf, high=np.inf, shape=(12 + 3 + 3 * len(agents),)
+        low=-np.inf, high=np.inf, shape=(12 + 3 + action_dim * len(agents),)
     )
+    action_space = spaces.Discrete(action_dim)
 
-    return batches, centralized_obs_space, batch_size, time_step
+    return batches, action_space, centralized_obs_space, batch_size, time_step
 
 
 @pytest.mark.parametrize(
     "net_type,kwargs",
     [
-        [None, {"hidden_sizes": [64, 64], "activation": "ReLU", "action_shape": 1}],
+        [None, {"hidden_sizes": [64, 64], "activation": "ReLU", "action_shape": 3}],
         ["mlp", {"hidden_sizes": [64, 64]}],
         ["general_net", {"hidden_sizes": [64, 64]}],
         ["rnn", {"layer_num": 2}],
@@ -83,46 +121,81 @@ def gen_agent_batch(
 )
 @pytest.mark.parametrize("device", ["cuda:0", "cpu"])
 @pytest.mark.parametrize("use_timestep", [False, True])
-def test_centralized_critic(
-    net_type: str, kwargs: Dict[str, Any], device: str, use_timestep: bool
-):
-    if not torch.cuda.is_available():
-        device = "cpu"
-    agent_batch, centralized_obs_space, batch_size, time_step = gen_agent_batch(
-        [f"agent_{i}" for i in range(3)], use_timestep, device
-    )
-    critic = COMADiscreteCritic(centralized_obs_space, net_type, device, **kwargs)
-    critic.to(device)
+class TestCOMA:
+    def test_centralized_critic(
+        self, net_type: str, kwargs: Dict[str, Any], device: str, use_timestep: bool
+    ):
+        if not torch.cuda.is_available():
+            device = "cpu"
+        (
+            agent_batch,
+            action_space,
+            centralized_obs_space,
+            batch_size,
+            time_step,
+        ) = gen_agent_batch([f"agent_{i}" for i in range(3)], 3, use_timestep, device)
+        critic = COMADiscreteCritic(
+            centralized_obs_space, action_space, net_type, device, **kwargs
+        )
+        critic.to(device)
 
-    values = critic(agent_batch)
-    if isinstance(values, Tuple):
-        values = values[0]
+        values = critic(agent_batch)
+        if isinstance(values, Tuple):
+            values = values[0]
 
-    if use_timestep:
-        expected_shape = (batch_size, time_step, 3, 1)
-        assert (
-            values.shape == expected_shape
-        ), f"net_type: {net_type}, expected_shape: {expected_shape}, valueshape: {values.shape}"
-    else:
-        expected_shape = (batch_size, 3, 1)
-        assert (
-            values.shape == expected_shape
-        ), f"net_type: {net_type}, expected_shape: {expected_shape}, valueshape: {values.shape}"
+        if use_timestep:
+            expected_shape = (batch_size, time_step, 3, action_space.n)
+            assert (
+                values.shape == expected_shape
+            ), f"net_type: {net_type}, expected_shape: {expected_shape}, valueshape: {values.shape}"
+        else:
+            expected_shape = (batch_size, 3, action_space.n)
+            assert (
+                values.shape == expected_shape
+            ), f"net_type: {net_type}, expected_shape: {expected_shape}, valueshape: {values.shape}"
 
-    if "cuda" in device:
-        assert "cuda" in values.device.type
-    else:
-        assert "cpu" in values.device.type
+        if "cuda" in device:
+            assert "cuda" in values.device.type
+        else:
+            assert "cpu" in values.device.type
 
+    def test_coma_training(
+        self, net_type: str, kwargs: Dict[str, Any], device: str, use_timestep: bool
+    ):
+        if not torch.cuda.is_available():
+            device = "cpu"
+        (
+            agent_batch,
+            action_space,
+            centralized_obs_space,
+            batch_size,
+            time_step,
+        ) = gen_agent_batch([f"agent_{i}" for i in range(3)], 3, use_timestep, device)
+        critic_creator = partial(
+            COMADiscreteCritic,
+            centralized_obs_space,
+            action_space,
+            net_type,
+            device,
+            **kwargs,
+        )
 
-# def test_coma_training(
-#     net_type: str, kwargs: Dict[str, Any], device: str, use_timestep: bool
-# ):
-#     agent_batch, centralized_obs_space, batch_size, time_step = gen_agent_batch(
-#         [f"agent_{i}" for i in range(3)], use_timestep, device
-#     )
-#     critic_creator = partial(
-#         COMADiscreteCritic, centralized_obs_space, net_type, device, **kwargs
-#     )
-#     trainer = COMATrainer(training_config, critic_creator, policy_instance)
-#     loss = trainer(agent_batch)
+        observation_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32
+        )
+        policy_instance = PGPolicy(
+            observation_space, action_space, {}, {"use_cuda": "cuda" in device}
+        )
+        training_config = {
+            "optimizer": "Adam",
+            "critic_lr": 1e-3,
+            "actor_lr": 1e-4,
+            "batch_size": 32,
+            "gamma": 0.99,
+            "gae_lambda": 1.0,
+            "grad_norm": 5.0,
+            "update_interval": 5,
+        }
+        trainer = COMATrainer(training_config, critic_creator, policy_instance)
+        for _ in range(5):
+            train_stats = trainer(agent_batch)

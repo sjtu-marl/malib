@@ -55,8 +55,13 @@ class COMATrainer(Trainer):
         self.critic.to(self.policy.device)
         self.target_critic.to(self.policy.device)
         self.optimizer = {
-            "critic": torch.optim.Adam(params=self.critic.parameters(), lr=0.001),
-            "actor": torch.optim.Adam(params=self.policy.parameters(), lr=0.001),
+            "critic": torch.optim.Adam(
+                params=self.critic.parameters(), lr=self.training_config["critic_lr"]
+            ),
+            "actor": torch.optim.Adam(
+                params=self.policy.actor.parameters(),
+                lr=self.training_config["actor_lr"],
+            ),
         }
 
     def post_process(
@@ -78,8 +83,24 @@ class COMATrainer(Trainer):
 
         # concat by agent-axes: (batch, time_step(optional), inner_dim) -> (batch, time_step(optional), num_agent, inner_dim)
         states = torch.stack([batch[k][Episode.CUR_STATE] for k in agents], dim=-2)
+        next_states = torch.stack(
+            [batch[k][Episode.NEXT_STATE] for k in agents], dim=-2
+        )
         observations = torch.stack([batch[k][Episode.CUR_OBS] for k in agents], dim=-2)
+        next_observations = torch.stack(
+            [batch[k][Episode.NEXT_OBS] for k in agents], dim=-2
+        )
         use_timestep = len(states.shape) > 3
+
+        # check actions whether integer or vector
+        for agent in agents:
+            tensor = batch[agent][Episode.ACTION]
+            if not torch.is_floating_point(tensor):
+                # convert to onehot
+                tensor = F.one_hot(
+                    tensor, num_classes=self.policy._action_space.n
+                ).float()
+                batch[agent][Episode.ACTION] = tensor
 
         actions = torch.stack([batch[k][Episode.ACTION] for k in agents], dim=-2)
         agent_mask = 1 - torch.eye(n_agents, device=states.device)
@@ -91,8 +112,8 @@ class COMATrainer(Trainer):
 
         if use_timestep:
             batch_size, time_step, _, _ = states.size()
-            actions = actions.view(batch_size, time_step, 1, -1)
-            actions = actions.repeat(1, 1, n_agents, 1)
+            joint_actions = actions.view(batch_size, time_step, 1, -1)
+            joint_actions = joint_actions.repeat(1, 1, n_agents, 1)
             agent_mask = agent_mask.unsqueeze(0).unsqueeze(0)
         else:
             (
@@ -100,58 +121,108 @@ class COMATrainer(Trainer):
                 _,
                 _,
             ) = states.size()
-            actions = actions.view(batch_size, 1, -1)
-            actions = actions.repeat(1, n_agents, 1)
+            joint_actions = actions.view(batch_size, 1, -1)
+            joint_actions = joint_actions.repeat(1, n_agents, 1)
             agent_mask = agent_mask.unsqueeze(0)
-        actions = actions * agent_mask
+        joint_actions = joint_actions * agent_mask
 
-        selected_agent_batch = list(batch.values())[0]
-        rewards = selected_agent_batch[Episode.REWARD]
-        dones = selected_agent_batch[Episode.DONE]
+        rewards = torch.stack([batch[k].rew.unsqueeze(-1) for k in agents], dim=-2)
+        dones = torch.stack([batch[k].done.unsqueeze(-1) for k in agents], dim=-2)
 
         batch = Batch(
             {
                 Episode.CUR_STATE: states,
                 Episode.CUR_OBS: observations,
                 Episode.ACTION: actions,
-                Episode.REWARD: rewards,
-                Episode.DONE: dones,
+                "joint_act": joint_actions,
+                Episode.REWARD: rewards.squeeze(),
+                Episode.DONE: dones.squeeze(),
+                Episode.NEXT_STATE: next_states,
+                Episode.NEXT_OBS: next_observations,
             }
         )
+        batch.to_torch(device=states.device)
 
         return batch
 
-    def train_critic(self, batch: Batch, actions: torch.Tensor, rewards: torch.Tensor):
+    def create_joint_action(self, n_agents, batch_size, time_step, actions):
+        agent_mask = 1 - torch.eye(n_agents, device=actions.device)
+        agent_mask = (
+            agent_mask.view(-1, 1).repeat(1, actions.shape[-1]).view(n_agents, -1)
+        )
+        if time_step:
+            joint_actions = actions.view(batch_size, time_step, 1, -1)
+            joint_actions = joint_actions.repeat(1, 1, n_agents, 1)
+            agent_mask = agent_mask.unsqueeze(0).unsqueeze(0)
+        else:
+            joint_actions = actions.view(batch_size, 1, -1)
+            joint_actions = joint_actions.repeat(1, n_agents, 1)
+            agent_mask = agent_mask.unsqueeze(0)
+        joint_actions = joint_actions * agent_mask
+        return joint_actions
+
+    def train_critic(self, batch: Batch):
         state = batch[Episode.CUR_STATE]
         obs = batch[Episode.CUR_OBS]
         actions = batch[Episode.ACTION]
+        joint_actions = batch["joint_act"]
+        use_timestep = len(state.shape) > 3
 
-        critic_state = torch.cat([state, obs, actions], dim=-1)
-        target_q_vals = self.target_critic(critic_state)
+        critic_state = torch.cat([state, obs, joint_actions], dim=-1)
         pred_q_vals = self.critic(critic_state)
 
-        if isinstance(target_q_vals, Tuple):
-            target_q_vals = target_q_vals[0]
-
-        assert len(target_q_vals.shape) >= 3, target_q_vals.shape
+        if isinstance(pred_q_vals, Tuple):
+            pred_q_vals = pred_q_vals[0]
 
         # shape: (batch_size, time_step(optional), agent_dim)
-        targets_taken = torch.gather(target_q_vals, dim=-1, index=actions).squeeze(-1)
+        actions_arg = torch.argmax(actions, dim=-1, keepdim=True)
 
-        targets = Postprocessor.gae_return(
-            targets_taken.cpu().numpy(),
-            None,
-            batch.rew.cpu().numpy(),
-            batch.done.cpu().numpy(),
-            self.training_config["gamma"],
-            self.training_config["gae_lambda"],
-        )
-        targets = torch.as_tensor(targets, device=self.policy.device).to(
-            dtype=torch.float32
-        )
-        preds = torch.gather(pred_q_vals, dim=-1, index=actions).squeeze(-1)
+        if use_timestep:
+            target_q_vals = self.target_critic(critic_state)
+            if isinstance(target_q_vals, Tuple):
+                target_q_vals = target_q_vals[0]
+            assert len(target_q_vals.shape) >= 3, target_q_vals.shape
+            targets_taken = torch.gather(
+                target_q_vals, dim=-1, index=actions_arg
+            ).squeeze(-1)
+            targets, _ = Postprocessor.compute_episodic_return(
+                batch,
+                targets_taken.cpu().detach().numpy(),
+                gamma=self.training_config["gamma"],
+                gae_lambda=self.training_config["gae_lambda"],
+            )
+            targets = torch.as_tensor(targets, device=self.policy.device).to(
+                dtype=torch.float32
+            )
+        else:
+            next_state = batch[Episode.NEXT_STATE]
+            next_obs = batch[Episode.NEXT_OBS]
+            logits, _ = self.policy.actor(next_obs)
+            batch_size, n_agents, _ = next_state.size()
+            next_joint_actions = self.create_joint_action(
+                n_agents, batch_size, 0, logits.detach()
+            )
+            next_critic_state = torch.cat(
+                [next_state, next_obs, next_joint_actions], dim=-1
+            )
+            next_target_q_vals = self.target_critic(next_critic_state)
+            if isinstance(next_target_q_vals, Tuple):
+                next_target_q_vals = next_target_q_vals[0]
+            next_target_taken = torch.gather(
+                next_target_q_vals,
+                dim=-1,
+                index=torch.argmax(logits, dim=-1, keepdim=True),
+            ).squeeze(-1)
+            terminal_mask = 1.0 - batch.done.float()
+            targets = (
+                batch.rew
+                + self.training_config["gamma"]
+                * terminal_mask
+                * next_target_taken.detach()
+            )
 
-        loss = F.mse_loss(preds, targets)
+        preds = torch.gather(pred_q_vals, dim=-1, index=actions_arg).squeeze(-1)
+        loss = F.mse_loss(preds.view(-1), targets.view(-1))
 
         self.optimizer["critic"].zero_grad()
         loss.backward()
@@ -173,7 +244,8 @@ class COMATrainer(Trainer):
         pred_q_vals, critic_train_stats = self.train_critic(batch)
 
         # calculate baseline
-        action, pi, logits, hidden_state = self.policy.actor(batch.obs)
+        logits, _ = self.policy.actor(batch.obs)
+        pi = F.softmax(logits, dim=-1)
         pred_q_vals = pred_q_vals.view(-1, self.policy._action_space.n)
 
         pi = pi.view(-1, self.policy._action_space.n)
@@ -181,12 +253,9 @@ class COMATrainer(Trainer):
 
         # caculate pg loss
         # TODO(ming): note the action here is a integer
-        q_taken = torch.gather(
-            pred_q_vals, dim=-1, index=batch.actions.reshape(-1, 1)
-        ).squeeze(1)
-        pi_taken = torch.gather(pi, dim=-1, index=batch.actions.reshape(-1, 1)).squeeze(
-            1
-        )
+        actions_arg = torch.argmax(batch.act, dim=-1).reshape(-1, 1)
+        q_taken = torch.gather(pred_q_vals, dim=-1, index=actions_arg).squeeze(1)
+        pi_taken = torch.gather(pi, dim=-1, index=actions_arg).squeeze(1)
 
         log_pi_taken = torch.log(pi_taken)
         advantage = (q_taken - baselines).detach()
@@ -196,7 +265,7 @@ class COMATrainer(Trainer):
         self.optimizer["actor"].zero_grad()
         coma_loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(
-            self.policy.parameters(), self.training_config["grad_norm"]
+            self.policy.actor.parameters(), self.training_config["grad_norm"]
         )
         self.optimizer["actor"].step()
 

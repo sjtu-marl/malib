@@ -83,7 +83,7 @@ class DQNPolicy(Policy):
         self.agent_dimension = agent_dimension
 
         if self.use_cuda:
-            self.critic = self.critic.to("cuda")
+            self.critic.to("cuda")
 
         self._eps = 1.0
 

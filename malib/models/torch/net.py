@@ -116,7 +116,8 @@ class MLP(nn.Module):
                 dtype=torch.float32,
             )
         else:
-            obs = torch.as_tensor(obs, dtype=torch.float32)
+            obs = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+
         return self.model(obs.flatten(-1))  # type: ignore
 
 

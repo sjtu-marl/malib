@@ -16,7 +16,6 @@ omit =
 	malib/agent/team_agent.py
 	malib/agent/async_agent.py
 	malib/mocker/*
-	malib/rl/coma/trainer.py
 
 
 [report]
