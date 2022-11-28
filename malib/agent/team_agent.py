@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Callable, Dict, Any, Type, Tuple, List
+from typing import Callable, Dict, Any, Type, Tuple, List, Union
 
 from malib.utils.typing import AgentID
 from malib.utils.tianshou_batch import Batch
@@ -63,16 +63,18 @@ class TeamAgent(AgentInterface):
             "critic" in custom_config
         ), f"TeamAgent must be given a shared critic network"
 
-        critic_cls = custom_config["critic"]["cls"]
-        critic_kwargs = custom_config["critic"]["kwargs"]
-
-        # TODO(ming): get device
-        observation_space = None
-        action_space = None
-
-        self.team_critic = make_net(observation_space, action_space, device=device)
-
     def multiagent_post_process(
-        self, batch: Dict[AgentID, Batch], batch_indices: List[int]
-    ) -> Dict[str, Any]:
-        return super().multiagent_post_process(batch, batch_indices)
+        self,
+        batch_info: Union[
+            Dict[AgentID, Tuple[Batch, List[int]]], Tuple[Batch, List[int]]
+        ],
+    ) -> Dict[str, Batch]:
+        assert isinstance(
+            batch_info, Dict
+        ), "TeamAgent accepts only a dict of batch info"
+
+        res = {}
+        for agent in self.governed_agents:
+            batch_info[agent][0].to_torch()
+            res[agent] = batch_info[agent][0]
+        return res
