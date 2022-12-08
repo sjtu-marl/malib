@@ -19,3 +19,43 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+from malib.rollout.envs.gr_football.env import BaseGFootBall
+
+
+default_sharing_mapping = lambda x: x[:6]
+DEFAULT_ENV_CONNFIG = {
+    # env building config
+    "env_id": "Gfootball",
+    "use_built_in_GK": True,
+    "scenario_configs": {
+        "env_name": "5_vs_5",
+        "number_of_left_players_agent_controls": 4,
+        "number_of_right_players_agent_controls": 4,
+        "representation": "raw",
+        "logdir": "",
+        "write_goal_dumps": False,
+        "write_full_episode_dumps": False,
+        "render": False,
+        "stacked": False,
+    },
+}
+
+
+def env_desc_gen(**kwargs):
+    if len(kwargs) > 0:
+        DEFAULT_ENV_CONNFIG.update(kwargs)
+
+    cfg = DEFAULT_ENV_CONNFIG
+
+    assert cfg is not None
+
+    env = BaseGFootBall(**cfg)
+    env_desc = {
+        "creator": BaseGFootBall,
+        "possible_agents": env.possible_agents,
+        "action_spaces": env.action_spaces,
+        "observation_spaces": env.observation_spaces,
+        "config": cfg,
+    }
+    env.close()
+    return env_desc

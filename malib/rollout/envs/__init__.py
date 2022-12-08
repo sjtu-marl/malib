@@ -25,3 +25,4 @@ from . import mdp
 from . import open_spiel
 from . import gym
 from . import sc2
+from . import gr_football

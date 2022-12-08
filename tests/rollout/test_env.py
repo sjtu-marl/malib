@@ -35,6 +35,7 @@ from malib.rollout import envs
         [envs.gym, "CartPole-v1"],
         [envs.mdp, "one_round_dmdp"],
         [envs.open_spiel, "kuhn_poker"],
+        [envs.gr_football, "gr_football"],
     ],
 )
 def test_env_api(mocker: MockerFixture, env_module, env_id):
