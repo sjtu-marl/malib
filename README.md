@@ -77,6 +77,10 @@ Then start a web server to get the docs:
 make docs-view
 ```
 
+## Contributing
+
+Read [CONTRIBUTING.md](/CONTRIBUTING.md) for more details.
+
 ## Citing MALib
 
 

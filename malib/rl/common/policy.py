@@ -155,10 +155,21 @@ class Policy(metaclass=ABCMeta):
         for k, v in state_dict.items():
             self._state_handler_dict[k].load_state_dict(v)
 
-    def state_dict(self):
+    def state_dict(self, device=None):
         """Return state dict in real time"""
 
-        res = {k: v.state_dict() for k, v in self._state_handler_dict.items()}
+        if device is None:
+            res = {k: v.state_dict() for k, v in self._state_handler_dict.items()}
+        else:
+            res = {}
+            for k, v in self._state_handler_dict.items():
+                if isinstance(v, torch.nn.Module):
+                    tmp = {}
+                    for _k, _v in v.state_dict().items():
+                        tmp[_k] = _v.cpu()
+                else:
+                    tmp = v.state_dict()
+                res[k] = tmp
         return res
 
     def register_state(self, obj: Any, name: str) -> None:

@@ -18,7 +18,7 @@ custom_channels:
   simpleitk: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
 EOF
 conda clean -i
-conda install pytorch cudatoolkit=11.3 -c pytorch -y
+conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch -y
 pip config set global.index-url https://mirror.sjtu.edu.cn/pypi/web/simple
 pip install --upgrade pip
 pip install -e .
