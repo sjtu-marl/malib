@@ -46,7 +46,7 @@ def test_dqn_policy(
     observation_space: gym.Space, action_space: gym.Space, use_cuda: bool
 ):
     model_config = {}
-    if not torch.cuda.is_available:
+    if not torch.cuda.is_available():
         use_cuda = False
     custom_config = {"use_cuda": use_cuda}
 
