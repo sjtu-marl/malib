@@ -26,10 +26,6 @@ from argparse import ArgumentParser
 import os
 import time
 
-# import shutup
-
-# shutup.please()
-
 from malib.runner import run
 from malib.agent import IndependentAgent
 from malib.scenarios.marl_scenario import MARLScenario

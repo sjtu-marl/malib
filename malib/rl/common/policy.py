@@ -37,9 +37,15 @@ from malib.common.distributions import make_proba_distribution, Distribution
 
 class SimpleObject:
     def __init__(self, obj, name):
-        assert hasattr(obj, name), f"Object: {obj} has no such attribute named `{name}`"
+        # assert hasattr(obj, name), f"Object: {obj} has no such attribute named `{name}`"
         self.obj = obj
         self.name = name
+
+    def __str__(self):
+        return f"<SimpleObject, name={self.name}, obj={self.obj}>"
+
+    def __repr__(self):
+        return f"<SimpleObject, name={self.name}, obj={self.obj}>"
 
     def load_state_dict(self, v):
         setattr(self.obj, self.name, v)
@@ -77,13 +83,6 @@ class Policy(metaclass=ABCMeta):
 
         self._registered_networks: Dict[str, nn.Module] = {}
 
-        self.use_cuda = self._custom_config.get("use_cuda", False)
-        self.dist_fn: Distribution = make_proba_distribution(
-            action_space=action_space,
-            use_sde=custom_config.get("use_sde", False),
-            dist_kwargs=custom_config.get("dist_kwargs", None),
-        )
-
         if isinstance(action_space, spaces.Discrete):
             self.action_type = "discrete"
         elif isinstance(action_space, spaces.Box):
@@ -94,6 +93,13 @@ class Policy(metaclass=ABCMeta):
                     type(action_space)
                 )
             )
+
+        self.use_cuda = self._custom_config.get("use_cuda", False)
+        self.dist_fn: Distribution = make_proba_distribution(
+            action_space=action_space,
+            use_sde=custom_config.get("use_sde", False),
+            dist_kwargs=custom_config.get("dist_kwargs", None),
+        )
 
     @property
     def model_config(self):
@@ -137,10 +143,7 @@ class Policy(metaclass=ABCMeta):
 
     @target_critic.setter
     def target_critic(self, value: Any):
-        self._target_actor = value
-
-    def value_function(self, observation: torch.Tensor, evaluate: bool, **kwargs):
-        pass
+        self._target_critic = value
 
     def load_state_dict(self, state_dict: Dict[str, Any]):
         """Load state dict outside.
@@ -185,7 +188,10 @@ class Policy(metaclass=ABCMeta):
 
         # if not isinstance(obj, nn.Module):
         if obj.__class__.__module__ == "builtins":
-            obj = SimpleObject(self, name)
+            n = SimpleObject(self, name)
+            n.load_state_dict(obj)
+            obj = n
+
         self._state_handler_dict[name] = obj
         if isinstance(obj, nn.Module):
             self._registered_networks[name] = obj

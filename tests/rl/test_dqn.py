@@ -22,15 +22,41 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .env import DummyEnv
+import pytest
+
+import gym
+import torch
+
+from gym import spaces
+from malib.rl.dqn import DQNPolicy, DQNTrainer
 
 
-def env_desc_gen(**config):
-    env = DummyEnv(**config)
-    return {
-        "creator": DummyEnv,
-        "possible_agents": env.possible_agents,
-        "action_spaces": env.action_spaces,
-        "observation_spaces": env.observation_spaces,
-        "config": config,
-    }
+@pytest.mark.parametrize(
+    "observation_space,action_space",
+    [
+        [
+            spaces.Tuple([spaces.Box(low=-1.0, high=1.0, shape=(4,))]),
+            spaces.Tuple([spaces.Discrete(4)]),
+        ],
+        [spaces.Box(low=-1.0, high=1.0, shape=(4,)), spaces.Discrete(4)],
+    ],
+)
+@pytest.mark.parametrize("use_cuda", [False, True])
+def test_dqn_policy(
+    observation_space: gym.Space, action_space: gym.Space, use_cuda: bool
+):
+    model_config = {}
+    custom_config = {"use_cuda": use_cuda}
+
+    policy = DQNPolicy(observation_space, action_space, model_config, custom_config)
+    policy.reset()
+    policy.save("./dqn.pkl")
+    policy.load("./dqn.pkl")
+
+    observation = observation_space.sample()
+    observation = torch.as_tensor(observation).to(
+        dtype=torch.float32, device=policy.device
+    )
+    act_mask = None
+    for evaluate in [True, False]:
+        policy.compute_action(observation, act_mask, evaluate)

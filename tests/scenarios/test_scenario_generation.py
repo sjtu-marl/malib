@@ -33,7 +33,7 @@ from gym import spaces
 
 from malib import rl
 from malib.common.strategy_spec import StrategySpec
-from malib.scenarios import marl_scenario, psro_scenario
+from malib.scenarios import scenario, marl_scenario, psro_scenario
 
 from malib.mocker.mocker_utils import (
     use_ray_env,
@@ -90,6 +90,12 @@ def test_marl_scenario(
             "rollout": {"max_iteration": 1000, "minimum_reward_improvement": 1.0},
         },
     )
+
+    copy_scenario = scenario.copy()
+    assert copy_scenario != scenario
+    copy_scenario = scenario.with_updates(name="xxxx")
+    assert copy_scenario != scenario
+    assert copy_scenario.name == "xxxx"
 
     marl_scenario.execution_plan(experiment_tag="test_marl_scenario", scenario=scenario)
 

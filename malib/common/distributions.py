@@ -182,6 +182,9 @@ class DiagGaussianDistribution(Distribution):
         self.distribution = Normal(mean_actions, action_std)
         return self
 
+    def prob(self) -> torch.Tensor:
+        return RuntimeError("Normal distribution has no static probs")
+
     def log_prob(self, actions: torch.Tensor) -> torch.Tensor:
         """
         Get the log probabilities of actions according to the distribution.

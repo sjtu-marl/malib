@@ -32,6 +32,10 @@ def env_desc_gen(**config):
 
     if "scenario_configs" not in config:
         config["scenario_configs"] = SCENARIO_CONFIGS[env_id]
+    else:
+        scenario_config = SCENARIO_CONFIGS[env_id].copy()
+        scenario_config.update(config["scenario_configs"])
+        config["scenario_configs"] = scenario_config
 
     env = PettingZooEnv(**config)
     env_desc = {
