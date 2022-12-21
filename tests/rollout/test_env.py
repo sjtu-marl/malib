@@ -29,18 +29,19 @@ from malib.rollout import envs
 
 
 @pytest.mark.parametrize(
-    "env_module,env_id",
+    "env_module,env_id,scenario_configs",
     [
-        [envs.pettingzoo, "atari.basketball_pong_v3"],
-        [envs.gym, "CartPole-v1"],
-        [envs.mdp, "one_round_dmdp"],
-        [envs.open_spiel, "kuhn_poker"],
+        [envs.pettingzoo, "atari.basketball_pong_v3", {}],
+        [envs.pettingzoo, "atari.basketball_pong_v3", {"parallel_simulate": False}],
+        [envs.gym, "CartPole-v1", {}],
+        [envs.mdp, "one_round_dmdp", {}],
+        [envs.open_spiel, "kuhn_poker", {}],
     ],
 )
-def test_env_api(mocker: MockerFixture, env_module, env_id):
+def test_env_api(mocker: MockerFixture, env_module, env_id, scenario_configs):
     assert hasattr(env_module, "env_desc_gen")
     env_desc_gen = env_module.env_desc_gen
-    desc = env_desc_gen(env_id=env_id)
+    desc = env_desc_gen(env_id=env_id, scenario_configs=scenario_configs)
 
     env = desc["creator"](**desc["config"])
     action_spaces = env.action_spaces

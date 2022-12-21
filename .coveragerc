@@ -15,6 +15,7 @@ omit =
 	malib/common/manager.py
 	malib/agent/team_agent.py
 	malib/agent/async_agent.py
+	malib/agent/agent_interface.py
 	malib/mocker/*
 
 

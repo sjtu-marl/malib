@@ -120,20 +120,20 @@ class PettingZooEnv(Environment):
         return self.env.close()
 
 
-if __name__ == "__main__":
-    from malib.rollout.envs.pettingzoo.scenario_configs_ref import SCENARIO_CONFIGS
+# if __name__ == "__main__":
+#     from malib.rollout.envs.pettingzoo.scenario_configs_ref import SCENARIO_CONFIGS
 
-    for env_id, scenario_configs in SCENARIO_CONFIGS.items():
-        env = PettingZooEnv(env_id=env_id, scenario_configs=scenario_configs)
-        action_spaces = env.action_spaces
+#     for env_id, scenario_configs in SCENARIO_CONFIGS.items():
+#         env = PettingZooEnv(env_id=env_id, scenario_configs=scenario_configs)
+#         action_spaces = env.action_spaces
 
-        _, observations = env.reset()
-        done = False
+#         _, observations = env.reset()
+#         done = False
 
-        cnt = 0
-        while not done:
-            actions = {k: action_spaces[k].sample() for k in observations.keys()}
-            _, observations, rewards, dones, infos = env.step(actions)
-            done = dones["__all__"]
-            cnt += 1
-        print("[{}] test passed after {} steps".format(env_id, cnt))
+#         cnt = 0
+#         while not done:
+#             actions = {k: action_spaces[k].sample() for k in observations.keys()}
+#             _, observations, rewards, dones, infos = env.step(actions)
+#             done = dones["__all__"]
+#             cnt += 1
+#         print("[{}] test passed after {} steps".format(env_id, cnt))

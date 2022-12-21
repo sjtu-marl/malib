@@ -31,7 +31,6 @@ from gym import spaces
 
 from malib.utils.typing import AgentID
 from malib.rollout.envs.gym import env_desc_gen as gym_env_gen
-from malib.rollout.envs.dummy_env import env_desc_gen as dummy_env_gen
 from malib.rollout.envs.mdp import env_desc_gen as mdp_env_gen
 from malib.rollout.envs.open_spiel import env_desc_gen as open_spien_env_gen
 from malib.rollout.envs.vector_env import VectorEnv, _RemoteEnv
@@ -52,7 +51,6 @@ def construct_vector_env(env_desc: Dict[str, Any], preset_num_envs: int):
     "env_desc",
     [
         gym_env_gen(env_id="CartPole-v1"),
-        dummy_env_gen(num_agents=2),
         mdp_env_gen(env_id="two_round_dmdp"),
         open_spien_env_gen(env_id="leduc_poker"),
     ],

@@ -28,6 +28,8 @@ from typing import Any
 import pytest
 
 from malib import rl
+from malib.utils.tianshou_batch import Batch
+from malib.utils.episode import Episode
 from malib.mocker.mocker_utils import use_ray_env
 from malib.rollout.envs.mdp import env_desc_gen
 from malib.agent.indepdent_agent import IndependentAgent
@@ -81,6 +83,15 @@ class TestIndependentAgent:
                 learner.push()
                 # also pull down
                 learner.pull()
+
+    def test_multiagent_post_process(self, env_id, algorithm):
+        with use_ray_env():
+            learners = start_learner(env_id, algorithm)
+            for learner in learners.values():
+                batch = learner.multiagent_post_process((Batch(), None))
+                assert isinstance(batch, Batch)
+                with pytest.raises(TypeError):
+                    learner.multiagent_post_process("fefefefe")
 
     def test_training_pipeline(self, env_id, algorithm):
         with use_ray_env():

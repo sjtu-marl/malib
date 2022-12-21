@@ -26,10 +26,6 @@ from argparse import ArgumentParser
 import os
 import time
 
-# import shutup
-
-# shutup.please()
-
 from malib.runner import run
 from malib.agent import IndependentAgent
 from malib.scenarios.marl_scenario import MARLScenario
@@ -39,14 +35,15 @@ from malib.rollout.envs.gym import env_desc_gen
 
 if __name__ == "__main__":
     parser = ArgumentParser("Multi-agent reinforcement learning for gym cases.")
-    parser.add_argument("--log_dir", default="./logs/", help="Log directory.")
-    parser.add_argument("--env_id", default="CartPole-v1", help="gym environment id.")
+    parser.add_argument("--log-dir", default="./logs/", help="Log directory.")
+    parser.add_argument("--env-id", default="CartPole-v1", help="gym environment id.")
+    parser.add_argument("--use-cuda", action="store_true")
 
     args = parser.parse_args()
 
     trainer_config = DEFAULT_CONFIG["training_config"].copy()
     trainer_config["total_timesteps"] = int(1e6)
-    trainer_config["use_cuda"] = True
+    trainer_config["use_cuda"] = args.use_cuda
 
     training_config = {
         "type": IndependentAgent,
@@ -75,7 +72,7 @@ if __name__ == "__main__":
             DQNTrainer,
             # model configuration, None for default
             {},
-            {"use_cuda": True},
+            {"use_cuda": args.use_cuda},
         )
     }
 

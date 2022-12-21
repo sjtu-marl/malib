@@ -65,11 +65,12 @@ class IndependentAgent(AgentInterface):
         ],
     ) -> Dict[str, Any]:
 
-        assert isinstance(
-            batch_info, Tuple
-        ), "IndependentAgent does not support a dict of batch info"
+        if not isinstance(batch_info, Tuple):
+            raise TypeError(
+                "IndependentAgent support only a tuple of batch info as input."
+            )
 
         batch = batch_info[0]
-        batch.to_torch(self.device)
+        batch.to_torch(device=self.device)
 
         return batch
