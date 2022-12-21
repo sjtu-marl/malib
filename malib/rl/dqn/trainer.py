@@ -23,7 +23,7 @@
 # SOFTWARE.
 
 from argparse import Namespace
-from typing import Any, Tuple, Dict, Sequence
+from typing import Tuple, Sequence
 
 import copy
 
@@ -66,7 +66,7 @@ class DQNTrainer(Trainer):
         if self.policy.agent_dimension > 0:
             for k, v in batch.items():
                 if isinstance(v, np.ndarray):
-                    inner_shape = v.shape[2:]
+                    inner_shape = v.shape[2:]  # (batch_size, agent_num, inner_shape)
                     batch[k] = v.reshape((-1,) + inner_shape)
         return batch
 
