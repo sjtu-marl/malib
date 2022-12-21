@@ -55,6 +55,7 @@ def write_table(
                 for e in batches:
                     buffer.add_batch(e)
         except Exception as e:
+            print(traceback.format_exc())
             break
 
 
@@ -73,12 +74,13 @@ def read_table(
                     # batch, indices = buffer.sample(batch_size)
                 else:
                     # batch, indices = [], np.array([], int)
-                    if isinstance(MultiagentReplayBuffer):
+                    if isinstance(buffer, MultiagentReplayBuffer):
                         ret = {}
                     else:
                         ret = ([], np.array([], int))
                 reader.put_nowait(ret)
         except Exception as e:
+            print(traceback.format_exc())
             break
 
 

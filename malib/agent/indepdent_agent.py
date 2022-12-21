@@ -71,6 +71,6 @@ class IndependentAgent(AgentInterface):
             )
 
         batch = batch_info[0]
-        batch.to_torch(self.device)
+        batch.to_torch(device=self.device)
 
         return batch
