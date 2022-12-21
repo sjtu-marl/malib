@@ -72,5 +72,5 @@ class A2CPolicy(PGPolicy):
         """Compute values of critic."""
 
         with torch.no_grad():
-            values, _ = self.critic(observation)
+            values = self.critic(observation)
         return values.cpu().numpy()

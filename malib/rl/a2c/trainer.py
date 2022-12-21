@@ -38,6 +38,7 @@ from malib.utils.data import to_torch
 from malib.rl.common.trainer import Trainer
 from malib.utils.data import Postprocessor
 from malib.utils.tianshou_batch import Batch
+from malib.utils.statistic import RunningMeanStd
 
 
 class A2CTrainer(Trainer):
@@ -50,7 +51,9 @@ class A2CTrainer(Trainer):
         )
         self.parameters = parameters
         self.lr_scheduler: torch.optim.lr_scheduler.LambdaLR = None
-        self.ret_rms = None
+
+        # runtime return averaging
+        self.ret_rms = RunningMeanStd()
 
     def post_process(self, batch: Batch, agent_filter: Sequence[AgentID]) -> Batch:
         state_value, next_state_value = [], []
@@ -67,14 +70,10 @@ class A2CTrainer(Trainer):
         )  # old value
         state_value = batch["state_value"]
         next_state_value = torch.cat(next_state_value, dim=0).flatten().cpu().numpy()
-        # when normalizing values, we do not minus self.ret_rms.mean to be numerically
-        # consistent with OPENAI baselines' value normalization pipeline. Emperical
-        # study also shows that "minus mean" will harm performances a tiny little bit
-        # due to unknown reasons (on Mujoco envs, not confident, though).
         if self.training_config[
             "reward_norm"
         ]:  # unnormalize state_value & next_state_value
-            eps = self.training_config["reward_norm"]["config"]["eps"]
+            eps = self.training_config["reward_norm"]
             state_value = state_value * np.sqrt(self.ret_rms.var + eps)
             next_state_value = next_state_value * np.sqrt(self.ret_rms.var + eps)
 
