@@ -89,6 +89,14 @@ malib.utils.schedules module
    :undoc-members:
    :show-inheritance:
 
+malib.utils.statistic module
+----------------------------
+
+.. automodule:: malib.utils.statistic
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 malib.utils.stopping\_conditions module
 ---------------------------------------
 

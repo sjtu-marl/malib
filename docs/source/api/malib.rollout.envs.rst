@@ -12,7 +12,6 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
-   malib.rollout.envs.dummy_env
    malib.rollout.envs.gr_football
    malib.rollout.envs.gym
    malib.rollout.envs.mdp
