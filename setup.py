@@ -63,7 +63,7 @@ setup(
         "h5py==3.7.0",
         "pygame==2.1.0",
         "pettingzoo",
-        "networkx"
+        "networkx",
     ],
     extras_require={
         "dev": [
