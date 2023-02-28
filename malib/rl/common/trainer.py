@@ -76,8 +76,8 @@ class Trainer(metaclass=ABCMeta):
     def step_counter(self):
         self._counter += 1
 
-    def parameters(self):
-        return self.policy.parameters()
+    # def parameters(self):
+    #     return self.policy.parameters()
 
     @abstractmethod
     def setup(self):

@@ -21,3 +21,25 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
+from typing import Dict, Any
+
+import torch
+
+from torch import nn
+from gym import spaces
+from malib.rl.a2c import A2CPolicy
+
+
+class PPOPolicy(A2CPolicy):
+    def __init__(
+        self,
+        observation_space: spaces.Space,
+        action_space: spaces.Space,
+        model_config: Dict[str, Any],
+        custom_config: Dict[str, Any],
+        **kwargs
+    ):
+        super().__init__(
+            observation_space, action_space, model_config, custom_config, **kwargs
+        )

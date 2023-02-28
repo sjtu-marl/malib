@@ -191,6 +191,19 @@ class Postprocessor:
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
     ):
+        """Compute episodic return with GAE.
+
+        Args:
+            batch (Dict[str, Any]): A dict of batch, including obs, rew, done at least
+            state_value (np.ndarray, optional): A batch of state value. Defaults to None.
+            next_state_value (np.ndarray, optional): A batch next state value. Defaults to None.
+            gamma (float, optional): Gamma. Defaults to 0.99.
+            gae_lambda (float, optional): GAE lambda. Defaults to 0.95.
+
+        Returns:
+            a dict of batch
+        """
+
         if isinstance(batch["rew"], torch.Tensor):
             rew = batch["rew"].cpu().numpy()
         else:
