@@ -22,13 +22,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Sequence, List, Any, Dict
+from typing import List, Dict
 
 import torch
 
 from torch import nn
-from malib.utils.data import Postprocessor
-from malib.utils.typing import AgentID
+
 from malib.utils.tianshou_batch import Batch
 from malib.rl.a2c import A2CTrainer
 
@@ -46,6 +45,7 @@ class PPOTrainer(A2CTrainer):
         use_value_clip = self.training_config["use_value_clip"]
 
         losses, clip_losses, vf_losses, ent_losses = 0.0, 0.0, 0.0, 0.0
+
         for step in range(repeats):
             dist = self.policy.dist_fn.proba_distribution(batch.logits)
             if use_adv_norm:
