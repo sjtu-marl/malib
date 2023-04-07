@@ -48,6 +48,7 @@ class PPOTrainer(A2CTrainer):
 
         for step in range(repeats):
             dist = self.policy.dist_fn.proba_distribution(batch.logits)
+
             if use_adv_norm:
                 mean, std = batch.adv.mean(), batch.adv.std()
                 batch.adv = (batch.adv - mean) / (std + adv_norm_eps)
