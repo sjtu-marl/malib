@@ -84,15 +84,17 @@ Read [CONTRIBUTING.md](/CONTRIBUTING.md) for more details.
 ## Citing MALib
 
 
-If you use MALib in your work, please cite the accompanying [paper](https://arxiv.org/abs/2106.07551).
+If you use MALib in your work, please cite the accompanying [paper](https://www.jmlr.org/papers/v24/22-0169.html).
 
 ```bibtex
-@misc{zhou2021malib,
-      title={MALib: A Parallel Framework for Population-based Multi-agent Reinforcement Learning}, 
-      author={Ming Zhou and Ziyu Wan and Hanjing Wang and Muning Wen and Runzhe Wu and Ying Wen and Yaodong Yang and Weinan Zhang and Jun Wang},
-      year={2021},
-      eprint={2106.07551},
-      archivePrefix={arXiv},
-      primaryClass={cs.MA}
+@article{JMLR:v24:22-0169,
+  author  = {Ming Zhou and Ziyu Wan and Hanjing Wang and Muning Wen and Runzhe Wu and Ying Wen and Yaodong Yang and Yong Yu and Jun Wang and Weinan Zhang},
+  title   = {MALib: A Parallel Framework for Population-based Multi-agent Reinforcement Learning},
+  journal = {Journal of Machine Learning Research},
+  year    = {2023},
+  volume  = {24},
+  number  = {150},
+  pages   = {1--12},
+  url     = {http://jmlr.org/papers/v24/22-0169.html}
 }
 ```
