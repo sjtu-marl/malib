@@ -22,11 +22,23 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Any, Callable, List, Tuple, Union, Set, Sequence, Type
+from typing import (
+    Dict,
+    Any,
+    Callable,
+    List,
+    Tuple,
+    Union,
+    Set,
+    Sequence,
+    Type,
+    Generator,
+)
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, Future, CancelledError
 
 import os
+import traceback
 import ray
 
 from malib.utils.typing import AgentID
@@ -66,7 +78,7 @@ class TrainingManager(Manager):
             env_desc (Dict[str, Any]): The description for environment generation.
             interface_config (Dict[str, Any]): Configuration for agent training inferece construction, keys include \
                 `type` and `custom_config`, a dict.
-            agent_mapping_func (Callable[[AgentID], str]): The mapping function maps agent id to training interface id.
+            agent_mapping_func (Callable[[AgentID], str]): The mapping function maps environment agent id to training agent (`agent_interface`) id.
             training_config (Dict[str, Any]): Training configuration, for agent interface, keys include \
                 `type`, `trainer_config` and `custom_config`.
             log_dir (str): Directory for logging.
@@ -91,9 +103,10 @@ class TrainingManager(Manager):
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
-        agent_cls = training_config["type"]
+        agent_cls = training_config["learner_type"]
         # update num gpus
         resource_config["num_gpus"] = num_gpus
+        # XXX(ming): why we hard set max_concurrency to 10?
         agent_cls = agent_cls.as_remote(**resource_config).options(max_concurrency=10)
         interfaces: Dict[str, Union[AgentInterface, ray.ObjectRef]] = {}
 
@@ -148,10 +161,22 @@ class TrainingManager(Manager):
 
     @property
     def workers(self) -> List[RemoteInterface]:
+        """A list of learner instance
+
+        Returns:
+            List[RemoteInterface]: A list of learner instance
+        """
+
         return list(self._interfaces.values())
 
     @property
     def runtime_ids(self) -> Tuple[str]:
+        """Return a tuple of learner ids
+
+        Returns:
+            Tuple[str]: A tuple of string as leqrner ids
+        """
+
         return self._runtime_ids
 
     def add_policies(
@@ -172,11 +197,12 @@ class TrainingManager(Manager):
 
         assert isinstance(interface_ids, (List, Tuple, Set)), type(interface_ids)
 
-        ns = dict.fromkeys(interface_ids, n) if isinstance(n, int) else n
+        policy_nums = dict.fromkeys(interface_ids, n) if isinstance(n, int) else n
+
         if self._remote_mode:
             strategy_spec_list: List[StrategySpec] = ray.get(
                 [
-                    self._interfaces[k].add_policies.remote(n=ns[k])
+                    self._interfaces[k].add_policies.remote(n=policy_nums[k])
                     for k in interface_ids
                 ]
             )
@@ -185,7 +211,8 @@ class TrainingManager(Manager):
             )
         else:
             strategy_spec_dict = {
-                k: self._interfaces[k].add_policies(n=ns[k]) for k in interface_ids
+                k: self._interfaces[k].add_policies(n=policy_nums[k])
+                for k in interface_ids
             }
 
         return strategy_spec_dict
@@ -193,29 +220,48 @@ class TrainingManager(Manager):
     def run(self, data_request_identifiers: Dict[str, str]):
         """Start training thread without blocking"""
 
-        if self._remote_mode:
-            for rid, interface in self._interfaces.items():
-                self.pending_tasks.append(
-                    interface.train.remote(
-                        data_request_identifiers[rid],
-                        self._stopping_conditions["training"],
-                    )
+        for rid, interface in self._interfaces.items():
+            if self._remote_mode:
+                task = interface.train.remote(
+                    data_request_identifiers[rid],
+                    self._stopping_conditions["training"],
                 )
-        else:
-            for rid, interface in self._interfaces.items():
-                self.pending_tasks.append(
-                    self._thread_pool.submit(
-                        interface.train,
-                        data_request_identifiers[rid],
-                        self._stopping_conditions["training"],
-                    )
+            else:
+                task = self._thread_pool.submit(
+                    interface.train,
+                    data_request_identifiers[rid],
+                    self._stopping_conditions["training"],
                 )
+            self.pending_tasks.append(task)
 
-    def retrive_results(self):
-        while len(self.pending_tasks) > 0:
-            dones, self.pending_tasks = ray.wait(self.pending_tasks)
-            for done in ray.get(dones):
-                yield done
+    def retrive_results(self) -> Generator:
+        """Return a generator of results
+
+        Yields:
+            Generator: A generator for task results
+        """
+
+        if self._remote_mode:
+            while len(self.pending_tasks) > 0:
+                dones, self.pending_tasks = ray.wait(self.pending_tasks)
+                for done in ray.get(dones):
+                    yield done
+        else:
+            for task in self.pending_tasks:
+                assert isinstance(task, Future)
+                try:
+                    if task.done():
+                        yield task.result(timeout=10)
+                except TimeoutError:
+                    Logger.error(
+                        f"Retrieving results of training task is timeout: {traceback.format_exc()}"
+                    )
+                except CancelledError:
+                    Logger.error(
+                        f"Try to retrieve results of a cancelled task: {traceback.format_exc()}"
+                    )
+                except Exception:
+                    Logger.error(traceback.format_exc())
 
     def terminate(self) -> None:
         """Terminate all training actors."""

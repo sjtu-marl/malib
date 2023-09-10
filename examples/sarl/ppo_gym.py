@@ -24,7 +24,7 @@ if __name__ == "__main__":
     trainer_config["use_cuda"] = args.use_cuda
 
     training_config = {
-        "type": IndependentAgent,
+        "learner_type": IndependentAgent,
         "trainer_config": trainer_config,
         "custom_config": {},
     }
@@ -43,13 +43,16 @@ if __name__ == "__main__":
         "eval_interval": 1,
         "inference_server": "ray",  # three kinds of inference server: `local`, `pipe` and `ray`
     }
+
+    # one to one, no sharing, if sharing, implemented as:
+    #   agent_mapping_func = lambda agent: "default"
     agent_mapping_func = lambda agent: agent
 
     algorithms = {
         "default": (
             PPOPolicy,
             PPOTrainer,
-            # model configuration, None for default
+            # model configuration, None as default
             {},
             {"use_cuda": args.use_cuda},
         )
@@ -62,7 +65,7 @@ if __name__ == "__main__":
         os.makedirs(runtime_logdir)
 
     scenario = MARLScenario(
-        name=f"ppo-sym-{args.env_id}",
+        name=f"ppo-gym-{args.env_id}",
         log_dir=runtime_logdir,
         algorithms=algorithms,
         env_description=env_description,

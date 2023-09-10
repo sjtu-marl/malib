@@ -87,7 +87,21 @@ def execution_plan(
     scenario: Scenario,
     recall_resource: bool = True,
     verbose: bool = True,
-):
+) -> Dict[str, Any]:
+    """Execute multi-agent learning task. If there is not a `training_manager`/`rollout_manager` \
+        registered to the given scenario, then a new `training_manager`/`rollout_mamanger` will be created in \
+        remote mode.
+
+    Args:
+        experiment_tag (str): Experiment identity
+        scenario (Scenario): Scenario instance
+        recall_resource (bool, optional): Recall resource or not. Defaults to True.
+        verbose (bool, optional): Enable verbose print. Defaults to True.
+
+    Returns:
+        Dict[str, Any]: A dict of final returns, currently returns only a dict of strategy specs, e.g., {'strategy_specs': strategy_specs}
+    """
+
     if hasattr(scenario, "training_manager"):
         training_manager: TrainingManager = scenario.training_manager
     else:

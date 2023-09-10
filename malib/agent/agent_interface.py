@@ -198,7 +198,7 @@ class AgentInterface(RemoteInterface, ABC):
         """
 
         for _ in range(n):
-            spec_pid = f"policy-{len(self._strategy_spec.policy_ids)}"
+            spec_pid = f"policy-{len(self._strategy_spec)}"
             self._strategy_spec.register_policy_id(policy_id=spec_pid)
             policy = self._strategy_spec.gen_policy()
             policy_id = f"{self._strategy_spec.id}/{spec_pid}"
@@ -336,7 +336,6 @@ class AgentInterface(RemoteInterface, ABC):
         if reset_state:
             self.reset()
 
-        # stopper = get_stopper(conditions=stopping_conditions)
         reader_info_dict: Dict[str, Tuple[str, Queue]] = {}
         assert len(self._active_tups) == 1, "the length of active tups can be only 1."
 

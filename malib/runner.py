@@ -84,7 +84,7 @@ def run(scenario: Scenario, cluster_address: str = "auto"):
         scenario.parameter_server = parameter_server
         scenario.offline_dataset_server = offline_dataset_server
 
-        experiment_tag = f"malib-{scenario.name}-{time.time()}"
+        experiment_tag = f"malib-{scenario.name}-{time.strftime('%Y-%m-%d-%H%M%S')}"
 
         if isinstance(scenario, psro_scenario.PSROScenario):
             psro_scenario.execution_plan(experiment_tag, scenario)
