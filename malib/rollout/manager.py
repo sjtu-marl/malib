@@ -26,7 +26,7 @@ subprocess). It is responsible for the resources management of worker instances,
 will be assigned with rollout tasks sent from the `CoordinatorServer`.
 """
 
-from typing import Dict, Tuple, Any, Callable, Set, List
+from typing import Dict, Tuple, Any, Callable, Set, List, Union
 from collections import defaultdict
 
 import traceback
@@ -35,6 +35,8 @@ import numpy as np
 
 from ray.util import ActorPool
 
+from malib.utils.logging import Logger
+from malib.common.task import TaskType, RolloutTask
 from malib.common.manager import Manager
 from malib.remote.interface import RemoteInterface
 from malib.common.strategy_spec import StrategySpec
@@ -102,7 +104,7 @@ class RolloutWorkerManager(Manager):
         worker_cls = rollout_worker_cls.as_remote(num_cpus=0, num_gpus=0)
         workers = []
 
-        for i in range(num_worker):
+        for _ in range(num_worker):
             workers.append(
                 worker_cls.options(max_concurrency=100).remote(
                     experiment_tag=experiment_tag,
@@ -124,6 +126,7 @@ class RolloutWorkerManager(Manager):
         for agent in env_desc["possible_agents"]:
             rid = agent_mapping_func(agent)
             agent_groups[rid].add(agent)
+
         self._runtime_ids = tuple(agent_groups.keys())
         self._agent_groups = dict(agent_groups)
         self.experiment_tag = experiment_tag
@@ -131,6 +134,7 @@ class RolloutWorkerManager(Manager):
         assert (
             "rollout" in stopping_conditions
         ), f"Stopping conditions should contain `rollout`: {stopping_conditions}"
+
         self.stopping_conditions = stopping_conditions
 
     @property
@@ -163,16 +167,24 @@ class RolloutWorkerManager(Manager):
 
         return self._workers
 
-    def simulate(self, task_list):
-        """Parse simulation task and dispatch it to available workers"""
+    def submit(self, task: Union[Dict[str, Any], List[Dict[str, Any]]], task_type: Any):
+        """Submit a task to workers
 
-        for task in task_list:
-            self._actor_pool.submit(
-                lambda actor, task: actor.simulate.remote(runtime_strategy_specs=task),
-                task,
-            )
+        Args:
+            task (Union[Dict[str, Any], List[Dict[str, Any]]]): Task description or a list of task description
+            task_type (Any): Task type, should be an instance from TaskType
+        """
 
-    def rollout(self, task_list: List[Dict[str, Any]]) -> None:
+        if isinstance(task, List):
+            task = [RolloutTask.from_raw(e) for e in task]
+        else:
+            task = [RolloutTask.from_raw(task)]
+
+        for _task in task:
+            validate_strategy_specs(_task.strategy_specs)
+            self._actor_pool.submit(lambda actor, _task: actor.rollout.remote(_task, stopping_conditions))
+
+    def _rollout(self, task_list: List[Dict[str, Any]]) -> None:
         """Start rollout task without blocking.
 
         Args:
@@ -217,7 +229,7 @@ class RolloutWorkerManager(Manager):
             while self._actor_pool.has_next():
                 yield self._actor_pool.get_next()
         except Exception as e:
-            print(traceback.format_exc())
+            Logger.error(traceback.format_exc())
             raise e
 
     def terminate(self):

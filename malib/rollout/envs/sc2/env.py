@@ -4,7 +4,12 @@ import numpy as np
 import gym
 
 from gym import spaces
-from smac.env import StarCraft2Env as sc_env
+from malib.utils.logging import Logger
+
+try:
+    from smac.env import StarCraft2Env as sc_env
+except ImportError:
+    Logger.warning("Unable to import smac")
 
 from malib.rollout.envs.env import Environment, GroupWrapper
 from malib.utils.typing import AgentID

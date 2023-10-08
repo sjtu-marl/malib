@@ -48,6 +48,7 @@ from malib.remote.interface import RemoteInterface
 from malib.agent.agent_interface import AgentInterface
 from malib.common.strategy_spec import StrategySpec
 from malib.common.manager import Manager
+from malib.common.training_config import TrainingConfig
 
 
 DEFAULT_RESOURCE_CONFIG = dict(
@@ -63,7 +64,7 @@ class TrainingManager(Manager):
         algorithms: Dict[str, Any],
         env_desc: Dict[str, Any],
         agent_mapping_func: Callable[[AgentID], str],
-        training_config: Dict[str, Any],
+        training_config: Union[Dict[str, Any], TrainingConfig],
         log_dir: str,
         remote_mode: bool = True,
         resource_config: Dict[str, Any] = None,
@@ -82,12 +83,13 @@ class TrainingManager(Manager):
             training_config (Dict[str, Any]): Training configuration, for agent interface, keys include \
                 `type`, `trainer_config` and `custom_config`.
             log_dir (str): Directory for logging.
-            remote_mode (bool, Optional): Init agent interfaces as remote actor or not. Default is True.
+            remote_mode (bool, Optional): Init learners as remote actor or not. Default is True.
         """
 
         super().__init__(verbose=verbose)
 
         resource_config = resource_config or DEFAULT_RESOURCE_CONFIG
+        training_config = TrainingConfig.from_raw(training_config)
 
         # interface config give the agent type used here and the group mapping if needed
         agent_groups = defaultdict(lambda: set())
@@ -96,27 +98,29 @@ class TrainingManager(Manager):
             agent_groups[rid].add(agent)
 
         # FIXME(ming): resource configuration is not available now, will open in the next version
-        if training_config["trainer_config"].get("use_cuda", False):
+        if training_config.trainer_config.get("use_cuda", False):
             num_gpus = 1 / len(agent_groups)
         else:
             num_gpus = 0.0
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
-        agent_cls = training_config["learner_type"]
+        learner_cls = training_config.learner_type
         # update num gpus
         resource_config["num_gpus"] = num_gpus
         # XXX(ming): why we hard set max_concurrency to 10?
-        agent_cls = agent_cls.as_remote(**resource_config).options(max_concurrency=10)
-        interfaces: Dict[str, Union[AgentInterface, ray.ObjectRef]] = {}
+        learner_cls = learner_cls.as_remote(**resource_config).options(
+            max_concurrency=10
+        )
+        learners: Dict[str, Union[AgentInterface, ray.ObjectRef]] = {}
 
         assert (
             "training" in stopping_conditions
         ), f"Stopping conditions should contains `training` stoppong conditions: {stopping_conditions}"
 
         for rid, agents in agent_groups.items():
-            handler = agent_cls.remote if remote_mode else agent_cls
-            interfaces[rid] = handler(
+            _cls = learner_cls.remote if remote_mode else learner_cls
+            learners[rid] = _cls(
                 experiment_tag=experiment_tag,
                 runtime_id=rid,
                 log_dir=f"{log_dir}/learner_{rid}",
@@ -124,14 +128,14 @@ class TrainingManager(Manager):
                 algorithms=algorithms,
                 agent_mapping_func=agent_mapping_func,
                 governed_agents=tuple(agents),
-                trainer_config=training_config["trainer_config"],
-                custom_config=training_config.get("custom_config"),
+                trainer_config=training_config.trainer_config,
+                custom_config=training_config.custom_config,
                 verbose=verbose,
             )
 
         # ensure all interfaces have been started up
         if remote_mode:
-            _ = ray.get([x.connect.remote() for x in interfaces.values()])
+            _ = ray.get([x.connect.remote() for x in learners.values()])
 
         self._agent_groups = agent_groups
         self._runtime_ids = tuple(self._agent_groups.keys())
@@ -140,13 +144,13 @@ class TrainingManager(Manager):
         self._training_config = training_config
         self._log_dir = log_dir
         self._agent_mapping_func = agent_mapping_func
-        self._interfaces = interfaces
+        self._learners = learners
         self._remote_mode = remote_mode
-        self._thread_pool = ThreadPoolExecutor(max_workers=len(interfaces))
+        self._thread_pool = ThreadPoolExecutor(max_workers=len(learners))
         self._stopping_conditions = stopping_conditions
 
         Logger.info(
-            f"training manager launched, {len(self._interfaces)} learner(s) created"
+            f"training manager launched, {len(self._learners)} learner(s) created"
         )
 
     @property
@@ -167,7 +171,7 @@ class TrainingManager(Manager):
             List[RemoteInterface]: A list of learner instance
         """
 
-        return list(self._interfaces.values())
+        return list(self._learners.values())
 
     @property
     def runtime_ids(self) -> Tuple[str]:
@@ -193,7 +197,7 @@ class TrainingManager(Manager):
         """
 
         if interface_ids is None:
-            interface_ids = list(self._interfaces.keys())
+            interface_ids = list(self._learners.keys())
 
         assert isinstance(interface_ids, (List, Tuple, Set)), type(interface_ids)
 
@@ -202,7 +206,7 @@ class TrainingManager(Manager):
         if self._remote_mode:
             strategy_spec_list: List[StrategySpec] = ray.get(
                 [
-                    self._interfaces[k].add_policies.remote(n=policy_nums[k])
+                    self._learners[k].add_policies.remote(n=policy_nums[k])
                     for k in interface_ids
                 ]
             )
@@ -211,16 +215,19 @@ class TrainingManager(Manager):
             )
         else:
             strategy_spec_dict = {
-                k: self._interfaces[k].add_policies(n=policy_nums[k])
+                k: self._learners[k].add_policies(n=policy_nums[k])
                 for k in interface_ids
             }
 
         return strategy_spec_dict
 
+    def submit(self, task: Any):
+        raise NotImplementedError
+
     def run(self, data_request_identifiers: Dict[str, str]):
         """Start training thread without blocking"""
 
-        for rid, interface in self._interfaces.items():
+        for rid, interface in self._learners.items():
             if self._remote_mode:
                 task = interface.train.remote(
                     data_request_identifiers[rid],
@@ -269,11 +276,11 @@ class TrainingManager(Manager):
         super().terminate()
 
         if self._remote_mode:
-            for x in self._interfaces.values():
+            for x in self._learners.values():
                 ray.kill(x)
 
         self._thread_pool.shutdown()
-        del self._interfaces
+        del self._learners
 
     def get_exp(self, policy_distribution):
         """Compute exploitability"""

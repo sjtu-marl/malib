@@ -40,7 +40,7 @@ setup(
     python_requires=">=3.7",
     install_requires=[
         "wrapt",
-        "ray==1.13.0",
+        "ray>=1.13.0",
         "pickle5",
         "torch",
         "tensorboardX",

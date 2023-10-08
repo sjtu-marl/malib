@@ -46,6 +46,7 @@ from malib.utils.logging import Logger
 from malib.utils.stopping_conditions import get_stopper
 from malib.utils.monitor import write_to_tensorboard
 from malib.common.strategy_spec import StrategySpec
+from malib.common.task import RolloutTask, TaskType
 from malib.remote.interface import RemoteInterface
 from malib.rollout.inference.ray.server import (
     RayInferenceWorkerSet as RayInferenceServer,
@@ -392,37 +393,41 @@ class RolloutWorker(RemoteInterface):
         self,
         runtime_strategy_specs: Dict[str, StrategySpec],
         stopping_conditions: Dict[str, Any],
-        data_entrypoints: Dict[str, str],
-        trainable_agents: List[AgentID] = None,
+        data_entrypoints: Dict[str, str] = None,
+        active_agents: List[AgentID] = None,
     ):
-        """Run rollout procedure, collect data until meets the stopping conditions.
+        """Rollout, collecting training data when `data_entrypoints` is given, until meets the stopping conditions. The `active_agents` should be None or a none-empty list to specify active agents if rollout is not serve for evaluation. 
 
-        NOTE: the data collection will be triggered only for trainable agents.
+        NOTE: the data collection will be triggered only for active agents.
 
         Args:
             runtime_strategy_specs (Dict[str, StrategySpec]): A dict of strategy spec, mapping from runtime id to `StrategySpec`.
             stopping_conditions (Dict[str, Any]): A dict of stopping conditions.
-            data_entrypoints (Dict[str, str]): Mapping from runtimeids to dataentrypoint names.
-            trainable_agents (List[AgentID], optional): A list of environment agent id. Defaults to None, which means all environment agents will be trainable.
+            data_entrypoints (Dict[str, str], optional): Mapping from runtimeids to dataentrypoint names. None for evaluation.
+            active_agents (List[AgentID], optional): A list of environment agent id. Defaults to None, which means all environment agents will be trainable. Empty list for evaluation mode.
         """
 
         stopper = get_stopper(stopping_conditions)
-        trainable_agents = trainable_agents or self.env_agents
-        queue_info_dict: Dict[str, Tuple[str, Queue]] = {
-            rid: None for rid in self.runtime_agent_ids
-        }
-        for rid, identifier in data_entrypoints.items():
-            queue_id, queue = ray.get(
-                self.dataset_server.start_producer_pipe.remote(name=identifier)
-            )
-            queue_info_dict[rid] = (queue_id, queue)
+        active_agents = active_agents or self.env_agents
+
+        if data_entrypoints is not None:
+            queue_info_dict: Dict[str, Tuple[str, Queue]] = {
+                rid: None for rid in self.runtime_agent_ids
+            }
+            for rid, identifier in data_entrypoints.items():
+                queue_id, queue = ray.get(
+                    self.dataset_server.start_producer_pipe.remote(name=identifier)
+                )
+                queue_info_dict[rid] = (queue_id, queue)
+        else:
+            queue_info_dict = None
 
         rollout_config = self.rollout_config.copy()
         rollout_config.update(
             {
                 "flag": "rollout",
                 "strategy_specs": runtime_strategy_specs,
-                "trainable_agents": trainable_agents,
+                "active_agents": active_agents,
                 "agent_group": self.agent_group,
             }
         )
