@@ -3,6 +3,7 @@ from typing import Dict, Any, Union
 from dataclasses import dataclass, field
 
 
+# TODO(ming): rename it as LearnerConfig
 @dataclass
 class TrainingConfig:
 

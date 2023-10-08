@@ -22,10 +22,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from types import LambdaType
 from typing import Dict, Any
+from malib.common.task import OptimizationTask
 
-from concurrent.futures import ThreadPoolExecutor
 from malib.scenarios import Scenario
 
 from malib.utils.logging import Logger
@@ -65,6 +64,7 @@ class SARLScenario(Scenario):
 
 
 def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = True):
+    # TODO(ming): simplify the initialization of training and rollout manager with a scenario instance as input
     training_manager = TrainingManager(
         experiment_tag=experiment_tag,
         stopping_conditions=scenario.stopping_conditions,
@@ -101,7 +101,12 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
 
     assert len(data_entrypoints) == 1, "Support single agent only!"
 
-    training_manager.submit({"data_request_identifiers": data_entrypoints})
+    optimization_task = OptimizationTask(
+        active_agents=None,
+        data_entrypoints=data_entrypoints,
+        stop_conditions=scenario.stopping_conditions["training"],
+    )
+    training_manager.submit(optimization_task)
 
     rollout_task = {
         "num_workers": 1,
@@ -122,5 +127,7 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
     rollout_manager.submit(evaluation_task, task_type=TaskType.EVALUATION)
 
     results = league.get_results()
+
+    league.terminate()
 
     return results

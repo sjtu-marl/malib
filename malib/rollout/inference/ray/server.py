@@ -33,6 +33,7 @@ import os
 import pickle as pkl
 import ray
 import gym
+import torch
 
 from malib import settings
 from malib.remote.interface import RemoteInterface

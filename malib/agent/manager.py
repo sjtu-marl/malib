@@ -40,6 +40,7 @@ from concurrent.futures import ThreadPoolExecutor, Future, CancelledError
 import os
 import traceback
 import ray
+from malib.common.task import OptimizationTask
 
 from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
@@ -54,6 +55,11 @@ from malib.common.training_config import TrainingConfig
 DEFAULT_RESOURCE_CONFIG = dict(
     num_cpus=None, num_gpus=None, memory=None, object_store_memory=None, resources=None
 )
+
+
+def validate_spaces(agent_groups: Dict[str, Set[AgentID]], env_desc: Dict[str, Any]):
+    # TODO(ming): check whether the agents in the group share the same observation space and action space
+    raise NotImplementedError
 
 
 class TrainingManager(Manager):
@@ -97,6 +103,8 @@ class TrainingManager(Manager):
             rid = agent_mapping_func(agent)
             agent_groups[rid].add(agent)
 
+        validate_spaces(agent_groups, env_desc)
+
         # FIXME(ming): resource configuration is not available now, will open in the next version
         if training_config.trainer_config.get("use_cuda", False):
             num_gpus = 1 / len(agent_groups)
@@ -108,7 +116,6 @@ class TrainingManager(Manager):
         learner_cls = training_config.learner_type
         # update num gpus
         resource_config["num_gpus"] = num_gpus
-        # XXX(ming): why we hard set max_concurrency to 10?
         learner_cls = learner_cls.as_remote(**resource_config).options(
             max_concurrency=10
         )
@@ -221,31 +228,33 @@ class TrainingManager(Manager):
 
         return strategy_spec_dict
 
-    def submit(self, task: Any):
-        raise NotImplementedError
+    def submit(self, task: OptimizationTask):
+        """Submit a training task, the manager will distribute it to the corresponding learners.
 
-    def run(self, data_request_identifiers: Dict[str, str]):
-        """Start training thread without blocking"""
+        Args:
+            task (OptimizationTask): A task description.
+        """
 
-        for rid, interface in self._learners.items():
-            if self._remote_mode:
-                task = interface.train.remote(
-                    data_request_identifiers[rid],
-                    self._stopping_conditions["training"],
+        # retrieve learners with active agents
+        for aid in task.active_agents:
+            rid = self._agent_mapping_func(aid)
+            if rid not in self._learners:
+                raise RuntimeError(
+                    f"Agent {aid} is not registered in training manager"
                 )
             else:
-                task = self._thread_pool.submit(
-                    interface.train,
-                    data_request_identifiers[rid],
-                    self._stopping_conditions["training"],
-                )
-            self.pending_tasks.append(task)
+                learner = self._learners[rid]
+                if self._remote_mode:
+                    ray_task = learner.train.remote(task)
+                    self.pending_tasks.append(ray_task)
+                else:
+                    raise NotImplementedError
 
     def retrive_results(self) -> Generator:
-        """Return a generator of results
+        """Return a generator of results.
 
         Yields:
-            Generator: A generator for task results
+            Generator: A generator for task results.
         """
 
         if self._remote_mode:

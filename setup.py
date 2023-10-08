@@ -64,6 +64,7 @@ setup(
         "pygame==2.1.0",
         "pettingzoo",
         "networkx",
+        "zerocopy>=0.1.0"
     ],
     extras_require={
         "dev": [

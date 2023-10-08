@@ -32,6 +32,29 @@ class RolloutTask:
 @dataclass
 class OptimizationTask:
 
+    data_entrypoints: Dict[str, str]
+    """a mapping defines the data request identifier and the data entrypoint."""
+
+    stop_conditions: Dict[str, Any]
+    """stopping conditions for optimization task, e.g., max iteration, max time, etc."""
+
+    strategy_specs: Dict[str, Any] = field(default_factory=dict())
+    """a dict of strategy specs, which defines the strategy spec for each agent."""
+
+    active_agents: List[AgentID] = field(default_factory=list)
+    """a list of active agents, which defines the agents that will be trained in this optimization task. None for all"""
+
     @classmethod
     def from_raw(cls, dict_style: Union[Dict[str, Any], "OptimizationTask"], **kwargs) -> "OptimizationTask":
+        """Construct a OptimizationTask object from a dict or a existing OptimizationTask instance.
+
+        Args:
+            dict_style (Union[Dict[str, Any], &quot;OptimizationTask&quot;]): A dict or a OptimizationTask instance.
+
+        Raises:
+            NotImplementedError: _description_
+
+        Returns:
+            OptimizationTask: A OptimizationTask instance.
+        """
         raise NotImplementedError

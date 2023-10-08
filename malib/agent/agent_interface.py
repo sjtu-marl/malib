@@ -32,7 +32,7 @@ import copy
 import time
 import traceback
 
-
+import gym
 import torch
 import ray
 
@@ -60,7 +60,8 @@ class AgentInterface(RemoteInterface, ABC):
         experiment_tag: str,
         runtime_id: str,
         log_dir: str,
-        env_desc: Dict[str, Any],
+        observation_space: gym.Space,
+        action_space: gym.Space,
         algorithms: Dict[str, Tuple[Type, Type, Dict, Dict]],
         agent_mapping_func: Callable[[AgentID], str],
         governed_agents: Tuple[AgentID],
@@ -75,11 +76,12 @@ class AgentInterface(RemoteInterface, ABC):
             experiment_tag (str): Experiment tag.
             runtime_id (str): Assigned runtime id, should be an element of the agent mapping results.
             log_dir (str): The directory for logging.
-            env_desc (Dict[str, Any]): A dict that describes the environment property.
+            observation_space (gym.Space): Observation space.
+            action_space (gym.Space): Action space.
             algorithms (Dict[str, Tuple[Type, Type, Dict]]): A dict that describes the algorithm candidates. Each is \
                 a tuple of `policy_cls`, `trainer_cls`, `model_config` and `custom_config`.
             agent_mapping_func (Callable[[AgentID], str]): A function that defines the rule of agent groupping.
-            governed_agents (Tuple[AgentID]): A tuple that records which agents is related to this training procedures. \
+            governed_agents (Tuple[AgentID]): A tuple that records which agents is related to this learner. \
                 Note that it should be a subset of the original set of environment agents.
             trainer_config (Dict[str, Any]): Trainer configuration.
             custom_config (Dict[str, Any], optional): A dict of custom configuration. Defaults to None.
@@ -88,15 +90,10 @@ class AgentInterface(RemoteInterface, ABC):
         """
 
         if verbose:
-            print("\tAssigned GPUs: {}".format(ray.get_gpu_ids()))
+            Logger.info("\tAssigned GPUs: {}".format(ray.get_gpu_ids()))
 
         local_buffer_config = local_buffer_config or {}
         device = torch.device("cuda" if ray.get_gpu_ids() else "cpu")
-        # a strategy spec dict, mapping from algorithm
-        obs_spaces = env_desc["observation_spaces"]
-        act_spaces = env_desc["action_spaces"]
-        selected_observation_space = obs_spaces[governed_agents[0]]
-        selected_action_space = act_spaces[governed_agents[0]]
 
         # initialize a strategy spec for policy maintainance.
         strategy_spec = StrategySpec(
@@ -107,8 +104,8 @@ class AgentInterface(RemoteInterface, ABC):
                 "experiment_tag": experiment_tag,
                 # for policy initialize
                 "kwargs": {
-                    "observation_space": selected_observation_space,
-                    "action_space": selected_action_space,
+                    "observation_space": observation_space,
+                    "action_space": action_space,
                     "model_config": algorithms["default"][2],
                     "custom_config": algorithms["default"][3],
                     "kwargs": {},
@@ -118,7 +115,6 @@ class AgentInterface(RemoteInterface, ABC):
 
         self._runtime_id = runtime_id
         self._device = device
-        self._env_desc = env_desc
         self._algorithms = algorithms
         self._governed_agents = governed_agents
         self._strategy_spec = strategy_spec
@@ -323,7 +319,7 @@ class AgentInterface(RemoteInterface, ABC):
         data_request_identifier: str,
         reset_state: bool = True,
     ) -> Dict[str, Any]:
-        """Executes training task and returns the final interface state.
+        """Executes a optimization task and returns the final interface state.
 
         Args:
             stopping_conditions (Dict[str, Any]): Control the training stepping.
@@ -333,6 +329,8 @@ class AgentInterface(RemoteInterface, ABC):
             Dict[str, Any]: A dict that describes the final state.
         """
 
+        # XXX(ming): why we need to reset the state here? I think it is not necessary as
+        #   an optimization task should be independent with other tasks.
         if reset_state:
             self.reset()
 
