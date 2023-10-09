@@ -14,7 +14,6 @@ class RandomPolicy(PGPolicy):
         custom_config: Dict[str, Any],
         **kwargs
     ):
-
         super().__init__(
             observation_space, action_space, model_config, custom_config, **kwargs
         )

@@ -341,6 +341,26 @@ def frozen_data(data):
     return _hash
 
 
+import socket
+
+
+def find_free_port(random_port: int = 8000) -> int:
+    """Find a free port.
+
+    Args:
+        random_port (int, optional): Given a random port. Defaults to 8000.
+
+    Returns:
+        int: Port number
+    """
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        if s.connect_ex(("localhost", random_port)) == 0:
+            return find_free_port(random_port + 1)
+        else:
+            return random_port
+
+
 # =============== below refer to: https://docs.ray.io/en/releases-1.9.1/_modules/ray/util/ml_utils/dict.html#merge_dicts
 def merge_dicts(d1: dict, d2: dict) -> dict:
     """

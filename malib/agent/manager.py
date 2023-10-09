@@ -144,6 +144,8 @@ class TrainingManager(Manager):
         if remote_mode:
             _ = ray.get([x.connect.remote() for x in learners.values()])
 
+        # TODO(ming): collect data entrypoints from learners
+
         self._agent_groups = agent_groups
         self._runtime_ids = tuple(self._agent_groups.keys())
         self._experiment_tag = experiment_tag
@@ -169,6 +171,16 @@ class TrainingManager(Manager):
         """
 
         return self._agent_groups
+
+    @property
+    def get_data_entrypoints(self) -> Dict[str, str]:
+        """Return a dict of data entrypoints, maps from runtime ids to data entrypoints.
+
+        Returns:
+            Dict[str, str]: A dict of data entrypoints.
+        """
+
+        return {rid: rid for rid in self._runtime_ids}
 
     @property
     def workers(self) -> List[RemoteInterface]:
@@ -239,9 +251,7 @@ class TrainingManager(Manager):
         for aid in task.active_agents:
             rid = self._agent_mapping_func(aid)
             if rid not in self._learners:
-                raise RuntimeError(
-                    f"Agent {aid} is not registered in training manager"
-                )
+                raise RuntimeError(f"Agent {aid} is not registered in training manager")
             else:
                 learner = self._learners[rid]
                 if self._remote_mode:

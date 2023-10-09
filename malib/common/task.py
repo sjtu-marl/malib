@@ -14,13 +14,14 @@ class TaskType(IntEnum):
 
 @dataclass
 class RolloutTask:
-
     task_type: int
     active_agents: List[AgentID]
     strategy_specs: Dict[str, Any] = field(default_factory=dict())
-    
+
     @classmethod
-    def from_raw(cls, dict_style: Union[Dict[str, Any], "RolloutTask"], **kwargs) -> "RolloutTask":
+    def from_raw(
+        cls, dict_style: Union[Dict[str, Any], "RolloutTask"], **kwargs
+    ) -> "RolloutTask":
         if isinstance(dict_style, Dict):
             return cls(**dict_style, **kwargs)
         elif isinstance(dict_style, cls):
@@ -31,7 +32,6 @@ class RolloutTask:
 
 @dataclass
 class OptimizationTask:
-
     data_entrypoints: Dict[str, str]
     """a mapping defines the data request identifier and the data entrypoint."""
 
@@ -45,7 +45,9 @@ class OptimizationTask:
     """a list of active agents, which defines the agents that will be trained in this optimization task. None for all"""
 
     @classmethod
-    def from_raw(cls, dict_style: Union[Dict[str, Any], "OptimizationTask"], **kwargs) -> "OptimizationTask":
+    def from_raw(
+        cls, dict_style: Union[Dict[str, Any], "OptimizationTask"], **kwargs
+    ) -> "OptimizationTask":
         """Construct a OptimizationTask object from a dict or a existing OptimizationTask instance.
 
         Args:

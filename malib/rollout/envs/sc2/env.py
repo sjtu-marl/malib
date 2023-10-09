@@ -154,7 +154,6 @@ class SC2Env(Environment):
 
 
 def StatedSC2(**config):
-
     env = SC2Env(**config)
 
     class Wrapped(GroupWrapper):
@@ -184,7 +183,6 @@ def StatedSC2(**config):
 
 
 if __name__ == "__main__":
-
     env = SC2Env(env_id="3m")
 
     state, obs = env.reset()

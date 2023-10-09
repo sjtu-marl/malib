@@ -236,7 +236,6 @@ class VectorEnv:
     def action_adapter(
         self, policy_outputs: List[Dict[str, Dict[AgentID, Any]]]
     ) -> List[Dict[AgentID, Any]]:
-
         # since activ_envs maybe updated after self.step, so we should use keys
         # in self.active_envs
         res = defaultdict(list)

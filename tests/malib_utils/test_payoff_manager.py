@@ -44,7 +44,6 @@ def test_default_solver(solve_method: str):
 
 @pytest.mark.parametrize("n_player", [2, 4])
 def test_payoff_table(n_player: int):
-
     agents = [f"player_{i}" for i in range(n_player)]
     # start from one policy each player
     shape = [0] * n_player

@@ -176,7 +176,6 @@ class Postprocessor:
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
     ):
-
         adv = _gae_return(
             state_value, next_state_value, reward, done, gamma, gae_lambda
         )

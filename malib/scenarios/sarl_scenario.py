@@ -113,7 +113,7 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
         "runtime_strategy_specs": strategy_specs,
         "data_entrypoints": None,
         "rollout_config": scenario.rollout_config,
-        "active_agents": None
+        "active_agents": None,
     }
     evaluation_task = {
         "num_workers": 1,

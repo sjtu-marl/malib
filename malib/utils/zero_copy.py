@@ -17,6 +17,7 @@ ref = ray.put(zerocopy.extract_tensors(tmp))
 model_graph, tensors = ray.get(ref)
 zerocopy.replace_tensors(model_graph, tensors)
 
+
 # zero-copy method: stateless task
 @ray.remote
 def run_model(model_and_tensors, model_input):
@@ -27,6 +28,7 @@ def run_model(model_and_tensors, model_input):
 
 
 model_result = ray.get(run_model.remote(ref, model_input))
+
 
 async def get_model_result(model_ref, model_input):
     return await zerocopy.call_model.remote(model_ref, [], model_input)

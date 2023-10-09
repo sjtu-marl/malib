@@ -126,7 +126,6 @@ def test_datatable_read_and_write(read_size: int, write_size: int):
 
 
 def test_offline_dataset():
-
     if not ray.is_initialized():
         ray.init()
 

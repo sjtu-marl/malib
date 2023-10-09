@@ -396,7 +396,7 @@ class RolloutWorker(RemoteInterface):
         data_entrypoints: Dict[str, str] = None,
         active_agents: List[AgentID] = None,
     ):
-        """Rollout, collecting training data when `data_entrypoints` is given, until meets the stopping conditions. The `active_agents` should be None or a none-empty list to specify active agents if rollout is not serve for evaluation. 
+        """Rollout, collecting training data when `data_entrypoints` is given, until meets the stopping conditions. The `active_agents` should be None or a none-empty list to specify active agents if rollout is not serve for evaluation.
 
         NOTE: the data collection will be triggered only for active agents.
 

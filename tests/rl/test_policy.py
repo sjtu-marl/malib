@@ -71,7 +71,6 @@ def test_interface_calling(
     model_config: Dict[str, Any],
     custom_config: Dict[str, Any],
 ):
-
     policy_caller = partial(
         FakePolicy, observation_space, action_space, model_config, custom_config
     )

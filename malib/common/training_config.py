@@ -6,13 +6,14 @@ from dataclasses import dataclass, field
 # TODO(ming): rename it as LearnerConfig
 @dataclass
 class TrainingConfig:
-
     trainer_config: Dict[str, Any]
     learner_type: str
     custom_config: Dict[str, Any] = field(default_factory=dict())
 
     @classmethod
-    def from_raw(cls, config: Union["TrainingConfig", Dict[str, Any]]) -> "TrainingConfig":
+    def from_raw(
+        cls, config: Union["TrainingConfig", Dict[str, Any]]
+    ) -> "TrainingConfig":
         """Cat dict-style configuration to TrainingConfig instance
 
         Args:

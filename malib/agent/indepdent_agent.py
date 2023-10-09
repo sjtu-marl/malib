@@ -64,7 +64,6 @@ class IndependentAgent(AgentInterface):
             Dict[AgentID, Tuple[Batch, List[int]]], Tuple[Batch, List[int]]
         ],
     ) -> Dict[str, Any]:
-
         if not isinstance(batch_info, Tuple):
             raise TypeError(
                 "IndependentAgent support only a tuple of batch info as input."

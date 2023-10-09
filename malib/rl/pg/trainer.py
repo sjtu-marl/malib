@@ -45,7 +45,6 @@ class PGTrainer(Trainer):
         self.ret_rms = None
 
     def post_process(self, batch: Batch, agent_filter: Sequence[AgentID]) -> Batch:
-
         # v_s_ = np.full(indices.shape, self.ret_rms.mean)
         unnormalized_returns, _ = Postprocessor.compute_episodic_return(
             batch, gamma=self.training_config["gamma"], gae_lambda=1.0

@@ -41,6 +41,7 @@ from torch.utils import tensorboard
 
 from malib import settings
 from malib.backend.offline_dataset_server import OfflineDataset
+from malib.backend.data_loader import RLDataLoader
 from malib.backend.parameter_server import ParameterServer
 from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
@@ -69,6 +70,7 @@ class AgentInterface(RemoteInterface, ABC):
         custom_config: Dict[str, Any] = None,
         local_buffer_config: Dict = None,
         verbose: bool = True,
+        dataloader: RLDataLoader = None,
     ):
         """Construct agent interface for training.
 
@@ -130,7 +132,9 @@ class AgentInterface(RemoteInterface, ABC):
 
         self._offline_dataset: OfflineDataset = None
         self._parameter_server: ParameterServer = None
+        self._dataloader = dataloader or self.create_dataloader()
         self._active_tups = deque()
+
         self.verbose = verbose
 
     @property
@@ -152,6 +156,18 @@ class AgentInterface(RemoteInterface, ABC):
         """
 
         return self._device
+
+    def create_dataloader(self) -> RLDataLoader:
+        """Create a data loader instance.
+
+        Raises:
+            NotImplementedError: Raise if this method is not implemented.
+
+        Returns:
+            RLDataLoader: A data loader instance.
+        """
+
+        raise NotImplementedError
 
     def connect(
         self,
@@ -214,30 +230,6 @@ class AgentInterface(RemoteInterface, ABC):
             )
 
         return self._strategy_spec
-
-    def get_algorithm(self, key: str) -> Any:  # pragma: no cover
-        """Return a copy of algorithm configuration with given key, if not exist, raise KeyError.
-
-        Args:
-            key (str): Algorithm configuration reference key.
-
-        Raises:
-            KeyError: No such an algorithm configuration relates to the give key.
-
-        Returns:
-            Any: Algorithm configuration, mabe a dict.
-        """
-
-        return copy.deepcopy(self._algorithms[key])
-
-    def get_algorthms(self) -> Dict[str, Any]:  # pragma: no_cover
-        """Return a copy of full algorithm configurations.
-
-        Returns:
-            Dict[str, Any]: Full algorithm configurations.
-        """
-
-        return copy.deepcopy(self._algorithms)
 
     def push(self):
         """Push local weights to remote server"""

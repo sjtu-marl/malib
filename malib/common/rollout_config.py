@@ -5,12 +5,12 @@ from dataclasses import dataclass, field
 
 @dataclass
 class RolloutConfig:
-
     inference_server_type: str
 
-
     @classmethod
-    def from_raw(cls, config: Union["RolloutConfig", Dict[str, Any]]) -> "RolloutConfig":
+    def from_raw(
+        cls, config: Union["RolloutConfig", Dict[str, Any]]
+    ) -> "RolloutConfig":
         """Cat dict-style configuration to RolloutConfig instance
 
         Args:

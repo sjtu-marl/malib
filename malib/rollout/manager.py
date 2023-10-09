@@ -182,7 +182,9 @@ class RolloutWorkerManager(Manager):
 
         for _task in task:
             validate_strategy_specs(_task.strategy_specs)
-            self._actor_pool.submit(lambda actor, _task: actor.rollout.remote(_task, stopping_conditions))
+            self._actor_pool.submit(
+                lambda actor, _task: actor.rollout.remote(_task, stopping_conditions)
+            )
 
     def _rollout(self, task_list: List[Dict[str, Any]]) -> None:
         """Start rollout task without blocking.

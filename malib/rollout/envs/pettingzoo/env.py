@@ -83,7 +83,6 @@ class PettingZooEnv(Environment):
         Dict[AgentID, bool],
         Dict[AgentID, Any],
     ]:
-
         if not self.parallel_simulate:
             self.env.step(actions[self.env.agent_selection])
             rewards = self.env.rewards.copy()
