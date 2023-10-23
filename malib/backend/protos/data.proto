@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package data;
+
+message Data {
+    bytes data = 1;
+    string message = 2;
+}
+
+message Reply {
+    string message = 1;
+}
+
+service SendData {
+    rpc collect (Data) returns (Reply) {}
+}

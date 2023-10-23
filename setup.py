@@ -65,6 +65,7 @@ setup(
         "pettingzoo",
         "networkx",
         "zerocopy>=0.1.0",
+        "grpcio-tools>=1.59.0",
     ],
     extras_require={
         "dev": [

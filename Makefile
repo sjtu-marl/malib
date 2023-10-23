@@ -62,3 +62,7 @@ coverage-view:
 test-verbose:
 	pytest --cov-config=.coveragerc --cov=malib --cov-report html --doctest-modules tests -v -s
 	rm -f .coverage.*
+
+.PHONY: compile
+compile:
+	python -m grpc_tools.protoc -I malib/backend/protos --python_out=malib/backend/dataset_server --pyi_out=malib/backend/dataset_server --grpc_python_out=malib/backend/dataset_server malib/backend/protos/data.proto
