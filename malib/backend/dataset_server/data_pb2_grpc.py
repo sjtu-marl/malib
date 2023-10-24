@@ -14,8 +14,8 @@ class SendDataStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.collect = channel.unary_unary(
-            "/data.SendData/collect",
+        self.Collect = channel.unary_unary(
+            "/data.SendData/Collect",
             request_serializer=data__pb2.Data.SerializeToString,
             response_deserializer=data__pb2.Reply.FromString,
         )
@@ -24,7 +24,7 @@ class SendDataStub(object):
 class SendDataServicer(object):
     """Missing associated documentation comment in .proto file."""
 
-    def collect(self, request, context):
+    def Collect(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details("Method not implemented!")
@@ -33,8 +33,8 @@ class SendDataServicer(object):
 
 def add_SendDataServicer_to_server(servicer, server):
     rpc_method_handlers = {
-        "collect": grpc.unary_unary_rpc_method_handler(
-            servicer.collect,
+        "Collect": grpc.unary_unary_rpc_method_handler(
+            servicer.Collect,
             request_deserializer=data__pb2.Data.FromString,
             response_serializer=data__pb2.Reply.SerializeToString,
         ),
@@ -50,7 +50,7 @@ class SendData(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
-    def collect(
+    def Collect(
         request,
         target,
         options=(),
@@ -65,7 +65,7 @@ class SendData(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            "/data.SendData/collect",
+            "/data.SendData/Collect",
             data__pb2.Data.SerializeToString,
             data__pb2.Reply.FromString,
             options,

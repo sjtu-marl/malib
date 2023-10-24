@@ -12,5 +12,5 @@ message Reply {
 }
 
 service SendData {
-    rpc collect (Data) returns (Reply) {}
+    rpc Collect (Data) returns (Reply) {}
 }

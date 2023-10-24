@@ -1,5 +1,6 @@
 from typing import Type, Any
 
+import threading
 import grpc
 
 from concurrent import futures
@@ -26,14 +27,12 @@ class DynamicDataset(Dataset):
         super().__init__()
 
         # start a service as thread
-        self.thread_pool = futures.ThreadPoolExecutor(max_workers=2)
-        self.thread_pool.submit(
-            self._start_servicer,
+        self.feature_handler: BaseFeature = feature_handler_caller()
+        self.server = self._start_servicer(
             grpc_thread_num_workers,
             max_message_length,
             find_free_port(),
         )
-        self.feature_handler: BaseFeature = feature_handler_caller()
 
     def _start_servicer(
         self, max_workers: int, max_message_length: int, grpc_port: int
@@ -51,6 +50,8 @@ class DynamicDataset(Dataset):
         server.add_insecure_port(f"[::]:{grpc_port}")
         server.start()
 
+        return server
+
     def __len__(self):
         return self.feature_handler_caller.block_size
 
@@ -62,3 +63,6 @@ class DynamicDataset(Dataset):
             raise EmptyError(f"No available data for sampling")
 
         return self.feature_handler.safe_get(index)
+
+    def close(self):
+        self.server.stop()
