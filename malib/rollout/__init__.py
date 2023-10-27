@@ -23,8 +23,8 @@
 # SOFTWARE.
 
 from .pb_rolloutworker import RolloutWorker
-from .inference.ray.client import RayInferenceClient as InferenceClient
-from .inference.ray.server import RayInferenceWorkerSet as InferenceWorkerSet
+from .inference.env_runner import EnvRunner
+from .inference.client import InferenceClient
 
 
-__all__ = ["RolloutWorker", "InferenceClient", "InferenceWorkerSet"]
+__all__ = ["RolloutWorker", "EnvRunner", "InferenceClient"]

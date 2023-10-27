@@ -25,7 +25,6 @@
 from typing import Dict, Any
 
 from malib.rollout.rolloutworker import RolloutWorker, parse_rollout_info
-from malib.common.strategy_spec import StrategySpec
 from malib.utils.logging import Logger
 
 
@@ -36,7 +35,7 @@ class PBRolloutWorker(RolloutWorker):
         self,
         eval_step: bool,
         rollout_config: Dict[str, Any],
-        dataset_writer_info_dict: Dict[str, Any],
+        data_entrypoint_mapping: Dict[str, Any],
     ):
         tasks = [rollout_config for _ in range(self.rollout_config["num_threads"])]
 
@@ -53,11 +52,11 @@ class PBRolloutWorker(RolloutWorker):
 
         rets = [
             x
-            for x in self.actor_pool.map(
+            for x in self.env_runner_pool.map(
                 lambda a, task: a.run.remote(
-                    agent_interfaces=self.agent_interfaces,
+                    inference_clients=self.inference_clients,
                     rollout_config=task,
-                    dataset_writer_info_dict=dataset_writer_info_dict,
+                    data_entrypoint_mapping=data_entrypoint_mapping,
                 ),
                 tasks,
             )
@@ -67,34 +66,3 @@ class PBRolloutWorker(RolloutWorker):
         parsed_results = parse_rollout_info(rets)
         Logger.debug(f"parsed results: {parsed_results}")
         return parsed_results
-
-    def step_simulation(
-        self,
-        runtime_strategy_specs: Dict[str, StrategySpec],
-        runtime_config_template: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Step simulation task with a given list of strategy spec dicts.
-
-        Args:
-            runtime_strategy_specs (Dict[str, StrategySpec]): A strategy spec dicts.
-            runtime_config_template (Dict[str, Any]): Runtime configuration template.
-
-        Returns:
-            Dict[str, Any]: Evaluation results, a dict.
-        """
-
-        task = runtime_config_template.copy()
-        task["strategy_specs"] = runtime_strategy_specs
-
-        # we should keep dimension as tasks.
-        rets = [
-            parse_rollout_info([x])
-            for x in self.actor_pool.map(
-                lambda a, task: a.run.remote(
-                    agent_interfaces=self.agent_interfaces, rollout_config=task
-                ),
-                [task],
-            )
-        ][0]
-
-        return rets

@@ -31,9 +31,7 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 
 import pickle as pkl
-import ray
 import gym
-import torch
 
 from malib import settings
 from malib.remote.interface import RemoteInterface
@@ -42,20 +40,17 @@ from malib.utils.timing import Timing
 from malib.utils.episode import Episode
 from malib.common.strategy_spec import StrategySpec
 from malib.rl.common.policy import Policy
-from malib.backend.parameter_server import ParameterServer
 
 
-ClientHandler = namedtuple("ClientHandler", "sender,recver,runtime_config,rnn_states")
+Connection = namedtuple("Connection", "sender,recver,runtime_config,rnn_states")
 
 
-class RayInferenceWorkerSet(RemoteInterface):
+class InferenceClient(RemoteInterface):
     def __init__(
         self,
         agent_id: AgentID,
         observation_space: gym.Space,
         action_space: gym.Space,
-        parameter_server: ParameterServer,
-        governed_agents: List[AgentID],
     ) -> None:
         """Create ray-based inference server.
 
@@ -63,26 +58,22 @@ class RayInferenceWorkerSet(RemoteInterface):
             agent_id (AgentID): Runtime agent id, not environment agent id.
             observation_space (gym.Space): Observation space related to the governed environment agents.
             action_space (gym.Space): Action space related to the governed environment agents.
-            parameter_server (ParameterServer): Parameter server.
-            governed_agents (List[AgentID]): A list of environment agents.
         """
 
         self.runtime_agent_id = agent_id
         self.observation_space = observation_space
         self.action_space = action_space
-        self.parameter_server = parameter_server
 
         self.thread_pool = ThreadPoolExecutor()
-        self.governed_agents = governed_agents
         self.policies: Dict[str, Policy] = {}
         self.strategy_spec_dict: Dict[str, StrategySpec] = {}
 
     def shutdown(self):
         self.thread_pool.shutdown(wait=True)
-        for _handler in self.clients.values():
+        for _handler in self.connections.values():
             _handler.sender.shutdown(True)
             _handler.recver.shutdown(True)
-        self.clients: Dict[int, ClientHandler] = {}
+        self.connections: Dict[int, Connection] = {}
 
     def save(self, model_dir: str) -> None:
         if not os.path.exists(model_dir):
@@ -99,12 +90,6 @@ class RayInferenceWorkerSet(RemoteInterface):
         timer = Timing()
         strategy_specs: Dict[AgentID, StrategySpec] = runtime_config["strategy_specs"]
         return_dataframes: List[DataFrame] = []
-
-        # check policy
-        self._update_policies(
-            runtime_config["strategy_specs"][self.runtime_agent_id],
-            self.runtime_agent_id,
-        )
 
         assert len(dataframes) > 0
 
@@ -131,16 +116,6 @@ class RayInferenceWorkerSet(RemoteInterface):
                 )
 
                 rets = {}
-
-            with timer.time_avg("policy_update"):
-                info = ray.get(
-                    self.parameter_server.get_weights.remote(
-                        spec_id=spec.id,
-                        spec_policy_id=spec_policy_id,
-                    )
-                )
-                if info["weights"] is not None:
-                    self.policies[policy_id].load_state_dict(info["weights"])
 
             with timer.time_avg("compute_action"):
                 (
@@ -170,18 +145,11 @@ class RayInferenceWorkerSet(RemoteInterface):
                         continue
                     else:
                         rets[k] = v.reshape(batch_size, -1)
+
             return_dataframes.append(
                 DataFrame(identifier=agent_id, data=rets, meta_data=dataframe.meta_data)
             )
-        # print(f"timer information: {timer.todict()}")
         return return_dataframes
-
-    def _update_policies(self, strategy_spec: StrategySpec, agent_id: AgentID):
-        for strategy_spec_pid in strategy_spec.policy_ids:
-            policy_id = f"{strategy_spec.id}/{strategy_spec_pid}"
-            if policy_id not in self.policies:
-                policy = strategy_spec.gen_policy(device="cpu")
-                self.policies[policy_id] = policy
 
 
 def _get_initial_states(self, client_id, observation, policy: Policy, identifier):

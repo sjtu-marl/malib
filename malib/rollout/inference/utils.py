@@ -37,7 +37,7 @@ from malib.rollout.envs.vector_env import VectorEnv
 
 def process_env_rets(
     env_rets: List[Tuple["states", "observations", "rewards", "dones", "infos"]],
-    preprocessor: Dict[AgentID, Preprocessor],
+    preprocessors: Dict[AgentID, Preprocessor],
     preset_meta_data: Dict[str, Any],
 ):
     """Process environment returns, generally, for the observation transformation.
@@ -70,7 +70,7 @@ def process_env_rets(
         agents = list(ret[1].keys())
 
         processed_obs = {
-            agent: preprocessor[agent].transform(raw_obs)
+            agent: preprocessors[agent].transform(raw_obs)
             for agent, raw_obs in ret[1].items()
         }
 
@@ -85,7 +85,7 @@ def process_env_rets(
                 agent_state_list[agent].append(_state)
             env_rets_to_save[Episode.CUR_STATE] = ret[0]
 
-        original_obs_space = list(preprocessor.values())[0].original_space
+        original_obs_space = list(preprocessors.values())[0].original_space
         if (
             isinstance(original_obs_space, spaces.Dict)
             and "action_mask" in original_obs_space

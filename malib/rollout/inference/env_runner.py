@@ -23,7 +23,7 @@
 # SOFTWARE.
 
 from argparse import Namespace
-from typing import Any, List, Dict, Tuple
+from typing import Any, List, Dict, Tuple, Set
 from types import LambdaType
 from collections import defaultdict
 
@@ -31,36 +31,38 @@ import os
 import time
 import traceback
 
+import pickle
 import ray
 
-from ray.util.queue import Queue
 from ray.actor import ActorHandle
 
-from malib.utils.logging import Logger
-
 from malib.utils.typing import AgentID, DataFrame, BehaviorMode
-from malib.utils.episode import Episode, NewEpisodeDict, NewEpisodeList
+from malib.utils.episode import NewEpisodeList
 from malib.utils.preprocessor import Preprocessor, get_preprocessor
 from malib.utils.timing import Timing
 from malib.remote.interface import RemoteInterface
 from malib.rollout.envs.vector_env import VectorEnv, SubprocVecEnv
-from malib.rollout.inference.ray.server import RayInferenceWorkerSet
+from malib.rollout.inference.client import InferenceClient
 from malib.rollout.inference.utils import process_env_rets, process_policy_outputs
+from malib.backend.dataset_server.utils import send_data
 
 
-class RayInferenceClient(RemoteInterface):
+class EnvRunner(RemoteInterface):
+    def __repr__(self) -> str:
+        return f"<EnvRunner max_env_num={self.max_env_num}, batch_mode={self.batch_mode}, use_subproc_env={self.use_subproc_env}>"
+
     def __init__(
         self,
         env_desc: Dict[str, Any],
-        dataset_server: ray.ObjectRef,
         max_env_num: int,
+        agent_groups: Dict[str, Set],
         use_subproc_env: bool = False,
         batch_mode: str = "time_step",
         postprocessor_types: Dict = None,
         training_agent_mapping: LambdaType = None,
         custom_config: Dict[str, Any] = {},
     ):
-        """Construct an inference client.
+        """Construct an inference client, one for each agent.
 
         Args:
             env_desc (Dict[str, Any]): Environment description
@@ -73,7 +75,6 @@ class RayInferenceClient(RemoteInterface):
             custom_config (Dict[str, Any], optional): Custom configuration. Defaults to an empty dict.
         """
 
-        self.dataset_server = dataset_server
         self.use_subproc_env = use_subproc_env
         self.batch_mode = batch_mode
         self.postprocessor_types = postprocessor_types or ["defaults"]
@@ -82,15 +83,8 @@ class RayInferenceClient(RemoteInterface):
         self.training_agent_mapping = training_agent_mapping or (lambda agent: agent)
         self.max_env_num = max_env_num
         self.custom_configs = custom_config
-
-        agent_group = defaultdict(lambda: [])
-        runtime_agent_ids = []
-        for agent in env_desc["possible_agents"]:
-            runtime_id = training_agent_mapping(agent)
-            agent_group[runtime_id].append(agent)
-            runtime_agent_ids.append(runtime_id)
-        self.runtime_agent_ids = set(runtime_agent_ids)
-        self.agent_group = dict(agent_group)
+        self.runtime_agent_ids = list(agent_groups.keys())
+        self.agent_groups = agent_groups
 
         obs_spaces = env_desc["observation_spaces"]
         act_spaces = env_desc["action_spaces"]
@@ -121,9 +115,9 @@ class RayInferenceClient(RemoteInterface):
 
     def run(
         self,
-        agent_interfaces: Dict[AgentID, RayInferenceWorkerSet],
+        inference_clients: Dict[AgentID, InferenceClient],
         rollout_config: Dict[str, Any],
-        dataset_writer_info_dict: Dict[str, Tuple[str, Queue]] = None,
+        data_entrypoint_mapping: Dict[AgentID, str] = None,
     ) -> Dict[str, Any]:
         """Executes environment runner to collect training data or run purely simulation/evaluation.
 
@@ -131,7 +125,7 @@ class RayInferenceClient(RemoteInterface):
             Only simulation/evaluation tasks return evaluation information.
 
         Args:
-            agent_interfaces (Dict[AgentID, InferenceWorkerSet]): A dict of agent interface servers.
+            inference_clients (Dict[AgentID, InferenceClient]): A dict of agent interface servers.
             rollout_config (Dict[str, Any]): Rollout configuration.
             dataset_writer_info_dict (Dict[str, Tuple[str, Queue]], optional): Dataset writer info dict. Defaults to None.
 
@@ -148,20 +142,13 @@ class RayInferenceClient(RemoteInterface):
             "strategy_specs": rollout_config["strategy_specs"],
         }
 
-        if task_type == "rollout":
-            assert (
-                dataset_writer_info_dict is not None
-            ), "rollout task has no available dataset writer"
-            server_runtime_config["behavior_mode"] = BehaviorMode.EXPLORATION
-        elif task_type in ["evaluation", "simulation"]:
-            server_runtime_config["behavior_mode"] = BehaviorMode.EXPLOITATION
-
         eval_results, performance = env_runner(
             self,
-            agent_interfaces,
+            inference_clients,
+            self.preprocessor,
             rollout_config,
             server_runtime_config,
-            dwriter_info_dict=dataset_writer_info_dict,
+            data_entrypoint_mapping,
         )
 
         res = performance.copy()
@@ -171,11 +158,12 @@ class RayInferenceClient(RemoteInterface):
 
 
 def env_runner(
-    client: RayInferenceClient,
-    servers: Dict[str, RayInferenceWorkerSet],
+    client: InferenceClient,
+    agents: Dict[str, InferenceClient],
+    preprocessors: Dict[str, Preprocessor],
     rollout_config: Dict[str, Any],
     server_runtime_config: Dict[str, Any],
-    dwriter_info_dict: Dict[str, Tuple[str, Queue]] = None,
+    data_entrypoint_mapping: Dict[AgentID, str],
 ) -> Tuple[List[Dict[str, Any]], Dict[str, float]]:
     """The main logic of environment stepping, also for data collections.
 
@@ -198,11 +186,11 @@ def env_runner(
     """
 
     # check whether remote server or not
-    evaluate_on = server_runtime_config["behavior_mode"] == BehaviorMode.EXPLOITATION
-    remote_actor = isinstance(list(servers.values())[0], ActorHandle)
+    evaluate_on = rollout_config["behavior_mode"] == BehaviorMode.EXPLOITATION
+    remote_actor = isinstance(list(agents.values())[0], ActorHandle)
 
     try:
-        if dwriter_info_dict is not None:
+        if data_entrypoint_mapping is not None:
             episodes = NewEpisodeList(
                 num=client.env.num_envs, agents=client.env.possible_agents
             )
@@ -217,9 +205,10 @@ def env_runner(
 
         env_dones, processed_env_ret, dataframes = process_env_rets(
             env_rets=env_rets,
-            preprocessor=server_runtime_config["preprocessor"],
+            preprocessors=preprocessors,
             preset_meta_data={"evaluate": evaluate_on},
         )
+
         # env ret is key first, not agent first: state, obs
         if episodes is not None:
             episodes.record(
@@ -240,20 +229,20 @@ def env_runner(
                 if remote_actor:
                     policy_outputs: Dict[str, List[DataFrame]] = {
                         rid: ray.get(
-                            server.compute_action.remote(
+                            agent.compute_action.remote(
                                 grouped_data_frames[rid],
                                 runtime_config=server_runtime_config,
                             )
                         )
-                        for rid, server in servers.items()
+                        for rid, agent in agents.items()
                     }
                 else:
                     policy_outputs: Dict[str, List[DataFrame]] = {
-                        rid: server.compute_action(
+                        rid: agent.compute_action(
                             grouped_data_frames[rid],
                             runtime_config=server_runtime_config,
                         )
-                        for rid, server in servers.items()
+                        for rid, agent in agents.items()
                     }
 
             with client.timer.time_avg("process_policy_output"):
@@ -284,18 +273,11 @@ def env_runner(
 
             cnt += 1
 
-        if dwriter_info_dict is not None:
+        if data_entrypoint_mapping is not None:
             # episode_id: agent_id: dict_data
             episodes = episodes.to_numpy()
-            for rid, writer_info in dwriter_info_dict.items():
-                # get agents from agent group
-                agents = client.agent_group[rid]
-                batches = []
-                # FIXME(ming): multi-agent is wrong!
-                for episode in episodes:
-                    agent_buffer = [episode[aid] for aid in agents]
-                    batches.append(agent_buffer)
-                writer_info[-1].put_nowait_batch(batches)
+            for entrypoint in data_entrypoint_mapping.values():
+                send_data(pickle.dumps(episodes), entrypoint)
         end = time.time()
         rollout_info = client.env.collect_info()
     except Exception as e:

@@ -70,36 +70,39 @@ class PGPolicy(Policy):
             observation_space, action_space, model_config, custom_config, **kwargs
         )
 
+    def create_model(self):
         # update model preprocess_net config here
         action_shape = (
-            (action_space.n,) if len(action_space.shape) == 0 else action_space.shape
+            (self.action_space.n,)
+            if len(self.action_space.shape) == 0
+            else self.action_space.shape
         )
 
         preprocess_net: nn.Module = net.make_net(
-            observation_space,
+            self.observation_space,
             self.device,
-            model_config["preprocess_net"].get("net_type", None),
-            **model_config["preprocess_net"]["config"]
+            self.model_config["preprocess_net"].get("net_type", None),
+            **self.model_config["preprocess_net"]["config"]
         )
-        if isinstance(action_space, spaces.Discrete):
+        if isinstance(self.action_space, spaces.Discrete):
             self.actor = discrete.Actor(
                 preprocess_net=preprocess_net,
                 action_shape=action_shape,
-                hidden_sizes=model_config["hidden_sizes"],
+                hidden_sizes=self.model_config["hidden_sizes"],
                 softmax_output=False,
                 device=self.device,
             )
-        elif isinstance(action_space, spaces.Box):
+        elif isinstance(self.action_space, spaces.Box):
             self.actor = continuous.Actor(
                 preprocess_net=preprocess_net,
                 action_shape=action_shape,
-                hidden_sizes=model_config["hidden_sizes"],
-                max_action=custom_config.get("max_action", 1.0),
+                hidden_sizes=self.model_config["hidden_sizes"],
+                max_action=self.custom_config.get("max_action", 1.0),
                 device=self.device,
             )
         else:
             raise TypeError(
-                "Unexpected action space type: {}".format(type(action_space))
+                "Unexpected action space type: {}".format(type(self.action_space))
             )
 
         self.register_state(self.actor, "actor")

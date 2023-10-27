@@ -9,6 +9,8 @@ from torch import nn
 import torch
 import ray
 
+from malib.utils.typing import AgentID, DataFrame
+
 
 def load_state_dict(client, timeout=10):
     if isinstance(client, ray.ObjectRef):
@@ -21,7 +23,6 @@ class ModelClient:
     def __init__(
         self, entry_point: str, model_cls: nn.Module, model_args: Dict[str, Any]
     ):
-        # TODO(ming): init server from entry point
         cluster_type, name_or_address = entry_point.split(":")
 
         if "ray" in cluster_type:
@@ -41,6 +42,12 @@ class ModelClient:
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         with torch.inference_mode():
             return self.model(*args, **kwds)
+
+    def actor(self, *args, **kwargs):
+        return self.model.actor(*args, **kwargs)
+
+    def critic(self, *args, **kwargs):
+        return self.model.critic(*args, **kwargs)
 
     def _model_update(self, event: threading.Event):
         while not event.is_set():

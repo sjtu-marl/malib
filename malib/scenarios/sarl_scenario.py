@@ -71,6 +71,7 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
         algorithms=scenario.algorithms,
         env_desc=scenario.env_desc,
         agent_mapping_func=scenario.agent_mapping_func,
+        group_info=scenario.group_info,
         training_config=scenario.training_config,
         log_dir=scenario.log_dir,
         remote_mode=True,
@@ -83,6 +84,7 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
         stopping_conditions=scenario.stopping_conditions,
         num_worker=scenario.num_worker,
         agent_mapping_func=scenario.agent_mapping_func,
+        group_info=scenario.group_info,
         rollout_config=scenario.rollout_config,
         env_desc=scenario.env_desc,
         log_dir=scenario.log_dir,
@@ -97,13 +99,8 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
         f"Training manager was inistialized with a strategy spec:\n{strategy_specs}"
     )
 
-    data_entrypoints = {rid: rid for rid in training_manager.runtime_ids}
-
-    assert len(data_entrypoints) == 1, "Support single agent only!"
-
     optimization_task = OptimizationTask(
         active_agents=None,
-        data_entrypoints=data_entrypoints,
         stop_conditions=scenario.stopping_conditions["training"],
     )
     training_manager.submit(optimization_task)
@@ -111,7 +108,7 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
     rollout_task = {
         "num_workers": 1,
         "runtime_strategy_specs": strategy_specs,
-        "data_entrypoints": None,
+        "data_entrypoints": training_manager.get_data_entrypoint_mapping(),
         "rollout_config": scenario.rollout_config,
         "active_agents": None,
     }
@@ -123,8 +120,8 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
         ),
     }
 
-    rollout_manager.submit(rollout_task, task_type=TaskType.ROLLOUT)
-    rollout_manager.submit(evaluation_task, task_type=TaskType.EVALUATION)
+    rollout_manager.submit(rollout_task)
+    rollout_manager.submit(evaluation_task)
 
     results = league.get_results()
 

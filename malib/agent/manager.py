@@ -57,11 +57,6 @@ DEFAULT_RESOURCE_CONFIG = dict(
 )
 
 
-def validate_spaces(agent_groups: Dict[str, Set[AgentID]], env_desc: Dict[str, Any]):
-    # TODO(ming): check whether the agents in the group share the same observation space and action space
-    raise NotImplementedError
-
-
 class TrainingManager(Manager):
     def __init__(
         self,
@@ -70,6 +65,7 @@ class TrainingManager(Manager):
         algorithms: Dict[str, Any],
         env_desc: Dict[str, Any],
         agent_mapping_func: Callable[[AgentID], str],
+        group_info: Dict[str, Any],
         training_config: Union[Dict[str, Any], TrainingConfig],
         log_dir: str,
         remote_mode: bool = True,
@@ -98,16 +94,10 @@ class TrainingManager(Manager):
         training_config = TrainingConfig.from_raw(training_config)
 
         # interface config give the agent type used here and the group mapping if needed
-        agent_groups = defaultdict(lambda: set())
-        for agent in env_desc["possible_agents"]:
-            rid = agent_mapping_func(agent)
-            agent_groups[rid].add(agent)
-
-        validate_spaces(agent_groups, env_desc)
 
         # FIXME(ming): resource configuration is not available now, will open in the next version
         if training_config.trainer_config.get("use_cuda", False):
-            num_gpus = 1 / len(agent_groups)
+            num_gpus = 1 / len(group_info["agent_groups"])
         else:
             num_gpus = 0.0
         if not os.path.exists(log_dir):
@@ -125,7 +115,7 @@ class TrainingManager(Manager):
             "training" in stopping_conditions
         ), f"Stopping conditions should contains `training` stoppong conditions: {stopping_conditions}"
 
-        for rid, agents in agent_groups.items():
+        for rid, agents in group_info["agent_groups"].items():
             _cls = learner_cls.remote if remote_mode else learner_cls
             learners[rid] = _cls(
                 experiment_tag=experiment_tag,
@@ -145,8 +135,7 @@ class TrainingManager(Manager):
             _ = ray.get([x.connect.remote() for x in learners.values()])
 
         # TODO(ming): collect data entrypoints from learners
-
-        self._agent_groups = agent_groups
+        self._group_info = group_info
         self._runtime_ids = tuple(self._agent_groups.keys())
         self._experiment_tag = experiment_tag
         self._env_description = env_desc
@@ -170,7 +159,7 @@ class TrainingManager(Manager):
             Dict[str, Set[AgentID]]: A dict of agent set.
         """
 
-        return self._agent_groups
+        return self._group_info["agent_groups"]
 
     @property
     def get_data_entrypoints(self) -> Dict[str, str]:
@@ -201,6 +190,9 @@ class TrainingManager(Manager):
         """
 
         return self._runtime_ids
+
+    def get_data_entrypoint_mapping(self) -> Dict[AgentID, str]:
+        raise NotImplementedError
 
     def add_policies(
         self, interface_ids: Sequence[str] = None, n: Union[int, Dict[str, int]] = 1

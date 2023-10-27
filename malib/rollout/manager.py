@@ -27,7 +27,6 @@ will be assigned with rollout tasks sent from the `CoordinatorServer`.
 """
 
 from typing import Dict, Tuple, Any, Callable, Set, List, Union
-from collections import defaultdict
 
 import traceback
 import ray
@@ -36,7 +35,7 @@ import numpy as np
 from ray.util import ActorPool
 
 from malib.utils.logging import Logger
-from malib.common.task import TaskType, RolloutTask
+from malib.common.task import RolloutTask
 from malib.common.manager import Manager
 from malib.remote.interface import RemoteInterface
 from malib.common.strategy_spec import StrategySpec
@@ -79,6 +78,7 @@ class RolloutWorkerManager(Manager):
         stopping_conditions: Dict[str, Any],
         num_worker: int,
         agent_mapping_func: Callable,
+        group_info: Dict[str, Any],
         rollout_config: Dict[str, Any],
         env_desc: Dict[str, Any],
         log_dir: str,
@@ -110,6 +110,7 @@ class RolloutWorkerManager(Manager):
                     experiment_tag=experiment_tag,
                     env_desc=env_desc,
                     agent_mapping_func=agent_mapping_func,
+                    agent_groups=group_info["agent_groups"],
                     rollout_config=rollout_config,
                     log_dir=log_dir,
                     rollout_callback=None,
@@ -121,14 +122,8 @@ class RolloutWorkerManager(Manager):
 
         self._workers: List[ray.actor] = workers
         self._actor_pool = ActorPool(self._workers)
-
-        agent_groups = defaultdict(lambda: set())
-        for agent in env_desc["possible_agents"]:
-            rid = agent_mapping_func(agent)
-            agent_groups[rid].add(agent)
-
-        self._runtime_ids = tuple(agent_groups.keys())
-        self._agent_groups = dict(agent_groups)
+        self._runtime_ids = tuple(group_info["agent_groups"].keys())
+        self._group_info = group_info
         self.experiment_tag = experiment_tag
 
         assert (
@@ -155,7 +150,7 @@ class RolloutWorkerManager(Manager):
             Dict[str, Set]: A dict of set.
         """
 
-        return self._agent_groups
+        return self._group_info["agent_groups"]
 
     @property
     def workers(self) -> List[RemoteInterface]:
@@ -167,7 +162,7 @@ class RolloutWorkerManager(Manager):
 
         return self._workers
 
-    def submit(self, task: Union[Dict[str, Any], List[Dict[str, Any]]], task_type: Any):
+    def submit(self, task: Union[Dict[str, Any], List[Dict[str, Any]]]):
         """Submit a task to workers
 
         Args:
@@ -182,40 +177,7 @@ class RolloutWorkerManager(Manager):
 
         for _task in task:
             validate_strategy_specs(_task.strategy_specs)
-            self._actor_pool.submit(
-                lambda actor, _task: actor.rollout.remote(_task, stopping_conditions)
-            )
-
-    def _rollout(self, task_list: List[Dict[str, Any]]) -> None:
-        """Start rollout task without blocking.
-
-        Args:
-            task_list (List[Dict[str, Any]]): A list of task dict, keys include:
-                - `strategy_specs`: a dict of strategy specs, mapping from runtime ids to specs.
-                - `trainable_agents`: a list of trainable agents.
-
-        """
-
-        # validate all strategy specs here
-        for task in task_list:
-            validate_strategy_specs(task["strategy_specs"])
-
-        while self._actor_pool.has_next():
-            try:
-                self._actor_pool.get_next(timeout=0)
-            except TimeoutError:
-                pass
-
-        for task in task_list:
-            self._actor_pool.submit(
-                lambda actor, task: actor.rollout.remote(
-                    runtime_strategy_specs=task["strategy_specs"],
-                    stopping_conditions=self.stopping_conditions["rollout"],
-                    trainable_agents=task["trainable_agents"],
-                    data_entrypoints=task["data_entrypoints"],
-                ),
-                task,
-            )
+            self._actor_pool.submit(lambda actor, _task: actor.rollout.remote(_task))
 
     def retrive_results(self):
         """Retrieve task results

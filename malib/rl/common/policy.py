@@ -28,6 +28,7 @@ from enum import IntEnum
 
 import torch
 import torch.nn as nn
+import gym
 
 from gym import spaces
 
@@ -100,6 +101,21 @@ class Policy(metaclass=ABCMeta):
             use_sde=custom_config.get("use_sde", False),
             dist_kwargs=custom_config.get("dist_kwargs", None),
         )
+        if kwargs.get("model_client"):
+            self.model = kwargs["model_client"]
+        else:
+            self.model = self.create_model()
+
+    def create_model(self):
+        raise NotImplementedError
+
+    @property
+    def action_space(self) -> gym.Space:
+        return self._action_space
+
+    @property
+    def observation_space(self) -> gym.Space:
+        return self._observation_space
 
     @property
     def model_config(self):
