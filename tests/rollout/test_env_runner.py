@@ -7,6 +7,7 @@ from malib.common.strategy_spec import StrategySpec
 from malib.rollout.inference import env_runner
 from malib.rollout.inference.client import InferenceClient
 from malib.rollout.envs import mdp
+from malib.rl.random import RandomPolicy
 
 
 @pytest.mark.parametrize(
@@ -16,8 +17,11 @@ from malib.rollout.envs import mdp
     ],
 )
 def test_env_runner(env_desc: Dict[str, Any], max_env_num: int):
+    # mapping from agents to agents
     agent_groups = dict(zip(env_desc["possible_agents"], env_desc["possible_agents"]))
-    runner = env_runner.EnvRunner(env_desc, max_env_num, agent_groups)
+    runner = env_runner.EnvRunner(
+        env_desc, max_env_num, agent_groups, use_subproc_env=False
+    )
 
     agents = env_desc["possible_agents"]
     observation_spaces = env_desc["observation_spaces"]
@@ -27,7 +31,14 @@ def test_env_runner(env_desc: Dict[str, Any], max_env_num: int):
     rollout_config = {
         "flag": "evaluation",
         "strategy_specs": {
-            agent: StrategySpec(agent, ["policy-0"], meta_data={}) for agent in agents
+            agent: StrategySpec(
+                policy_cls=RandomPolicy,
+                observation_space=observation_spaces["default"],
+                action_space=action_spaces["default"],
+                identifier=agent,
+                policy_ids=["policy-0"],
+            )
+            for agent in agents
         },
         "behavior_mode": BehaviorMode.EXPLOITATION,
     }

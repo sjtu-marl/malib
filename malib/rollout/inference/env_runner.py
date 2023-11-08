@@ -23,7 +23,7 @@
 # SOFTWARE.
 
 from argparse import Namespace
-from typing import Any, List, Dict, Tuple, Set
+from typing import Any, List, Dict, Tuple, Set, Type
 from types import LambdaType
 from collections import defaultdict
 
@@ -37,14 +37,154 @@ import ray
 from ray.actor import ActorHandle
 
 from malib.utils.typing import AgentID, DataFrame, BehaviorMode
-from malib.utils.episode import NewEpisodeList
+from malib.utils.episode import ConventionalEpisodeList
 from malib.utils.preprocessor import Preprocessor, get_preprocessor
 from malib.utils.timing import Timing
 from malib.remote.interface import RemoteInterface
 from malib.rollout.envs.vector_env import VectorEnv, SubprocVecEnv
+from malib.common.rollout_config import RolloutConfig
 from malib.rollout.inference.client import InferenceClient
 from malib.rollout.inference.utils import process_env_rets, process_policy_outputs
+from malib.rollout.envs.env import Environment
 from malib.backend.dataset_server.utils import send_data
+
+
+class AgentManager:
+    def __init__(self, episode_num, inference_clients) -> None:
+        self.inference_clients = inference_clients
+        self.episodes = ConventionalEpisodeList(
+            num=episode_num, agents=list(inference_clients.keys())
+        )
+
+    def collect_and_act(self, episode_idx, raw_obs, last_dones, last_rews, states):
+        if not last_dones["__all__"]:
+            action_and_obs = {
+                k: ray.get(v.compute_action.remote(raw_obs[k], states[k]))
+                for k, v in self.inference_clients.items()
+            }
+            actions = {}
+            obs = {}
+            for k, v in action_and_obs.items():
+                actions[k] = v[0]
+                obs[k] = v[1]
+        else:
+            actions = None
+            obs = {
+                k: ray.get(v.preprocess_obs.remote(raw_obs[k]))
+                for k, v in self.inference_clients.items()
+            }
+
+        self.episodes.record(obs, last_dones, last_rews, states, episode_idx)
+
+        return actions
+
+    def merge_episodes(self):
+        return self.episodes.to_numpy()
+
+
+class BasicEnvRunner(RemoteInterface):
+    def __repr__(self) -> str:
+        return super().__repr__()
+
+    def __init__(
+        self, env_func: Type, max_env_num: int, use_subproc_env: bool = False
+    ) -> None:
+        super().__init__()
+
+        self._use_subproc_env = use_subproc_env
+        self._max_env_num = max_env_num
+        self._env_func = env_func
+        self._envs = []
+
+    @property
+    def envs(self) -> Tuple[Environment]:
+        return tuple(self._envs)
+
+    @property
+    def env_func(self) -> Type:
+        return self._env_func
+
+    @property
+    def num_active_envs(self) -> int:
+        return len(self._envs)
+
+    @property
+    def use_subproc_env(self) -> bool:
+        return self._use_subproc_env
+
+    @property
+    def max_env_num(self) -> int:
+        return self._max_env_num
+
+    def run(
+        self,
+        inference_clients: Dict[AgentID, InferenceClient],
+        rollout_config: RolloutConfig,
+        data_entrypoint_mapping: Dict[AgentID, str] = None,
+    ):
+        """Single thread env simulation stepping.
+
+        Args:
+            inference_clients (Dict[AgentID, InferenceClient]): A dict of remote inference client.
+            rollout_config (RolloutConfig): Rollout configuration, which specifies how many data pieces will rollout.
+            data_entrypoint_mapping (Dict[AgentID, str], optional): A mapping which defines the data collection trigger, if not None, then return episodes. Defaults to None.
+
+        Raises:
+            e: _description_
+
+        Returns:
+            _type_: _description_
+        """
+
+        new_env_num = max(0, rollout_config.n_envs_per_worker - self.num_active_envs)
+
+        for _ in range(new_env_num):
+            self._envs.append(self.env_func())
+
+        # reset envs
+        envs = self.envs[: rollout_config.n_envs_per_worker]
+        vec_states, vec_obs, vec_dones, vec_rews = [], [], [], []
+
+        for env in envs:
+            states, obs = env.reset(max_step=rollout_config.timelimit)
+            vec_states.append(states)
+            vec_obs.append(obs)
+            vec_dones.append(False)
+            vec_rews.append(0.0)
+
+        active_env_num = len(envs)
+        agent_manager = AgentManager(active_env_num, inference_clients)
+
+        while active_env_num:
+            for env_idx, (env, states, obs, dones, rews) in enumerate(
+                zip(envs, vec_states, vec_obs, vec_dones, vec_rews)
+            ):
+                if env.is_deactivated():
+                    continue
+
+                actions = agent_manager.collect_and_act(
+                    env_idx,
+                    raw_obs=obs,
+                    last_dones=dones,
+                    last_rews=rews,
+                    states=states,
+                )
+
+                if actions is None:
+                    # which means done already
+                    active_env_num -= 1
+                    env.set_done()
+                else:
+                    states, obs, rews, dones = env.step(actions)
+                    # update frames
+                    vec_states[env_idx] = states
+                    vec_obs[env_idx] = obs
+                    vec_dones[env_idx] = dones
+                    vec_rews[env_idx] = rews
+
+        # merge agent episodes
+        data = agent_manager.merge_episodes()
+        return data
 
 
 class EnvRunner(RemoteInterface):
@@ -142,7 +282,7 @@ class EnvRunner(RemoteInterface):
             "strategy_specs": rollout_config["strategy_specs"],
         }
 
-        eval_results, performance = env_runner(
+        eval_results, performance = _env_runner(
             self,
             inference_clients,
             self.preprocessor,
@@ -157,7 +297,7 @@ class EnvRunner(RemoteInterface):
         return res
 
 
-def env_runner(
+def _env_runner(
     client: InferenceClient,
     agents: Dict[str, InferenceClient],
     preprocessors: Dict[str, Preprocessor],

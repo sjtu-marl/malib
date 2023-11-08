@@ -54,6 +54,7 @@ class Environment:
         self._configs = configs
         self._current_players = []
         self._state: Dict[str, np.ndarray] = None
+        self._deactivated = True
 
     def record_episode_info_step(
         self,
@@ -103,11 +104,19 @@ class Environment:
 
         raise NotImplementedError
 
+    @property
+    def is_deactivated(self) -> bool:
+        return self._deactivated
+
+    def deactivate(self):
+        self._deactivated = True
+
     def reset(self, max_step: int = None) -> Union[None, Sequence[Dict[AgentID, Any]]]:
         """Reset environment and the episode info handler here."""
 
         self.max_step = max_step or self.max_step
         self.cnt = 0
+        self._deactivated = False
 
         self.episode_metrics = {
             "env_step": 0,

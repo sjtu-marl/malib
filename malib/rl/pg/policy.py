@@ -42,8 +42,7 @@ class PGPolicy(Policy):
         self,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        model_config: Dict[str, Any],
-        custom_config: Dict[str, Any],
+        model_config: Dict[str, Any] = None,
         **kwargs
     ):
         """Build a REINFORCE policy whose input and output dims are determined by observation_space and action_space, respectively.
@@ -52,8 +51,6 @@ class PGPolicy(Policy):
             observation_space (spaces.Space): The observation space.
             action_space (spaces.Space): The action space.
             model_config (Dict[str, Any]): The model configuration dict.
-            custom_config (Dict[str, Any]): The custom configuration dict.
-            is_fixed (bool, optional): Indicates fixed policy or trainable policy. Defaults to False.
 
         Raises:
             NotImplementedError: Does not support other action space type settings except Box and Discrete.
@@ -61,14 +58,12 @@ class PGPolicy(Policy):
         """
 
         # update model_config with default ones
-        model_config = merge_dicts(DEFAULT_CONFIG["model_config"].copy(), model_config)
-        custom_config = merge_dicts(
-            DEFAULT_CONFIG["custom_config"].copy(), custom_config
+        model_config = merge_dicts(
+            DEFAULT_CONFIG["model_config"].copy(), model_config or {}
         )
+        kwargs = merge_dicts(DEFAULT_CONFIG["custom_config"].copy(), kwargs)
 
-        super().__init__(
-            observation_space, action_space, model_config, custom_config, **kwargs
-        )
+        super().__init__(observation_space, action_space, model_config, **kwargs)
 
     def create_model(self):
         # update model preprocess_net config here

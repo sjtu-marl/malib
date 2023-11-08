@@ -35,7 +35,7 @@ class MDPEnvironment(Environment):
             )
 
         self.env = scenarios[env_id]().to_env()
-        self._possible_agents = ["agent"]
+        self._possible_agents = ["default"]
 
     @property
     def possible_agents(self) -> List[AgentID]:
@@ -57,7 +57,7 @@ class MDPEnvironment(Environment):
         Dict[AgentID, bool],
         Dict[AgentID, Any],
     ]:
-        obs, rew, done, info = self.env._step(actions["agent"])
+        obs, rew, done, info = self.env._step(actions["default"])
 
         obs = dict.fromkeys(self.possible_agents, obs)
         rew = dict.fromkeys(self.possible_agents, rew)

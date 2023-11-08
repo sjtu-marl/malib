@@ -143,6 +143,62 @@ class Episode:
         return dict(res)
 
 
+class ConventionalEpisode(Episode):
+    def __init__(self, agents: List[AgentID], processors=None):
+        super().__init__(agents, processors)
+        self.agent_buffer = {}
+
+    def record(self, obs, last_dones, last_rews, states):
+        for agent, _obs in obs.items():
+            self.agent_entry[agent][Episode.CUR_OBS].append(_obs)
+            self.agent_entry[agent][Episode.PRE_DONE].append(last_dones[agent])
+            self.agent_entry[agent][Episode.PRE_REWARD].append(last_rews[agent])
+            self.agent_entry[agent][Episode.CUR_STATE].append(states[agent])
+
+    def clear_buffer(self):
+        self.agent_buffer = {}
+
+    def to_numpy(self) -> Dict[AgentID, Dict[str, np.ndarray]]:
+        if len(self.agent_entry) == 0:
+            for agent, agent_trajectory in self.agent_entry.items():
+                agent_traj_np = {}
+                agent_traj_np[Episode.CUR_OBS] = np.stack(
+                    agent_trajectory[Episode.CUR_OBS][:-1]
+                )
+                agent_traj_np[Episode.NEXT_OBS] = np.stack(
+                    agent_trajectory[Episode.CUR_OBS][1:]
+                )
+                agent_traj_np[Episode.DONE] = np.stack(
+                    agent_trajectory[Episode.PRE_DONE][1:]
+                )
+                agent_traj_np[Episode.REWARD] = np.stack(
+                    agent_trajectory[Episode.PRE_REWARD][1:]
+                )
+                agent_traj_np[Episode.ACTION] = np.stack(
+                    agent_trajectory[Episode.ACTION]
+                )
+                self.agent_buffer[agent] = agent_traj_np
+        return self.agent_buffer
+
+
+class ConventionalEpisodeList:
+    def __init__(self, num: int, agents: List[AgentID]) -> None:
+        self.episodes = [ConventionalEpisode(agents) for _ in range(num)]
+
+    def record(self, obs, last_dones, last_rews, states, idx: int = None):
+        if idx is not None:
+            self.episodes[i].record(obs, last_dones, last_rews, states)
+        else:
+            for i, episode in enumerate(self.episodes):
+                episode.record(obs[i], last_dones[i], last_rews[i], states[i])
+
+    def to_numpy(self) -> List[Dict[AgentID, Dict[str, np.ndarray]]]:
+        res = []
+        for episode in self.episodes:
+            res.append(episode.to_numpy())
+        return res
+
+
 class NewEpisodeDict(defaultdict):
     """Episode dict, for trajectory tracking for a bunch of environments."""
 

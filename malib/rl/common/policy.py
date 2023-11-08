@@ -62,25 +62,21 @@ Logits = Any
 
 
 class Policy(metaclass=ABCMeta):
-    def __init__(
-        self, observation_space, action_space, model_config, custom_config, **kwargs
-    ):
+    def __init__(self, observation_space, action_space, model_config, **kwargs):
         _locals = locals()
         _locals.pop("self")
         self._init_args = _locals
         self._observation_space = observation_space
         self._action_space = action_space
-        self._model_config = model_config or {}
-        self._custom_config = custom_config or {}
+        self._model_config = model_config
+        self._custom_config = kwargs
         self._state_handler_dict = {}
         self._preprocessor = get_preprocessor(
             observation_space,
-            mode=self._custom_config.get("preprocess_mode", "flatten"),
+            mode=kwargs.get("preprocess_mode", "flatten"),
         )(observation_space)
 
-        self._device = torch.device(
-            "cuda" if self._custom_config.get("use_cuda") else "cpu"
-        )
+        self._device = torch.device("cuda" if kwargs.get("use_cuda") else "cpu")
 
         self._registered_networks: Dict[str, nn.Module] = {}
 
@@ -95,16 +91,13 @@ class Policy(metaclass=ABCMeta):
                 )
             )
 
-        self.use_cuda = self._custom_config.get("use_cuda", False)
+        self.use_cuda = kwargs.get("use_cuda", False)
         self.dist_fn: Distribution = make_proba_distribution(
             action_space=action_space,
-            use_sde=custom_config.get("use_sde", False),
-            dist_kwargs=custom_config.get("dist_kwargs", None),
+            use_sde=kwargs.get("use_sde", False),
+            dist_kwargs=kwargs.get("dist_kwargs", None),
         )
-        if kwargs.get("model_client"):
-            self.model = kwargs["model_client"]
-        else:
-            self.model = self.create_model()
+        self.model = kwargs.get("model_client", self.create_model())
 
     def create_model(self):
         raise NotImplementedError
