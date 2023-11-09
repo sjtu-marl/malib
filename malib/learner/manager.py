@@ -46,7 +46,7 @@ from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
 from malib.utils.exploitability import measure_exploitability
 from malib.remote.interface import RemoteInterface
-from malib.agent.agent_interface import AgentInterface
+from malib.learner.learner import Learner
 from malib.common.strategy_spec import StrategySpec
 from malib.common.manager import Manager
 from malib.common.training_config import TrainingConfig
@@ -70,6 +70,7 @@ class TrainingManager(Manager):
         log_dir: str,
         remote_mode: bool = True,
         resource_config: Dict[str, Any] = None,
+        ray_actor_namespace: str = "learner",
         verbose: bool = True,
     ):
         """Create an TrainingManager instance which is responsible for the multi agent training
@@ -88,7 +89,7 @@ class TrainingManager(Manager):
             remote_mode (bool, Optional): Init learners as remote actor or not. Default is True.
         """
 
-        super().__init__(verbose=verbose)
+        super().__init__(verbose=verbose, namespace=ray_actor_namespace)
 
         resource_config = resource_config or DEFAULT_RESOURCE_CONFIG
         training_config = TrainingConfig.from_raw(training_config)
@@ -109,7 +110,7 @@ class TrainingManager(Manager):
         learner_cls = learner_cls.as_remote(**resource_config).options(
             max_concurrency=10
         )
-        learners: Dict[str, Union[AgentInterface, ray.ObjectRef]] = {}
+        learners: Dict[str, Union[Learner, ray.ObjectRef]] = {}
 
         assert (
             "training" in stopping_conditions
@@ -121,7 +122,8 @@ class TrainingManager(Manager):
                 experiment_tag=experiment_tag,
                 runtime_id=rid,
                 log_dir=f"{log_dir}/learner_{rid}",
-                env_desc=env_desc,
+                observation_space=group_info["observation_space"][rid],
+                action_space=group_info["action_space"][rid],
                 algorithms=algorithms,
                 agent_mapping_func=agent_mapping_func,
                 governed_agents=tuple(agents),
@@ -131,12 +133,13 @@ class TrainingManager(Manager):
             )
 
         # ensure all interfaces have been started up
-        if remote_mode:
-            _ = ray.get([x.connect.remote() for x in learners.values()])
+        tasks = list(learners.values())
+        while len(tasks):
+            _, tasks = ray.wait(tasks, num_returns=1, timeout=1)
 
         # TODO(ming): collect data entrypoints from learners
         self._group_info = group_info
-        self._runtime_ids = tuple(self._agent_groups.keys())
+        self._runtime_ids = tuple(group_info["agent_groups"].keys())
         self._experiment_tag = experiment_tag
         self._env_description = env_desc
         self._training_config = training_config

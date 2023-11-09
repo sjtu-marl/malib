@@ -3,7 +3,6 @@ from typing import List, Dict, Any
 import pytest
 import ray
 
-from malib.utils.typing import BehaviorMode
 from malib.common.strategy_spec import StrategySpec
 from malib.rollout.inference import env_runner
 from malib.rollout.inference.client import InferenceClient
@@ -62,7 +61,10 @@ def test_env_runner(env_desc: Dict[str, Any], max_env_num: int):
         }
 
         stats = runner.run(
-            infer_clients, rollout_config, strategy_specs, data_entrypoint_mapping=None
+            rollout_config,
+            strategy_specs,
+            inference_clients=infer_clients,
+            data_entrypoint_mapping=None,
         )
 
         print(stats)

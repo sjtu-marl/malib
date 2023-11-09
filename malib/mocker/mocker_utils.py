@@ -214,7 +214,7 @@ class FakeRolloutManager(RolloutWorkerManager):
 
 from typing import Union, Type
 from collections import defaultdict
-from malib.agent.manager import TrainingManager
+from malib.learner.manager import TrainingManager
 
 
 class FakeTrainingManager(TrainingManager):

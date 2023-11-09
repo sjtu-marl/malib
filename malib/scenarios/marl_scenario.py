@@ -29,7 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 from malib.scenarios import Scenario
 
 from malib.utils.logging import Logger
-from malib.agent.manager import TrainingManager
+from malib.learner.manager import TrainingManager
 from malib.rollout.manager import RolloutWorkerManager
 
 

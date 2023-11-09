@@ -32,16 +32,21 @@ from malib.remote.interface import RemoteInterface
 
 class Manager(ABC):
     @abstractmethod
-    def __init__(self, verbose: bool):
+    def __init__(self, verbose: bool, namespace: str):
         self._force_stop = False
         self.pending_tasks = []
         self.verbose = verbose
+        self._namespace = namespace
 
     def is_running(self):
         return len(self.pending_tasks) > 0
 
     def force_stop(self):
         self._force_stop = True
+
+    @property
+    def namespace(self) -> str:
+        return self._namespace
 
     @property
     def workers(self) -> List[RemoteInterface]:
@@ -79,7 +84,6 @@ class Manager(ABC):
 
         return rets
 
-    @abstractmethod
     def terminate(self):
         """Resource recall"""
 

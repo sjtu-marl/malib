@@ -32,7 +32,7 @@ from malib.utils.tianshou_batch import Batch
 from malib.utils.episode import Episode
 from malib.mocker.mocker_utils import use_ray_env
 from malib.rollout.envs.mdp import env_desc_gen
-from malib.agent.indepdent_agent import IndependentAgent
+from malib.learner.indepdent_learner import IndependentAgent
 
 
 def start_learner(env_id: str, algorithm: Any):

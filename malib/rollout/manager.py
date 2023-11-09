@@ -39,6 +39,7 @@ from malib.common.task import RolloutTask
 from malib.common.manager import Manager
 from malib.remote.interface import RemoteInterface
 from malib.common.strategy_spec import StrategySpec
+from malib.rollout.rollout_config import RolloutConfig
 from malib.rollout.pb_rolloutworker import PBRolloutWorker
 
 
@@ -77,12 +78,12 @@ class RolloutWorkerManager(Manager):
         experiment_tag: str,
         stopping_conditions: Dict[str, Any],
         num_worker: int,
-        agent_mapping_func: Callable,
         group_info: Dict[str, Any],
-        rollout_config: Dict[str, Any],
+        rollout_config: Union[RolloutConfig, Dict[str, Any]],
         env_desc: Dict[str, Any],
         log_dir: str,
         resource_config: Dict[str, Any] = None,
+        ray_actor_namespace: str = "rollout_worker",
         verbose: bool = True,
     ):
         """Construct a manager for multiple rollout workers.
@@ -90,7 +91,6 @@ class RolloutWorkerManager(Manager):
         Args:
             experiment_tag (str): Experiment tag.
             num_worker (int): Indicates how many rollout workers will be initialized.
-            agent_mapping_func (Callable): Agent mapping function, maps agents to runtime id.
             rollout_config (Dict[str, Any]): Runtime rollout configuration.
             env_desc (Dict[str, Any]): Environment description.
             log_dir (str): Log directory.
@@ -98,20 +98,21 @@ class RolloutWorkerManager(Manager):
             verbose (bool, optional): Enable logging or not. Defaults to True.
         """
 
-        super().__init__(verbose=verbose)
+        super().__init__(verbose=verbose, namespace=ray_actor_namespace)
 
         rollout_worker_cls = PBRolloutWorker
-        worker_cls = rollout_worker_cls.as_remote(num_cpus=0, num_gpus=0)
+        worker_cls = rollout_worker_cls.as_remote(num_cpus=0, num_gpus=0).options(
+            namespace=self.namespace
+        )
         workers = []
 
-        for _ in range(num_worker):
+        for i in range(num_worker):
             workers.append(
-                worker_cls.options(max_concurrency=100).remote(
+                worker_cls.options(max_concurrency=100, name=f"actor_{i}").remote(
                     experiment_tag=experiment_tag,
                     env_desc=env_desc,
-                    agent_mapping_func=agent_mapping_func,
                     agent_groups=group_info["agent_groups"],
-                    rollout_config=rollout_config,
+                    rollout_config=RolloutConfig.from_raw(rollout_config),
                     log_dir=log_dir,
                     rollout_callback=None,
                     simulate_callback=None,

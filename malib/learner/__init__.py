@@ -22,4 +22,4 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .indepdent_agent import IndependentAgent
+from .indepdent_learner import IndependentAgent

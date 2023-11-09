@@ -27,7 +27,7 @@ import os
 import time
 
 from malib.runner import run
-from malib.agent import IndependentAgent
+from malib.learner import IndependentAgent
 from malib.scenarios.marl_scenario import MARLScenario
 from malib.rl.dqn import DQNPolicy, DQNTrainer, DEFAULT_CONFIG
 from malib.rollout.envs.gym import env_desc_gen

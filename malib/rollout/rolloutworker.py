@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Any, List, Callable, Sequence, Tuple, Set
+from typing import Dict, Any, List, Callable, Sequence, Tuple, Set, Union
 from abc import abstractmethod
 from collections import defaultdict
 
@@ -149,9 +149,8 @@ class RolloutWorker(RemoteInterface):
         self,
         experiment_tag: str,
         env_desc: Dict[str, Any],
-        agent_mapping_func: Callable,
         agent_groups: Dict[str, Set],
-        rollout_config: Dict[str, Any],
+        rollout_config: Union[RolloutConfig, Dict[str, Any]],
         log_dir: str,
         rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
         simulate_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
@@ -162,8 +161,6 @@ class RolloutWorker(RemoteInterface):
 
         Args:
             env_desc (Dict[str, Any]): The environment description.
-            agent_mapping_func (Callable): The agent mapping function, maps environment agents to runtime ids. \
-                It is shared among all workers.
             rollout_config (Dict[str, Any]): Basic runtime configuration to control the rollout. Keys including
             * `fragment_length`: int, how many steps for each data collection and broadcasting.
             * `max_step`: int, the maximum step of each episode.
@@ -197,21 +194,12 @@ class RolloutWorker(RemoteInterface):
             env_desc, env_runner_resource_config, self.rollout_config
         )
 
-        # create inference clients, for action execution
-        inferenc_client_configuration = resource_config["inference_client"]
-        self.inference_clients: Dict[
-            AgentID, ray.ObjectRef
-        ] = self.create_inference_clients(inferenc_client_configuration)
-
         self.log_dir = log_dir
         self.rollout_callback = rollout_callback or default_rollout_callback
         self.simulate_callback = simulate_callback or default_simulate_callback
         self.tb_writer = tensorboard.SummaryWriter(log_dir=log_dir)
         self.experiment_tag = experiment_tag
         self.verbose = verbose
-
-    def create_inference_clients(self) -> Dict[AgentID, ray.ObjectRef]:
-        raise NotImplementedError
 
     def create_env_runner(
         self,
@@ -232,9 +220,7 @@ class RolloutWorker(RemoteInterface):
             ActorPool: An instance of `ActorPool`.
         """
 
-        env_runner_cls = BasicEnvRunner.as_remote(**resource_config).options(
-            max_concurrency=100
-        )
+        env_runner_cls = BasicEnvRunner.as_remote(**resource_config)
         env_runner = env_runner_cls.remote(
             env_func=lambda: env_desc["creator"](**env_desc["config"]),
             max_env_num=rollout_config.n_envs_per_worker,

@@ -22,21 +22,22 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Tuple, Any, Callable, List, Union
+from typing import Callable, Dict, Any, Type, Tuple, List, Union
 
 from malib.utils.typing import AgentID
 from malib.utils.tianshou_batch import Batch
-from malib.agent.agent_interface import AgentInterface
+from malib.models.torch import make_net
+from malib.learner.learner import AgentInterface
 
 
-class IndependentAgent(AgentInterface):
+class TeamAgent(AgentInterface):
     def __init__(
         self,
         experiment_tag: str,
         runtime_id: str,
         log_dir: str,
         env_desc: Dict[str, Any],
-        algorithms: Dict[str, Tuple[Dict, Dict, Dict]],
+        algorithms: Dict[str, Tuple[Type, Type, Dict, Dict]],
         agent_mapping_func: Callable[[AgentID], str],
         governed_agents: Tuple[AgentID],
         trainer_config: Dict[str, Any],
@@ -58,18 +59,22 @@ class IndependentAgent(AgentInterface):
             verbose,
         )
 
+        assert (
+            "critic" in custom_config
+        ), f"TeamAgent must be given a shared critic network"
+
     def multiagent_post_process(
         self,
         batch_info: Union[
             Dict[AgentID, Tuple[Batch, List[int]]], Tuple[Batch, List[int]]
         ],
-    ) -> Dict[str, Any]:
-        if not isinstance(batch_info, Tuple):
-            raise TypeError(
-                "IndependentAgent support only a tuple of batch info as input."
-            )
+    ) -> Dict[str, Batch]:
+        assert isinstance(
+            batch_info, Dict
+        ), "TeamAgent accepts only a dict of batch info"
 
-        batch = batch_info[0]
-        batch.to_torch(device=self.device)
-
-        return batch
+        res = {}
+        for agent in self.governed_agents:
+            batch_info[agent][0].to_torch()
+            res[agent] = batch_info[agent][0]
+        return res

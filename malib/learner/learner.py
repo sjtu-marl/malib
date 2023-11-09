@@ -27,9 +27,6 @@ from typing import Dict, Any, Tuple, Callable, Type, List, Union
 from abc import ABC, abstractmethod
 from collections import deque
 
-import os
-import copy
-import time
 import traceback
 
 import gym
@@ -38,21 +35,20 @@ import ray
 
 from ray.util.queue import Queue
 from torch.utils import tensorboard
+from torch.utils.data import DataLoader
 
-from malib import settings
-from malib.backend.offline_dataset_server import OfflineDataset
-from malib.backend.data_loader import RLDataLoader
-from malib.backend.parameter_server import ParameterServer
 from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
 from malib.utils.tianshou_batch import Batch
 from malib.utils.monitor import write_to_tensorboard
 from malib.remote.interface import RemoteInterface
 from malib.rl.common.trainer import Trainer
+from malib.common.task import OptimizationTask
 from malib.common.strategy_spec import StrategySpec
+from malib.backend.dataset_server.data_loader import DynamicDataset
 
 
-class AgentInterface(RemoteInterface, ABC):
+class Learner(RemoteInterface, ABC):
     """Base class of agent interface, for training"""
 
     @abstractmethod
@@ -70,7 +66,7 @@ class AgentInterface(RemoteInterface, ABC):
         custom_config: Dict[str, Any] = None,
         local_buffer_config: Dict = None,
         verbose: bool = True,
-        dataloader: RLDataLoader = None,
+        dataset: DynamicDataset = None,
     ):
         """Construct agent interface for training.
 
@@ -99,20 +95,11 @@ class AgentInterface(RemoteInterface, ABC):
 
         # initialize a strategy spec for policy maintainance.
         strategy_spec = StrategySpec(
-            identifier=runtime_id,
-            policy_ids=[],
-            meta_data={
-                "policy_cls": algorithms["default"][0],
-                "experiment_tag": experiment_tag,
-                # for policy initialize
-                "kwargs": {
-                    "observation_space": observation_space,
-                    "action_space": action_space,
-                    "model_config": algorithms["default"][2],
-                    "custom_config": algorithms["default"][3],
-                    "kwargs": {},
-                },
-            },
+            policy_cls=algorithms["default"][0],
+            observation_space=observation_space,
+            action_space=action_space,
+            model_config=algorithms["default"][2],
+            **algorithms["default"][3],
         )
 
         self._runtime_id = runtime_id
@@ -130,12 +117,19 @@ class AgentInterface(RemoteInterface, ABC):
         self._trainer: Trainer = algorithms["default"][1](trainer_config)
         self._policies = {}
 
-        self._offline_dataset: OfflineDataset = None
-        self._parameter_server: ParameterServer = None
-        self._dataloader = dataloader or self.create_dataloader()
+        dataset = dataset or self.create_dataset()
+        self._data_loader = DataLoader(dataset, batch_size=trainer_config["batch_size"])
         self._active_tups = deque()
 
-        self.verbose = verbose
+        self._verbose = verbose
+
+    @property
+    def verbose(self) -> bool:
+        return self._verbose
+
+    @property
+    def data_loader(self) -> DataLoader:
+        return self._data_loader
 
     @property
     def governed_agents(self) -> Tuple[str]:
@@ -157,47 +151,8 @@ class AgentInterface(RemoteInterface, ABC):
 
         return self._device
 
-    def create_dataloader(self) -> RLDataLoader:
-        """Create a data loader instance.
-
-        Raises:
-            NotImplementedError: Raise if this method is not implemented.
-
-        Returns:
-            RLDataLoader: A data loader instance.
-        """
-
+    def create_dataset(self) -> DynamicDataset:
         raise NotImplementedError
-
-    def connect(
-        self,
-        max_tries: int = 10,
-        dataset_server_ref: str = None,
-        parameter_server_ref: str = None,
-    ):
-        """Try to connect with backend, i.e., parameter server and offline dataset server. If the reference of dataset server or parameter server is not been given, then the agent will use default settings.
-
-        Args:
-            max_tries (int, optional): Maximum of trails. Defaults to 10.
-            dataset_server_ref (str, optional): Name of ray-based dataset server. Defaults to None.
-            parameter_server_ref (str, optional): Name of ray-based parameter server. Defaults to None.
-        """
-
-        parameter_server_ref = parameter_server_ref or settings.PARAMETER_SERVER_ACTOR
-        dataset_server_ref = dataset_server_ref or settings.OFFLINE_DATASET_ACTOR
-
-        while max_tries > 0:
-            try:
-                if self._parameter_server is None:
-                    self._parameter_server = ray.get_actor(parameter_server_ref)
-                if self._offline_dataset is None:
-                    self._offline_dataset = ray.get_actor(dataset_server_ref)
-                break
-            except Exception as e:
-                Logger.debug(f"{e}")
-                max_tries -= 1
-                time.sleep(1)
-                continue
 
     def add_policies(self, n: int) -> StrategySpec:
         """Construct `n` new policies and return the latest strategy spec.
@@ -306,11 +261,7 @@ class AgentInterface(RemoteInterface, ABC):
             )
         )
 
-    def train(
-        self,
-        data_request_identifier: str,
-        reset_state: bool = True,
-    ) -> Dict[str, Any]:
+    def train(self, task: OptimizationTask) -> Dict[str, Any]:
         """Executes a optimization task and returns the final interface state.
 
         Args:
@@ -323,51 +274,27 @@ class AgentInterface(RemoteInterface, ABC):
 
         # XXX(ming): why we need to reset the state here? I think it is not necessary as
         #   an optimization task should be independent with other tasks.
-        if reset_state:
-            self.reset()
-
-        reader_info_dict: Dict[str, Tuple[str, Queue]] = {}
-        assert len(self._active_tups) == 1, "the length of active tups can be only 1."
 
         self.set_running(True)
 
         try:
             while self.is_running():
-                if data_request_identifier not in reader_info_dict:
-                    reader_info_dict[data_request_identifier] = ray.get(
-                        self._offline_dataset.start_consumer_pipe.remote(
-                            name=data_request_identifier,
-                            batch_size=self._trainer_config["batch_size"],
+                for data in self.data_loader:
+                    batch_info = self.multiagent_post_process(data)
+                    step_info_list = self._trainer(batch_info)
+                    for step_info in step_info_list:
+                        self._total_step += 1
+                        write_to_tensorboard(
+                            self._summary_writer,
+                            info=step_info,
+                            global_step=self._total_step,
+                            prefix=f"Training/{self._runtime_id}",
                         )
-                    )
-                reader_info: Tuple[str, Queue] = reader_info_dict[
-                    data_request_identifier
-                ]
-
-                # XXX(ming): what if queue has been killed by remote server?
-                batch_info = reader_info[-1].get()
-                if len(batch_info[-1]) == 0:
-                    continue
-                batch = self.multiagent_post_process(batch_info)
-                step_info_list = self._trainer(batch)
-                for step_info in step_info_list:
-                    self._total_step += 1
-                    write_to_tensorboard(
-                        self._summary_writer,
-                        info=step_info,
-                        global_step=self._total_step,
-                        prefix=f"Training/{self._runtime_id}",
-                    )
-                self.sync_remote_parameters()
-                self._total_epoch += 1
-            self._active_tups.popleft()
+                    self.sync_remote_parameters()
+                    self._total_epoch += 1
         except Exception as e:
             Logger.warning(
                 f"training pipe is terminated. caused by: {traceback.format_exc()}"
-            )
-            # close the data pipeline
-            ray.get(
-                self._offline_dataset.end_consumer_pipe.remote(data_request_identifier)
             )
 
         if self.verbose:

@@ -23,14 +23,15 @@
 # SOFTWARE.
 
 from typing import Dict, Any
-from malib.common.task import OptimizationTask
+from malib.common.task import OptimizationTask, RolloutTask
 
 from malib.scenarios import Scenario
 
 from malib.utils.logging import Logger
 from malib.backend.league import League
-from malib.agent.manager import TrainingManager
+from malib.learner.manager import TrainingManager
 from malib.rollout.manager import RolloutWorkerManager, TaskType
+from malib.rollout.inference.manager import InferenceManager
 
 
 class SARLScenario(Scenario):
@@ -76,6 +77,7 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
         log_dir=scenario.log_dir,
         remote_mode=True,
         resource_config=scenario.resource_config["training"],
+        ray_actor_namespace="learner_{}".format(experiment_tag),
         verbose=verbose,
     )
 
@@ -83,48 +85,52 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
         experiment_tag=experiment_tag,
         stopping_conditions=scenario.stopping_conditions,
         num_worker=scenario.num_worker,
-        agent_mapping_func=scenario.agent_mapping_func,
         group_info=scenario.group_info,
         rollout_config=scenario.rollout_config,
         env_desc=scenario.env_desc,
         log_dir=scenario.log_dir,
         resource_config=scenario.resource_config["rollout"],
+        ray_actor_namespace="rollout_{}".format(experiment_tag),
         verbose=verbose,
     )
 
-    league = League(rollout_manager, training_manager)
+    inference_manager = InferenceManager(
+        group_info=scenario.group_info,
+        ray_actor_namespace="inference_{}".format(experiment_tag),
+        entrypoints=training_manager.get_data_entrypoints(),
+        scenario=scenario,
+    )
 
+    league = League(rollout_manager, training_manager, inference_manager)
+
+    # NOTE(ming): if all agents are active, the strategy specs should not contain any pids
     strategy_specs = training_manager.add_policies(n=1)
     Logger.info(
         f"Training manager was inistialized with a strategy spec:\n{strategy_specs}"
     )
 
     optimization_task = OptimizationTask(
-        active_agents=None,
+        active_agents=scenario.env_desc["possible_agents"],
         stop_conditions=scenario.stopping_conditions["training"],
     )
     training_manager.submit(optimization_task)
 
-    rollout_task = {
-        "num_workers": 1,
-        "runtime_strategy_specs": strategy_specs,
-        "data_entrypoints": training_manager.get_data_entrypoint_mapping(),
-        "rollout_config": scenario.rollout_config,
-        "active_agents": None,
-    }
-    evaluation_task = {
-        "num_workers": 1,
-        "runtime_strategy_specs": strategy_specs,
-        "rollout_config": getattr(
-            scenario, "evaluation_config", scenario.rollout_config
-        ),
-    }
+    rollout_task = RolloutTask(
+        task_type=TaskType.ROLLOUT,
+        strategy_specs=strategy_specs,
+        stopping_conditions=scenario.stopping_conditions["rollout"],
+        data_entrypoint_mapping=training_manager.get_data_entrypoint_mapping(),
+    )
+
+    evaluation_task = RolloutTask(
+        task_type=TaskType.EVALUATION,
+        strategy_specs=strategy_specs,
+    )
 
     rollout_manager.submit(rollout_task)
     rollout_manager.submit(evaluation_task)
 
     results = league.get_results()
-
     league.terminate()
 
     return results

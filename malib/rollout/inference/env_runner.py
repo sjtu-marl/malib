@@ -23,20 +23,11 @@
 # SOFTWARE.
 
 from typing import Any, List, Dict, Tuple, Set, Type
-from types import LambdaType
-from collections import defaultdict
 
-import os
-import time
-import traceback
-
-import pickle
 import ray
 import numpy as np
 
-from ray.actor import ActorHandle
-
-from malib.utils.typing import AgentID, DataFrame, BehaviorMode
+from malib.utils.typing import AgentID
 from malib.utils.episode import ConventionalEpisodeList
 
 from malib.utils.timing import Timing
@@ -44,7 +35,6 @@ from malib.remote.interface import RemoteInterface
 from malib.rollout.envs.vector_env import VectorEnv, SubprocVecEnv
 from malib.rollout.rollout_config import RolloutConfig
 from malib.rollout.inference.client import InferenceClient, PolicyReturnWithObs
-from malib.rollout.inference.utils import process_env_rets, process_policy_outputs
 from malib.rollout.envs.env import Environment
 from malib.common.strategy_spec import StrategySpec
 from malib.backend.dataset_server.utils import send_data
@@ -137,7 +127,12 @@ class BasicEnvRunner(RemoteInterface):
         return super().__repr__()
 
     def __init__(
-        self, env_func: Type, max_env_num: int, use_subproc_env: bool = False
+        self,
+        env_func: Type,
+        max_env_num: int,
+        use_subproc_env: bool = False,
+        agent_groups: Dict[str, Set] = None,
+        inferenc_client_namespace: str = None,
     ) -> None:
         super().__init__()
 
@@ -145,6 +140,13 @@ class BasicEnvRunner(RemoteInterface):
         self._max_env_num = max_env_num
         self._env_func = env_func
         self._envs = []
+        self._agent_groups = agent_groups
+        self._infer_client_namespace = inferenc_client_namespace
+        self._inference_clients = None
+
+    @property
+    def inference_clients(self) -> Dict[str, ray.ObjectRef]:
+        return self._inference_clients
 
     @property
     def envs(self) -> Tuple[Environment]:
@@ -168,17 +170,17 @@ class BasicEnvRunner(RemoteInterface):
 
     def run(
         self,
-        inference_clients: Dict[AgentID, InferenceClient],
         rollout_config: RolloutConfig,
         strategy_specs: Dict[AgentID, StrategySpec],
+        inference_clients: Dict[AgentID, InferenceClient] = None,
         data_entrypoint_mapping: Dict[AgentID, str] = None,
     ):
         """Single thread env simulation stepping.
 
         Args:
-            inference_clients (Dict[AgentID, InferenceClient]): A dict of remote inference client.
             rollout_config (RolloutConfig): Rollout configuration, which specifies how many data pieces will rollout.
             strategy_specs (Dict[AgentID, StrategySpec]): A dict of strategy specs, which rules the behavior policy of each agent.
+            inference_clients (Dict[AgentID, InferenceClient]): A dict of remote inference client.
             data_entrypoint_mapping (Dict[AgentID, str], optional): A mapping which defines the data collection trigger, if not None, then return episodes. Defaults to None.
 
         Raises:
@@ -187,6 +189,23 @@ class BasicEnvRunner(RemoteInterface):
         Returns:
             _type_: _description_
         """
+
+        if inference_clients is None:
+            assert (
+                self._infer_client_namespace is not None
+            ), "Inference client namespace should be specified if infer_clients is not given."
+            assert (
+                self._agent_groups is not None
+            ), "Agent groups should be specified if infer_clients is not given."
+            if self.inference_clients is None:
+                res = {}
+                for rid, _agents in self._agent_groups.items():
+                    client = ray.get_actor(
+                        f"inference_{rid}", namespace=self._infer_client_namespace
+                    )
+                    res.update(dict.fromkeys(_agents, client))
+                self._inference_clients = res
+            inference_clients = self.inference_clients
 
         new_env_num = max(0, rollout_config.n_envs_per_worker - self.num_active_envs)
 
@@ -247,142 +266,3 @@ class BasicEnvRunner(RemoteInterface):
         data = agent_manager.merge_episodes()
         stats = {"total_timesteps": total_timestep, **timer.todict()}
         return stats
-
-
-from malib.utils.episode import NewEpisodeList
-from malib.utils.preprocessor import Preprocessor
-
-
-def _env_runner(
-    client: InferenceClient,
-    agents: Dict[str, InferenceClient],
-    preprocessors: Dict[str, Preprocessor],
-    rollout_config: Dict[str, Any],
-    server_runtime_config: Dict[str, Any],
-    data_entrypoint_mapping: Dict[AgentID, str],
-) -> Tuple[List[Dict[str, Any]], Dict[str, float]]:
-    """The main logic of environment stepping, also for data collections.
-
-    Args:
-        client (InferenceClient): The inference client.
-        rollout_config (Dict[str, Any]): Rollout configuration.
-        server_runtime_config (Dict[str, Any]): A dict which gives the runtime configuration of inference server. Keys including
-
-            - `preprocessor`: observation preprocessor.
-            - `behavior_mode`: a value of `BehaviorMode`.
-            - `strategy_spec`: a dict of strategy specs, mapping from runtime agent id to strategy spces.
-
-        dwriter_info_dict (Dict[str, Tuple[str, Queue]], optional): A dict maps from runtime ids to a tuple of dataset writer info. Defaults to None.
-
-    Raises:
-        e: General exceptions.
-
-    Returns:
-        Tuple[List[Dict[str, Any]], Dict[str, float]]: A tuple of evaluation results and performance results.
-    """
-
-    # check whether remote server or not
-    evaluate_on = rollout_config["behavior_mode"] == BehaviorMode.EXPLOITATION
-    remote_actor = isinstance(list(agents.values())[0], ActorHandle)
-
-    try:
-        if data_entrypoint_mapping is not None:
-            episodes = NewEpisodeList(
-                num=client.env.num_envs, agents=client.env.possible_agents
-            )
-        else:
-            episodes = None
-
-        with client.timer.timeit("environment_reset"):
-            env_rets = client.env.reset(
-                fragment_length=rollout_config["fragment_length"],
-                max_step=rollout_config["max_step"],
-            )
-
-        env_dones, processed_env_ret, dataframes = process_env_rets(
-            env_rets=env_rets,
-            preprocessors=preprocessors,
-            preset_meta_data={"evaluate": evaluate_on},
-        )
-
-        # env ret is key first, not agent first: state, obs
-        if episodes is not None:
-            episodes.record(
-                processed_env_ret, agent_first=False, is_episode_done=env_dones
-            )
-
-        start = time.time()
-        cnt = 0
-
-        while not client.env.is_terminated():
-            # group dataframes by runtime ids.
-            grouped_data_frames: Dict[str, List[DataFrame]] = defaultdict(lambda: [])
-            for agent, dataframe in dataframes.items():
-                runtime_id = client.training_agent_mapping(agent)
-                grouped_data_frames[runtime_id].append(dataframe)
-
-            with client.timer.time_avg("policy_step"):
-                if remote_actor:
-                    policy_outputs: Dict[str, List[DataFrame]] = {
-                        rid: ray.get(
-                            agent.compute_action.remote(
-                                grouped_data_frames[rid],
-                                runtime_config=server_runtime_config,
-                            )
-                        )
-                        for rid, agent in agents.items()
-                    }
-                else:
-                    policy_outputs: Dict[str, List[DataFrame]] = {
-                        rid: agent.compute_action(
-                            grouped_data_frames[rid],
-                            runtime_config=server_runtime_config,
-                        )
-                        for rid, agent in agents.items()
-                    }
-
-            with client.timer.time_avg("process_policy_output"):
-                # TODO(ming): do not use async stepping
-                env_actions, processed_policy_outputs = process_policy_outputs(
-                    policy_outputs, client.env
-                )
-
-                if episodes is not None:
-                    episodes.record(
-                        processed_policy_outputs,
-                        agent_first=True,
-                        is_episode_done=env_dones,
-                    )
-
-            with client.timer.time_avg("environment_step"):
-                env_rets = client.env.step(env_actions)
-                env_dones, processed_env_ret, dataframes = process_env_rets(
-                    env_rets=env_rets,
-                    preprocessor=server_runtime_config["preprocessor"],
-                    preset_meta_data={"evaluate": evaluate_on},
-                )
-                # state, obs, rew, done
-                if episodes is not None:
-                    episodes.record(
-                        processed_env_ret, agent_first=False, is_episode_done=env_dones
-                    )
-
-            cnt += 1
-
-        if data_entrypoint_mapping is not None:
-            # episode_id: agent_id: dict_data
-            episodes = episodes.to_numpy()
-            for entrypoint in data_entrypoint_mapping.values():
-                send_data(pickle.dumps(episodes), entrypoint)
-        end = time.time()
-        rollout_info = client.env.collect_info()
-    except Exception as e:
-        traceback.print_exc()
-        raise e
-
-    performance = client.timer.todict()
-    performance["FPS"] = client.env.batched_step_cnt / (end - start)
-    eval_results = rollout_info
-    performance["total_timesteps"] = client.env.batched_step_cnt
-
-    return eval_results, performance

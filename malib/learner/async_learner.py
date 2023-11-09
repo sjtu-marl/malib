@@ -22,36 +22,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Any, List
-
-import ray
-
-from malib.utils.typing import AgentID
-from malib.utils.logging import Logger
-
-from malib.rollout.rolloutworker import RolloutWorker, parse_rollout_info
-from malib.common.strategy_spec import StrategySpec
+from malib.learner.learner import AgentInterface
 
 
-class PBRolloutWorker(RolloutWorker):
-    """For experience collection and simulation, the operating unit is env.AgentInterface"""
-
-    def step_rollout(
-        self,
-        eval_step: bool,
-        strategy_specs: Dict[AgentID, StrategySpec],
-        data_entrypoint_mapping: Dict[AgentID, str],
-    ) -> List[Dict[str, Any]]:
-        results = ray.get(
-            self.env_runner.run.remote(
-                rollout_config=self.rollout_config,
-                strategy_specs=strategy_specs,
-                data_entrypoint_mapping=data_entrypoint_mapping,
-            )
-        )
-
-        # check evaluation info
-        parsed_results = parse_rollout_info(results)
-        Logger.debug(f"parsed results: {parsed_results}")
-
-        return parsed_results
+class AsyncAgent(AgentInterface):
+    pass

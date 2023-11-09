@@ -32,7 +32,7 @@ import ray
 from malib.utils.logging import Logger
 from malib.utils.stopping_conditions import get_stopper
 from malib.utils.exploitability import measure_exploitability
-from malib.agent.manager import TrainingManager
+from malib.learner.manager import TrainingManager
 from malib.rollout.manager import RolloutWorkerManager
 from malib.common.payoff_manager import PayoffManager
 from malib.common.strategy_spec import StrategySpec

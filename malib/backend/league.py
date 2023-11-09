@@ -11,9 +11,15 @@ from malib.common.manager import Manager
 
 
 class League:
-    def __init__(self, training_manager: Manager, rollout_manager: Manager) -> None:
+    def __init__(
+        self,
+        training_manager: Manager,
+        rollout_manager: Manager,
+        inference_manager: Manager,
+    ) -> None:
         self.training_manager = training_manager
         self.rollout_manager = rollout_manager
+        self.inferenc_managfer = inference_manager
         self.flight_servers = []
         self.rw_lock = rwlock.RWLockFair()
         self.event = threading.Event()
@@ -38,6 +44,9 @@ class League:
 
     def list_rollout_workers(self):
         return self.rollout_manager.workers()
+
+    def list_inference_clients(self):
+        return self.inferenc_managfer.workers()
 
     def get_results(self) -> Dict[str, Dict[str, Any]]:
         """Retrieve results from rollout and training manager.

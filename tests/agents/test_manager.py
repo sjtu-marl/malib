@@ -34,8 +34,8 @@ from collections import defaultdict
 
 from malib.runner import start_servers
 from malib.utils.typing import AgentID
-from malib.agent import IndependentAgent
-from malib.agent.manager import TrainingManager
+from malib.learner import IndependentAgent
+from malib.learner.manager import TrainingManager
 from malib.rl.random import RandomPolicy, RandomTrainer, DEFAULT_CONFIG
 
 

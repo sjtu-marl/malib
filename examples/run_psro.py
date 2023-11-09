@@ -27,7 +27,7 @@ import os
 import time
 
 from malib.runner import run
-from malib.agent import IndependentAgent
+from malib.learner import IndependentAgent
 from malib.scenarios.psro_scenario import PSROScenario
 from malib.rl.dqn import DQNPolicy, DQNTrainer, DEFAULT_CONFIG
 from malib.rollout.envs.open_spiel import env_desc_gen
