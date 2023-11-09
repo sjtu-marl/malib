@@ -30,10 +30,11 @@ import torch
 from gym import spaces
 from torch import nn
 
-from malib.models.torch import net, discrete, continuous
-from malib.rl.common import misc
-from malib.rl.common.policy import Policy, Action, ActionDist, Logits
 from malib.utils.general import merge_dicts
+from malib.models.torch import net, discrete, continuous
+from malib.models.config import ModelConfig
+from malib.rl.common import misc
+from malib.rl.common.policy import Policy, PolicyReturn
 from .config import DEFAULT_CONFIG
 
 
@@ -42,7 +43,7 @@ class PGPolicy(Policy):
         self,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        model_config: Dict[str, Any] = None,
+        model_config: Union[ModelConfig, Dict[str, Any]] = None,
         **kwargs
     ):
         """Build a REINFORCE policy whose input and output dims are determined by observation_space and action_space, respectively.
@@ -80,7 +81,7 @@ class PGPolicy(Policy):
             **self.model_config["preprocess_net"]["config"]
         )
         if isinstance(self.action_space, spaces.Discrete):
-            self.actor = discrete.Actor(
+            return discrete.Actor(
                 preprocess_net=preprocess_net,
                 action_shape=action_shape,
                 hidden_sizes=self.model_config["hidden_sizes"],
@@ -88,7 +89,7 @@ class PGPolicy(Policy):
                 device=self.device,
             )
         elif isinstance(self.action_space, spaces.Box):
-            self.actor = continuous.Actor(
+            return continuous.Actor(
                 preprocess_net=preprocess_net,
                 action_shape=action_shape,
                 hidden_sizes=self.model_config["hidden_sizes"],
@@ -99,8 +100,6 @@ class PGPolicy(Policy):
             raise TypeError(
                 "Unexpected action space type: {}".format(type(self.action_space))
             )
-
-        self.register_state(self.actor, "actor")
 
     def value_function(self, observation: torch.Tensor, evaluate: bool, **kwargs):
         """Compute values of critic."""
@@ -114,9 +113,9 @@ class PGPolicy(Policy):
         evaluate: bool,
         hidden_state: Any = None,
         **kwargs
-    ) -> Tuple[Action, ActionDist, Logits, Any]:
-        with torch.no_grad():
-            logits, hidden = self.actor(observation, state=hidden_state)
+    ) -> PolicyReturn:
+        with torch.inference_mode():
+            logits, hidden = self.model(observation, state=hidden_state)
             if isinstance(logits, tuple):
                 dist = self.dist_fn.proba_distribution(*logits)
             else:
@@ -135,4 +134,4 @@ class PGPolicy(Policy):
         action_dist = probs
         state = hidden
 
-        return action, action_dist, logits, state
+        return PolicyReturn(action, action_dist, logits, state)

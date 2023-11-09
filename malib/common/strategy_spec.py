@@ -68,7 +68,7 @@ class StrategySpec:
 
         Args:
             identifier (str): Runtime id as identifier.
-            policy_ids (Tuple[PolicyID]): A tuple of policy id, could be empty.
+            policy_ids (Tuple[PolicyID], optional): A tuple of policy id, could be empty. Defaults to None, then sampling will return a None.
             meta_data (Dict[str, Any]): Meta data, for policy construction.
         """
 
@@ -161,6 +161,11 @@ class StrategySpec:
         Returns:
             PolicyID: A sampled policy id.
         """
+
+        if len(self) == 0:
+            raise RuntimeError(
+                "No policy id registered, it would be feasible for an active policy."
+            )
 
         prob_list = self.meta_data.get(
             "prob_list", [1 / self.num_policy] * self.num_policy

@@ -11,8 +11,14 @@ class RolloutConfig:
     num_workers: int = 1
     """Defines how many workers will be used for executing one rollout task, default is 1"""
 
+    eval_interval: int = 1
+    """Defines evaluation frequency"""
+
     n_envs_per_worker: int = 1
     """Indicates how many environments will be activated for a rollout task per rollout worker, default is 1"""
+
+    use_subproc_env: bool = False
+    """Indicate whether use subproce env, better to use True for heavey environments"""
 
     timelimit: int = 256
     """Specifying how many time steps will be collected for each rollout, default is 256"""

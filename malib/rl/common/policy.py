@@ -24,16 +24,20 @@
 
 from abc import ABCMeta, abstractmethod
 from typing import Dict, Any, Tuple, Union
-from enum import IntEnum
+from collections import namedtuple
 
+import copy
 import torch
 import torch.nn as nn
 import gym
+import numpy as np
 
 from gym import spaces
 
-from malib.utils.preprocessor import get_preprocessor
+from malib.utils.preprocessor import get_preprocessor, Preprocessor
 from malib.common.distributions import make_proba_distribution, Distribution
+from malib.models.config import ModelConfig
+from malib.models.model_client import ModelClient
 
 
 class SimpleObject:
@@ -56,13 +60,21 @@ class SimpleObject:
         return value
 
 
-Action = Any
-ActionDist = Any
-Logits = Any
+Action = np.ndarray
+ActionDist = np.ndarray
+Logits = np.ndarray
+
+PolicyReturn = namedtuple("PolicyReturn", "action,action_dist,logits,others")
 
 
 class Policy(metaclass=ABCMeta):
-    def __init__(self, observation_space, action_space, model_config, **kwargs):
+    def __init__(
+        self,
+        observation_space: spaces.Space,
+        action_space: spaces.Space,
+        model_config: Union[ModelConfig, Dict[str, Any]],
+        **kwargs,
+    ):
         _locals = locals()
         _locals.pop("self")
         self._init_args = _locals
@@ -70,20 +82,17 @@ class Policy(metaclass=ABCMeta):
         self._action_space = action_space
         self._model_config = model_config
         self._custom_config = kwargs
-        self._state_handler_dict = {}
         self._preprocessor = get_preprocessor(
             observation_space,
             mode=kwargs.get("preprocess_mode", "flatten"),
         )(observation_space)
 
-        self._device = torch.device("cuda" if kwargs.get("use_cuda") else "cpu")
-
-        self._registered_networks: Dict[str, nn.Module] = {}
+        self._device = torch.device(kwargs.get("device", "cpu"))
 
         if isinstance(action_space, spaces.Discrete):
-            self.action_type = "discrete"
+            self._action_type = "discrete"
         elif isinstance(action_space, spaces.Box):
-            self.action_type = "continuous"
+            self._action_type = "continuous"
         else:
             raise NotImplementedError(
                 "Does not support other action space type settings except Box and Discrete. {}".format(
@@ -91,28 +100,51 @@ class Policy(metaclass=ABCMeta):
                 )
             )
 
-        self.use_cuda = kwargs.get("use_cuda", False)
-        self.dist_fn: Distribution = make_proba_distribution(
+        self._dist_fn: Distribution = make_proba_distribution(
             action_space=action_space,
             use_sde=kwargs.get("use_sde", False),
             dist_kwargs=kwargs.get("dist_kwargs", None),
         )
-        self.model = kwargs.get("model_client", self.create_model())
+        self._model = kwargs.get("model_client")
+        if self._model is None:
+            if kwargs.get("model_entry_point"):
+                self._model = ModelClient(kwargs["model_entry_point"], model_config)
+            else:
+                self._model = self.create_model().to(self._device)
 
-    def create_model(self):
+    def create_model(self) -> nn.Module:
         raise NotImplementedError
 
     @property
-    def action_space(self) -> gym.Space:
+    def dist_fn(self) -> Distribution:
+        return self._dist_fn
+
+    @property
+    def action_type(self) -> str:
+        return self._action_type
+
+    @property
+    def action_space(self) -> spaces.Space:
         return self._action_space
 
     @property
-    def observation_space(self) -> gym.Space:
+    def model(self) -> nn.Module:
+        return self._model
+
+    @property
+    def observation_space(self) -> spaces.Space:
         return self._observation_space
 
     @property
-    def model_config(self):
-        return self._model_config
+    def model_config(self) -> Dict[str, Any]:
+        if isinstance(self._model_config, ModelConfig):
+            return self._model_config.to_dict()
+        else:
+            return copy.deepcopy(self._model_config)
+
+    @property
+    def preprocessor(self) -> Preprocessor:
+        return self._preprocessor
 
     @property
     def device(self) -> str:
@@ -120,115 +152,47 @@ class Policy(metaclass=ABCMeta):
 
     @property
     def custom_config(self) -> Dict[str, Any]:
-        return self._custom_config
+        return copy.deepcopy(self._custom_config)
 
-    @property
-    def target_actor(self):
-        return self._target_actor
-
-    @target_actor.setter
-    def target_actor(self, value: Any):
-        self._target_actor = value
-
-    @property
-    def actor(self):
-        return self._actor
-
-    @actor.setter
-    def actor(self, value: Any):
-        self._actor = value
-
-    @property
-    def critic(self):
-        return self._critic
-
-    @critic.setter
-    def critic(self, value: Any):
-        self._critic = value
-
-    @property
-    def target_critic(self):
-        return self._target_critic
-
-    @target_critic.setter
-    def target_critic(self, value: Any):
-        self._target_critic = value
-
-    def load_state_dict(self, state_dict: Dict[str, Any]):
+    def load_state_dict(
+        self, state_dict: Dict[str, Any] = None, checkpoint: str = None
+    ) -> "Policy":
         """Load state dict outside.
 
         Args:
             state_dict (Dict[str, Any]): A dict of states.
         """
 
-        for k, v in state_dict.items():
-            self._state_handler_dict[k].load_state_dict(v)
+        if state_dict is not None:
+            self.model.load_state_dict(state_dict)
+        elif checkpoint is not None:
+            self.model.load_state_dict(torch.load(checkpoint))
 
-    def state_dict(self, device=None):
-        """Return state dict in real time"""
+        return self
 
-        if device is None:
-            res = {k: v.state_dict() for k, v in self._state_handler_dict.items()}
-        else:
-            res = {}
-            for k, v in self._state_handler_dict.items():
-                if isinstance(v, torch.nn.Module):
-                    tmp = {}
-                    for _k, _v in v.state_dict().items():
-                        tmp[_k] = _v.cpu()
-                else:
-                    tmp = v.state_dict()
-                res[k] = tmp
-        return res
-
-    def register_state(self, obj: Any, name: str) -> None:
-        """Register state of obj. Called in init function to register model states.
-
-        Example:
-            >>> class CustomPolicy(Policy):
-            ...     def __init__(
-            ...         self,
-            ...         registered_name,
-            ...         observation_space,
-            ...         action_space,
-            ...         model_config,
-            ...         custom_config
-            ...     ):
-            ...     # ...
-            ...     actor = MLP(...)
-            ...     self.register_state(actor, "actor")
+    def state_dict(
+        self, device: Union[torch.DeviceObjType, str] = None
+    ) -> Dict[str, Any]:
+        """Return state dict of model.
 
         Args:
-            obj (Any): Any object, for non `torch.nn.Module`, it will be wrapped as a `Simpleobject`.
-            name (str): Humanreadable name, to identify states.
+            device (Union[torch.DeviceObjType, str], optional): Device name. Defaults to None.
 
-        Raises:
-            errors.RepeatedAssignError: [description]
+        Returns:
+            Dict[str, Any]: A state dict
         """
 
-        # if not isinstance(obj, nn.Module):
-        if obj.__class__.__module__ == "builtins":
-            n = SimpleObject(self, name)
-            n.load_state_dict(obj)
-            obj = n
-
-        self._state_handler_dict[name] = obj
-        if isinstance(obj, nn.Module):
-            self._registered_networks[name] = obj
-
-    def deregister_state(self, name: str):
-        if self._state_handler_dict.get(name) is None:
-            print(f"No such state tagged with: {name}")
+        if device is None:
+            res = self.model.state_dict()
         else:
-            self._state_handler_dict.pop(name)
-            print(f"Deregister state tagged with: {name}")
+            res = {}
+            for k, v in self.model.state_dict():
+                res[k] = v.to(device)
+
+        return res
 
     def get_initial_state(self, batch_size: int = None):
         return None
-
-    @property
-    def preprocessor(self):
-        return self._preprocessor
 
     @abstractmethod
     def compute_action(
@@ -238,7 +202,7 @@ class Policy(metaclass=ABCMeta):
         evaluate: bool,
         hidden_state: Any = None,
         **kwargs,
-    ) -> Tuple[Action, ActionDist, Logits, Any]:
+    ) -> PolicyReturn:
         pass
 
     def save(self, path, global_step=0, hard: bool = False):
@@ -254,16 +218,22 @@ class Policy(metaclass=ABCMeta):
 
     def reset(self, **kwargs):
         """Reset parameters or behavior policies."""
-
         pass
 
     @classmethod
-    def copy(cls, instance, replacement: Dict):
-        return cls(replacement=replacement, **instance._init_args)
+    def copy(cls, instance: "Policy", replacement: Dict) -> "Policy":
+        """Self copy, from a given instance. The replacement is a dict of new arguments to override.
 
-    @property
-    def registered_networks(self) -> Dict[str, nn.Module]:
-        return self._registered_networks
+        Args:
+            instance (Policy): A policy instance to copy from. Must be an instance of cls.
+            replacement (Dict): A dict of new arguments to override.
+
+        Returns:
+            New policy instance.
+        """
+
+        kwargs = {**replacement, **instance._init_args}
+        return cls(**kwargs)
 
     def to(self, device: str = None, use_copy: bool = False) -> "Policy":
         """Convert policy to a given device. If `use_copy`, then return a copy. If device is None, do not change device.
@@ -292,17 +262,13 @@ class Policy(metaclass=ABCMeta):
 
         replacement = {}
         if cond1 or cond2:
-            # retrieve networks here
-            for k, v in self.registered_networks.items():
-                _v = v.to(device)
-                if not use_copy:
-                    setattr(self, k, _v)
-                else:
-                    replacement[k] = _v
+            _model = self.model.to(device)
+            if not use_copy:
+                setattr(self, "model", _model)
+            else:
+                replacement["model_client"] = _model
         else:
-            # fixed bug: replacement cannot be None.
-            for k, v in self.registered_networks.items():
-                replacement[k] = v
+            replacement["model_client"] = self.model
 
         if use_copy:
             ret = self.copy(self, replacement=replacement)
@@ -312,27 +278,20 @@ class Policy(metaclass=ABCMeta):
 
         return ret
 
-    def parameters(self) -> Dict[str, Dict]:
-        """Return trainable parameters."""
-
-        res = {}
-        for name, net in self.registered_networks.items():
-            res[name] = net.parameters()
-        return res
-
-    def update_parameters(self, parameter_dict: Dict[str, Any]):
-        """Update local parameters with given parameter dict.
+    def parameters(self, recurse: bool = True):
+        """Returns an iterator over module parameters.
+        This is typically passed to an optimizer.
 
         Args:
-            parameter_dict (Dict[str, Parameter]): A dict of paramters
+            recurse (bool, optional): If True, then yields parameters of this module and all submodules. Otherwise, yields only parameters that are direct members of this module. Defaults to True.
+
+        Yields:
+            Parameter: module parameter
         """
 
-        for k, parameters in parameter_dict.items():
-            target = self.registered_networks[k]
-            for target_param, param in zip(target.parameters(), parameters):
-                target_param.data.copy_(param.data)
+        return self.model.parameters(recurse=recurse)
 
     def coordinate(self, state: Dict[str, torch.Tensor], message: Any) -> Any:
         """Coordinate with other agents here"""
 
-        raise NotImplementedError
+        pass

@@ -22,10 +22,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Any
+from typing import Dict, Any, List
+
+import ray
+
+from malib.utils.typing import AgentID
+from malib.utils.logging import Logger
 
 from malib.rollout.rolloutworker import RolloutWorker, parse_rollout_info
-from malib.utils.logging import Logger
+from malib.common.strategy_spec import StrategySpec
 
 
 class PBRolloutWorker(RolloutWorker):
@@ -34,35 +39,20 @@ class PBRolloutWorker(RolloutWorker):
     def step_rollout(
         self,
         eval_step: bool,
-        rollout_config: Dict[str, Any],
-        data_entrypoint_mapping: Dict[str, Any],
-    ):
-        tasks = [rollout_config for _ in range(self.rollout_config["num_threads"])]
-
-        # add tasks for evaluation
-        if eval_step:
-            eval_runtime_config = rollout_config.copy()
-            eval_runtime_config["flag"] = "evaluation"
-            tasks.extend(
-                [
-                    eval_runtime_config
-                    for _ in range(self.rollout_config["num_eval_threads"])
-                ]
+        strategy_specs: Dict[AgentID, StrategySpec],
+        data_entrypoint_mapping: Dict[AgentID, str],
+    ) -> List[Dict[str, Any]]:
+        results = ray.get(
+            self.env_runner.run.remote(
+                inference_clients=self.inference_clients,
+                rollout_config=self.rollout_config,
+                strategy_specs=strategy_specs,
+                data_entrypoint_mapping=data_entrypoint_mapping,
             )
-
-        rets = [
-            x
-            for x in self.env_runner_pool.map(
-                lambda a, task: a.run.remote(
-                    inference_clients=self.inference_clients,
-                    rollout_config=task,
-                    data_entrypoint_mapping=data_entrypoint_mapping,
-                ),
-                tasks,
-            )
-        ]
+        )
 
         # check evaluation info
-        parsed_results = parse_rollout_info(rets)
+        parsed_results = parse_rollout_info(results)
         Logger.debug(f"parsed results: {parsed_results}")
+
         return parsed_results

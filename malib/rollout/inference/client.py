@@ -22,69 +22,124 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Type, Tuple
 from functools import reduce
 from operator import mul
 from collections import namedtuple
-from concurrent.futures import ThreadPoolExecutor
 
 import os
 
-import pickle as pkl
 import gym
+import torch
+import numpy as np
 
-from malib import settings
 from malib.remote.interface import RemoteInterface
 from malib.utils.typing import AgentID, DataFrame
 from malib.utils.timing import Timing
 from malib.utils.episode import Episode
 from malib.common.strategy_spec import StrategySpec
-from malib.rl.common.policy import Policy
+
+from malib.models.config import ModelConfig
+from malib.rl.common.policy import Policy, PolicyReturn
 
 
 Connection = namedtuple("Connection", "sender,recver,runtime_config,rnn_states")
+PolicyReturnWithObs = namedtuple("PolicyReturnWithObs", PolicyReturn._fields + ("obs",))
 
 
 class InferenceClient(RemoteInterface):
     def __init__(
         self,
-        agent_id: AgentID,
+        entry_point: str,
+        policy_cls: Type,
         observation_space: gym.Space,
         action_space: gym.Space,
+        model_config: ModelConfig,
     ) -> None:
         """Create ray-based inference server.
 
         Args:
-            agent_id (AgentID): Runtime agent id, not environment agent id.
+            entry_point (str): Entrypoint for model update.
             observation_space (gym.Space): Observation space related to the governed environment agents.
             action_space (gym.Space): Action space related to the governed environment agents.
         """
 
-        self.runtime_agent_id = agent_id
         self.observation_space = observation_space
         self.action_space = action_space
 
-        self.thread_pool = ThreadPoolExecutor()
-        self.policies: Dict[str, Policy] = {}
-        self.strategy_spec_dict: Dict[str, StrategySpec] = {}
+        self.fixed_policy: Policy = policy_cls(
+            observation_space, action_space, model_config
+        )
+        self.active_policy: Policy = policy_cls(
+            observation_space,
+            action_space,
+            model_config,
+            model_entry_point=entry_point,
+        )
 
     def shutdown(self):
-        self.thread_pool.shutdown(wait=True)
-        for _handler in self.connections.values():
-            _handler.sender.shutdown(True)
-            _handler.recver.shutdown(True)
-        self.connections: Dict[int, Connection] = {}
+        pass
 
-    def save(self, model_dir: str) -> None:
-        if not os.path.exists(model_dir):
-            os.makedirs(model_dir)
-
-        for pid, policy in self.policies.items():
-            fp = os.path.join(model_dir, pid + ".pkl")
-            with open(fp, "wb") as f:
-                pkl.dump(policy, f, protocol=settings.PICKLE_PROTOCOL_VER)
+    def process_obs(self, raw_observation: Any) -> np.ndarray:
+        return self.fixed_policy.preprocessor.transform(raw_observation)
 
     def compute_action(
+        self,
+        raw_obs: Any,
+        state: Any,
+        last_reward: float,
+        last_done: float,
+        active_policy: bool = False,
+        checkpoint: str = None,
+        require_obs_return: bool = True,
+    ) -> PolicyReturnWithObs:
+        """Compute actions for given observations.
+
+        Args:
+            raw_obs (Any): Raw observations.
+            state (Any): State.
+            last_reward (float): Last reward.
+            last_done (float): Last done.
+            active_policy (bool, optional): Whether to use active model. Defaults to False.
+            checkpoint (str, optional): Checkpoint path. Defaults to None.
+
+        Returns:
+            PolicyReturnWithObs: An instance of PolicyReturnWithObs.
+        """
+
+        if active_policy:
+            policy = self.active_policy
+            evaluate = False
+        else:
+            policy = self.fixed_policy
+            evaluate = True
+
+            if checkpoint is not None:
+                if not os.path.exists(checkpoint):
+                    raise RuntimeError(f"Checkpoint {checkpoint} not found.")
+                policy.model.load_state_dict(torch.load(checkpoint))
+
+        with torch.inference_mode():
+            obs = self.fixed_policy.preprocessor.transform(raw_obs)
+            obs = torch.from_numpy(obs).float()
+            # FIXME(ming): act mask and hidden state is set to None,
+            #   not feasible for cases which require them
+            policy_return = policy.compute_action(
+                observation=obs,
+                act_mask=None,
+                evaluate=evaluate,
+                hidden_state=None,
+                state=state,
+                last_reward=last_reward,
+                last_done=last_done,
+            )
+            _returns: dict = policy_return._asdict()
+            if require_obs_return:
+                _returns.update({"obs": obs})
+            policy_return = PolicyReturnWithObs(**_returns)
+            return policy_return
+
+    def compute_action_with_frames(
         self, dataframes: List[DataFrame], runtime_config: Dict[str, Any]
     ) -> List[DataFrame]:
         timer = Timing()

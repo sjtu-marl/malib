@@ -2,14 +2,13 @@ from typing import Dict, Any
 from concurrent import futures
 
 import threading
+import torch
+import ray
 
 from readerwriterlock import rwlock
 from torch import nn
 
-import torch
-import ray
-
-from malib.utils.typing import AgentID, DataFrame
+from malib.models.config import ModelConfig
 
 
 def load_state_dict(client, timeout=10):
@@ -20,9 +19,18 @@ def load_state_dict(client, timeout=10):
 
 
 class ModelClient:
-    def __init__(
-        self, entry_point: str, model_cls: nn.Module, model_args: Dict[str, Any]
-    ):
+    def __init__(self, entry_point: str, model_config: ModelConfig):
+        """Construct a model client for mantaining a model instance and its update.
+
+        Args:
+            entry_point (str): Entry point for model update.
+            model_cls (nn.Module): Model class for constructing model instance.
+            model_args (Dict[str, Any]): Arguments for constructing model instance.
+
+        Raises:
+            NotImplementedError: Unsupported cluster type.
+        """
+
         cluster_type, name_or_address = entry_point.split(":")
 
         if "ray" in cluster_type:
@@ -36,7 +44,7 @@ class ModelClient:
 
         self.event = threading.Event()
         self.thread_pool.submit(self._model_update, self.event)
-        self.model: nn.Module = model_cls(**model_args).cpu()
+        self.model: nn.Module = model_config.model_cls(**model_config.model_args).cpu()
         self.model.share_memory()
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:

@@ -148,18 +148,20 @@ class ConventionalEpisode(Episode):
         super().__init__(agents, processors)
         self.agent_buffer = {}
 
-    def record(self, obs, last_dones, last_rews, states):
+    def record(self, obs, actions, last_dones, last_rews, states):
         for agent, _obs in obs.items():
             self.agent_entry[agent][Episode.CUR_OBS].append(_obs)
+            self.agent_entry[agent][Episode.ACTION].append(actions[agent])
             self.agent_entry[agent][Episode.PRE_DONE].append(last_dones[agent])
             self.agent_entry[agent][Episode.PRE_REWARD].append(last_rews[agent])
-            self.agent_entry[agent][Episode.CUR_STATE].append(states[agent])
+            if states is not None:
+                self.agent_entry[agent][Episode.CUR_STATE].append(states[agent])
 
     def clear_buffer(self):
         self.agent_buffer = {}
 
     def to_numpy(self) -> Dict[AgentID, Dict[str, np.ndarray]]:
-        if len(self.agent_entry) == 0:
+        if len(self.agent_buffer) == 0:
             for agent, agent_trajectory in self.agent_entry.items():
                 agent_traj_np = {}
                 agent_traj_np[Episode.CUR_OBS] = np.stack(
@@ -175,7 +177,7 @@ class ConventionalEpisode(Episode):
                     agent_trajectory[Episode.PRE_REWARD][1:]
                 )
                 agent_traj_np[Episode.ACTION] = np.stack(
-                    agent_trajectory[Episode.ACTION]
+                    agent_trajectory[Episode.ACTION][:-1]
                 )
                 self.agent_buffer[agent] = agent_traj_np
         return self.agent_buffer
@@ -185,12 +187,14 @@ class ConventionalEpisodeList:
     def __init__(self, num: int, agents: List[AgentID]) -> None:
         self.episodes = [ConventionalEpisode(agents) for _ in range(num)]
 
-    def record(self, obs, last_dones, last_rews, states, idx: int = None):
+    def record(self, obs, actions, last_dones, last_rews, states, idx: int = None):
         if idx is not None:
-            self.episodes[i].record(obs, last_dones, last_rews, states)
+            self.episodes[idx].record(obs, actions, last_dones, last_rews, states)
         else:
             for i, episode in enumerate(self.episodes):
-                episode.record(obs[i], last_dones[i], last_rews[i], states[i])
+                episode.record(
+                    obs[i], actions[i], last_dones[i], last_rews[i], states[i]
+                )
 
     def to_numpy(self) -> List[Dict[AgentID, Dict[str, np.ndarray]]]:
         res = []

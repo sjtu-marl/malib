@@ -47,8 +47,9 @@ from malib.utils.monitor import write_to_tensorboard
 from malib.common.strategy_spec import StrategySpec
 from malib.common.task import RolloutTask
 from malib.remote.interface import RemoteInterface
+from malib.rollout.rollout_config import RolloutConfig
 from malib.rollout.inference.client import InferenceClient
-from malib.rollout.inference.env_runner import EnvRunner
+from malib.rollout.inference.env_runner import BasicEnvRunner
 
 
 PARAMETER_GET_TIMEOUT = 3
@@ -186,23 +187,21 @@ class RolloutWorker(RemoteInterface):
         self.env_agents = env_desc["possible_agents"]
         self.runtime_agent_ids = list(agent_groups.keys())
         self.agent_groups = agent_groups
-        self.rollout_config: Dict[str, Any] = rollout_config
+        self.rollout_config = RolloutConfig.from_raw(rollout_config)
 
         validate_runtime_configs(self.rollout_config)
 
-        self.inference_client_cls = InferenceClient.as_remote(
-            **resource_config["inference_client"]
+        # create environment runner, handling evaluation or rollout task
+        env_runner_resource_config = resource_config["inference_server"]
+        self.env_runner = self.create_env_runner(
+            env_desc, env_runner_resource_config, self.rollout_config
         )
-        self.env_runner_cls = EnvRunner.as_remote(
-            **resource_config["inference_server"]
-        ).options(max_concurrency=100)
 
-        self.env_runner_pool: ActorPool = self.init_env_runner_pool(
-            env_desc, rollout_config, agent_mapping_func
-        )
+        # create inference clients, for action execution
+        inferenc_client_configuration = resource_config["inference_client"]
         self.inference_clients: Dict[
             AgentID, ray.ObjectRef
-        ] = self.create_inference_clients()
+        ] = self.create_inference_clients(inferenc_client_configuration)
 
         self.log_dir = log_dir
         self.rollout_callback = rollout_callback or default_rollout_callback
@@ -214,22 +213,18 @@ class RolloutWorker(RemoteInterface):
     def create_inference_clients(self) -> Dict[AgentID, ray.ObjectRef]:
         raise NotImplementedError
 
-    def init_env_runner_pool(
+    def create_env_runner(
         self,
         env_desc: Dict[str, Any],
-        rollout_config: Dict[str, Any],
-        agent_mapping_func: Callable,
+        resource_config: Dict[str, Any],
+        rollout_config: RolloutConfig,
     ) -> ActorPool:
         """Initialize an actor pool for the management of simulation tasks. Note the size of the \
             generated actor pool is determined by `num_threads + num_eval_threads`.
 
         Args:
             env_desc (Dict[str, Any]): Environment description.
-            rollout_config (Dict[str, Any]): Runtime configuration, the given keys in this configuration \
-                include:
-                - `num_threads`: int, determines the size of this actor pool.
-                - `num_env_per_thread`: int, indicates how many environments will be created for each thread.
-                - `num_eval_threads`: int, determines how many threads will be created for the evaluation along the rollouts.
+            rollout_config (RolloutConfig): Rollout configuration.
             agent_mapping_func (Callable): Agent mapping function which maps environment agents \
                 to runtime ids, shared among all workers.
 
@@ -237,25 +232,16 @@ class RolloutWorker(RemoteInterface):
             ActorPool: An instance of `ActorPool`.
         """
 
-        num_threads = rollout_config["num_threads"]
-        num_env_per_thread = rollout_config["num_env_per_thread"]
-        num_eval_threads = rollout_config["num_eval_threads"]
-
-        env_runner_pool = ActorPool(
-            [
-                self.env_runner_cls.remote(
-                    env_desc,
-                    max_env_num=num_env_per_thread,
-                    agent_groups=self.agent_groups,
-                    use_subproc_env=rollout_config["use_subproc_env"],
-                    batch_mode=rollout_config["batch_mode"],
-                    postprocessor_types=rollout_config["postprocessor_types"],
-                    training_agent_mapping=agent_mapping_func,
-                )
-                for _ in range(num_threads + num_eval_threads)
-            ]
+        env_runner_cls = BasicEnvRunner.as_remote(**resource_config).options(
+            max_concurrency=100
         )
-        return env_runner_pool
+        env_runner = env_runner_cls.remote(
+            env_func=lambda: env_desc["creator"](**env_desc["config"]),
+            max_env_num=rollout_config.n_envs_per_worker,
+            use_subproc_env=rollout_config.use_subproc_env,
+        )
+
+        return env_runner
 
     def rollout(self, task: RolloutTask):
         """Rollout, collecting training data when `data_entrypoints` is given, until meets the stopping conditions. The `active_agents` should be None or a none-empty list to specify active agents if rollout is not serve for evaluation.
@@ -268,17 +254,7 @@ class RolloutWorker(RemoteInterface):
 
         stopper = get_stopper(task.stopping_conditions)
         active_agents = active_agents or self.env_agents
-        runtime_strategy_specs = task.strategy_specs
-        data_entrypoint_mapping = task.data_entrypoint_mapping
 
-        rollout_config = self.rollout_config.copy()
-        rollout_config.update(
-            {
-                "flag": "rollout",
-                "strategy_specs": runtime_strategy_specs,
-                "behavior_mode": BehaviorMode.EXPLORATION,
-            }
-        )
         total_timesteps = 0
         eval_results = {}
         epoch = 0
@@ -292,9 +268,12 @@ class RolloutWorker(RemoteInterface):
 
         start_time = time.time()
         while self.is_running():
-            eval_step = (epoch + 1) % self.rollout_config["eval_interval"] == 0
+            eval_step = (epoch + 1) % self.rollout_config.eval_interval == 0
             results = self.step_rollout(
-                eval_step, rollout_config, data_entrypoint_mapping
+                eval_step,
+                task.strategy_specs,
+                self.rollout_config,
+                task.data_entrypoint_mapping,
             )
             total_timesteps += results["total_timesteps"]
             eval_results = results.get("evaluation", None)
@@ -333,6 +312,7 @@ class RolloutWorker(RemoteInterface):
     def step_rollout(
         self,
         eval_step: bool,
+        strategy_specs: Dict[AgentID, StrategySpec],
         rollout_config: Dict[str, Any],
         data_entrypoint_mapping: Dict[AgentID, str],
     ) -> List[Dict[str, Any]]:

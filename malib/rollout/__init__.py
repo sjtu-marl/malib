@@ -23,8 +23,8 @@
 # SOFTWARE.
 
 from .pb_rolloutworker import RolloutWorker
-from .inference.env_runner import EnvRunner
+from .inference.env_runner import BasicEnvRunner
 from .inference.client import InferenceClient
 
 
-__all__ = ["RolloutWorker", "EnvRunner", "InferenceClient"]
+__all__ = ["RolloutWorker", "BasicEnvRunner", "InferenceClient"]
