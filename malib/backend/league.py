@@ -8,39 +8,34 @@ from readerwriterlock import rwlock
 
 from malib.utils.logging import Logger
 from malib.common.manager import Manager
+from malib.common.task import Task, RolloutTask, OptimizationTask
 
 
 class League:
     def __init__(
         self,
-        training_manager: Manager,
+        learner_manager: Manager,
         rollout_manager: Manager,
         inference_manager: Manager,
     ) -> None:
-        self.training_manager = training_manager
+        self.learner_manager = learner_manager
         self.rollout_manager = rollout_manager
         self.inferenc_managfer = inference_manager
-        self.flight_servers = []
         self.rw_lock = rwlock.RWLockFair()
         self.event = threading.Event()
         self.thread_pool = futures.ThreadPoolExecutor()
 
-    def register_flight_server(self, flight_server_address: str):
-        raise NotImplementedError
-
-    def list_flight_servers(self) -> List[str]:
-        raise NotImplementedError
-
-    def _flight_server_check(self):
-        while not self.event.is_set():
-            with self.rw_lock.gen_rlock():
-                for flight_server in self.flight_servers:
-                    if not ray.util.check_connection(flight_server):
-                        self.flight_servers.remove(flight_server)
-            self.event.wait(10)
-
     def list_learners(self):
-        return self.training_manager.workers()
+        return self.learner_manager.workers()
+
+    def submit(self, task_desc: Task, wait: bool = False):
+        if isinstance(task_desc, RolloutTask):
+            res = self.rollout_manager.submit(task_desc, wait)
+        elif isinstance(task_desc, OptimizationTask):
+            res = self.learner_manager.submit(task_desc, wait)
+        else:
+            raise ValueError(f"Unexpected task type: {isinstance(task_desc)}")
+        return res
 
     def list_rollout_workers(self):
         return self.rollout_manager.workers()
@@ -62,7 +57,7 @@ class League:
             while True:
                 for result in self.rollout_manager.get_results():
                     rollout_results.append(result)
-                for result in self.training_manager.get_results():
+                for result in self.learner_manager.get_results():
                     training_results.append(result)
         except KeyboardInterrupt:
             Logger.info("Keyboard interruption was detected, recalling resources ...")
@@ -76,5 +71,5 @@ class League:
     def terminate(self):
         self.event.set()
         self.thread_pool.shutdown()
-        self.training_manager.terminate()
+        self.learner_manager.terminate()
         self.rollout_manager.terminate()

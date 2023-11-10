@@ -41,7 +41,6 @@ def test_env_runner(env_desc: Dict[str, Any], max_env_num: int):
             for agent in agents
         }
         rollout_config = RolloutConfig(
-            inference_server_type="ray",
             num_workers=1,
             eval_interval=1,
             n_envs_per_worker=10,
@@ -51,7 +50,7 @@ def test_env_runner(env_desc: Dict[str, Any], max_env_num: int):
 
         infer_clients = {
             agent: inference_remote_cls.remote(
-                entry_point=None,
+                model_entry_point=None,
                 policy_cls=RandomPolicy,
                 observation_space=observation_spaces[agent],
                 action_space=action_spaces[agent],

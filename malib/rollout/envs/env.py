@@ -22,6 +22,7 @@
 
 from typing import Dict, List, Any, Union, Tuple, Sequence
 
+import copy
 import uuid
 import gym
 import numpy as np
@@ -55,6 +56,9 @@ class Environment:
         self._current_players = []
         self._state: Dict[str, np.ndarray] = None
         self._deactivated = True
+        self._agents = self.register_agents()
+        self._observation_spaces = self.register_observation_spaces()
+        self._action_spaces = self.register_action_spaces()
 
     def record_episode_info_step(
         self,
@@ -87,26 +91,39 @@ class Environment:
         self.episode_metrics["episode_reward"] += sum(rewards.values())
 
     @property
-    def possible_agents(self) -> List[AgentID]:
+    def configs(self):
+        return copy.deepcopy(self._configs)
+
+    @property
+    def possible_agents(self) -> Tuple[AgentID]:
         """Return a list of environment agent ids"""
 
-        raise NotImplementedError
+        return tuple(self._agents)
 
     @property
     def observation_spaces(self) -> Dict[AgentID, gym.Space]:
         """A dict of agent observation spaces"""
 
-        raise NotImplementedError
+        return self._observation_spaces
 
     @property
     def action_spaces(self) -> Dict[AgentID, gym.Space]:
         """A dict of agent action spaces"""
 
-        raise NotImplementedError
+        return self._action_spaces
 
     @property
     def is_deactivated(self) -> bool:
         return self._deactivated
+
+    def register_observation_spaces(self):
+        raise NotImplementedError
+
+    def register_action_spaces(self):
+        raise NotImplementedError
+
+    def register_agents(self):
+        raise NotImplementedError
 
     def deactivate(self):
         self._deactivated = True

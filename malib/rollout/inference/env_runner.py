@@ -132,7 +132,7 @@ class BasicEnvRunner(RemoteInterface):
         max_env_num: int,
         use_subproc_env: bool = False,
         agent_groups: Dict[str, Set] = None,
-        inferenc_client_namespace: str = None,
+        inference_entry_points: Dict[str, str] = None,
     ) -> None:
         super().__init__()
 
@@ -141,7 +141,7 @@ class BasicEnvRunner(RemoteInterface):
         self._env_func = env_func
         self._envs = []
         self._agent_groups = agent_groups
-        self._infer_client_namespace = inferenc_client_namespace
+        self._inference_entry_points = inference_entry_points
         self._inference_clients = None
 
     @property
@@ -192,7 +192,7 @@ class BasicEnvRunner(RemoteInterface):
 
         if inference_clients is None:
             assert (
-                self._infer_client_namespace is not None
+                self._inference_entry_points is not None
             ), "Inference client namespace should be specified if infer_clients is not given."
             assert (
                 self._agent_groups is not None
@@ -200,9 +200,8 @@ class BasicEnvRunner(RemoteInterface):
             if self.inference_clients is None:
                 res = {}
                 for rid, _agents in self._agent_groups.items():
-                    client = ray.get_actor(
-                        f"inference_{rid}", namespace=self._infer_client_namespace
-                    )
+                    namespace, name = self._inference_entry_points[rid].split(":")
+                    client = ray.get_actor(name=name, namespace=namespace)
                     res.update(dict.fromkeys(_agents, client))
                 self._inference_clients = res
             inference_clients = self.inference_clients

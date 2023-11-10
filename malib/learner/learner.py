@@ -33,7 +33,7 @@ import gym
 import torch
 import ray
 
-from ray.util.queue import Queue
+from gym import spaces
 from torch.utils import tensorboard
 from torch.utils.data import DataLoader
 
@@ -42,10 +42,11 @@ from malib.utils.logging import Logger
 from malib.utils.tianshou_batch import Batch
 from malib.utils.monitor import write_to_tensorboard
 from malib.remote.interface import RemoteInterface
-from malib.rl.common.trainer import Trainer
 from malib.common.task import OptimizationTask
 from malib.common.strategy_spec import StrategySpec
 from malib.backend.dataset_server.data_loader import DynamicDataset
+from malib.rl.common.trainer import Trainer
+from malib.rl.common.policy import Policy
 
 
 class Learner(RemoteInterface, ABC):
@@ -57,8 +58,8 @@ class Learner(RemoteInterface, ABC):
         experiment_tag: str,
         runtime_id: str,
         log_dir: str,
-        observation_space: gym.Space,
-        action_space: gym.Space,
+        observation_space: spaces.Space,
+        action_space: spaces.Space,
         algorithms: Dict[str, Tuple[Type, Type, Dict, Dict]],
         agent_mapping_func: Callable[[AgentID], str],
         governed_agents: Tuple[AgentID],
@@ -109,23 +110,31 @@ class Learner(RemoteInterface, ABC):
         self._strategy_spec = strategy_spec
         self._agent_mapping_func = agent_mapping_func
         self._custom_config = custom_config
+        self._policy = strategy_spec.gen_policy(device=device)
 
         self._summary_writer = tensorboard.SummaryWriter(log_dir=log_dir)
         self._trainer_config = trainer_config
+
+        # load policy for trainer
+        self._trainer: Trainer = algorithms["default"][1](trainer_config, self._policy)
         self._total_step = 0
         self._total_epoch = 0
-        self._trainer: Trainer = algorithms["default"][1](trainer_config)
-        self._policies = {}
 
         dataset = dataset or self.create_dataset()
         self._data_loader = DataLoader(dataset, batch_size=trainer_config["batch_size"])
-        self._active_tups = deque()
-
         self._verbose = verbose
 
     @property
     def verbose(self) -> bool:
         return self._verbose
+
+    @property
+    def strategy_spec(self) -> StrategySpec:
+        return self._strategy_spec
+
+    @property
+    def policy(self) -> Policy:
+        return self._policy
 
     @property
     def data_loader(self) -> DataLoader:
@@ -151,9 +160,28 @@ class Learner(RemoteInterface, ABC):
 
         return self._device
 
-    def create_dataset(self) -> DynamicDataset:
-        raise NotImplementedError
+    @property
+    def trainer(self) -> Trainer:
+        return self._trainer
 
+    def get_data_entrypoint(self) -> str:
+        return self.data_loader.dataset.entrypoint
+
+    def get_strategy_spec(self) -> StrategySpec:
+        return self._strategy_spec
+
+    def get_state_dict(self) -> Dict[str, torch.Tensor]:
+        return self.policy.state_dict(device="cpu")
+
+    @abstractmethod
+    def create_dataset(self) -> DynamicDataset:
+        """Create dataset
+
+        Returns:
+            DynamicDataset: Must be an subinstance of DynamicDataset
+        """
+
+    @abstractmethod
     def add_policies(self, n: int) -> StrategySpec:
         """Construct `n` new policies and return the latest strategy spec.
 
@@ -163,61 +191,6 @@ class Learner(RemoteInterface, ABC):
         Returns:
             StrategySpec: The latest strategy spec instance.
         """
-
-        for _ in range(n):
-            spec_pid = f"policy-{len(self._strategy_spec)}"
-            self._strategy_spec.register_policy_id(policy_id=spec_pid)
-            policy = self._strategy_spec.gen_policy()
-            policy_id = f"{self._strategy_spec.id}/{spec_pid}"
-            self._policies[policy_id] = policy
-            # active tups store the policy info tuple for training, the
-            # the data request relies on it.
-            self._active_tups.append((self._strategy_spec.id, spec_pid))
-            self._trainer.reset(policy_instance=policy)
-
-            ray.get(self._parameter_server.create_table.remote(self._strategy_spec))
-            ray.get(
-                self._parameter_server.set_weights.remote(
-                    spec_id=self._strategy_spec.id,
-                    spec_policy_id=spec_pid,
-                    state_dict=policy.state_dict(),
-                )
-            )
-
-        return self._strategy_spec
-
-    def push(self):
-        """Push local weights to remote server"""
-
-        pending_tasks = []
-        for spec_pid in self._strategy_spec.policy_ids:
-            pid = f"{self._strategy_spec.id}/{spec_pid}"
-            task = self._parameter_server.set_weights.remote(
-                spec_id=self._strategy_spec.id,
-                spec_policy_id=spec_pid,
-                state_dict=self._policies[pid].state_dict(),
-            )
-            pending_tasks.append(task)
-        while len(pending_tasks) > 0:
-            dones, pending_tasks = ray.wait(pending_tasks)
-
-    def pull(self):
-        """Pull remote weights to update local version."""
-
-        pending_tasks = []
-
-        for spec_pid in self._strategy_spec.policy_ids:
-            pid = f"{self._strategy_spec.id}/{spec_pid}"
-            task = self._parameter_server.get_weights.remote(
-                spec_id=self._strategy_spec.id, spec_policy_id=spec_pid
-            )
-            pending_tasks.append(task)
-
-        while len(pending_tasks) > 0:
-            dones, pending_tasks = ray.wait(pending_tasks)
-            for done in ray.get(dones):
-                pid = "{}/{}".format(done["spec_id"], done["spec_policy_id"])
-                self._policies[pid].load_state_dict(done["weights"])
 
     @abstractmethod
     def multiagent_post_process(
@@ -246,20 +219,7 @@ class Learner(RemoteInterface, ABC):
             "total_step": self._total_step,
             "total_epoch": self._total_epoch,
             "policy_num": len(self._strategy_spec),
-            "active_tups": list(self._active_tups),
         }
-
-    def sync_remote_parameters(self):
-        """Push latest network parameters of active policies to remote parameter server."""
-
-        top_active_tup = self._active_tups[0]
-        ray.get(
-            self._parameter_server.set_weights.remote(
-                spec_id=top_active_tup[0],
-                spec_policy_id=top_active_tup[1],
-                state_dict=self._trainer.policy.state_dict(device="cpu"),
-            )
-        )
 
     def train(self, task: OptimizationTask) -> Dict[str, Any]:
         """Executes a optimization task and returns the final interface state.
@@ -272,25 +232,21 @@ class Learner(RemoteInterface, ABC):
             Dict[str, Any]: A dict that describes the final state.
         """
 
-        # XXX(ming): why we need to reset the state here? I think it is not necessary as
-        #   an optimization task should be independent with other tasks.
-
         self.set_running(True)
 
         try:
             while self.is_running():
                 for data in self.data_loader:
                     batch_info = self.multiagent_post_process(data)
-                    step_info_list = self._trainer(batch_info)
+                    step_info_list = self.trainer(batch_info)
                     for step_info in step_info_list:
                         self._total_step += 1
                         write_to_tensorboard(
                             self._summary_writer,
                             info=step_info,
                             global_step=self._total_step,
-                            prefix=f"Training/{self._runtime_id}",
+                            prefix=f"Learner/{self._runtime_id}",
                         )
-                    self.sync_remote_parameters()
                     self._total_epoch += 1
         except Exception as e:
             Logger.warning(

@@ -49,7 +49,6 @@ class PBRolloutWorker(RolloutWorker):
                 data_entrypoint_mapping=data_entrypoint_mapping,
             )
         )
-
         # check evaluation info
         parsed_results = parse_rollout_info(results)
         Logger.debug(f"parsed results: {parsed_results}")

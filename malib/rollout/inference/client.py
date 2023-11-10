@@ -34,10 +34,6 @@ import torch
 import numpy as np
 
 from malib.remote.interface import RemoteInterface
-from malib.utils.typing import AgentID, DataFrame
-from malib.utils.timing import Timing
-from malib.utils.episode import Episode
-from malib.common.strategy_spec import StrategySpec
 
 from malib.models.config import ModelConfig
 from malib.rl.common.policy import Policy, PolicyReturn
@@ -50,7 +46,7 @@ PolicyReturnWithObs = namedtuple("PolicyReturnWithObs", PolicyReturn._fields + (
 class InferenceClient(RemoteInterface):
     def __init__(
         self,
-        entry_point: str,
+        model_entry_point: str,
         policy_cls: Type,
         observation_space: gym.Space,
         action_space: gym.Space,
@@ -74,7 +70,7 @@ class InferenceClient(RemoteInterface):
             observation_space,
             action_space,
             model_config,
-            model_entry_point=entry_point,
+            model_entry_point=model_entry_point,
         )
 
     def shutdown(self):

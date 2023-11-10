@@ -31,15 +31,9 @@ class ModelClient:
             NotImplementedError: Unsupported cluster type.
         """
 
-        cluster_type, name_or_address = entry_point.split(":")
+        namespace, name = entry_point.split(":")
 
-        if "ray" in cluster_type:
-            self.client = ray.get_actor(name_or_address)
-        else:
-            raise NotImplementedError
-
-        self.cluster_type = cluster_type
-        self.server_address = name_or_address
+        self.client = ray.get_actor(name=name, namespace=namespace)
         self.thread_pool = futures.ThreadPoolExecutor(max_workers=10)
 
         self.event = threading.Event()
@@ -59,10 +53,11 @@ class ModelClient:
 
     def _model_update(self, event: threading.Event):
         while not event.is_set():
-            # TODO(ming): update model from remote server
             try:
-                state_dict = load_state_dict(self.client)
-
+                state_dict = load_state_dict(
+                    ray.get(self.client.get_state_dict.remote(), timeout=10)
+                )
+                self.model.load_state_dict(state_dict)
                 event.wait(0.5)
             except TimeoutError:
                 # TODO(ming): count or reconnect

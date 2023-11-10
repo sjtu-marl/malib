@@ -22,13 +22,14 @@
 
 from abc import ABC, abstractmethod
 from types import LambdaType
-from typing import Callable, Union, Dict, Any, Set, List
+from typing import Dict, Any, Set, Tuple
 from copy import deepcopy
 from collections import defaultdict
 
 import gym
 
 from malib.utils.typing import AgentID
+from malib.utils.stopping_conditions import StoppingCondition
 
 
 DEFAULT_STOPPING_CONDITIONS = {}
@@ -40,7 +41,7 @@ def validate_spaces(agent_groups: Dict[str, Set[AgentID]], env_desc: Dict[str, A
 
 
 def validate_agent_group(
-    agent_group: Dict[str, List[AgentID]],
+    agent_group: Dict[str, Tuple[AgentID]],
     observation_spaces: Dict[AgentID, gym.Space],
     action_spaces: Dict[AgentID, gym.Space],
 ) -> None:
@@ -66,6 +67,23 @@ def validate_agent_group(
             assert select_act_space.shape == action_spaces[agent].shape
 
 
+def form_group_info(env_desc, agent_mapping_func):
+    agent_groups = defaultdict(lambda: list())
+    grouped_obs_space = {}
+    grouped_act_space = {}
+    for agent in env_desc["possible_agents"]:
+        rid = agent_mapping_func(agent)
+        agent_groups[rid].append(agent)
+        grouped_obs_space[rid] = env_desc["observation_spaces"][agent]
+        grouped_act_space[rid] = env_desc["action_spaces"][agent]
+    agent_groups = {k: tuple(v) for k, v in agent_groups.items()}
+    return {
+        "observation_space": grouped_obs_space,
+        "action_space": grouped_act_space,
+        "agent_groups": agent_groups,
+    }
+
+
 class Scenario(ABC):
     @abstractmethod
     def __init__(
@@ -78,8 +96,6 @@ class Scenario(ABC):
         training_config: Dict[str, Any],
         rollout_config: Dict[str, Any],
         stopping_conditions: Dict[str, Any],
-        dataset_config: Dict[str, Any],
-        parameter_server_config: Dict[str, Any],
     ):
         self.name = name
         self.log_dir = log_dir
@@ -87,32 +103,22 @@ class Scenario(ABC):
         self.algorithms = algorithms
         self.agent_mapping_func = agent_mapping_func
         # then generate grouping information here
-        agent_groups = defaultdict(lambda: set())
-        grouped_obs_space = {}
-        grouped_act_space = {}
-        for agent in env_desc["possible_agents"]:
-            rid = agent_mapping_func(agent)
-            agent_groups[rid].add(agent)
-            grouped_obs_space[rid] = env_desc["observation_spaces"][agent]
-            grouped_act_space[rid] = env_desc["action_spaces"][agent]
-        self.group_info = {
-            "observation_space": grouped_obs_space,
-            "action_space": grouped_act_space,
-            "agent_groups": agent_groups,
-        }
+        self.group_info = form_group_info(env_desc, agent_mapping_func)
         validate_agent_group(
-            agent_groups, env_desc["observation_spaces"], env_desc["action_spaces"]
+            self.group_info["agent_groups"],
+            env_desc["observation_spaces"],
+            env_desc["action_spaces"],
         )
         self.training_config = training_config
         self.rollout_config = rollout_config
         self.stopping_conditions = stopping_conditions or DEFAULT_STOPPING_CONDITIONS
-        self.dataset_config = dataset_config or {"table_capacity": 1000}
-        self.parameter_server_config = parameter_server_config or {}
-        self.parameter_server = None
-        self.offline_dataset_server = None
 
     def copy(self):
         return deepcopy(self)
+
+    @abstractmethod
+    def create_global_stopper(self) -> StoppingCondition:
+        """Create a global stopper."""
 
     def with_updates(self, **kwargs) -> "Scenario":
         new_copy = self.copy()

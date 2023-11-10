@@ -20,8 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import traceback
-from typing import List, Generator, Any
+from typing import List, Any
 from abc import abstractmethod, ABC
 
 import ray
@@ -52,8 +51,18 @@ class Manager(ABC):
     def workers(self) -> List[RemoteInterface]:
         raise NotImplementedError
 
+    @abstractmethod
     def retrive_results(self):
-        raise NotImplementedError
+        """Retrieve execution results."""
+
+    @abstractmethod
+    def submit(self, task: Any, wait: bool = False) -> Any:
+        """Submit task to workers.
+
+        Args:
+            task (Any): Task description.
+            wait (bool, optional): Block or not. Defaults to False.
+        """
 
     def wait(self) -> List[Any]:
         """Wait workers to be terminated, and retrieve the executed results.

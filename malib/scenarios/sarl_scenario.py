@@ -23,14 +23,14 @@
 # SOFTWARE.
 
 from typing import Dict, Any
-from malib.common.task import OptimizationTask, RolloutTask
+from malib.common.task import TaskType, OptimizationTask, RolloutTask
 
 from malib.scenarios import Scenario
-
+from malib.utils.stopping_conditions import StoppingCondition, get_stopper
 from malib.utils.logging import Logger
 from malib.backend.league import League
-from malib.learner.manager import TrainingManager
-from malib.rollout.manager import RolloutWorkerManager, TaskType
+from malib.learner.manager import LearnerManager
+from malib.rollout.manager import RolloutWorkerManager
 from malib.rollout.inference.manager import InferenceManager
 
 
@@ -44,8 +44,6 @@ class SARLScenario(Scenario):
         training_config: Dict[str, Any],
         rollout_config: Dict[str, Any],
         stopping_conditions: Dict[str, Any],
-        dataset_config: Dict[str, Any],
-        parameter_server_config: Dict[str, Any],
         resource_config: Dict[str, Any] = None,
     ):
         super().__init__(
@@ -57,16 +55,17 @@ class SARLScenario(Scenario):
             training_config,
             rollout_config,
             stopping_conditions,
-            dataset_config,
-            parameter_server_config,
         )
         self.num_policy_each_interface = 1
         self.resource_config = resource_config or {"training": None, "rollout": None}
 
+    def create_global_stopper(self) -> StoppingCondition:
+        return get_stopper(self.stopping_conditions)
+
 
 def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = True):
     # TODO(ming): simplify the initialization of training and rollout manager with a scenario instance as input
-    training_manager = TrainingManager(
+    learner_manager = LearnerManager(
         experiment_tag=experiment_tag,
         stopping_conditions=scenario.stopping_conditions,
         algorithms=scenario.algorithms,
@@ -81,8 +80,14 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
         verbose=verbose,
     )
 
+    inference_manager = InferenceManager(
+        group_info=scenario.group_info,
+        ray_actor_namespace="inference_{}".format(experiment_tag),
+        model_entry_point=learner_manager.learner_entrypoints,
+        scenario=scenario,
+    )
+
     rollout_manager = RolloutWorkerManager(
-        experiment_tag=experiment_tag,
         stopping_conditions=scenario.stopping_conditions,
         num_worker=scenario.num_worker,
         group_info=scenario.group_info,
@@ -94,32 +99,22 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
         verbose=verbose,
     )
 
-    inference_manager = InferenceManager(
-        group_info=scenario.group_info,
-        ray_actor_namespace="inference_{}".format(experiment_tag),
-        entrypoints=training_manager.get_data_entrypoints(),
-        scenario=scenario,
-    )
-
-    league = League(rollout_manager, training_manager, inference_manager)
-
-    # NOTE(ming): if all agents are active, the strategy specs should not contain any pids
-    strategy_specs = training_manager.add_policies(n=1)
-    Logger.info(
-        f"Training manager was inistialized with a strategy spec:\n{strategy_specs}"
+    league = League(
+        learner_manager, rollout_manager, inference_manager, namespace=experiment_tag
     )
 
     optimization_task = OptimizationTask(
         active_agents=scenario.env_desc["possible_agents"],
         stop_conditions=scenario.stopping_conditions["training"],
     )
-    training_manager.submit(optimization_task)
+
+    strategy_specs = learner_manager.get_strategy_specs()
 
     rollout_task = RolloutTask(
         task_type=TaskType.ROLLOUT,
         strategy_specs=strategy_specs,
         stopping_conditions=scenario.stopping_conditions["rollout"],
-        data_entrypoint_mapping=training_manager.get_data_entrypoint_mapping(),
+        data_entrypoint_mapping=learner_manager.data_entrypoints,
     )
 
     evaluation_task = RolloutTask(
@@ -127,8 +122,20 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
         strategy_specs=strategy_specs,
     )
 
-    rollout_manager.submit(rollout_task)
-    rollout_manager.submit(evaluation_task)
+    stopper = scenario.create_global_stopper()
+    epoch_cnt = 0
+
+    while True:
+        rollout_results = league.submit(rollout_task, wait=True)
+        training_results = league.submit(optimization_task, wait=True)
+        evaluation_results = league.submit(evaluation_task, wait=True)
+        epoch_cnt += 1
+        if stopper.should_stop(
+            evaluation_results, training_results, rollout_results, epoch_cnt
+        ):
+            break
+        if epoch_cnt % scenario.save_interval == 0:
+            league.save_checkpoint(global_step=epoch_cnt)
 
     results = league.get_results()
     league.terminate()

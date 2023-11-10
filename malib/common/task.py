@@ -12,9 +12,12 @@ class TaskType(IntEnum):
     OPTIMIZATION = 2
 
 
+class Task:
+    pass
+
+
 @dataclass
-class RolloutTask:
-    task_type: int
+class RolloutTask(Task):
     strategy_specs: Dict[str, Any] = field(default_factory=dict())
     stopping_conditions: Dict[str, Any] = field(default_factory=dict())
     data_entrypoint_mapping: Dict[str, Any] = field(default_factory=dict())
@@ -32,7 +35,7 @@ class RolloutTask:
 
 
 @dataclass
-class OptimizationTask:
+class OptimizationTask(Task):
     stop_conditions: Dict[str, Any]
     """stopping conditions for optimization task, e.g., max iteration, max time, etc."""
 

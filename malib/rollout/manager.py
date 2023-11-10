@@ -75,7 +75,6 @@ def validate_strategy_specs(specs: Dict[str, StrategySpec]):
 class RolloutWorkerManager(Manager):
     def __init__(
         self,
-        experiment_tag: str,
         stopping_conditions: Dict[str, Any],
         num_worker: int,
         group_info: Dict[str, Any],
@@ -89,7 +88,6 @@ class RolloutWorkerManager(Manager):
         """Construct a manager for multiple rollout workers.
 
         Args:
-            experiment_tag (str): Experiment tag.
             num_worker (int): Indicates how many rollout workers will be initialized.
             rollout_config (Dict[str, Any]): Runtime rollout configuration.
             env_desc (Dict[str, Any]): Environment description.
@@ -101,15 +99,14 @@ class RolloutWorkerManager(Manager):
         super().__init__(verbose=verbose, namespace=ray_actor_namespace)
 
         rollout_worker_cls = PBRolloutWorker
-        worker_cls = rollout_worker_cls.as_remote(num_cpus=0, num_gpus=0).options(
-            namespace=self.namespace
-        )
+        worker_cls = rollout_worker_cls.as_remote(num_cpus=0, num_gpus=0).options()
         workers = []
-
+        ready_check = []
         for i in range(num_worker):
             workers.append(
-                worker_cls.options(max_concurrency=100, name=f"actor_{i}").remote(
-                    experiment_tag=experiment_tag,
+                worker_cls.options(
+                    max_concurrency=100, namespace=self.namespace, name=f"actor_{i}"
+                ).remote(
                     env_desc=env_desc,
                     agent_groups=group_info["agent_groups"],
                     rollout_config=RolloutConfig.from_raw(rollout_config),
@@ -120,12 +117,15 @@ class RolloutWorkerManager(Manager):
                     verbose=verbose,
                 )
             )
+            ready_check.append(workers[-1].ready.remote())
 
-        self._workers: List[ray.actor] = workers
+        while len(ready_check):
+            _, ready_check = ray.wait(ready_check, num_returns=1, timeout=1)
+
+        self._workers: List[ray.ObjectRef] = workers
         self._actor_pool = ActorPool(self._workers)
         self._runtime_ids = tuple(group_info["agent_groups"].keys())
         self._group_info = group_info
-        self.experiment_tag = experiment_tag
 
         assert (
             "rollout" in stopping_conditions
@@ -163,7 +163,9 @@ class RolloutWorkerManager(Manager):
 
         return self._workers
 
-    def submit(self, task: Union[Dict[str, Any], List[Dict[str, Any]]]):
+    def submit(
+        self, task: Union[Dict[str, Any], List[Dict[str, Any]]], wait: bool = False
+    ) -> Any:
         """Submit a task to workers
 
         Args:
@@ -179,6 +181,12 @@ class RolloutWorkerManager(Manager):
         for _task in task:
             validate_strategy_specs(_task.strategy_specs)
             self._actor_pool.submit(lambda actor, _task: actor.rollout.remote(_task))
+
+        if wait:
+            result_list = self.wait()
+            return result_list
+        else:
+            return None
 
     def retrive_results(self):
         """Retrieve task results

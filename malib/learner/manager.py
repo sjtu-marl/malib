@@ -53,11 +53,11 @@ from malib.common.training_config import TrainingConfig
 
 
 DEFAULT_RESOURCE_CONFIG = dict(
-    num_cpus=None, num_gpus=None, memory=None, object_store_memory=None, resources=None
+    num_cpus=None, num_gpus=None, memory=None, resources=None
 )
 
 
-class TrainingManager(Manager):
+class LearnerManager(Manager):
     def __init__(
         self,
         experiment_tag: str,
@@ -68,12 +68,11 @@ class TrainingManager(Manager):
         group_info: Dict[str, Any],
         training_config: Union[Dict[str, Any], TrainingConfig],
         log_dir: str,
-        remote_mode: bool = True,
         resource_config: Dict[str, Any] = None,
         ray_actor_namespace: str = "learner",
         verbose: bool = True,
     ):
-        """Create an TrainingManager instance which is responsible for the multi agent training
+        """Create an LearnerManager instance which is responsible for the multi agent training
         tasks execution and rollout task requests sending.
 
         Args:
@@ -86,7 +85,6 @@ class TrainingManager(Manager):
             training_config (Dict[str, Any]): Training configuration, for agent interface, keys include \
                 `type`, `trainer_config` and `custom_config`.
             log_dir (str): Directory for logging.
-            remote_mode (bool, Optional): Init learners as remote actor or not. Default is True.
         """
 
         super().__init__(verbose=verbose, namespace=ray_actor_namespace)
@@ -96,7 +94,7 @@ class TrainingManager(Manager):
 
         # interface config give the agent type used here and the group mapping if needed
 
-        # FIXME(ming): resource configuration is not available now, will open in the next version
+        # FIXME(ming): resource configuration is not available now, will turn-on in the next version
         if training_config.trainer_config.get("use_cuda", False):
             num_gpus = 1 / len(group_info["agent_groups"])
         else:
@@ -107,18 +105,19 @@ class TrainingManager(Manager):
         learner_cls = training_config.learner_type
         # update num gpus
         resource_config["num_gpus"] = num_gpus
-        learner_cls = learner_cls.as_remote(**resource_config).options(
-            max_concurrency=10
-        )
-        learners: Dict[str, Union[Learner, ray.ObjectRef]] = {}
+        learner_cls = learner_cls.as_remote(**resource_config)
+        learners: Dict[str, ray.ObjectRef] = {}
 
         assert (
             "training" in stopping_conditions
         ), f"Stopping conditions should contains `training` stoppong conditions: {stopping_conditions}"
 
+        ready_check = []
+
         for rid, agents in group_info["agent_groups"].items():
-            _cls = learner_cls.remote if remote_mode else learner_cls
-            learners[rid] = _cls(
+            learners[rid] = learner_cls.options(
+                name=f"learner_{rid}", max_concurrency=10, namespace=self.namespace
+            ).remote(
                 experiment_tag=experiment_tag,
                 runtime_id=rid,
                 log_dir=f"{log_dir}/learner_{rid}",
@@ -131,11 +130,22 @@ class TrainingManager(Manager):
                 custom_config=training_config.custom_config,
                 verbose=verbose,
             )
+            ready_check.append(learners[rid].ready.remote())
 
         # ensure all interfaces have been started up
-        tasks = list(learners.values())
-        while len(tasks):
-            _, tasks = ray.wait(tasks, num_returns=1, timeout=1)
+        while len(ready_check):
+            _, ready_check = ray.wait(ready_check, num_returns=1, timeout=1)
+
+        data_entrypoints = ray.get(
+            [x.get_data_entrypoint.remote() for x in learners.values()]
+        )
+        self._data_entrypoints = dict(zip(learners.keys(), data_entrypoints))
+        self._learner_entrypoints = dict(
+            zip(
+                learners.keys(),
+                [f"{self.namespace}:learner_{rid}" for rid in learners.keys()],
+            )
+        )
 
         # TODO(ming): collect data entrypoints from learners
         self._group_info = group_info
@@ -146,7 +156,6 @@ class TrainingManager(Manager):
         self._log_dir = log_dir
         self._agent_mapping_func = agent_mapping_func
         self._learners = learners
-        self._remote_mode = remote_mode
         self._thread_pool = ThreadPoolExecutor(max_workers=len(learners))
         self._stopping_conditions = stopping_conditions
 
@@ -165,14 +174,18 @@ class TrainingManager(Manager):
         return self._group_info["agent_groups"]
 
     @property
-    def get_data_entrypoints(self) -> Dict[str, str]:
+    def data_entrypoints(self) -> Dict[str, str]:
         """Return a dict of data entrypoints, maps from runtime ids to data entrypoints.
 
         Returns:
             Dict[str, str]: A dict of data entrypoints.
         """
 
-        return {rid: rid for rid in self._runtime_ids}
+        return self._data_entrypoints
+
+    @property
+    def learner_entrypoints(self) -> Dict[str, str]:
+        return self._learner_entrypoints
 
     @property
     def workers(self) -> List[RemoteInterface]:
@@ -194,9 +207,6 @@ class TrainingManager(Manager):
 
         return self._runtime_ids
 
-    def get_data_entrypoint_mapping(self) -> Dict[AgentID, str]:
-        raise NotImplementedError
-
     def add_policies(
         self, interface_ids: Sequence[str] = None, n: Union[int, Dict[str, int]] = 1
     ) -> Dict[str, Type[StrategySpec]]:
@@ -217,21 +227,15 @@ class TrainingManager(Manager):
 
         policy_nums = dict.fromkeys(interface_ids, n) if isinstance(n, int) else n
 
-        if self._remote_mode:
-            strategy_spec_list: List[StrategySpec] = ray.get(
-                [
-                    self._learners[k].add_policies.remote(n=policy_nums[k])
-                    for k in interface_ids
-                ]
-            )
-            strategy_spec_dict: Dict[str, StrategySpec] = dict(
-                zip(interface_ids, strategy_spec_list)
-            )
-        else:
-            strategy_spec_dict = {
-                k: self._learners[k].add_policies(n=policy_nums[k])
+        strategy_spec_list: List[StrategySpec] = ray.get(
+            [
+                self._learners[k].add_policies.remote(n=policy_nums[k])
                 for k in interface_ids
-            }
+            ]
+        )
+        strategy_spec_dict: Dict[str, StrategySpec] = dict(
+            zip(interface_ids, strategy_spec_list)
+        )
 
         return strategy_spec_dict
 
@@ -249,11 +253,8 @@ class TrainingManager(Manager):
                 raise RuntimeError(f"Agent {aid} is not registered in training manager")
             else:
                 learner = self._learners[rid]
-                if self._remote_mode:
-                    ray_task = learner.train.remote(task)
-                    self.pending_tasks.append(ray_task)
-                else:
-                    raise NotImplementedError
+                ray_task = learner.train.remote(task)
+                self.pending_tasks.append(ray_task)
 
     def retrive_results(self) -> Generator:
         """Return a generator of results.
@@ -262,36 +263,18 @@ class TrainingManager(Manager):
             Generator: A generator for task results.
         """
 
-        if self._remote_mode:
-            while len(self.pending_tasks) > 0:
-                dones, self.pending_tasks = ray.wait(self.pending_tasks)
-                for done in ray.get(dones):
-                    yield done
-        else:
-            for task in self.pending_tasks:
-                assert isinstance(task, Future)
-                try:
-                    if task.done():
-                        yield task.result(timeout=10)
-                except TimeoutError:
-                    Logger.error(
-                        f"Retrieving results of training task is timeout: {traceback.format_exc()}"
-                    )
-                except CancelledError:
-                    Logger.error(
-                        f"Try to retrieve results of a cancelled task: {traceback.format_exc()}"
-                    )
-                except Exception:
-                    Logger.error(traceback.format_exc())
+        while len(self.pending_tasks):
+            dones, self.pending_tasks = ray.wait(self.pending_tasks)
+            for done in ray.get(dones):
+                yield done
 
     def terminate(self) -> None:
         """Terminate all training actors."""
 
         super().terminate()
 
-        if self._remote_mode:
-            for x in self._learners.values():
-                ray.kill(x)
+        for x in self._learners.values():
+            ray.kill(x)
 
         self._thread_pool.shutdown()
         del self._learners

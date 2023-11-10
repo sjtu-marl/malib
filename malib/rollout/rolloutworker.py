@@ -76,49 +76,18 @@ def parse_rollout_info(raw_statistics: List[Dict[str, Any]]) -> Dict[str, Any]:
         Dict[str, Any]: A merged dict.
     """
 
-    results = {"total_timesteps": 0, "FPS": 0.0}
-    evaluation = []
-
-    for e in raw_statistics:
-        # when task mode is `simualtion` or `evaluation`, then
-        #   evaluation result is not empty.
-        if "evaluation" in e:
-            evaluation.extend(e["evaluation"])
-
-        for k, v in e.items():
-            if k == "total_timesteps":
-                results[k] += v
-            elif k == "FPS":
-                results[k] += v
-            # else:
-            #     raise ValueError(f"Unknow key: {k} / {v}")
-
-    if len(evaluation) > 0:
-        raw_eval_results = defaultdict(lambda: [])
-        for e in evaluation:
-            for k, v in e.items():
-                if isinstance(v, (Tuple, List)):
-                    v = sum(v)
-                raw_eval_results[k].append(v)
-        eval_results = {}
-        for k, v in raw_eval_results.items():
-            # convert v to array
-            eval_results.update(
-                {f"{k}_max": np.max(v), f"{k}_min": np.min(v), f"{k}_mean": np.mean(v)}
-            )
-        results["evaluation"] = eval_results
-    return results
+    return raw_statistics
 
 
 def log(message: str):
     logger.log(settings.LOG_LEVEL, f"(rollout worker) {message}")
 
 
-def default_rollout_callback(coordinator: ray.ObjectRef, results: Dict[str, Any]):
+def default_rollout_callback(results: Dict[str, Any]):
     pass
 
 
-def default_simulate_callback(coordinator: ray.ObjectRef, results: Dict[str, Any]):
+def default_simulate_callback(results: Dict[str, Any]):
     pass
 
 
@@ -147,9 +116,8 @@ def validate_runtime_configs(configs: Dict[str, Any]):
 class RolloutWorker(RemoteInterface):
     def __init__(
         self,
-        experiment_tag: str,
         env_desc: Dict[str, Any],
-        agent_groups: Dict[str, Set],
+        agent_groups: Dict[str, Tuple],
         rollout_config: Union[RolloutConfig, Dict[str, Any]],
         log_dir: str,
         rollout_callback: Callable[[ray.ObjectRef, Dict[str, Any]], Any] = None,
@@ -166,7 +134,6 @@ class RolloutWorker(RemoteInterface):
             * `max_step`: int, the maximum step of each episode.
             * `num_eval_episodes`: int, the number of epsiodes for each evaluation.
             log_dir (str): Log directory.
-            experiment_tag (str): Experiment tag, to create a data table.
             rollout_callback (Callable[[ray.ObjectRef, Dict[str, Any]], Any], optional): Callback function for rollout task, users can determine how \
                 to cordinate with coordinator here. Defaults by None, indicating no coordination.
             simulate_callback (Callable[[ray.ObjectRef, Dict[str, Any]], Any]): Callback function for simulation task, users can determine \
@@ -186,8 +153,6 @@ class RolloutWorker(RemoteInterface):
         self.agent_groups = agent_groups
         self.rollout_config = RolloutConfig.from_raw(rollout_config)
 
-        validate_runtime_configs(self.rollout_config)
-
         # create environment runner, handling evaluation or rollout task
         env_runner_resource_config = resource_config["inference_server"]
         self.env_runner = self.create_env_runner(
@@ -198,7 +163,6 @@ class RolloutWorker(RemoteInterface):
         self.rollout_callback = rollout_callback or default_rollout_callback
         self.simulate_callback = simulate_callback or default_simulate_callback
         self.tb_writer = tensorboard.SummaryWriter(log_dir=log_dir)
-        self.experiment_tag = experiment_tag
         self.verbose = verbose
 
     def create_env_runner(
@@ -225,6 +189,8 @@ class RolloutWorker(RemoteInterface):
             env_func=lambda: env_desc["creator"](**env_desc["config"]),
             max_env_num=rollout_config.n_envs_per_worker,
             use_subproc_env=rollout_config.use_subproc_env,
+            agent_groups=self.agent_groups,
+            inference_entry_points=rollout_config.inference_entry_points,
         )
 
         return env_runner
@@ -239,7 +205,6 @@ class RolloutWorker(RemoteInterface):
         """
 
         stopper = get_stopper(task.stopping_conditions)
-        active_agents = active_agents or self.env_agents
 
         total_timesteps = 0
         eval_results = {}
@@ -258,29 +223,27 @@ class RolloutWorker(RemoteInterface):
             results = self.step_rollout(
                 eval_step,
                 task.strategy_specs,
-                self.rollout_config,
                 task.data_entrypoint_mapping,
             )
-            total_timesteps += results["total_timesteps"]
-            eval_results = results.get("evaluation", None)
+            # total_timesteps += results["total_timesteps"]
 
-            performance["rollout_iter_rate"] = (epoch + 1) / (time.time() - start_time)
-            performance["rollout_FPS"] = results["FPS"]
-            performance["ave_rollout_FPS"] = (
-                performance["ave_rollout_FPS"] * epoch + results["FPS"]
-            ) / (epoch + 1)
+            # performance["rollout_iter_rate"] = (epoch + 1) / (time.time() - start_time)
+            # performance["rollout_FPS"] = results["FPS"]
+            # performance["ave_rollout_FPS"] = (
+            #     performance["ave_rollout_FPS"] * epoch + results["FPS"]
+            # ) / (epoch + 1)
 
-            if eval_results is not None:
-                if self.verbose:
-                    eval_results["performance"] = performance
-                    formatted_results = pprint.pformat(eval_results)
-                    Logger.info(f"Evaluation at epoch: {epoch}\n{formatted_results}")
-                write_to_tensorboard(
-                    self.tb_writer,
-                    eval_results,
-                    global_step=total_timesteps,
-                    prefix="Evaluation",
-                )
+            # if self.verbose:
+            #     eval_results["performance"] = performance
+            #     formatted_results = pprint.pformat(eval_results)
+            #     Logger.info(f"Evaluation at epoch: {epoch}\n{formatted_results}")
+
+            # write_to_tensorboard(
+            #     self.tb_writer,
+            #     results,
+            #     global_step=total_timesteps,
+            #     prefix="Evaluation",
+            # )
 
             write_to_tensorboard(
                 self.tb_writer, performance, global_step=epoch, prefix="Performance"
@@ -291,7 +254,8 @@ class RolloutWorker(RemoteInterface):
                 break
             epoch += 1
 
-        self.rollout_callback(self.coordinator, results)
+        self.rollout_callback(results)
+
         return results
 
     @abstractmethod
@@ -299,26 +263,12 @@ class RolloutWorker(RemoteInterface):
         self,
         eval_step: bool,
         strategy_specs: Dict[AgentID, StrategySpec],
-        rollout_config: Dict[str, Any],
         data_entrypoint_mapping: Dict[AgentID, str],
     ) -> List[Dict[str, Any]]:
         """The logic function to run rollout. Users must implment this method.
 
         Args:
             eval_step (bool): Indicate evaluation or not.
-            rollout_config (Dict[str, Any]): Runtime configurations to control the amount of sampled data. Keys include:
-            - `flag`: indicate the task type, the value is rollout.
-            - `max_step`: indicates the maximum length of an episode.
-            - `num_episodes`: indicates how many episodes will be collected.
-            - `policy_distribution`: a dict describes the policy distribution.
-            - `parameter_desc_dict`: a dict describes the parameter description.
-            - `trainable_pairs`: a dict describes the trainable policy configuration, it is a mapping from `runtime_ids` \
-                to a tuple of policy id and policy configuration.
-            - `behavior_policies`: a dict maps runtime agents to policy ids, it specifies the behavior policy for available agents, \
-                could be a subset of the full agent set.
-            - `agent_group`: a dict that maps runtime agents to a list of environment agents, which describes the envrionment agents \
-                governed by what runtime agent interface.
-            - `fragment_length`: the maximum of collected data frames.
             data_entrypoint_mapping: ...
 
         Raises:

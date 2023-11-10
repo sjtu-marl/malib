@@ -2,6 +2,7 @@ from typing import Type, Any
 
 import threading
 import grpc
+import socket
 
 from concurrent import futures
 from torch.utils.data import DataLoader, Dataset
@@ -33,6 +34,7 @@ class DynamicDataset(Dataset):
             max_message_length,
             find_free_port(),
         )
+        self.host = socket.gethostbyname(socket.gethostbyname())
 
     def _start_servicer(
         self, max_workers: int, max_message_length: int, grpc_port: int
@@ -51,6 +53,10 @@ class DynamicDataset(Dataset):
         server.start()
 
         return server
+
+    @property
+    def entrypoint(self) -> str:
+        return f"{self.host}:{self.server._state.port}"
 
     def __len__(self):
         return self.feature_handler_caller.block_size
