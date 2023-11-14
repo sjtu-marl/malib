@@ -62,7 +62,13 @@ class InferenceManager(Manager):
         return self._infer_clients
 
     @property
-    def inference_entry_points(self) -> str:
+    def inference_entry_points(self) -> Dict[str, str]:
+        """Return a mapping of inference client entrypoints.
+
+        Returns:
+            Dict[str, str]: A dict mapping from runtime id to entrypoints.
+        """
+
         return self._inference_entry_points
 
     def submit(self, task: Any, wait: bool = False):

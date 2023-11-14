@@ -22,12 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Tuple, Any, Callable, List, Type, Union
-
-import gym
-
-from gym import spaces
-from malib.backend.dataset_server.data_loader import DynamicDataset
+from typing import Dict, Tuple, Any, List, Union
 
 from malib.utils.typing import AgentID
 from malib.utils.tianshou_batch import Batch

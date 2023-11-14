@@ -91,28 +91,6 @@ def default_simulate_callback(results: Dict[str, Any]):
     pass
 
 
-def validate_runtime_configs(configs: Dict[str, Any]):
-    """Validate runtime configuration.
-
-    Args:
-        configs (Dict[str, Any]): Raw runtime configuration
-
-    Raises:
-        AssertionError: Key not in configs
-    """
-
-    assert "fragment_length" in configs
-    assert "max_step" in configs
-    assert "num_eval_episodes" in configs
-    assert "num_threads" in configs
-    assert "num_env_per_thread" in configs
-    assert "num_eval_threads" in configs
-    assert "use_subproc_env" in configs
-    assert "batch_mode" in configs
-    assert "postprocessor_types" in configs
-    assert "eval_interval" in configs
-
-
 class RolloutWorker(RemoteInterface):
     def __init__(
         self,
@@ -223,7 +201,7 @@ class RolloutWorker(RemoteInterface):
             results = self.step_rollout(
                 eval_step,
                 task.strategy_specs,
-                task.data_entrypoint_mapping,
+                task.data_entrypoints,
             )
             # total_timesteps += results["total_timesteps"]
 
@@ -263,13 +241,13 @@ class RolloutWorker(RemoteInterface):
         self,
         eval_step: bool,
         strategy_specs: Dict[AgentID, StrategySpec],
-        data_entrypoint_mapping: Dict[AgentID, str],
+        data_entrypoints: Dict[str, str],
     ) -> List[Dict[str, Any]]:
         """The logic function to run rollout. Users must implment this method.
 
         Args:
             eval_step (bool): Indicate evaluation or not.
-            data_entrypoint_mapping: ...
+            data_entrypoints: ...
 
         Raises:
             NotImplementedError: _description_

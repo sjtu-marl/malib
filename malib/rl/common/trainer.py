@@ -22,16 +22,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Any, Sequence, Union, Type, List
-
-import torch
+from typing import Dict, Any, Sequence, Type, List
 
 from abc import ABCMeta, abstractmethod
-from functools import reduce
 
 from malib.utils.typing import AgentID
 from malib.rl.common.policy import Policy
-from malib.utils.data import to_torch
 from malib.utils.tianshou_batch import Batch
 
 
@@ -156,6 +152,3 @@ class Trainer(metaclass=ABCMeta):
 
         if configs is not None:
             self.training_config.update(configs)
-
-
-TrainerType = Type[Trainer]

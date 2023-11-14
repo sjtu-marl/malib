@@ -29,7 +29,6 @@ from collections import deque
 
 import traceback
 
-import gym
 import torch
 import ray
 
@@ -47,20 +46,19 @@ from malib.common.strategy_spec import StrategySpec
 from malib.backend.dataset_server.data_loader import DynamicDataset
 from malib.rl.common.trainer import Trainer
 from malib.rl.common.policy import Policy
+from malib.rl.config import Algorithm
 
 
 class Learner(RemoteInterface, ABC):
     """Base class of agent interface, for training"""
 
-    @abstractmethod
     def __init__(
         self,
-        experiment_tag: str,
         runtime_id: str,
         log_dir: str,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        algorithms: Dict[str, Tuple[Type, Type, Dict, Dict]],
+        algorithm: Algorithm,
         agent_mapping_func: Callable[[AgentID], str],
         governed_agents: Tuple[AgentID],
         trainer_config: Dict[str, Any],
@@ -72,13 +70,11 @@ class Learner(RemoteInterface, ABC):
         """Construct agent interface for training.
 
         Args:
-            experiment_tag (str): Experiment tag.
             runtime_id (str): Assigned runtime id, should be an element of the agent mapping results.
             log_dir (str): The directory for logging.
             observation_space (gym.Space): Observation space.
             action_space (gym.Space): Action space.
-            algorithms (Dict[str, Tuple[Type, Type, Dict]]): A dict that describes the algorithm candidates. Each is \
-                a tuple of `policy_cls`, `trainer_cls`, `model_config` and `custom_config`.
+            algorithms (Algorithm): Algorithm configuration.
             agent_mapping_func (Callable[[AgentID], str]): A function that defines the rule of agent groupping.
             governed_agents (Tuple[AgentID]): A tuple that records which agents is related to this learner. \
                 Note that it should be a subset of the original set of environment agents.
@@ -96,16 +92,15 @@ class Learner(RemoteInterface, ABC):
 
         # initialize a strategy spec for policy maintainance.
         strategy_spec = StrategySpec(
-            policy_cls=algorithms["default"][0],
+            policy_cls=algorithm.policy,
             observation_space=observation_space,
             action_space=action_space,
-            model_config=algorithms["default"][2],
-            **algorithms["default"][3],
+            model_config=algorithm.model_config,
         )
 
         self._runtime_id = runtime_id
         self._device = device
-        self._algorithms = algorithms
+        self._algorithm = algorithm
         self._governed_agents = governed_agents
         self._strategy_spec = strategy_spec
         self._agent_mapping_func = agent_mapping_func
@@ -113,16 +108,44 @@ class Learner(RemoteInterface, ABC):
         self._policy = strategy_spec.gen_policy(device=device)
 
         self._summary_writer = tensorboard.SummaryWriter(log_dir=log_dir)
-        self._trainer_config = trainer_config
 
         # load policy for trainer
-        self._trainer: Trainer = algorithms["default"][1](trainer_config, self._policy)
-        self._total_step = 0
-        self._total_epoch = 0
+        self._trainer: Trainer = algorithm.trainer(trainer_config, self._policy)
 
         dataset = dataset or self.create_dataset()
         self._data_loader = DataLoader(dataset, batch_size=trainer_config["batch_size"])
+
+        self._total_step = 0
+        self._total_epoch = 0
         self._verbose = verbose
+
+    def create_dataset(self) -> DynamicDataset:
+        """Create dataset
+
+        Returns:
+            DynamicDataset: Must be an subinstance of DynamicDataset
+        """
+        return DynamicDataset(
+            grpc_thread_num_workers=1,
+            max_message_length=1024,
+            feature_handler_caller=None,
+        )
+
+    @abstractmethod
+    def multiagent_post_process(
+        self,
+        batch_info: Union[
+            Dict[AgentID, Tuple[Batch, List[int]]], Tuple[Batch, List[int]]
+        ],
+    ) -> Dict[str, Any]:
+        """Merge agent buffer here and return the merged buffer.
+
+        Args:
+            batch_info (Union[Dict[AgentID, Tuple[Batch, List[int]]], Tuple[Batch, List[int]]]): Batch info, could be a dict of agent batch info or a tuple.
+
+        Returns:
+            Dict[str, Any]: A merged buffer dict.
+        """
 
     @property
     def verbose(self) -> bool:
@@ -172,41 +195,6 @@ class Learner(RemoteInterface, ABC):
 
     def get_state_dict(self) -> Dict[str, torch.Tensor]:
         return self.policy.state_dict(device="cpu")
-
-    @abstractmethod
-    def create_dataset(self) -> DynamicDataset:
-        """Create dataset
-
-        Returns:
-            DynamicDataset: Must be an subinstance of DynamicDataset
-        """
-
-    @abstractmethod
-    def add_policies(self, n: int) -> StrategySpec:
-        """Construct `n` new policies and return the latest strategy spec.
-
-        Args:
-            n (int): Indicates how many new policies will be added.
-
-        Returns:
-            StrategySpec: The latest strategy spec instance.
-        """
-
-    @abstractmethod
-    def multiagent_post_process(
-        self,
-        batch_info: Union[
-            Dict[AgentID, Tuple[Batch, List[int]]], Tuple[Batch, List[int]]
-        ],
-    ) -> Dict[str, Any]:
-        """Merge agent buffer here and return the merged buffer.
-
-        Args:
-            batch_info (Union[Dict[AgentID, Tuple[Batch, List[int]]], Tuple[Batch, List[int]]]): Batch info, could be a dict of agent batch info or a tuple.
-
-        Returns:
-            Dict[str, Any]: A merged buffer dict.
-        """
 
     def get_interface_state(self) -> Dict[str, Any]:
         """Return a dict that describes the current learning state.

@@ -1,16 +1,14 @@
 from typing import Type, Any
 
+import socket
 import threading
 import grpc
-import socket
 
-from concurrent import futures
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 
 from malib.utils.general import find_free_port
+from malib.backend.dataset_server.utils import service_wrapper
 
-from .service import DatasetServer
-from . import data_pb2_grpc
 from .feature import BaseFeature
 
 
@@ -23,43 +21,34 @@ class DynamicDataset(Dataset):
         self,
         grpc_thread_num_workers: int,
         max_message_length: int,
-        feature_handler_caller: Type,
+        feature_handler_cls: Type[BaseFeature],
+        **feature_handler_kwargs,
     ) -> None:
         super().__init__()
 
         # start a service as thread
-        self.feature_handler: BaseFeature = feature_handler_caller()
-        self.server = self._start_servicer(
+        self.feature_handler: BaseFeature = feature_handler_cls(
+            **feature_handler_kwargs
+        )
+        self.server_port = find_free_port()
+        self.server = service_wrapper(
             grpc_thread_num_workers,
             max_message_length,
-            find_free_port(),
-        )
-        self.host = socket.gethostbyname(socket.gethostbyname())
-
-    def _start_servicer(
-        self, max_workers: int, max_message_length: int, grpc_port: int
-    ):
-        server = grpc.server(
-            futures.ThreadPoolExecutor(max_workers=max_workers),
-            options=[
-                ("grpc.max_send_message_length", max_message_length),
-                ("grpc.max_receive_message_length", max_message_length),
-            ],
-        )
-        servicer = DatasetServer(self.feature_handler)
-        data_pb2_grpc.add_SendDataServicer_to_server(servicer, server)
-
-        server.add_insecure_port(f"[::]:{grpc_port}")
-        server.start()
-
-        return server
+            self.server_port,
+        )(self.feature_handler)
+        self.server.start()
+        self.host = socket.gethostbyname(socket.gethostname())
 
     @property
     def entrypoint(self) -> str:
-        return f"{self.host}:{self.server._state.port}"
+        return f"{self.host}:{self.server_port}"
+
+    @property
+    def readable_block_size(self) -> str:
+        return len(self.feature_handler)
 
     def __len__(self):
-        return self.feature_handler_caller.block_size
+        return self.feature_handler.block_size
 
     def __getitem__(self, index) -> Any:
         if index >= len(self):
@@ -71,4 +60,4 @@ class DynamicDataset(Dataset):
         return self.feature_handler.safe_get(index)
 
     def close(self):
-        self.server.stop()
+        self.server.wait_for_termination(3)

@@ -1,13 +1,15 @@
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, Type
 
 from dataclasses import dataclass, field
+
+from malib.learner.learner import Learner
 
 
 # TODO(ming): rename it as LearnerConfig
 @dataclass
 class TrainingConfig:
     trainer_config: Dict[str, Any]
-    learner_type: str
+    learner_type: Type[Learner]
     custom_config: Dict[str, Any] = field(default_factory=dict())
 
     @classmethod

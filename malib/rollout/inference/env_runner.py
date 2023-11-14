@@ -120,6 +120,7 @@ class AgentManager:
 
 
 from malib.utils.timing import Timing
+from malib.backend.dataset_server.utils import send_data
 
 
 class BasicEnvRunner(RemoteInterface):
@@ -173,7 +174,7 @@ class BasicEnvRunner(RemoteInterface):
         rollout_config: RolloutConfig,
         strategy_specs: Dict[AgentID, StrategySpec],
         inference_clients: Dict[AgentID, InferenceClient] = None,
-        data_entrypoint_mapping: Dict[AgentID, str] = None,
+        data_entrypoints: Dict[str, str] = None,
     ):
         """Single thread env simulation stepping.
 
@@ -181,7 +182,7 @@ class BasicEnvRunner(RemoteInterface):
             rollout_config (RolloutConfig): Rollout configuration, which specifies how many data pieces will rollout.
             strategy_specs (Dict[AgentID, StrategySpec]): A dict of strategy specs, which rules the behavior policy of each agent.
             inference_clients (Dict[AgentID, InferenceClient]): A dict of remote inference client.
-            data_entrypoint_mapping (Dict[AgentID, str], optional): A mapping which defines the data collection trigger, if not None, then return episodes. Defaults to None.
+            data_entrypoints (Dict[str, str], optional): A mapping which defines the data collection trigger, if not None, then return episodes. Defaults to None.
 
         Raises:
             e: _description_
@@ -263,5 +264,9 @@ class BasicEnvRunner(RemoteInterface):
         # merge agent episodes
         # FIXME(ming): send data to remote dataset
         data = agent_manager.merge_episodes()
+        data_entrypoints = data_entrypoints or {}
+        for entrypoint in data_entrypoints.values():
+            send_data(data, entrypoint=entrypoint)
+
         stats = {"total_timesteps": total_timestep, **timer.todict()}
         return stats

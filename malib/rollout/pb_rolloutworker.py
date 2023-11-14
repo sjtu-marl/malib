@@ -40,13 +40,13 @@ class PBRolloutWorker(RolloutWorker):
         self,
         eval_step: bool,
         strategy_specs: Dict[AgentID, StrategySpec],
-        data_entrypoint_mapping: Dict[AgentID, str],
+        data_entrypoints: Dict[str, str],
     ) -> List[Dict[str, Any]]:
         results = ray.get(
             self.env_runner.run.remote(
                 rollout_config=self.rollout_config,
                 strategy_specs=strategy_specs,
-                data_entrypoint_mapping=data_entrypoint_mapping,
+                data_entrypoints=data_entrypoints,
             )
         )
         # check evaluation info

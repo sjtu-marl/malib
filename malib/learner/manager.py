@@ -49,7 +49,8 @@ from malib.remote.interface import RemoteInterface
 from malib.learner.learner import Learner
 from malib.common.strategy_spec import StrategySpec
 from malib.common.manager import Manager
-from malib.common.training_config import TrainingConfig
+from malib.learner.config import TrainingConfig
+from malib.rl.config import Algorithm
 
 
 DEFAULT_RESOURCE_CONFIG = dict(
@@ -60,9 +61,8 @@ DEFAULT_RESOURCE_CONFIG = dict(
 class LearnerManager(Manager):
     def __init__(
         self,
-        experiment_tag: str,
         stopping_conditions: Dict[str, Any],
-        algorithms: Dict[str, Any],
+        algorithm: Algorithm,
         env_desc: Dict[str, Any],
         agent_mapping_func: Callable[[AgentID], str],
         group_info: Dict[str, Any],
@@ -77,7 +77,7 @@ class LearnerManager(Manager):
 
         Args:
             experiment_tag (str): Experiment identifier, for data tracking.
-            algorithms (Dict[str, Any]): The algorithms configuration candidates.
+            algorithm (Dict[str, Any]): The algorithms configuration candidates.
             env_desc (Dict[str, Any]): The description for environment generation.
             interface_config (Dict[str, Any]): Configuration for agent training inferece construction, keys include \
                 `type` and `custom_config`, a dict.
@@ -118,12 +118,11 @@ class LearnerManager(Manager):
             learners[rid] = learner_cls.options(
                 name=f"learner_{rid}", max_concurrency=10, namespace=self.namespace
             ).remote(
-                experiment_tag=experiment_tag,
                 runtime_id=rid,
                 log_dir=f"{log_dir}/learner_{rid}",
                 observation_space=group_info["observation_space"][rid],
                 action_space=group_info["action_space"][rid],
-                algorithms=algorithms,
+                algorithm=algorithm,
                 agent_mapping_func=agent_mapping_func,
                 governed_agents=tuple(agents),
                 trainer_config=training_config.trainer_config,
@@ -150,7 +149,6 @@ class LearnerManager(Manager):
         # TODO(ming): collect data entrypoints from learners
         self._group_info = group_info
         self._runtime_ids = tuple(group_info["agent_groups"].keys())
-        self._experiment_tag = experiment_tag
         self._env_description = env_desc
         self._training_config = training_config
         self._log_dir = log_dir
@@ -185,6 +183,12 @@ class LearnerManager(Manager):
 
     @property
     def learner_entrypoints(self) -> Dict[str, str]:
+        """Return a mapping from runtime ids to learner entrypoints.
+
+        Returns:
+            Dict[str, str]: A dict of learner entrypoints.
+        """
+
         return self._learner_entrypoints
 
     @property

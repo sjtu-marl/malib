@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Type
 
 from dataclasses import dataclass
 
@@ -9,8 +9,8 @@ from malib.rl.common.trainer import Trainer
 @dataclass
 class Algorithm:
 
-    policy: Policy
+    policy: Type[Policy]
 
-    trainer: Trainer
+    trainer: Type[Trainer]
 
     model_config: Dict[str, Any]

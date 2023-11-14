@@ -20,7 +20,7 @@ class Task:
 class RolloutTask(Task):
     strategy_specs: Dict[str, Any] = field(default_factory=dict())
     stopping_conditions: Dict[str, Any] = field(default_factory=dict())
-    data_entrypoint_mapping: Dict[str, Any] = field(default_factory=dict())
+    data_entrypoints: Dict[str, Any] = field(default_factory=dict())
 
     @classmethod
     def from_raw(

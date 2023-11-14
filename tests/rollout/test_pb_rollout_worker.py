@@ -22,13 +22,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple
 
 import pytest
 import ray
-
-from pytest_mock import MockerFixture
-from gym import spaces
+from malib.backend.dataset_server.data_loader import DynamicDataset
 
 from malib.common.task import RolloutTask
 from malib.common.strategy_spec import StrategySpec
@@ -39,6 +37,8 @@ from malib.rollout.rollout_config import RolloutConfig
 from malib.rollout.pb_rolloutworker import PBRolloutWorker
 from malib.rollout.inference.manager import InferenceManager
 from malib.scenarios.scenario import form_group_info
+from malib.utils.tianshou_batch import Batch
+from malib.utils.typing import AgentID
 
 
 def gen_rollout_config(inference_server_type: str):
@@ -57,31 +57,55 @@ def gen_rollout_config(inference_server_type: str):
     }
 
 
+def gen_common_requirements(n_player: int):
+    env_desc = env_desc_gen(num_agents=n_player)
+
+    algorithm = Algorithm(
+        policy=RandomPolicy,
+        trainer=None,
+        model_config=None,
+    )
+
+    rollout_config = RolloutConfig(
+        num_workers=1,
+        eval_interval=1,
+        n_envs_per_worker=10,
+        use_subproc_env=False,
+        timelimit=256,
+    )
+
+    group_info = form_group_info(env_desc, lambda agent: "default")
+
+    return env_desc, algorithm, rollout_config, group_info
+
+
+from malib.learner.learner import Learner
+from gym import spaces
+from malib.learner.learner import Learner
+from malib.learner.manager import LearnerManager
+from malib.learner.config import TrainingConfig
+
+
+class FakeLearner(Learner):
+    def multiagent_post_process(
+        self,
+        batch_info,
+    ) -> Dict[str, Any]:
+        pass
+
+
 @pytest.mark.parametrize("n_player", [1, 2])
 class TestRolloutWorker:
     def test_rollout(self, n_player: int):
         with ray.init(local_mode=True):
-            env_desc = env_desc_gen(num_agents=n_player)
+            env_desc, algorithm, rollout_config, group_info = gen_common_requirements(
+                n_player
+            )
+
             obs_spaces = env_desc["observation_spaces"]
             act_spaces = env_desc["action_spaces"]
             agents = env_desc["possible_agents"]
             log_dir = "./logs"
-
-            algorithm = Algorithm(
-                policy=RandomPolicy,
-                trainer=None,
-                model_config=None,
-            )
-
-            rollout_config = RolloutConfig(
-                num_workers=1,
-                eval_interval=1,
-                n_envs_per_worker=10,
-                use_subproc_env=False,
-                timelimit=256,
-            )
-
-            group_info = form_group_info(env_desc, lambda agent: "default")
 
             inference_namespace = "test_pb_rolloutworker"
 
@@ -120,6 +144,63 @@ class TestRolloutWorker:
             )
             stats = worker.rollout(task)
 
-    # def test_rollout_with_data_entrypoint(self, mocker: MockerFixture, n_player: int):
-    #     with ray.init(local_mode=True):
-    #         pass
+    def test_rollout_with_data_entrypoint(self, n_player: int):
+        with ray.init(local_mode=True):
+            env_desc, algorithm, rollout_config, group_info = gen_common_requirements(
+                n_player
+            )
+
+            obs_spaces = env_desc["observation_spaces"]
+            act_spaces = env_desc["action_spaces"]
+            agents = env_desc["possible_agents"]
+            log_dir = "./logs"
+
+            inference_namespace = "test_pb_rolloutworker"
+
+            learner_manager = LearnerManager(
+                stopping_conditions={"max_iteration": 10},
+                algorithm=algorithm,
+                env_desc=env_desc,
+                agent_mapping_func=lambda agent: "default",
+                group_info=group_info,
+                training_config=TrainingConfig(
+                    trainer_config={}, learner_type=FakeLearner, custom_config=None
+                ),
+                log_dir=log_dir,
+            )
+
+            infer_manager = InferenceManager(
+                group_info=group_info,
+                ray_actor_namespace=inference_namespace,
+                algorithm=algorithm,
+                model_entry_point=learner_manager.learner_entrypoints,
+            )
+
+            rollout_config.inference_entry_points = infer_manager.inference_entry_points
+
+            strategy_spaces = {
+                agent: StrategySpec(
+                    policy_cls=algorithm.policy,
+                    observation_space=obs_spaces[agent],
+                    action_space=act_spaces[agent],
+                    identifier=agent,
+                    model_config=algorithm.model_config,
+                    policy_ids=["policy-0"],
+                )
+                for agent in agents
+            }
+
+            worker = PBRolloutWorker(
+                env_desc=env_desc,
+                agent_groups=group_info["agent_groups"],
+                rollout_config=rollout_config,
+                log_dir=log_dir,
+            )
+
+            task = RolloutTask(
+                strategy_specs=strategy_spaces,
+                stopping_conditions={"max_iteration": 10},
+                data_entrypoint_mapping=learner_manager.data_entrypoints,
+            )
+
+            stats = worker.rollout(task)

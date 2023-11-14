@@ -20,9 +20,11 @@ class DatasetServer(data_pb2_grpc.SendDataServicer):
     def Collect(self, request, context):
         try:
             data = pickle.loads(request.data)
-            self.feature_handler.safe_put(data)
+            batch_size = len(list(data.values())[0])
+            self.feature_handler.safe_put(data, batch_size)
             message = "success"
         except Exception as e:
             message = traceback.format_exc()
+            print(message)
 
         return data_pb2.Reply(message=message)
