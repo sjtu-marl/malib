@@ -47,7 +47,7 @@ from malib.utils.monitor import write_to_tensorboard
 from malib.common.strategy_spec import StrategySpec
 from malib.common.task import RolloutTask
 from malib.remote.interface import RemoteInterface
-from malib.rollout.rollout_config import RolloutConfig
+from malib.rollout.config import RolloutConfig
 from malib.rollout.inference.client import InferenceClient
 from malib.rollout.inference.env_runner import BasicEnvRunner
 

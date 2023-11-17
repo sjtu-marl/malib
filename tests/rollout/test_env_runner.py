@@ -7,7 +7,7 @@ from malib.common.strategy_spec import StrategySpec
 from malib.rollout.inference import env_runner
 from malib.rollout.inference.client import InferenceClient
 from malib.rollout.envs import mdp
-from malib.rollout.rollout_config import RolloutConfig
+from malib.rollout.config import RolloutConfig
 from malib.rl.random import RandomPolicy
 
 

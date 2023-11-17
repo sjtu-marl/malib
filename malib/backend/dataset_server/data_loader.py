@@ -21,19 +21,24 @@ class DynamicDataset(Dataset):
         self,
         grpc_thread_num_workers: int,
         max_message_length: int,
-        feature_handler_cls: Type[BaseFeature],
+        feature_handler: BaseFeature = None,
+        feature_handler_cls: Type[BaseFeature] = None,
         **feature_handler_kwargs,
     ) -> None:
         super().__init__()
 
         # start a service as thread
-        self.feature_handler: BaseFeature = feature_handler_cls(
+        self.feature_handler: BaseFeature = feature_handler or feature_handler_cls(
             **feature_handler_kwargs
         )
+        self.grpc_thread_num_workers = grpc_thread_num_workers
+        self.max_message_length = max_message_length
+
+    def start_server(self):
         self.server_port = find_free_port()
         self.server = service_wrapper(
-            grpc_thread_num_workers,
-            max_message_length,
+            self.grpc_thread_num_workers,
+            self.max_message_length,
             self.server_port,
         )(self.feature_handler)
         self.server.start()

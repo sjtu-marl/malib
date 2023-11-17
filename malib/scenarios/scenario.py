@@ -31,6 +31,10 @@ import gym
 from malib.utils.typing import AgentID
 from malib.utils.stopping_conditions import StoppingCondition
 
+from malib.rl.config import Algorithm
+from malib.learner.config import LearnerConfig
+from malib.rollout.config import RolloutConfig
+
 
 DEFAULT_STOPPING_CONDITIONS = {}
 
@@ -91,16 +95,16 @@ class Scenario(ABC):
         name: str,
         log_dir: str,
         env_desc: Dict[str, Any],
-        algorithms: Dict[str, Any],
+        algorithm: Algorithm,
         agent_mapping_func: LambdaType,
-        training_config: Dict[str, Any],
-        rollout_config: Dict[str, Any],
+        learner_config: LearnerConfig,
+        rollout_config: RolloutConfig,
         stopping_conditions: Dict[str, Any],
     ):
         self.name = name
         self.log_dir = log_dir
         self.env_desc = env_desc
-        self.algorithms = algorithms
+        self.algorithm = algorithm
         self.agent_mapping_func = agent_mapping_func
         # then generate grouping information here
         self.group_info = form_group_info(env_desc, agent_mapping_func)
@@ -109,8 +113,8 @@ class Scenario(ABC):
             env_desc["observation_spaces"],
             env_desc["action_spaces"],
         )
-        self.training_config = training_config
-        self.rollout_config = rollout_config
+        self.learner_config = LearnerConfig.from_raw(learner_config)
+        self.rollout_config = RolloutConfig.from_raw(rollout_config)
         self.stopping_conditions = stopping_conditions or DEFAULT_STOPPING_CONDITIONS
 
     def copy(self):

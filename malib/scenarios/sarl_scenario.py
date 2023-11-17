@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Any
+from typing import Dict, Any, Union
 from malib.common.task import TaskType, OptimizationTask, RolloutTask
 
 from malib.scenarios import Scenario
@@ -30,8 +30,11 @@ from malib.utils.stopping_conditions import StoppingCondition, get_stopper
 from malib.utils.logging import Logger
 from malib.backend.league import League
 from malib.learner.manager import LearnerManager
+from malib.learner.config import LearnerConfig
+from malib.rollout.config import RolloutConfig
 from malib.rollout.manager import RolloutWorkerManager
 from malib.rollout.inference.manager import InferenceManager
+from malib.rl.config import Algorithm
 
 
 class SARLScenario(Scenario):
@@ -40,9 +43,9 @@ class SARLScenario(Scenario):
         name: str,
         log_dir: str,
         env_desc: Dict[str, Any],
-        algorithms: Dict[str, Any],
-        training_config: Dict[str, Any],
-        rollout_config: Dict[str, Any],
+        algorithm: Algorithm,
+        learner_config: Union[Dict[str, Any], LearnerConfig],
+        rollout_config: Union[Dict[str, Any], RolloutConfig],
         stopping_conditions: Dict[str, Any],
         resource_config: Dict[str, Any] = None,
     ):
@@ -50,9 +53,9 @@ class SARLScenario(Scenario):
             name,
             log_dir,
             env_desc,
-            algorithms,
+            algorithm,
             lambda agent: "default",
-            training_config,
+            learner_config,
             rollout_config,
             stopping_conditions,
         )
@@ -66,15 +69,13 @@ class SARLScenario(Scenario):
 def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = True):
     # TODO(ming): simplify the initialization of training and rollout manager with a scenario instance as input
     learner_manager = LearnerManager(
-        experiment_tag=experiment_tag,
         stopping_conditions=scenario.stopping_conditions,
-        algorithms=scenario.algorithms,
+        algorithm=scenario.algorithm,
         env_desc=scenario.env_desc,
         agent_mapping_func=scenario.agent_mapping_func,
         group_info=scenario.group_info,
-        training_config=scenario.training_config,
+        learner_config=scenario.learner_config,
         log_dir=scenario.log_dir,
-        remote_mode=True,
         resource_config=scenario.resource_config["training"],
         ray_actor_namespace="learner_{}".format(experiment_tag),
         verbose=verbose,
@@ -84,7 +85,8 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
         group_info=scenario.group_info,
         ray_actor_namespace="inference_{}".format(experiment_tag),
         model_entry_point=learner_manager.learner_entrypoints,
-        scenario=scenario,
+        algorithm=scenario.algorithm,
+        verbose=verbose,
     )
 
     rollout_manager = RolloutWorkerManager(
@@ -99,27 +101,23 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
         verbose=verbose,
     )
 
-    league = League(
-        learner_manager, rollout_manager, inference_manager, namespace=experiment_tag
-    )
+    league = League(learner_manager, rollout_manager, inference_manager)
 
+    # TODO(ming): further check is needed
     optimization_task = OptimizationTask(
-        active_agents=scenario.env_desc["possible_agents"],
         stop_conditions=scenario.stopping_conditions["training"],
+        strategy_specs=None,
+        active_agents=None,
     )
-
-    strategy_specs = learner_manager.get_strategy_specs()
 
     rollout_task = RolloutTask(
-        task_type=TaskType.ROLLOUT,
-        strategy_specs=strategy_specs,
+        strategy_specs=None,
         stopping_conditions=scenario.stopping_conditions["rollout"],
         data_entrypoint_mapping=learner_manager.data_entrypoints,
     )
 
     evaluation_task = RolloutTask(
-        task_type=TaskType.EVALUATION,
-        strategy_specs=strategy_specs,
+        strategy_specs=None,
     )
 
     stopper = scenario.create_global_stopper()

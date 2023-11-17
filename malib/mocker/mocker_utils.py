@@ -22,68 +22,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Sequence, Dict, Any, Callable, List, Union
+from typing import Sequence, Dict, Any, Callable, List, Tuple
 
 import time
-import ray
 
 
-from ray.util import ActorPool
-from malib.rollout.rollout_config import RolloutConfig
+from malib.rollout.config import RolloutConfig
 
 from malib.utils.typing import AgentID
 from malib.common.strategy_spec import StrategySpec
-from malib.rollout.rolloutworker import RolloutWorker
 
-
-class FakeRolloutWorker(RolloutWorker):
-    def init_agent_interfaces(
-        self, env_desc: Dict[str, Any], runtime_ids: Sequence[AgentID]
-    ) -> Dict[AgentID, Any]:
-        return {}
-
-    def init_actor_pool(
-        self,
-        env_desc: Dict[str, Any],
-        rollout_config: Dict[str, Any],
-        agent_mapping_func: Callable,
-    ) -> ActorPool:
-        return NotImplementedError
-
-    def init_servers(self):
-        pass
-
-    def rollout(
-        self,
-        runtime_strategy_specs: Dict[str, StrategySpec],
-        stopping_conditions: Dict[str, Any],
-        data_entrypoints: Dict[str, str],
-        trainable_agents: List[AgentID] = None,
-    ):
-        self.set_running(True)
-        return {}
-
-    def simulate(self, runtime_strategy_specs: Dict[str, StrategySpec]):
-        time.sleep(0.5)
-        return {}
-
-    def step_rollout(
-        self,
-        eval_step: bool,
-        rollout_config: Dict[str, Any],
-        dataset_writer_info_dict: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
-        pass
-
-    def step_simulation(
-        self,
-        runtime_strategy_specs_list: Dict[str, StrategySpec],
-        rollout_config: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        pass
-
-
-from typing import Tuple
 
 from malib.utils.typing import PolicyID
 from malib.common.payoff_manager import PayoffManager

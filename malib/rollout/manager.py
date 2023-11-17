@@ -39,7 +39,7 @@ from malib.common.task import RolloutTask
 from malib.common.manager import Manager
 from malib.remote.interface import RemoteInterface
 from malib.common.strategy_spec import StrategySpec
-from malib.rollout.rollout_config import RolloutConfig
+from malib.rollout.config import RolloutConfig
 from malib.rollout.pb_rolloutworker import PBRolloutWorker
 
 
@@ -99,7 +99,7 @@ class RolloutWorkerManager(Manager):
         super().__init__(verbose=verbose, namespace=ray_actor_namespace)
 
         rollout_worker_cls = PBRolloutWorker
-        worker_cls = rollout_worker_cls.as_remote(num_cpus=0, num_gpus=0).options()
+        worker_cls = rollout_worker_cls.as_remote(num_cpus=0, num_gpus=0)
         workers = []
         ready_check = []
         for i in range(num_worker):
@@ -180,7 +180,9 @@ class RolloutWorkerManager(Manager):
 
         for _task in task:
             validate_strategy_specs(_task.strategy_specs)
-            self._actor_pool.submit(lambda actor, _task: actor.rollout.remote(_task))
+            self._actor_pool.submit(
+                lambda actor, _task: actor.rollout.remote(_task), _task
+            )
 
         if wait:
             result_list = self.wait()

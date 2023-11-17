@@ -41,8 +41,6 @@ import copy
 import torch
 import numpy as np
 
-from malib import settings
-
 
 T = TypeVar("T")
 

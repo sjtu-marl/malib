@@ -4,10 +4,11 @@ import time
 from argparse import ArgumentParser
 
 from malib.learner import IndependentAgent
-from malib.scenarios.marl_scenario import MARLScenario
-
-from malib.runner import run
+from malib.scenarios import sarl_scenario
+from malib.rl.config import Algorithm
 from malib.rl.ppo import PPOPolicy, PPOTrainer, DEFAULT_CONFIG
+from malib.learner.config import LearnerConfig
+from malib.rollout.config import RolloutConfig
 from malib.rollout.envs.gym import env_desc_gen
 
 
@@ -23,59 +24,38 @@ if __name__ == "__main__":
     trainer_config["total_timesteps"] = int(1e6)
     trainer_config["use_cuda"] = args.use_cuda
 
-    training_config = {
-        "learner_type": IndependentAgent,
-        "trainer_config": trainer_config,
-        "custom_config": {},
-    }
-
-    rollout_config = {
-        "fragment_length": 2000,  # determine the size of sended data block
-        "max_step": 200,
-        "num_eval_episodes": 10,
-        "num_threads": 2,
-        "num_env_per_thread": 10,
-        "num_eval_threads": 1,
-        "use_subproc_env": False,
-        "batch_mode": "time_step",
-        "postprocessor_types": ["defaults"],
-        # every # rollout epoch run evaluation.
-        "eval_interval": 1,
-        "inference_server": "ray",  # three kinds of inference server: `local`, `pipe` and `ray`
-    }
-
-    # one to one, no sharing, if sharing, implemented as:
-    #   agent_mapping_func = lambda agent: "default"
-    agent_mapping_func = lambda agent: agent
-
-    algorithms = {
-        "default": (
-            PPOPolicy,
-            PPOTrainer,
-            # model configuration, None as default
-            {},
-            {"use_cuda": args.use_cuda},
-        )
-    }
-
-    env_description = env_desc_gen(env_id=args.env_id, scenario_configs={})
-    runtime_logdir = os.path.join(args.log_dir, f"sa_ppo_gym/{time.time()}")
+    runtime_logdir = os.path.join(
+        args.log_dir, f"gym/{args.env_id}/independent_ppo/{time.time()}"
+    )
 
     if not os.path.exists(runtime_logdir):
         os.makedirs(runtime_logdir)
 
-    scenario = MARLScenario(
+    scenario = sarl_scenario.SARLScenario(
         name=f"ppo-gym-{args.env_id}",
         log_dir=runtime_logdir,
-        algorithms=algorithms,
-        env_description=env_description,
-        training_config=training_config,
-        rollout_config=rollout_config,
-        agent_mapping_func=agent_mapping_func,
+        env_desc=env_desc_gen(env_id=args.env_id),
+        algorithm=Algorithm(
+            trainer=PPOTrainer,
+            policy=PPOPolicy,
+            model_config=None,  # use default
+            trainer_config=trainer_config,
+        ),
+        learner_config=LearnerConfig(
+            learner_type=IndependentAgent,
+            feature_handler_meta_gen=None,
+            custom_config={},
+        ),
+        rollout_config=RolloutConfig(
+            num_workers=1,
+        ),
+        agent_mapping_func=lambda agent: agent,
         stopping_conditions={
             "training": {"max_iteration": int(1e10)},
             "rollout": {"max_iteration": 1000, "minimum_reward_improvement": 1.0},
         },
     )
 
-    run(scenario)
+    results = sarl_scenario.execution_plan(
+        experiment_tag=scenario.name, scenario=scenario, verbose=True
+    )

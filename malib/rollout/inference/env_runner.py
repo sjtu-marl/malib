@@ -33,7 +33,7 @@ from malib.utils.episode import ConventionalEpisodeList
 from malib.utils.timing import Timing
 from malib.remote.interface import RemoteInterface
 from malib.rollout.envs.vector_env import VectorEnv, SubprocVecEnv
-from malib.rollout.rollout_config import RolloutConfig
+from malib.rollout.config import RolloutConfig
 from malib.rollout.inference.client import InferenceClient, PolicyReturnWithObs
 from malib.rollout.envs.env import Environment
 from malib.common.strategy_spec import StrategySpec

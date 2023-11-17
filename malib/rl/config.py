@@ -14,3 +14,5 @@ class Algorithm:
     trainer: Type[Trainer]
 
     model_config: Dict[str, Any]
+
+    trainer_config: Dict[str, Any]

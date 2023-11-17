@@ -249,16 +249,19 @@ class Policy(metaclass=ABCMeta):
             Policy: A policy instance
         """
 
-        if device is None:
-            device = "cpu" if not self.use_cuda else "cuda"
+        if isinstance(device, torch.device):
+            device = device.type
 
-        cond1 = "cpu" in device and self.use_cuda
-        cond2 = "cuda" in device and not self.use_cuda
+        if device is None:
+            device = "cpu" if "cuda" not in self.device else "cuda"
+
+        cond1 = "cpu" in device and "cuda" in self.device
+        cond2 = "cuda" in device and "cuda" not in self.device
 
         if "cpu" in device:
-            use_cuda = False
+            _device = device
         else:
-            use_cuda = self._custom_config.get("use_cuda", False)
+            _device = self.device
 
         replacement = {}
         if cond1 or cond2:
@@ -273,7 +276,6 @@ class Policy(metaclass=ABCMeta):
         if use_copy:
             ret = self.copy(self, replacement=replacement)
         else:
-            self.use_cuda = use_cuda
             ret = self
 
         return ret

@@ -23,10 +23,10 @@
 # SOFTWARE.
 
 
-from typing import Dict, Any, Tuple, Callable, Type, List, Union
+from typing import Dict, Any, Tuple, Callable, List, Union, Type
 from abc import ABC, abstractmethod
-from collections import deque
 
+import time
 import traceback
 
 import torch
@@ -44,6 +44,7 @@ from malib.remote.interface import RemoteInterface
 from malib.common.task import OptimizationTask
 from malib.common.strategy_spec import StrategySpec
 from malib.backend.dataset_server.data_loader import DynamicDataset
+from malib.backend.dataset_server.feature import BaseFeature
 from malib.rl.common.trainer import Trainer
 from malib.rl.common.policy import Policy
 from malib.rl.config import Algorithm
@@ -61,11 +62,10 @@ class Learner(RemoteInterface, ABC):
         algorithm: Algorithm,
         agent_mapping_func: Callable[[AgentID], str],
         governed_agents: Tuple[AgentID],
-        trainer_config: Dict[str, Any],
         custom_config: Dict[str, Any] = None,
-        local_buffer_config: Dict = None,
-        verbose: bool = True,
         dataset: DynamicDataset = None,
+        feature_handler_gen: Callable[[str], BaseFeature] = None,
+        verbose: bool = True,
     ):
         """Construct agent interface for training.
 
@@ -80,14 +80,14 @@ class Learner(RemoteInterface, ABC):
                 Note that it should be a subset of the original set of environment agents.
             trainer_config (Dict[str, Any]): Trainer configuration.
             custom_config (Dict[str, Any], optional): A dict of custom configuration. Defaults to None.
-            local_buffer_config (Dict, optional): A dict for local buffer configuration. Defaults to None.
+            dataset (DynamicDataset, optional): A dataset instance. Defaults to None.
+            feature_handler_gen (Callable[[str], BaseFeature], optional): A function that generates feature handler. Defaults to None.
             verbose (bool, True): Enable logging or not. Defaults to True.
         """
 
         if verbose:
             Logger.info("\tAssigned GPUs: {}".format(ray.get_gpu_ids()))
 
-        local_buffer_config = local_buffer_config or {}
         device = torch.device("cuda" if ray.get_gpu_ids() else "cpu")
 
         # initialize a strategy spec for policy maintainance.
@@ -110,26 +110,30 @@ class Learner(RemoteInterface, ABC):
         self._summary_writer = tensorboard.SummaryWriter(log_dir=log_dir)
 
         # load policy for trainer
-        self._trainer: Trainer = algorithm.trainer(trainer_config, self._policy)
+        self._trainer: Trainer = algorithm.trainer(
+            algorithm.trainer_config, self._policy
+        )
 
-        dataset = dataset or self.create_dataset()
-        self._data_loader = DataLoader(dataset, batch_size=trainer_config["batch_size"])
+        if dataset is None:
+            dataset = DynamicDataset(
+                grpc_thread_num_workers=2,
+                max_message_length=1024,
+                feature_handler=feature_handler_gen(device),
+            )
+        else:
+            if feature_handler_gen is not None:
+                # XXX(ming): should we replace feature handler ?
+                dataset.feature_handler = feature_handler_gen(device)
+
+        dataset.start_server()
+
+        self._data_loader = DataLoader(
+            dataset, batch_size=algorithm.trainer_config["batch_size"]
+        )
 
         self._total_step = 0
         self._total_epoch = 0
         self._verbose = verbose
-
-    def create_dataset(self) -> DynamicDataset:
-        """Create dataset
-
-        Returns:
-            DynamicDataset: Must be an subinstance of DynamicDataset
-        """
-        return DynamicDataset(
-            grpc_thread_num_workers=1,
-            max_message_length=1024,
-            feature_handler_caller=None,
-        )
 
     @abstractmethod
     def multiagent_post_process(
@@ -223,6 +227,12 @@ class Learner(RemoteInterface, ABC):
         self.set_running(True)
 
         try:
+            while (
+                self.data_loader.dataset.readable_block_size
+                < self.data_loader.batch_size
+            ):
+                time.sleep(1)
+
             while self.is_running():
                 for data in self.data_loader:
                     batch_info = self.multiagent_post_process(data)

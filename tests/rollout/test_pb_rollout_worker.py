@@ -26,19 +26,16 @@ from typing import Dict, Any, List, Tuple
 
 import pytest
 import ray
-from malib.backend.dataset_server.data_loader import DynamicDataset
 
 from malib.common.task import RolloutTask
 from malib.common.strategy_spec import StrategySpec
 from malib.rl.random import RandomPolicy
 from malib.rl.config import Algorithm
 from malib.rollout.envs.random import env_desc_gen
-from malib.rollout.rollout_config import RolloutConfig
+from malib.rollout.config import RolloutConfig
 from malib.rollout.pb_rolloutworker import PBRolloutWorker
 from malib.rollout.inference.manager import InferenceManager
 from malib.scenarios.scenario import form_group_info
-from malib.utils.tianshou_batch import Batch
-from malib.utils.typing import AgentID
 
 
 def gen_rollout_config(inference_server_type: str):
@@ -61,9 +58,7 @@ def gen_common_requirements(n_player: int):
     env_desc = env_desc_gen(num_agents=n_player)
 
     algorithm = Algorithm(
-        policy=RandomPolicy,
-        trainer=None,
-        model_config=None,
+        policy=RandomPolicy, trainer=None, model_config=None, trainer_config={}
     )
 
     rollout_config = RolloutConfig(
@@ -79,11 +74,14 @@ def gen_common_requirements(n_player: int):
     return env_desc, algorithm, rollout_config, group_info
 
 
+import numpy as np
+
 from malib.learner.learner import Learner
 from gym import spaces
-from malib.learner.learner import Learner
 from malib.learner.manager import LearnerManager
-from malib.learner.config import TrainingConfig
+from malib.learner.config import LearnerConfig
+from malib.utils.episode import Episode
+from malib.backend.dataset_server.feature import BaseFeature
 
 
 class FakeLearner(Learner):
@@ -92,6 +90,28 @@ class FakeLearner(Learner):
         batch_info,
     ) -> Dict[str, Any]:
         pass
+
+
+class FakeFeatureHandler(BaseFeature):
+
+    pass
+
+
+def feature_handler_meta_gen(env_desc, agent_id):
+    def f(device):
+        _spaces = {
+            Episode.DONE: spaces.Discrete(1),
+            Episode.CUR_OBS: env_desc["observation_spaces"][agent_id],
+            Episode.ACTION: env_desc["action_spaces"][agent_id],
+            Episode.REWARD: spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
+            Episode.NEXT_OBS: env_desc["observation_spaces"][agent_id],
+        }
+        np_memory = {
+            k: np.zeros((100,) + v.shape, dtype=v.dtype) for k, v in _spaces.items()
+        }
+        return FakeFeatureHandler(_spaces, np_memory, device)
+
+    return f
 
 
 @pytest.mark.parametrize("n_player", [1, 2])
@@ -163,8 +183,10 @@ class TestRolloutWorker:
                 env_desc=env_desc,
                 agent_mapping_func=lambda agent: "default",
                 group_info=group_info,
-                training_config=TrainingConfig(
-                    trainer_config={}, learner_type=FakeLearner, custom_config=None
+                learner_config=LearnerConfig(
+                    learner_type=FakeLearner,
+                    feature_handler_meta_gen=feature_handler_meta_gen,
+                    custom_config=None,
                 ),
                 log_dir=log_dir,
             )

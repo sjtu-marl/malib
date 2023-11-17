@@ -83,6 +83,7 @@ class TestDynamicDataset:
                 for k, v in _spaces.items()
             },
         )
+        dataset.start_server()
 
         # send data
         print("send 10 piece of data, entrypoint=", dataset.entrypoint)
@@ -124,6 +125,7 @@ class TestDynamicDataset:
                 k: np.zeros((100,) + v.shape, dtype=v.dtype) for k, v in _spaces.items()
             },
         )
+        dataset.start_server()
 
         def start_send(batch, entrypoint):
             print("send 10 piece of data, entrypoint=", entrypoint)

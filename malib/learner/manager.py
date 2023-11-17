@@ -34,11 +34,9 @@ from typing import (
     Type,
     Generator,
 )
-from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, Future, CancelledError
+from concurrent.futures import ThreadPoolExecutor
 
 import os
-import traceback
 import ray
 from malib.common.task import OptimizationTask
 
@@ -46,10 +44,9 @@ from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
 from malib.utils.exploitability import measure_exploitability
 from malib.remote.interface import RemoteInterface
-from malib.learner.learner import Learner
 from malib.common.strategy_spec import StrategySpec
 from malib.common.manager import Manager
-from malib.learner.config import TrainingConfig
+from malib.learner.config import LearnerConfig
 from malib.rl.config import Algorithm
 
 
@@ -66,7 +63,7 @@ class LearnerManager(Manager):
         env_desc: Dict[str, Any],
         agent_mapping_func: Callable[[AgentID], str],
         group_info: Dict[str, Any],
-        training_config: Union[Dict[str, Any], TrainingConfig],
+        learner_config: LearnerConfig,
         log_dir: str,
         resource_config: Dict[str, Any] = None,
         ray_actor_namespace: str = "learner",
@@ -90,19 +87,19 @@ class LearnerManager(Manager):
         super().__init__(verbose=verbose, namespace=ray_actor_namespace)
 
         resource_config = resource_config or DEFAULT_RESOURCE_CONFIG
-        training_config = TrainingConfig.from_raw(training_config)
+        learner_config = LearnerConfig.from_raw(learner_config)
 
         # interface config give the agent type used here and the group mapping if needed
 
         # FIXME(ming): resource configuration is not available now, will turn-on in the next version
-        if training_config.trainer_config.get("use_cuda", False):
+        if algorithm.trainer_config.get("use_cuda", False):
             num_gpus = 1 / len(group_info["agent_groups"])
         else:
             num_gpus = 0.0
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
-        learner_cls = training_config.learner_type
+        learner_cls = learner_config.learner_type
         # update num gpus
         resource_config["num_gpus"] = num_gpus
         learner_cls = learner_cls.as_remote(**resource_config)
@@ -115,6 +112,7 @@ class LearnerManager(Manager):
         ready_check = []
 
         for rid, agents in group_info["agent_groups"].items():
+            agents = tuple(agents)
             learners[rid] = learner_cls.options(
                 name=f"learner_{rid}", max_concurrency=10, namespace=self.namespace
             ).remote(
@@ -124,9 +122,12 @@ class LearnerManager(Manager):
                 action_space=group_info["action_space"][rid],
                 algorithm=algorithm,
                 agent_mapping_func=agent_mapping_func,
-                governed_agents=tuple(agents),
-                trainer_config=training_config.trainer_config,
-                custom_config=training_config.custom_config,
+                governed_agents=agents,
+                trainer_config=algorithm.trainer_config,
+                custom_config=learner_config.custom_config,
+                feature_handler_gen=learner_config.feature_handler_meta_gen(
+                    env_desc, agents[0]
+                ),
                 verbose=verbose,
             )
             ready_check.append(learners[rid].ready.remote())
@@ -150,7 +151,7 @@ class LearnerManager(Manager):
         self._group_info = group_info
         self._runtime_ids = tuple(group_info["agent_groups"].keys())
         self._env_description = env_desc
-        self._training_config = training_config
+        self._learner_config = learner_config
         self._log_dir = log_dir
         self._agent_mapping_func = agent_mapping_func
         self._learners = learners
