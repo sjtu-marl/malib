@@ -9,7 +9,6 @@ from malib.rollout.envs.env import Environment
 
 class MDPEnvironment(Environment):
     def __init__(self, **configs):
-
         try:
             from blackhc import mdp
             from blackhc.mdp import example as mdp_examples

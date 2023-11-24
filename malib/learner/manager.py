@@ -158,6 +158,9 @@ class LearnerManager(Manager):
         self._thread_pool = ThreadPoolExecutor(max_workers=len(learners))
         self._stopping_conditions = stopping_conditions
 
+        # init strategy spec
+        self.add_policies()
+
         Logger.info(
             f"training manager launched, {len(self._learners)} learner(s) created"
         )

@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass
 class ModelConfig:
-
     model_cls: Type
 
     model_args: Dict[str, Any]

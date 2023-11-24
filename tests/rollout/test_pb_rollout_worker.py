@@ -93,7 +93,6 @@ class FakeLearner(Learner):
 
 
 class FakeFeatureHandler(BaseFeature):
-
     pass
 
 

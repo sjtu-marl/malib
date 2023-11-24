@@ -67,7 +67,7 @@ class SARLScenario(Scenario):
 
 
 def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = True):
-    # TODO(ming): simplify the initialization of training and rollout manager with a scenario instance as input
+    # TODO(ming): simplize the initialization of training and rollout manager with a scenario instance as input
     learner_manager = LearnerManager(
         stopping_conditions=scenario.stopping_conditions,
         algorithm=scenario.algorithm,

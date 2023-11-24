@@ -8,7 +8,6 @@ from malib.rl.common.trainer import Trainer
 
 @dataclass
 class Algorithm:
-
     policy: Type[Policy]
 
     trainer: Type[Trainer]

@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 
 @dataclass
 class RolloutConfig:
-
     num_workers: int = 1
     """Defines how many workers will be used for executing one rollout task, default is 1"""
 
