@@ -34,7 +34,6 @@ class ModelClient:
         """
 
         namespace, name = entry_point.split(":")
-
         self.client = ray.get_actor(name=name, namespace=namespace)
         self.thread_pool = futures.ThreadPoolExecutor(max_workers=10)
 

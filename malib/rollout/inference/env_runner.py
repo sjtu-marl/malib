@@ -135,7 +135,7 @@ class BasicEnvRunner(RemoteInterface):
         agent_groups: Dict[str, Set] = None,
         inference_entry_points: Dict[str, str] = None,
     ) -> None:
-        super().__init__()
+        super(RemoteInterface, self).__init__()
 
         self._use_subproc_env = use_subproc_env
         self._max_env_num = max_env_num
@@ -265,8 +265,12 @@ class BasicEnvRunner(RemoteInterface):
         # FIXME(ming): send data to remote dataset
         data = agent_manager.merge_episodes()
         data_entrypoints = data_entrypoints or {}
-        for entrypoint in data_entrypoints.values():
-            send_data(data, entrypoint=entrypoint)
+        for k, entrypoint in data_entrypoints.items():
+            # FIXME(ming): a bug, data: list of agent episode
+            agent_episode = data[0]
+            # requires agent group for identification
+            random_data = list(agent_episode.values())[0]
+            send_data(random_data, entrypoint=entrypoint)
 
         stats = {"total_timesteps": total_timestep, **timer.todict()}
         return stats

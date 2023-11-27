@@ -50,6 +50,9 @@ from malib.rl.common.policy import Policy
 from malib.rl.config import Algorithm
 
 
+MAX_MESSAGE_LENGTH = 7309898
+
+
 class Learner(RemoteInterface, ABC):
     """Base class of agent interface, for training"""
 
@@ -121,7 +124,7 @@ class Learner(RemoteInterface, ABC):
         if dataset is None:
             dataset = DynamicDataset(
                 grpc_thread_num_workers=2,
-                max_message_length=1024,
+                max_message_length=MAX_MESSAGE_LENGTH,
                 feature_handler=feature_handler_gen(device),
             )
         else:

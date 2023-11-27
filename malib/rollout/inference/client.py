@@ -126,7 +126,7 @@ class InferenceClient(RemoteInterface):
 
         with torch.inference_mode():
             obs = self.fixed_policy.preprocessor.transform(raw_obs)
-            obs = torch.from_numpy(obs).float()
+            obs = torch.tensor(obs).float()
             # FIXME(ming): act mask and hidden state is set to None,
             #   not feasible for cases which require them
             policy_return = policy.compute_action(

@@ -4,7 +4,7 @@ import ray
 
 from malib.common.manager import Manager
 from malib.rl.config import Algorithm
-from malib.scenarios import Scenario
+from malib.utils.logging import Logger
 from malib.rollout.inference.client import InferenceClient
 
 
@@ -12,10 +12,10 @@ class InferenceManager(Manager):
     def __init__(
         self,
         group_info: Dict[str, Set],
-        ray_actor_namespace: str,
         model_entry_point: Dict[str, str],
         algorithm: Algorithm,
         verbose: bool = False,
+        ray_actor_namespace: str = "inference",
     ):
         super().__init__(verbose, namespace=ray_actor_namespace)
 
@@ -26,10 +26,11 @@ class InferenceManager(Manager):
 
         self._infer_clients = {}
         self._inference_entry_points = {}
-        # FIXME(Ming): for debug only
-        model_entry_point = model_entry_point or {
-            rid: None for rid in agent_groups.keys()
-        }
+        model_entry_point = (
+            model_entry_point
+            if model_entry_point is not None
+            else {rid: None for rid in agent_groups.keys()}
+        )
 
         infer_client_ready_check = []
         for rid, _ in agent_groups.items():
@@ -53,6 +54,8 @@ class InferenceManager(Manager):
             _, infer_client_ready_check = ray.wait(
                 infer_client_ready_check, num_returns=1, timeout=1
             )
+
+        Logger.info("All inference clients are ready for serving")
 
     def get_inference_client(self, runtime_id: str) -> InferenceClient:
         return self.inference_clients[runtime_id]

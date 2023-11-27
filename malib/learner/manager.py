@@ -105,10 +105,6 @@ class LearnerManager(Manager):
         learner_cls = learner_cls.as_remote(**resource_config)
         learners: Dict[str, ray.ObjectRef] = {}
 
-        # assert (
-        #     "training" in stopping_conditions
-        # ), f"Stopping conditions should contains `training` stoppong conditions: {stopping_conditions}"
-
         ready_check = []
 
         for rid, agents in group_info["agent_groups"].items():
@@ -135,6 +131,7 @@ class LearnerManager(Manager):
         while len(ready_check):
             _, ready_check = ray.wait(ready_check, num_returns=1, timeout=1)
 
+        Logger.info("All Learners are ready for accepting new tasks.")
         data_entrypoints = ray.get(
             [x.get_data_entrypoint.remote() for x in learners.values()]
         )

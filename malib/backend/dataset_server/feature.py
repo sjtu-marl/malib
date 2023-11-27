@@ -35,7 +35,11 @@ class BaseFeature(ABC):
         self.rw_lock = rwlock.RWLockFair()
         self._device = device
         self._spaces = spaces
-        self._block_size = block_size or list(np_memory.values())[0].shape[0]
+        self._block_size = (
+            block_size
+            if block_size is not None
+            else list(np_memory.values())[0].shape[0]
+        )
         self._available_size = 0
         self._flag = 0
         self._shared_memory = {
@@ -59,9 +63,22 @@ class BaseFeature(ABC):
 
     def write(self, data: Dict[str, Any], start: int, end: int):
         for k, v in data.items():
-            self._shared_memory[k][start:end] = torch.as_tensor(v).to(
+            # FIXME(ming): should check the size of v
+            tensor = torch.as_tensor(v).to(
                 self._device, dtype=self._shared_memory[k].dtype
             )
+            split = 0
+            if end > self.block_size:
+                # we now should split the data
+                split = self.block_size - start
+                self._shared_memory[k][start:] = tensor[:split]
+                _start = 0
+                _end = tensor.shape[0] - split
+            else:
+                _start = start
+                _end = end
+
+            self._shared_memory[k][_start:_end] = tensor[split:]
 
     def generate_timestep(self) -> Dict[str, np.ndarray]:
         return {k: space.sample() for k, space in self.spaces.items()}

@@ -170,6 +170,11 @@ class RolloutWorker(RemoteInterface):
             agent_groups=self.agent_groups,
             inference_entry_points=rollout_config.inference_entry_points,
         )
+        ready_check = [env_runner.ready.remote()]
+
+        # wait for it be ready
+        while len(ready_check):
+            _, ready_check = ray.wait(ready_check, num_returns=1, timeout=1)
 
         return env_runner
 

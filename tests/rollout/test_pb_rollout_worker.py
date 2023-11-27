@@ -103,13 +103,13 @@ def feature_handler_meta_gen(env_desc, agent_id):
             Episode.DONE: spaces.Discrete(1),
             Episode.CUR_OBS: env_desc["observation_spaces"][agent_id],
             Episode.ACTION: env_desc["action_spaces"][agent_id],
-            Episode.REWARD: spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
+            Episode.REWARD: spaces.Box(-np.inf, np.inf, shape=(), dtype=np.float32),
             Episode.NEXT_OBS: env_desc["observation_spaces"][agent_id],
         }
         np_memory = {
-            k: np.zeros((100,) + v.shape, dtype=v.dtype) for k, v in _spaces.items()
+            k: np.zeros((1000,) + v.shape, dtype=v.dtype) for k, v in _spaces.items()
         }
-        return FakeFeatureHandler(_spaces, np_memory, device)
+        return FakeFeatureHandler(_spaces, np_memory, device=device)
 
     return f
 
@@ -165,7 +165,7 @@ class TestRolloutWorker:
     #         stats = worker.rollout(task)
 
     def test_rollout_with_data_entrypoint(self, n_player: int):
-        with ray.init(local_mode=True):
+        with ray.init():
             env_desc, algorithm, rollout_config, group_info = gen_common_requirements(
                 n_player
             )
@@ -174,8 +174,6 @@ class TestRolloutWorker:
             act_spaces = env_desc["action_spaces"]
             agents = env_desc["possible_agents"]
             log_dir = "./logs"
-
-            inference_namespace = "test_pb_rolloutworker"
 
             learner_manager = LearnerManager(
                 stopping_conditions={"max_iteration": 10},
@@ -193,7 +191,6 @@ class TestRolloutWorker:
 
             infer_manager = InferenceManager(
                 group_info=group_info,
-                ray_actor_namespace=inference_namespace,
                 algorithm=algorithm,
                 model_entry_point=learner_manager.learner_entrypoints,
             )
@@ -219,6 +216,8 @@ class TestRolloutWorker:
                 log_dir=log_dir,
             )
 
+            print("PBRollout worker is ready to work!!!")
+
             task = RolloutTask(
                 strategy_specs=strategy_spaces,
                 stopping_conditions={"max_iteration": 10},
@@ -226,3 +225,4 @@ class TestRolloutWorker:
             )
 
             stats = worker.rollout(task)
+        ray.shutdown()
