@@ -108,7 +108,10 @@ class Policy(metaclass=ABCMeta):
         self._model = kwargs.get("model_client")
         if self._model is None:
             if kwargs.get("model_entry_point"):
-                self._model = ModelClient(kwargs["model_entry_point"], model_config)
+                self._model = ModelClient(
+                    kwargs["model_entry_point"],
+                    ModelConfig(lambda **x: self.create_model(), model_config),
+                )
             else:
                 self._model = self.create_model().to(self._device)
 
@@ -147,7 +150,7 @@ class Policy(metaclass=ABCMeta):
         return self._preprocessor
 
     @property
-    def device(self) -> str:
+    def device(self) -> torch.device:
         return self._device
 
     @property
@@ -186,7 +189,7 @@ class Policy(metaclass=ABCMeta):
             res = self.model.state_dict()
         else:
             res = {}
-            for k, v in self.model.state_dict():
+            for k, v in self.model.state_dict().items():
                 res[k] = v.to(device)
 
         return res
@@ -249,16 +252,18 @@ class Policy(metaclass=ABCMeta):
             Policy: A policy instance
         """
 
-        if isinstance(device, torch.device):
-            device = device.type
+        if isinstance(device, str):
+            device = torch.device(device)
 
         if device is None:
-            device = "cpu" if "cuda" not in self.device else "cuda"
+            device = (
+                torch.device("cpu") if "cuda" not in self.device.type else self.device
+            )
 
-        cond1 = "cpu" in device and "cuda" in self.device
-        cond2 = "cuda" in device and "cuda" not in self.device
+        cond1 = "cpu" in device.type and "cuda" in self.device.type
+        cond2 = "cuda" in device.type and "cuda" not in self.device.type
 
-        if "cpu" in device:
+        if "cpu" in device.type:
             _device = device
         else:
             _device = self.device

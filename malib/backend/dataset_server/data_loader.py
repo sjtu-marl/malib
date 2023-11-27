@@ -28,8 +28,10 @@ class DynamicDataset(Dataset):
         super().__init__()
 
         # start a service as thread
-        self.feature_handler: BaseFeature = feature_handler or feature_handler_cls(
-            **feature_handler_kwargs
+        self.feature_handler: BaseFeature = (
+            feature_handler
+            if feature_handler is not None
+            else feature_handler_cls(**feature_handler_kwargs)
         )
         self.grpc_thread_num_workers = grpc_thread_num_workers
         self.max_message_length = max_message_length

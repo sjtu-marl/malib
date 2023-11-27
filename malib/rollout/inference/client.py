@@ -77,6 +77,15 @@ class InferenceClient(RemoteInterface):
         pass
 
     def process_obs(self, raw_observation: Any) -> np.ndarray:
+        """Convert raw environmental observation to array like.
+
+        Args:
+            raw_observation (Any): Raw environmental observation.
+
+        Returns:
+            np.ndarray: Array-like observation.
+        """
+
         return self.fixed_policy.preprocessor.transform(raw_observation)
 
     def compute_action(

@@ -66,7 +66,7 @@ class SARLScenario(Scenario):
         return get_stopper(self.stopping_conditions)
 
 
-def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = True):
+def execution_plan(scenario: SARLScenario, verbose: bool = True):
     # TODO(ming): simplize the initialization of training and rollout manager with a scenario instance as input
     learner_manager = LearnerManager(
         stopping_conditions=scenario.stopping_conditions,
@@ -77,13 +77,13 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
         learner_config=scenario.learner_config,
         log_dir=scenario.log_dir,
         resource_config=scenario.resource_config["training"],
-        ray_actor_namespace="learner_{}".format(experiment_tag),
+        ray_actor_namespace="learner_{}".format(scenario.name),
         verbose=verbose,
     )
 
     inference_manager = InferenceManager(
         group_info=scenario.group_info,
-        ray_actor_namespace="inference_{}".format(experiment_tag),
+        ray_actor_namespace="inference_{}".format(scenario.name),
         model_entry_point=learner_manager.learner_entrypoints,
         algorithm=scenario.algorithm,
         verbose=verbose,
@@ -97,7 +97,7 @@ def execution_plan(experiment_tag: str, scenario: SARLScenario, verbose: bool = 
         env_desc=scenario.env_desc,
         log_dir=scenario.log_dir,
         resource_config=scenario.resource_config["rollout"],
-        ray_actor_namespace="rollout_{}".format(experiment_tag),
+        ray_actor_namespace="rollout_{}".format(scenario.name),
         verbose=verbose,
     )
 

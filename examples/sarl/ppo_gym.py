@@ -3,6 +3,11 @@ import time
 
 from argparse import ArgumentParser
 
+from gym import spaces
+
+import numpy as np
+
+from malib.utils.episode import Episode
 from malib.learner import IndependentAgent
 from malib.scenarios import sarl_scenario
 from malib.rl.config import Algorithm
@@ -10,6 +15,32 @@ from malib.rl.ppo import PPOPolicy, PPOTrainer, DEFAULT_CONFIG
 from malib.learner.config import LearnerConfig
 from malib.rollout.config import RolloutConfig
 from malib.rollout.envs.gym import env_desc_gen
+from malib.backend.dataset_server.feature import BaseFeature
+
+
+class FeatureHandler(BaseFeature):
+    pass
+
+
+def feature_handler_meta_gen(env_desc, agent_id):
+    def f(device):
+        # define the data schema
+        _spaces = {
+            Episode.DONE: spaces.Discrete(1),
+            Episode.CUR_OBS: env_desc["observation_spaces"][agent_id],
+            Episode.ACTION: env_desc["action_spaces"][agent_id],
+            Episode.REWARD: spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
+            Episode.NEXT_OBS: env_desc["observation_spaces"][agent_id],
+        }
+
+        # you should know the maximum of replaybuffer before training
+        np_memory = {
+            k: np.zeros((100,) + v.shape, dtype=v.dtype) for k, v in _spaces.items()
+        }
+
+        return FeatureHandler(_spaces, np_memory, device)
+
+    return f
 
 
 if __name__ == "__main__":
@@ -43,7 +74,7 @@ if __name__ == "__main__":
         ),
         learner_config=LearnerConfig(
             learner_type=IndependentAgent,
-            feature_handler_meta_gen=None,
+            feature_handler_meta_gen=feature_handler_meta_gen,
             custom_config={},
         ),
         rollout_config=RolloutConfig(
@@ -56,6 +87,6 @@ if __name__ == "__main__":
         },
     )
 
-    results = sarl_scenario.execution_plan(
-        experiment_tag=scenario.name, scenario=scenario, verbose=True
-    )
+    results = sarl_scenario.execution_plan(scenario=scenario, verbose=True)
+
+    print(results)

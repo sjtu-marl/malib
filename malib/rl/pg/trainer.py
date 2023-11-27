@@ -29,18 +29,28 @@ import torch
 import numpy as np
 
 from torch import optim
+from malib.rl.common.policy import Policy
 
 from malib.rl.common.trainer import Trainer
 from malib.utils.data import Postprocessor
+from malib.utils.general import merge_dicts
 from malib.utils.typing import AgentID
 from malib.utils.tianshou_batch import Batch
+from .config import DEFAULT_CONFIG
 
 
 class PGTrainer(Trainer):
+    def __init__(self, training_config: Dict[str, Any], policy_instance: Policy = None):
+        # merge from default
+        training_config = merge_dicts(
+            DEFAULT_CONFIG["training_config"], training_config or {}
+        )
+        super().__init__(training_config, policy_instance)
+
     def setup(self):
         self.optimizer: Type[optim.Optimizer] = getattr(
             optim, self.training_config["optimizer"]
-        )(self.policy.parameters()["actor"], lr=self.training_config["lr"])
+        )(self.policy.actor.parameters(), lr=self.training_config["lr"])
         self.lr_scheduler: torch.optim.lr_scheduler.LambdaLR = None
         self.ret_rms = None
 

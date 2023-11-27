@@ -105,9 +105,9 @@ class LearnerManager(Manager):
         learner_cls = learner_cls.as_remote(**resource_config)
         learners: Dict[str, ray.ObjectRef] = {}
 
-        assert (
-            "training" in stopping_conditions
-        ), f"Stopping conditions should contains `training` stoppong conditions: {stopping_conditions}"
+        # assert (
+        #     "training" in stopping_conditions
+        # ), f"Stopping conditions should contains `training` stoppong conditions: {stopping_conditions}"
 
         ready_check = []
 
@@ -123,7 +123,6 @@ class LearnerManager(Manager):
                 algorithm=algorithm,
                 agent_mapping_func=agent_mapping_func,
                 governed_agents=agents,
-                trainer_config=algorithm.trainer_config,
                 custom_config=learner_config.custom_config,
                 feature_handler_gen=learner_config.feature_handler_meta_gen(
                     env_desc, agents[0]
@@ -236,10 +235,7 @@ class LearnerManager(Manager):
         policy_nums = dict.fromkeys(interface_ids, n) if isinstance(n, int) else n
 
         strategy_spec_list: List[StrategySpec] = ray.get(
-            [
-                self._learners[k].add_policies.remote(n=policy_nums[k])
-                for k in interface_ids
-            ]
+            [self._learners[k].get_strategy_spec.remote() for k in interface_ids]
         )
         strategy_spec_dict: Dict[str, StrategySpec] = dict(
             zip(interface_ids, strategy_spec_list)

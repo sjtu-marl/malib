@@ -203,7 +203,7 @@ class RolloutWorker(RemoteInterface):
                 task.strategy_specs,
                 task.data_entrypoints,
             )
-            # total_timesteps += results["total_timesteps"]
+            total_timesteps += results["total_timesteps"]
 
             # performance["rollout_iter_rate"] = (epoch + 1) / (time.time() - start_time)
             # performance["rollout_FPS"] = results["FPS"]
@@ -216,12 +216,12 @@ class RolloutWorker(RemoteInterface):
             #     formatted_results = pprint.pformat(eval_results)
             #     Logger.info(f"Evaluation at epoch: {epoch}\n{formatted_results}")
 
-            # write_to_tensorboard(
-            #     self.tb_writer,
-            #     results,
-            #     global_step=total_timesteps,
-            #     prefix="Evaluation",
-            # )
+            write_to_tensorboard(
+                self.tb_writer,
+                results,
+                global_step=total_timesteps,
+                prefix="Rollouts",
+            )
 
             write_to_tensorboard(
                 self.tb_writer, performance, global_step=epoch, prefix="Performance"

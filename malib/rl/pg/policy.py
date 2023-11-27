@@ -80,6 +80,7 @@ class PGPolicy(Policy):
             self.model_config["preprocess_net"].get("net_type", None),
             **self.model_config["preprocess_net"]["config"]
         )
+
         if isinstance(self.action_space, spaces.Discrete):
             return discrete.Actor(
                 preprocess_net=preprocess_net,

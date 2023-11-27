@@ -11,6 +11,8 @@ from malib.backend.dataset_server.feature import BaseFeature
 class LearnerConfig:
     learner_type: Type[Learner]
     feature_handler_meta_gen: Callable[["EnvDesc", str], Callable[[str], BaseFeature]]
+    """what is it?"""
+
     custom_config: Dict[str, Any] = field(default_factory=dict())
 
     @classmethod

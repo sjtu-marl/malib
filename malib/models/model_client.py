@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Union
 from concurrent import futures
 
 import threading
@@ -19,7 +19,9 @@ def load_state_dict(client, timeout=10):
 
 
 class ModelClient:
-    def __init__(self, entry_point: str, model_config: ModelConfig):
+    def __init__(
+        self, entry_point: str, model_config: Union[ModelConfig, Dict[str, Any]]
+    ):
         """Construct a model client for mantaining a model instance and its update.
 
         Args:

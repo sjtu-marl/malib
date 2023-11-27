@@ -114,6 +114,10 @@ class Learner(RemoteInterface, ABC):
             algorithm.trainer_config, self._policy
         )
 
+        # since the trainer_config has been updated by the trainer
+        # thus the algorithm should update its trainer_config
+        algorithm.trainer_config = self._trainer.training_config
+
         if dataset is None:
             dataset = DynamicDataset(
                 grpc_thread_num_workers=2,
@@ -126,7 +130,6 @@ class Learner(RemoteInterface, ABC):
                 dataset.feature_handler = feature_handler_gen(device)
 
         dataset.start_server()
-
         self._data_loader = DataLoader(
             dataset, batch_size=algorithm.trainer_config["batch_size"]
         )

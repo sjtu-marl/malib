@@ -29,6 +29,7 @@ DEFAULT_CONFIG = {
         "reward_norm": None,
         "n_repeat": 2,
         "minibatch": 2,
+        "batch_size": 32,
         "gamma": 0.99,
     },
     "model_config": {
