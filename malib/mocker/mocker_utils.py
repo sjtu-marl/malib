@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Sequence, Dict, Any, Callable, List, Tuple
+from typing import Sequence, Dict, Any, Callable, List, Tuple, Union
 
 import time
 
@@ -35,6 +35,20 @@ from malib.common.strategy_spec import StrategySpec
 
 from malib.utils.typing import PolicyID
 from malib.common.payoff_manager import PayoffManager
+from malib.learner.learner import Learner
+from malib.backend.dataset_server.feature import BaseFeature
+
+
+class FakeLearner(Learner):
+    def multiagent_post_process(
+        self,
+        batch_info,
+    ) -> Dict[str, Any]:
+        pass
+
+
+class FakeFeatureHandler(BaseFeature):
+    pass
 
 
 class FakePayoffManager(PayoffManager):
@@ -79,7 +93,7 @@ class FakeRolloutManager(RolloutWorkerManager):
         stopping_conditions: Dict[str, Any],
         num_worker: int,
         group_info: Dict[str, Any],
-        rollout_config: RolloutConfig | Dict[str, Any],
+        rollout_config: Union[RolloutConfig, Dict[str, Any]],
         env_desc: Dict[str, Any],
         log_dir: str,
         resource_config: Dict[str, Any] = None,

@@ -51,12 +51,12 @@ def create_manager(
     stopping_conditions: Dict[str, Any],
     rollout_config: Dict[str, Any],
     env_desc: Dict[str, Any],
-    agent_mapping_func: Callable,
+    group_info: Dict[str, Any],
 ):
     manager = RolloutWorkerManager(
         stopping_conditions=stopping_conditions,
         num_worker=1,
-        group_info=form_group_info(env_desc, agent_mapping_func),
+        group_info=group_info,
         rollout_config=rollout_config,
         env_desc=env_desc,
         log_dir="./logs",
@@ -67,17 +67,11 @@ def create_manager(
 @pytest.mark.parametrize("n_players", [1, 2])
 class TestRolloutManager:
     def test_rollout_task_send(self, mocker: MockerFixture, n_players: int):
-        with ray.init(local_mode=True):
+        with ray.init():
             env_desc, algorithm, rollout_config, group_info = gen_common_requirements(
                 n_players
             )
             inference_namespace = "test_pb_rolloutworker"
-            manager = create_manager(
-                stopping_conditions={"rollout": {"max_iteration": 2}},
-                rollout_config=RolloutConfig(),
-                env_desc=env_desc,
-                agent_mapping_func=lambda agent: "default",
-            )
 
             learner_manager = LearnerManager(
                 stopping_conditions={"max_iteration": 10},
@@ -100,7 +94,14 @@ class TestRolloutManager:
                 model_entry_point=learner_manager.learner_entrypoints,
             )
 
-            rollout_config.inference_entry_points = infer_manager.inference_entry_points
+            rollout_manager = create_manager(
+                stopping_conditions={"rollout": {"max_iteration": 2}},
+                rollout_config=RolloutConfig(
+                    inference_entry_points=infer_manager.inference_entry_points
+                ),
+                env_desc=env_desc,
+                group_info=group_info,
+            )
 
             strategy_specs = {
                 agent: StrategySpec(
@@ -118,4 +119,5 @@ class TestRolloutManager:
                 data_entrypoints=None,
             )
 
-            results = manager.submit(task, wait=True)
+            results = rollout_manager.submit(task, wait=True)
+        ray.shutdown()

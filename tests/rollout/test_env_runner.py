@@ -63,7 +63,7 @@ def test_env_runner(env_desc: Dict[str, Any], max_env_num: int):
             rollout_config,
             strategy_specs,
             inference_clients=infer_clients,
-            data_entrypoint_mapping=None,
+            data_entrypoints=None,
         )
 
         print(stats)

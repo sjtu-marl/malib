@@ -22,8 +22,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Any, List, Tuple
-
 import pytest
 import ray
 
@@ -77,24 +75,11 @@ def gen_common_requirements(n_player: int):
 
 import numpy as np
 
-from malib.learner.learner import Learner
 from gym import spaces
 from malib.learner.manager import LearnerManager
 from malib.learner.config import LearnerConfig
 from malib.utils.episode import Episode
-from malib.backend.dataset_server.feature import BaseFeature
-
-
-class FakeLearner(Learner):
-    def multiagent_post_process(
-        self,
-        batch_info,
-    ) -> Dict[str, Any]:
-        pass
-
-
-class FakeFeatureHandler(BaseFeature):
-    pass
+from malib.mocker.mocker_utils import FakeLearner, FakeFeatureHandler
 
 
 def feature_handler_meta_gen(env_desc, agent_id):
@@ -116,53 +101,53 @@ def feature_handler_meta_gen(env_desc, agent_id):
 
 @pytest.mark.parametrize("n_player", [1, 2])
 class TestRolloutWorker:
-    # def test_rollout(self, n_player: int):
-    #     with ray.init(local_mode=True):
-    #         env_desc, algorithm, rollout_config, group_info = gen_common_requirements(
-    #             n_player
-    #         )
+    def test_rollout(self, n_player: int):
+        with ray.init(local_mode=True):
+            env_desc, algorithm, rollout_config, group_info = gen_common_requirements(
+                n_player
+            )
 
-    #         obs_spaces = env_desc["observation_spaces"]
-    #         act_spaces = env_desc["action_spaces"]
-    #         agents = env_desc["possible_agents"]
-    #         log_dir = "./logs"
+            obs_spaces = env_desc["observation_spaces"]
+            act_spaces = env_desc["action_spaces"]
+            agents = env_desc["possible_agents"]
+            log_dir = "./logs"
 
-    #         inference_namespace = "test_pb_rolloutworker"
+            inference_namespace = "test_pb_rolloutworker"
 
-    #         infer_manager = InferenceManager(
-    #             group_info=group_info,
-    #             ray_actor_namespace=inference_namespace,
-    #             algorithm=algorithm,
-    #             model_entry_point=None,
-    #         )
+            infer_manager = InferenceManager(
+                group_info=group_info,
+                ray_actor_namespace=inference_namespace,
+                algorithm=algorithm,
+                model_entry_point=None,
+            )
 
-    #         rollout_config.inference_entry_points = infer_manager.inference_entry_points
+            rollout_config.inference_entry_points = infer_manager.inference_entry_points
 
-    #         strategy_specs = {
-    #             agent: StrategySpec(
-    #                 policy_cls=algorithm.policy,
-    #                 observation_space=obs_spaces[agent],
-    #                 action_space=act_spaces[agent],
-    #                 identifier=agent,
-    #                 model_config=algorithm.model_config,
-    #                 policy_ids=["policy-0"],
-    #             )
-    #             for agent in agents
-    #         }
+            strategy_specs = {
+                agent: StrategySpec(
+                    policy_cls=algorithm.policy,
+                    observation_space=obs_spaces[agent],
+                    action_space=act_spaces[agent],
+                    identifier=agent,
+                    model_config=algorithm.model_config,
+                    policy_ids=["policy-0"],
+                )
+                for agent in agents
+            }
 
-    #         worker = PBRolloutWorker(
-    #             env_desc=env_desc,
-    #             agent_groups=group_info["agent_groups"],
-    #             rollout_config=rollout_config,
-    #             log_dir=log_dir,
-    #         )
+            worker = PBRolloutWorker(
+                env_desc=env_desc,
+                agent_groups=group_info["agent_groups"],
+                rollout_config=rollout_config,
+                log_dir=log_dir,
+            )
 
-    #         task = RolloutTask(
-    #             strategy_specs=strategy_specs,
-    #             stopping_conditions={"max_iteration": 10},
-    #             data_entrypoints=None,  # no data collect
-    #         )
-    #         stats = worker.rollout(task)
+            task = RolloutTask(
+                strategy_specs=strategy_specs,
+                stopping_conditions={"max_iteration": 10},
+                data_entrypoints=None,  # no data collect
+            )
+            stats = worker.rollout(task)
 
     def test_rollout_with_data_entrypoint(self, n_player: int):
         with ray.init():
@@ -196,6 +181,9 @@ class TestRolloutWorker:
             )
 
             rollout_config.inference_entry_points = infer_manager.inference_entry_points
+            assert (
+                "default" in rollout_config.inference_entry_points
+            ), rollout_config.inference_entry_points
 
             strategy_spaces = {
                 agent: StrategySpec(
