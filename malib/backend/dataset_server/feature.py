@@ -1,5 +1,5 @@
 from typing import Any, Dict
-from abc import ABC, abstractmethod
+from abc import ABC
 
 import copy
 import numpy as np
@@ -7,21 +7,7 @@ import torch
 
 from gym import spaces
 from readerwriterlock import rwlock
-
-
-numpy_to_torch_dtype_dict = {
-    np.bool_: torch.bool,
-    np.uint8: torch.uint8,
-    np.int8: torch.int8,
-    np.int16: torch.int16,
-    np.int32: torch.int32,
-    np.int64: torch.int64,
-    np.float16: torch.float16,
-    np.float32: torch.float32,
-    np.float64: torch.float64,
-    np.complex64: torch.complex64,
-    np.complex128: torch.complex128,
-}
+from malib.utils.data import numpy_to_torch_dtype_dict
 
 
 class BaseFeature(ABC):
@@ -35,15 +21,11 @@ class BaseFeature(ABC):
         self.rw_lock = rwlock.RWLockFair()
         self._device = device
         self._spaces = spaces
-        self._block_size = (
-            block_size
-            if block_size is not None
-            else list(np_memory.values())[0].shape[0]
-        )
+        self._block_size = min(block_size or np.iinfo(np.longlong).max, list(np_memory.values())[0].shape[0])
         self._available_size = 0
         self._flag = 0
         self._shared_memory = {
-            k: torch.from_numpy(v).to(device).share_memory_()
+            k: torch.from_numpy(v[:self._block_size]).to(device).share_memory_()
             for k, v in np_memory.items()
         }
 

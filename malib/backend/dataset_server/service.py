@@ -1,6 +1,9 @@
+from typing import Dict
+
 import threading
 import traceback
 import pickle
+import numpy as np
 
 from . import data_pb2_grpc
 from . import data_pb2
@@ -19,7 +22,7 @@ class DatasetServer(data_pb2_grpc.SendDataServicer):
 
     def Collect(self, request, context):
         try:
-            data = pickle.loads(request.data)
+            data: Dict[str, np.ndarray] = pickle.loads(request.data)
             batch_size = len(list(data.values())[0])
             self.feature_handler.safe_put(data, batch_size)
             message = "success"

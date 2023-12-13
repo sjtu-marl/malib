@@ -185,6 +185,13 @@ class ConventionalEpisode(Episode):
 
 class ConventionalEpisodeList:
     def __init__(self, num: int, agents: List[AgentID]) -> None:
+        """Construct a list of COnventialEpisode, for trajectory tracking for a bunch of environments.
+
+        Args:
+            num (int): Episode number.
+            agents (List[AgentID]): A list of enviornment agent ids, distinguished from runtime ids.
+        """
+
         self.episodes = [ConventionalEpisode(agents) for _ in range(num)]
 
     def record(self, obs, actions, last_dones, last_rews, states, idx: int = None):

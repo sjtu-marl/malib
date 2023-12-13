@@ -16,6 +16,8 @@ class EmptyError(Exception):
     pass
 
 
+# TODO(ming): considering to determine the `max_message_length`
+#   by a FeatureHandler, as it is convinient for it to know the size of data.
 class DynamicDataset(Dataset):
     def __init__(
         self,

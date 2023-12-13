@@ -32,7 +32,7 @@ import torch
 
 from gym import spaces
 
-from malib.utils.episode import Episode
+from malib.rollout.episode import Episode
 from malib.utils.tianshou_batch import Batch
 from malib.rl.pg import PGPolicy
 from malib.rl.coma.critic import COMADiscreteCritic

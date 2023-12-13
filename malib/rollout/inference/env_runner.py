@@ -28,11 +28,11 @@ import ray
 import numpy as np
 
 from malib.utils.typing import AgentID
-from malib.utils.episode import ConventionalEpisodeList
+from malib.rollout.episode import ConventionalEpisodeList
 
 from malib.utils.timing import Timing
+from malib.utils.data import merge_array_by_keys
 from malib.remote.interface import RemoteInterface
-from malib.rollout.envs.vector_env import VectorEnv, SubprocVecEnv
 from malib.rollout.config import RolloutConfig
 from malib.rollout.inference.client import InferenceClient, PolicyReturnWithObs
 from malib.rollout.envs.env import Environment
@@ -115,8 +115,29 @@ class AgentManager:
 
         return actions
 
-    def merge_episodes(self):
-        return self.episodes.to_numpy()
+    def merge_episodes(
+        self, agent_groups: Dict[str, Tuple]
+    ) -> Dict[str, Dict[str, np.ndarray]]:
+        """A dict of merged episodes, which is grouped by agent groups.
+
+        Args:
+            agent_groups (Dict[str, Tuple]): A dict of agent groups.
+
+        Returns:
+            Dict[str, Dict[str, np.ndarray]]: A dict of merged episodes, which is grouped by agent groups.
+        """
+
+        episodes: List[Dict[AgentID, Dict[str, np.ndarray]]] = self.episodes.to_numpy()
+
+        # then merge this episodes by agent groups
+        merged = {}
+        for episode in episodes:
+            for gid, agents in agent_groups.items():
+                filtered = [episode[agent] for agent in agents]
+                # then merge them by keys
+                tmp = merge_array_by_keys(filtered)
+                merged[gid] = tmp
+        return merged
 
 
 from malib.utils.timing import Timing
@@ -132,7 +153,7 @@ class BasicEnvRunner(RemoteInterface):
         env_func: Type,
         max_env_num: int,
         use_subproc_env: bool = False,
-        agent_groups: Dict[str, Set] = None,
+        agent_groups: Dict[str, Tuple] = None,
         inference_entry_points: Dict[str, str] = None,
     ) -> None:
         super(RemoteInterface, self).__init__()
@@ -158,6 +179,10 @@ class BasicEnvRunner(RemoteInterface):
         return self._env_func
 
     @property
+    def agent_groups(self) -> Dict[str, Tuple]:
+        return self._agent_groups
+
+    @property
     def num_active_envs(self) -> int:
         return len(self._envs)
 
@@ -181,7 +206,7 @@ class BasicEnvRunner(RemoteInterface):
         Args:
             rollout_config (RolloutConfig): Rollout configuration, which specifies how many data pieces will rollout.
             strategy_specs (Dict[AgentID, StrategySpec]): A dict of strategy specs, which rules the behavior policy of each agent.
-            inference_clients (Dict[AgentID, InferenceClient]): A dict of remote inference client.
+            inference_clients (Dict[AgentID, InferenceClient]): A dict of remote inference client, mapping from env agents to inference clients. Note that there could be a shared client for multiple agents.
             data_entrypoints (Dict[str, str], optional): A mapping which defines the data collection trigger, if not None, then return episodes. Defaults to None.
 
         Raises:
@@ -262,15 +287,10 @@ class BasicEnvRunner(RemoteInterface):
                         vec_rews[env_idx] = rews
 
         # merge agent episodes
-        # FIXME(ming): send data to remote dataset
-        data = agent_manager.merge_episodes()
+        data = agent_manager.merge_episodes(agent_groups=self.agent_groups)
         data_entrypoints = data_entrypoints or {}
         for k, entrypoint in data_entrypoints.items():
-            # FIXME(ming): a bug, data: list of agent episode
-            agent_episode = data[0]
-            # requires agent group for identification
-            random_data = list(agent_episode.values())[0]
-            send_data(random_data, entrypoint=entrypoint)
+            send_data(data[k], entrypoint=entrypoint)
 
         stats = {"total_timesteps": total_timestep, **timer.todict()}
         return stats

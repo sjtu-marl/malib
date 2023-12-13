@@ -30,7 +30,7 @@ import numpy as np
 from gym import spaces
 
 from malib.utils.typing import AgentID, DataFrame, EnvID
-from malib.utils.episode import Episode
+from malib.rollout.episode import Episode
 from malib.utils.preprocessor import Preprocessor
 from malib.rollout.envs.vector_env import VectorEnv
 

@@ -22,8 +22,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-DEFAULT_CONFIG = {
-    "training_config": {
+
+class Config:
+
+    TRAINING_CONFIG = {
         "optimizer": "Adam",
         "lr": 1e-4,
         "reward_norm": None,
@@ -31,10 +33,11 @@ DEFAULT_CONFIG = {
         "minibatch": 2,
         "batch_size": 32,
         "gamma": 0.99,
-    },
-    "model_config": {
+    }
+
+    CUSTOM_CONFIG = {}
+
+    MODEL_CONFIG = {
         "preprocess_net": {"net_type": None, "config": {"hidden_sizes": [64]}},
         "hidden_sizes": [64],
-    },
-    "custom_config": {},
-}
+    }

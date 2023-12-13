@@ -78,7 +78,7 @@ import numpy as np
 from gym import spaces
 from malib.learner.manager import LearnerManager
 from malib.learner.config import LearnerConfig
-from malib.utils.episode import Episode
+from malib.rollout.episode import Episode
 from malib.mocker.mocker_utils import FakeLearner, FakeFeatureHandler
 
 

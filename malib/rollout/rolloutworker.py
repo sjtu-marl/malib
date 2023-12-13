@@ -22,33 +22,26 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Any, List, Callable, Sequence, Tuple, Set, Union
+from typing import Dict, Any, List, Callable, Tuple, Union
 from abc import abstractmethod
-from collections import defaultdict
 
 import os
 import time
-import traceback
 import logging
-import pprint
 
 import ray
-import gym
-import numpy as np
 
 from ray.util import ActorPool
 from torch.utils import tensorboard
 
 from malib import settings
-from malib.utils.typing import AgentID, BehaviorMode
-from malib.utils.logging import Logger
+from malib.utils.typing import AgentID
 from malib.utils.stopping_conditions import get_stopper
 from malib.utils.monitor import write_to_tensorboard
 from malib.common.strategy_spec import StrategySpec
 from malib.common.task import RolloutTask
 from malib.remote.interface import RemoteInterface
 from malib.rollout.config import RolloutConfig
-from malib.rollout.inference.client import InferenceClient
 from malib.rollout.inference.env_runner import BasicEnvRunner
 
 

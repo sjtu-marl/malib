@@ -31,7 +31,7 @@ import gym
 from torch import nn
 from gym import spaces
 
-from malib.utils.episode import Episode
+from malib.rollout.episode import Episode
 from malib.utils.tianshou_batch import Batch
 from malib.models.torch import make_net
 

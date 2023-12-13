@@ -35,7 +35,7 @@ from malib.models.torch import net, discrete, continuous
 from malib.models.config import ModelConfig
 from malib.rl.common import misc
 from malib.rl.common.policy import Policy, PolicyReturn
-from .config import DEFAULT_CONFIG
+from .config import Config as DEFAULT_CONFIG
 
 
 class PGPolicy(Policy):
@@ -60,9 +60,9 @@ class PGPolicy(Policy):
 
         # update model_config with default ones
         model_config = merge_dicts(
-            DEFAULT_CONFIG["model_config"].copy(), model_config or {}
+            DEFAULT_CONFIG.MODEL_CONFIG.copy(), model_config or {}
         )
-        kwargs = merge_dicts(DEFAULT_CONFIG["custom_config"].copy(), kwargs)
+        kwargs = merge_dicts(DEFAULT_CONFIG.CUSTOM_CONFIG.copy(), kwargs)
 
         super().__init__(observation_space, action_space, model_config, **kwargs)
 

@@ -40,7 +40,7 @@ from malib.utils.typing import (
     PolicyID,
 )
 from malib.rollout.envs.env import Environment
-from malib.utils.episode import Episode
+from malib.rollout.episode import Episode
 
 
 EnvironmentType = Type[Environment]

@@ -24,7 +24,8 @@
 
 from .policy import PGPolicy
 from .trainer import PGTrainer
-from .config import DEFAULT_CONFIG
+from .config import Config
 
 POLICY = PGPolicy
 TRAINER = PGTrainer
+DEFAULT_CONFIG = Config

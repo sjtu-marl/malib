@@ -7,7 +7,7 @@ from gym import spaces
 
 import numpy as np
 
-from malib.utils.episode import Episode
+from malib.rollout.episode import Episode
 from malib.learner import IndependentAgent
 from malib.scenarios import sarl_scenario
 from malib.rl.config import Algorithm

@@ -36,14 +36,14 @@ from malib.utils.data import Postprocessor
 from malib.utils.general import merge_dicts
 from malib.utils.typing import AgentID
 from malib.utils.tianshou_batch import Batch
-from .config import DEFAULT_CONFIG
+from .config import Config
 
 
 class PGTrainer(Trainer):
     def __init__(self, training_config: Dict[str, Any], policy_instance: Policy = None):
         # merge from default
         training_config = merge_dicts(
-            DEFAULT_CONFIG["training_config"], training_config or {}
+            Config.TRAINING_CONFIG, training_config or {}
         )
         super().__init__(training_config, policy_instance)
 

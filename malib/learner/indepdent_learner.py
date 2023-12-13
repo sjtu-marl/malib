@@ -22,26 +22,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Tuple, Any, List, Union
+from typing import Dict, Any
+
+import torch
 
 from malib.utils.typing import AgentID
-from malib.utils.tianshou_batch import Batch
+from malib.utils.data import to_torch
 from malib.learner.learner import Learner
 
 
 class IndependentAgent(Learner):
-    def multiagent_post_process(
-        self,
-        batch_info: Union[
-            Dict[AgentID, Tuple[Batch, List[int]]], Tuple[Batch, List[int]]
-        ],
-    ) -> Dict[str, Any]:
-        if not isinstance(batch_info, Tuple):
-            raise TypeError(
-                "IndependentAgent support only a tuple of batch info as input."
-            )
-
-        batch = batch_info[0]
-        batch.to_torch(device=self.device)
-
-        return batch
+    def multiagent_post_process(self, batch: Dict[AgentID, Dict[str, torch.Tensor]]) -> Dict[str, Any]:
+        return to_torch(batch, device=self.device)

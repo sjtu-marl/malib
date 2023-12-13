@@ -23,7 +23,7 @@
 # SOFTWARE.
 
 
-from typing import Dict, Any, Tuple, Callable, List, Union, Type
+from typing import Dict, Any, Tuple, Callable, List, Union
 from abc import ABC, abstractmethod
 
 import time
@@ -50,6 +50,7 @@ from malib.rl.common.policy import Policy
 from malib.rl.config import Algorithm
 
 
+# TODO(ming): better to use a feature handler to determine the max_message_length
 MAX_MESSAGE_LENGTH = 7309898
 
 
@@ -63,7 +64,6 @@ class Learner(RemoteInterface, ABC):
         observation_space: spaces.Space,
         action_space: spaces.Space,
         algorithm: Algorithm,
-        agent_mapping_func: Callable[[AgentID], str],
         governed_agents: Tuple[AgentID],
         custom_config: Dict[str, Any] = None,
         dataset: DynamicDataset = None,
@@ -106,7 +106,6 @@ class Learner(RemoteInterface, ABC):
         self._algorithm = algorithm
         self._governed_agents = governed_agents
         self._strategy_spec = strategy_spec
-        self._agent_mapping_func = agent_mapping_func
         self._custom_config = custom_config
         self._policy = strategy_spec.gen_policy(device=device)
 
@@ -144,14 +143,12 @@ class Learner(RemoteInterface, ABC):
     @abstractmethod
     def multiagent_post_process(
         self,
-        batch_info: Union[
-            Dict[AgentID, Tuple[Batch, List[int]]], Tuple[Batch, List[int]]
-        ],
+        batch: Dict[AgentID, Dict[str, torch.Tensor]],
     ) -> Dict[str, Any]:
         """Merge agent buffer here and return the merged buffer.
 
         Args:
-            batch_info (Union[Dict[AgentID, Tuple[Batch, List[int]]], Tuple[Batch, List[int]]]): Batch info, could be a dict of agent batch info or a tuple.
+            batch (Dict[AgentID, Dict[str, torch.Tensor]]): A dict of agent batch.
 
         Returns:
             Dict[str, Any]: A merged buffer dict.
@@ -218,6 +215,33 @@ class Learner(RemoteInterface, ABC):
             "total_epoch": self._total_epoch,
             "policy_num": len(self._strategy_spec),
         }
+    
+    def step(self, prints: bool = False):
+        while (
+            self.data_loader.dataset.readable_block_size
+            < self.data_loader.batch_size
+        ):
+            time.sleep(1)
+
+        for data in self.data_loader:
+            batch_dict = self.multiagent_post_process(data)
+            batch = Batch(batch_dict)
+            # call trainer for one update step, and return training info
+            # since some algorithm may run multistep for one batch,
+            # then the returned training_info is a list of dict.
+            step_info_list = self.trainer(batch)
+            for step_info in step_info_list:
+                self._total_step += 1
+                write_to_tensorboard(
+                    self._summary_writer,
+                    info=step_info,
+                    global_step=self._total_step,
+                    prefix=f"Learner/{self._runtime_id}",
+                )
+                if prints:
+                    print(self._total_step, step_info)
+
+            self._total_epoch += 1
 
     def train(self, task: OptimizationTask) -> Dict[str, Any]:
         """Executes a optimization task and returns the final interface state.
@@ -233,25 +257,8 @@ class Learner(RemoteInterface, ABC):
         self.set_running(True)
 
         try:
-            while (
-                self.data_loader.dataset.readable_block_size
-                < self.data_loader.batch_size
-            ):
-                time.sleep(1)
-
             while self.is_running():
-                for data in self.data_loader:
-                    batch_info = self.multiagent_post_process(data)
-                    step_info_list = self.trainer(batch_info)
-                    for step_info in step_info_list:
-                        self._total_step += 1
-                        write_to_tensorboard(
-                            self._summary_writer,
-                            info=step_info,
-                            global_step=self._total_step,
-                            prefix=f"Learner/{self._runtime_id}",
-                        )
-                    self._total_epoch += 1
+                self.step()
         except Exception as e:
             Logger.warning(
                 f"training pipe is terminated. caused by: {traceback.format_exc()}"
