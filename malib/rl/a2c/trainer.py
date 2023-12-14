@@ -43,13 +43,10 @@ from malib.utils.statistic import RunningMeanStd
 
 class A2CTrainer(Trainer):
     def setup(self):
-        parameter_dict = self.policy.parameters()
-        # concate parameters
-        parameters = set(itertools.chain(*parameter_dict.values()))
         self.optimizer = getattr(optim, self.training_config["optimizer"])(
-            parameters, lr=self.training_config["lr"]
+            self.policy.parameters(), lr=self.training_config["lr"]
         )
-        self.parameters = parameters
+        self.parameters = self.policy.parameters()
         self.lr_scheduler: torch.optim.lr_scheduler.LambdaLR = None
 
         # runtime return averaging

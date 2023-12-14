@@ -57,7 +57,7 @@ def validate_strategy_specs(specs: Dict[str, StrategySpec]):
 
     for rid, spec in specs.items():
         if len(spec) < 1:
-            raise ValueError(f"Empty spec for runtime_id={rid}")
+            continue
         # check prob list
         expected_prob_list = spec.meta_data.get(
             "prob_list", [1 / len(spec)] * len(spec)
@@ -127,10 +127,7 @@ class RolloutWorkerManager(Manager):
         self._runtime_ids = tuple(group_info["agent_groups"].keys())
         self._group_info = group_info
 
-        assert (
-            "rollout" in stopping_conditions
-        ), f"Stopping conditions should contain `rollout`: {stopping_conditions}"
-
+        # FIXME(ming): deprecated
         self.stopping_conditions = stopping_conditions
 
     @property

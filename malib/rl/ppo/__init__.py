@@ -24,4 +24,8 @@
 
 from .policy import PPOPolicy
 from .trainer import PPOTrainer
-from .config import DEFAULT_CONFIG
+from .config import Config
+
+POLICY = PPOPolicy
+TRAINER = PPOTrainer
+DEFAULT_CONFIG = Config

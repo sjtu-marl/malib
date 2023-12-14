@@ -18,9 +18,9 @@ class Task:
 
 @dataclass
 class RolloutTask(Task):
-    strategy_specs: Dict[str, Any] = field(default_factory=dict())
-    stopping_conditions: Dict[str, Any] = field(default_factory=dict())
-    data_entrypoints: Dict[str, Any] = field(default_factory=dict())
+    strategy_specs: Dict[str, Any] = field(default_factory=dict)
+    stopping_conditions: Dict[str, Any] = field(default_factory=dict)
+    data_entrypoints: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_raw(
@@ -36,14 +36,19 @@ class RolloutTask(Task):
 
 @dataclass
 class OptimizationTask(Task):
-    stop_conditions: Dict[str, Any]
+    stopping_conditions: Dict[str, Any]
     """stopping conditions for optimization task, e.g., max iteration, max time, etc."""
 
-    strategy_specs: Dict[str, Any] = field(default_factory=dict())
-    """a dict of strategy specs, which defines the strategy spec for each agent."""
+    # strategy_specs: Dict[str, Any] = field(default_factory=dict)
+    # """a dict of strategy specs, which defines the strategy spec for each agent."""
 
     active_agents: List[AgentID] = field(default_factory=list)
     """a list of active agents, which defines the agents that will be trained in this optimization task. None for all"""
+
+    save_interval: int = 2
+    """the interval of saving checkpoints"""
+
+    model_dir: str = ""
 
     @classmethod
     def from_raw(

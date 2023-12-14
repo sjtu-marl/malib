@@ -102,6 +102,17 @@ class PGPolicy(Policy):
                 "Unexpected action space type: {}".format(type(self.action_space))
             )
 
+    @property
+    def actor(self):
+        if isinstance(self._model, nn.Module):
+            return self._model
+        else:
+            return self._model.actor
+
+    @property
+    def critic(self):
+        raise RuntimeError("PG has no critic network can be called!")
+
     def value_function(self, observation: torch.Tensor, evaluate: bool, **kwargs):
         """Compute values of critic."""
 
@@ -116,7 +127,7 @@ class PGPolicy(Policy):
         **kwargs
     ) -> PolicyReturn:
         with torch.inference_mode():
-            logits, hidden = self.model(observation, state=hidden_state)
+            logits, hidden = self.actor(observation, state=hidden_state)
             if isinstance(logits, tuple):
                 dist = self.dist_fn.proba_distribution(*logits)
             else:

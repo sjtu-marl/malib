@@ -117,7 +117,6 @@ class LearnerManager(Manager):
                 observation_space=group_info["observation_space"][rid],
                 action_space=group_info["action_space"][rid],
                 algorithm=algorithm,
-                agent_mapping_func=agent_mapping_func,
                 governed_agents=agents,
                 custom_config=learner_config.custom_config,
                 feature_handler_gen=learner_config.feature_handler_meta_gen(
@@ -152,6 +151,7 @@ class LearnerManager(Manager):
         self._agent_mapping_func = agent_mapping_func
         self._learners = learners
         self._thread_pool = ThreadPoolExecutor(max_workers=len(learners))
+        # FIXME(ming): deprecated
         self._stopping_conditions = stopping_conditions
 
         # init strategy spec
@@ -211,6 +211,12 @@ class LearnerManager(Manager):
 
         return self._runtime_ids
 
+    def get_strategy_specs(self) -> Dict[str, StrategySpec]:
+        values = ray.get(
+            [v.get_strategy_spec.remote() for v in self._learners.values()]
+        )
+        return dict(zip(self._learners.keys(), values))
+
     def add_policies(
         self, interface_ids: Sequence[str] = None, n: Union[int, Dict[str, int]] = 1
     ) -> Dict[str, Type[StrategySpec]]:
@@ -240,7 +246,7 @@ class LearnerManager(Manager):
 
         return strategy_spec_dict
 
-    def submit(self, task: OptimizationTask):
+    def submit(self, task: OptimizationTask, wait: bool = False):
         """Submit a training task, the manager will distribute it to the corresponding learners.
 
         Args:
@@ -248,14 +254,21 @@ class LearnerManager(Manager):
         """
 
         # retrieve learners with active agents
-        for aid in task.active_agents:
-            rid = self._agent_mapping_func(aid)
-            if rid not in self._learners:
-                raise RuntimeError(f"Agent {aid} is not registered in training manager")
-            else:
-                learner = self._learners[rid]
-                ray_task = learner.train.remote(task)
-                self.pending_tasks.append(ray_task)
+        rids = (
+            list(self._learners.keys())
+            if task.active_agents is None
+            else [self._agent_mapping_func(aid) for aid in task.active_agents]
+        )
+
+        for rid in rids:
+            learner = self._learners[rid]
+            ray_task = learner.train.remote(task)
+            self.pending_tasks.append(ray_task)
+        if wait:
+            result_list = self.wait()
+            return result_list
+        else:
+            return None
 
     def retrive_results(self) -> Generator:
         """Return a generator of results.

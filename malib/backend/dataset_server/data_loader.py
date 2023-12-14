@@ -39,6 +39,8 @@ class DynamicDataset(Dataset):
         self.max_message_length = max_message_length
 
     def start_server(self):
+        """Launch a dataset service."""
+
         self.server_port = find_free_port()
         self.server = service_wrapper(
             self.grpc_thread_num_workers,

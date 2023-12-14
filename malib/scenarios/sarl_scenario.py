@@ -60,16 +60,17 @@ class SARLScenario(Scenario):
             stopping_conditions,
         )
         self.num_policy_each_interface = 1
+        self.num_worker = 1
         self.resource_config = resource_config or {"training": None, "rollout": None}
 
     def create_global_stopper(self) -> StoppingCondition:
-        return get_stopper(self.stopping_conditions)
+        return get_stopper(self.stopping_conditions.get("global", {}))
 
 
 def execution_plan(scenario: SARLScenario, verbose: bool = True):
     # TODO(ming): simplize the initialization of training and rollout manager with a scenario instance as input
     learner_manager = LearnerManager(
-        stopping_conditions=scenario.stopping_conditions,
+        stopping_conditions=scenario.stopping_conditions["training"],
         algorithm=scenario.algorithm,
         env_desc=scenario.env_desc,
         agent_mapping_func=scenario.agent_mapping_func,
@@ -89,8 +90,16 @@ def execution_plan(scenario: SARLScenario, verbose: bool = True):
         verbose=verbose,
     )
 
+    startegy_spces = learner_manager.get_strategy_specs()
+    # uopdate rollout_config with inference client id
+    scenario.rollout_config.inference_entry_points = (
+        inference_manager.inference_entry_points
+    )
+
     rollout_manager = RolloutWorkerManager(
-        stopping_conditions=scenario.stopping_conditions,
+        stopping_conditions=scenario.stopping_conditions["rollout"],
+        # FIXME(ming): change num_worker to parallel_task_num,
+        #   or equivalent to the agent number.
         num_worker=scenario.num_worker,
         group_info=scenario.group_info,
         rollout_config=scenario.rollout_config,
@@ -103,37 +112,35 @@ def execution_plan(scenario: SARLScenario, verbose: bool = True):
 
     league = League(learner_manager, rollout_manager, inference_manager)
 
-    # TODO(ming): further check is needed
     optimization_task = OptimizationTask(
-        stop_conditions=scenario.stopping_conditions["training"],
-        strategy_specs=None,
+        stopping_conditions=scenario.stopping_conditions["training"],
         active_agents=None,
     )
 
     rollout_task = RolloutTask(
-        strategy_specs=None,
+        strategy_specs=startegy_spces,
         stopping_conditions=scenario.stopping_conditions["rollout"],
-        data_entrypoint_mapping=learner_manager.data_entrypoints,
+        data_entrypoints=learner_manager.data_entrypoints,
     )
 
-    evaluation_task = RolloutTask(
-        strategy_specs=None,
-    )
+    evaluation_task = RolloutTask()
 
     stopper = scenario.create_global_stopper()
     epoch_cnt = 0
 
     while True:
         rollout_results = league.submit(rollout_task, wait=True)
+        print("Results of Rollout: {}".format(rollout_results))
         training_results = league.submit(optimization_task, wait=True)
-        evaluation_results = league.submit(evaluation_task, wait=True)
+        print("Results of Training: {}".format(training_results))
+        evaluation_results = {}
+        # league.submit(evaluation_task, wait=True)
+        # print("Results of evaluation: {}".format(evaluation_results))
         epoch_cnt += 1
-        if stopper.should_stop(
-            evaluation_results, training_results, rollout_results, epoch_cnt
-        ):
+        if stopper.should_stop(evaluation_results):
             break
-        if epoch_cnt % scenario.save_interval == 0:
-            league.save_checkpoint(global_step=epoch_cnt)
+        # if epoch_cnt % scenario.save_interval == 0:
+        #     league.save_checkpoint(global_step=epoch_cnt)
 
     results = league.get_results()
     league.terminate()

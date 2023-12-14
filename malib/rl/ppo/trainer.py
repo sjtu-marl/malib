@@ -44,6 +44,7 @@ class PPOTrainer(A2CTrainer):
         use_grad_norm = self.training_config["use_grad_norm"]
         use_value_clip = self.training_config["use_value_clip"]
 
+        # XXX(ming): or we should keep a list of them
         losses, clip_losses, vf_losses, ent_losses = 0.0, 0.0, 0.0, 0.0
 
         for step in range(repeats):

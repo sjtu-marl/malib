@@ -32,5 +32,7 @@ from malib.learner.learner import Learner
 
 
 class IndependentAgent(Learner):
-    def multiagent_post_process(self, batch: Dict[AgentID, Dict[str, torch.Tensor]]) -> Dict[str, Any]:
+    def multiagent_post_process(
+        self, batch: Dict[AgentID, Dict[str, torch.Tensor]]
+    ) -> Dict[str, Any]:
         return to_torch(batch, device=self.device)

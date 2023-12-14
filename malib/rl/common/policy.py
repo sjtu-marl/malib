@@ -119,6 +119,32 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @property
+    def actor(self) -> nn.Module:
+        """Return an Actor network.
+
+        Raises:
+            NotImplementedError: Not implemented error.
+
+        Returns:
+            nn.Module: An Actor.
+        """
+
+        raise NotImplementedError
+
+    @property
+    def critic(self) -> nn.Module:
+        """Return a Critic network.
+
+        Raises:
+            NotImplementedError: Not implemented error.
+
+        Returns:
+            nn.Module: A Critic.
+        """
+
+        return NotImplementedError
+
+    @property
     def dist_fn(self) -> Distribution:
         return self._dist_fn
 

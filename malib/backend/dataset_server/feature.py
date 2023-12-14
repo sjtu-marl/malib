@@ -18,14 +18,26 @@ class BaseFeature(ABC):
         block_size: int = None,
         device: str = "cpu",
     ) -> None:
+        """Constructing a feature handler for data preprocessing.
+
+        Args:
+            spaces (Dict[str, spaces.Space]): A dict of spaces
+            np_memory (Dict[str, np.ndarray]): A dict of memory placeholders
+            block_size (int, optional): Block size. Defaults to None.
+            device (str, optional): Device name. Defaults to "cpu".
+        """
+
         self.rw_lock = rwlock.RWLockFair()
         self._device = device
         self._spaces = spaces
-        self._block_size = min(block_size or np.iinfo(np.longlong).max, list(np_memory.values())[0].shape[0])
+        self._block_size = min(
+            block_size or np.iinfo(np.longlong).max,
+            list(np_memory.values())[0].shape[0],
+        )
         self._available_size = 0
         self._flag = 0
         self._shared_memory = {
-            k: torch.from_numpy(v[:self._block_size]).to(device).share_memory_()
+            k: torch.from_numpy(v[: self._block_size]).to(device).share_memory_()
             for k, v in np_memory.items()
         }
 

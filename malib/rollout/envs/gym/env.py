@@ -31,29 +31,26 @@ class GymEnv(Environment):
     """Single agent gym envrionment"""
 
     def __init__(self, **configs):
-        super(GymEnv, self).__init__(**configs)
+        env_id = configs["env_id"]
+        scenario_configs = configs.get("scenario_configs", {})
 
-        env_id = self._configs["env_id"]
-        scenario_configs = self._configs.get("scenario_configs", {})
-
-        self.is_sequential = False
         self._env = gym.make(env_id, **scenario_configs)
         self._default_agent = "agent"
+
+        super(GymEnv, self).__init__(**configs)
+
         self._observation_spaces = {self._default_agent: self._env.observation_space}
         self._action_spaces = {self._default_agent: self._env.action_space}
         self._trainable_agents = [self._default_agent]
 
-    @property
-    def possible_agents(self) -> List[AgentID]:
+    def register_action_spaces(self):
+        return {self._default_agent: self._env.action_space}
+
+    def register_agents(self):
         return [self._default_agent]
 
-    @property
-    def observation_spaces(self) -> Dict[AgentID, gym.Space]:
-        return self._observation_spaces
-
-    @property
-    def action_spaces(self) -> Dict[AgentID, gym.Space]:
-        return self._action_spaces
+    def register_observation_spaces(self):
+        return {self._default_agent: self._env.observation_space}
 
     def time_step(
         self, actions: Dict[AgentID, Any]

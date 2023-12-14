@@ -31,10 +31,12 @@ import logging
 
 import ray
 
+from pprint import pprint
 from ray.util import ActorPool
 from torch.utils import tensorboard
 
 from malib import settings
+from malib.utils.logging import Logger
 from malib.utils.typing import AgentID
 from malib.utils.stopping_conditions import get_stopper
 from malib.utils.monitor import write_to_tensorboard

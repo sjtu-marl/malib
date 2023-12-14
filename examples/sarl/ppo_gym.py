@@ -23,22 +23,29 @@ class FeatureHandler(BaseFeature):
 
 
 def feature_handler_meta_gen(env_desc, agent_id):
-    def f(device):
+    """Return a generator of feature handler meta.
+
+    Args:
+        env_desc (_type_): _description_
+        agent_id (_type_): _description_
+    """
+
+    def f(device="cpu"):
         # define the data schema
         _spaces = {
             Episode.DONE: spaces.Discrete(1),
             Episode.CUR_OBS: env_desc["observation_spaces"][agent_id],
             Episode.ACTION: env_desc["action_spaces"][agent_id],
-            Episode.REWARD: spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32),
+            Episode.REWARD: spaces.Box(-np.inf, np.inf, shape=(), dtype=np.float32),
             Episode.NEXT_OBS: env_desc["observation_spaces"][agent_id],
         }
 
         # you should know the maximum of replaybuffer before training
         np_memory = {
-            k: np.zeros((100,) + v.shape, dtype=v.dtype) for k, v in _spaces.items()
+            k: np.zeros((10000,) + v.shape, dtype=v.dtype) for k, v in _spaces.items()
         }
 
-        return FeatureHandler(_spaces, np_memory, device)
+        return FeatureHandler(_spaces, np_memory, device=device)
 
     return f
 
@@ -51,7 +58,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    trainer_config = DEFAULT_CONFIG["training_config"].copy()
+    trainer_config = DEFAULT_CONFIG.TRAINING_CONIG.copy()
     trainer_config["total_timesteps"] = int(1e6)
     trainer_config["use_cuda"] = args.use_cuda
 
@@ -80,13 +87,13 @@ if __name__ == "__main__":
         rollout_config=RolloutConfig(
             num_workers=1,
         ),
-        agent_mapping_func=lambda agent: agent,
         stopping_conditions={
-            "training": {"max_iteration": int(1e10)},
-            "rollout": {"max_iteration": 1000, "minimum_reward_improvement": 1.0},
+            "golbal": {"max_iteration": 1000, "minimum_reward_improvement": 1.0},
+            "rollout": {"max_iteration": 1},
+            "training": {"max_iteration": 1},
         },
     )
 
-    results = sarl_scenario.execution_plan(scenario=scenario, verbose=True)
+    results = sarl_scenario.execution_plan(scenario=scenario, verbose=False)
 
     print(results)

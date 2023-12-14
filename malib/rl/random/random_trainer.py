@@ -18,12 +18,10 @@ class RandomTrainer(PGTrainer):
 
     def post_process(self, batch: Batch, agent_filter: Sequence[AgentID]) -> Batch:
         return batch
-    
+
     def train(self, batch: Batch) -> Dict[str, Any]:
         time.sleep(random.random())
-        return {
-            "loss": random.random()
-        }
+        return {"loss": random.random()}
 
     def setup(self):
         self.optimizer: Type[optim.Optimizer] = getattr(

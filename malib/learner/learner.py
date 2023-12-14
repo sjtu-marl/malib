@@ -28,7 +28,9 @@ from abc import ABC, abstractmethod
 
 import time
 import traceback
+import os
 
+import json
 import torch
 import ray
 
@@ -40,6 +42,7 @@ from malib.utils.typing import AgentID
 from malib.utils.logging import Logger
 from malib.utils.tianshou_batch import Batch
 from malib.utils.monitor import write_to_tensorboard
+from malib.utils.stopping_conditions import get_stopper
 from malib.remote.interface import RemoteInterface
 from malib.common.task import OptimizationTask
 from malib.common.strategy_spec import StrategySpec
@@ -107,9 +110,18 @@ class Learner(RemoteInterface, ABC):
         self._governed_agents = governed_agents
         self._strategy_spec = strategy_spec
         self._custom_config = custom_config
+        # Do not add policy to strategy spec now, since we only update it
+        #   when new checkpoint is ready.
         self._policy = strategy_spec.gen_policy(device=device)
 
         self._summary_writer = tensorboard.SummaryWriter(log_dir=log_dir)
+        self._model_dir = os.path.join(log_dir, "models")
+
+        if not os.path.exists(self._model_dir):
+            os.makedirs(self._model_dir)
+
+        # save metastate to current log_dir
+        self.save_metastate(log_dir)
 
         # load policy for trainer
         self._trainer: Trainer = algorithm.trainer(
@@ -139,6 +151,16 @@ class Learner(RemoteInterface, ABC):
         self._total_step = 0
         self._total_epoch = 0
         self._verbose = verbose
+
+    def save_metastate(self, log_dir):
+        with open("{}/metastate.json".format(log_dir), "w") as f:
+            json.dump(
+                {
+                    "runtime_id": self._runtime_id,
+                    "governed_agents": self.governed_agents,
+                },
+                f,
+            )
 
     @abstractmethod
     def multiagent_post_process(
@@ -215,13 +237,12 @@ class Learner(RemoteInterface, ABC):
             "total_epoch": self._total_epoch,
             "policy_num": len(self._strategy_spec),
         }
-    
+
     def step(self, prints: bool = False):
         while (
-            self.data_loader.dataset.readable_block_size
-            < self.data_loader.batch_size
+            self.data_loader.dataset.readable_block_size < self.data_loader.batch_size
         ):
-            time.sleep(1)
+            return
 
         for data in self.data_loader:
             batch_dict = self.multiagent_post_process(data)
@@ -239,9 +260,12 @@ class Learner(RemoteInterface, ABC):
                     prefix=f"Learner/{self._runtime_id}",
                 )
                 if prints:
-                    print(self._total_step, step_info)
+                    print(self._total_epoch, self._total_step, step_info)
 
             self._total_epoch += 1
+
+        # TODO(ming): should merge step before return
+        return step_info_list
 
     def train(self, task: OptimizationTask) -> Dict[str, Any]:
         """Executes a optimization task and returns the final interface state.
@@ -255,10 +279,22 @@ class Learner(RemoteInterface, ABC):
         """
 
         self.set_running(True)
+        stopper = get_stopper(task.stopping_conditions)
 
         try:
             while self.is_running():
-                self.step()
+                results = self.step()
+                if results is None:  # indicates the dataset is not ready
+                    break
+                if self._total_epoch % task.save_interval == 0:
+                    ck_path = os.path.join(
+                        self._model_dir, f"checkpoint-{self._total_epoch}.ckpt"
+                    )
+                    torch.save(self.policy.state_dict(), ck_path)
+                    Logger.info("save checkpoint to {}".format(ck_path))
+                    self.strategy_spec.register_policy_id(ck_path)
+                if stopper.should_stop(results):
+                    break
         except Exception as e:
             Logger.warning(
                 f"training pipe is terminated. caused by: {traceback.format_exc()}"
@@ -270,6 +306,8 @@ class Learner(RemoteInterface, ABC):
                     self._total_epoch, self._total_step
                 )
             )
+        # hard set False to stop training
+        self.set_running(False)
         return self.get_interface_state()
 
     def reset(self):

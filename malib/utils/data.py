@@ -151,6 +151,11 @@ def to_torch(
         if dtype is not None:
             x = x.type(dtype)
         return x
+    elif isinstance(x, dict):
+        new_x = {}
+        for k, v in x.items():
+            new_x[k] = to_torch(v, dtype, device)
+        return new_x
     elif isinstance(x, torch.Tensor):  # second often case
         if dtype is not None:
             x = x.type(dtype)

@@ -37,7 +37,7 @@ from malib.backend.dataset_server.data_loader import DynamicDataset
 
 
 def construct_dataset(
-    feature_handler=None, feature_handler_cls=None, feature_handler_kwargs=None
+    feature_handler=None, feature_handler_cls=None, feature_handler_kwargs={}
 ):
     return DynamicDataset(
         grpc_thread_num_workers=1,
@@ -84,22 +84,39 @@ def construct_algorithm(module_path, model_config={}, trainer_config={}):
     )
 
 
+from typing import Dict
+
+import time
+
+from gym import spaces
+from threading import Thread, Event
 from malib.mocker.mocker_utils import FakeFeatureHandler
 from malib.rollout.episode import Episode
+from malib.backend.dataset_server.utils import send_data
 
 
-@pytest.mark.parametrize("module_path", [
-    'malib.rl.random'
-])
+def datasend_thread(entrypoint: str, batch: Dict[str, np.ndarray], event: Event):
+    while not event.is_set():
+        send_data(data=batch, entrypoint=entrypoint)
+        event.wait(1)
+
+
+@pytest.mark.parametrize("module_path", ["malib.rl.random"])
 class TestIndependentAgent:
     def test_learner_with_outer_dataset(self, module_path):
-        obs_space = gym.spaces.Box(low=-1, high=1, shape=(1, 1), dtype=np.float32)
-        act_space = gym.spaces.Discrete(2)
+        obs_space = spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
+        act_space = spaces.Discrete(2)
+        block_size = 300
+
         np_memory = {
-            Episode.CUR_OBS: np.zeros()
+            Episode.CUR_OBS: np.zeros(
+                (block_size,) + obs_space.shape, dtype=np.float32
+            ),
+            Episode.ACTION: np.zeros((block_size,), dtype=np.int32),
         }
         governed_agents = ["default"]
 
+        # we construct a dataset outside the learner
         dataset = construct_dataset(
             feature_handler=FakeFeatureHandler(
                 {
@@ -107,23 +124,42 @@ class TestIndependentAgent:
                     Episode.ACTION: act_space,
                 },
                 np_memory,
-                block_size=100,
+                block_size=block_size,
                 device="cpu",
             )
         )
         algorithm = construct_algorithm(module_path)
         learner = construct_learner(
-            algorithm, governed_agents, custom_config=None, dataset=dataset
+            obs_space,
+            act_space,
+            algorithm,
+            governed_agents,
+            custom_config=None,
+            dataset=dataset,
         )
 
-        for _ in range(10):
+        # start a thread to generate data
+        dataset.start_server()
+        batch = dataset.feature_handler.generate_batch(10)
+        event = Event()
+        thread = Thread(target=datasend_thread, args=(dataset.entrypoint, batch, event))
+        thread.start()
+
+        # run 10 trails
+        for i in range(10):
             learner.step(prints=True)
+            time.sleep(0.2)
+            print("-------- {}/10 --------".format(i + 1))
 
-    def test_learner_with_outer_feature_handler(self):
+        event.set()
+        thread.join()
+        dataset.close()
+
+    def test_learner_with_outer_feature_handler(self, module_path):
         pass
 
-    def test_learner_with_feature_handler_gen(self):
+    def test_learner_with_feature_handler_gen(self, module_path):
         pass
 
-    def test_learner_with_dataset_gen(self):
+    def test_learner_with_dataset_gen(self, module_path):
         pass

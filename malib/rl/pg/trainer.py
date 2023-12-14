@@ -42,9 +42,7 @@ from .config import Config
 class PGTrainer(Trainer):
     def __init__(self, training_config: Dict[str, Any], policy_instance: Policy = None):
         # merge from default
-        training_config = merge_dicts(
-            Config.TRAINING_CONFIG, training_config or {}
-        )
+        training_config = merge_dicts(Config.TRAINING_CONFIG, training_config or {})
         super().__init__(training_config, policy_instance)
 
     def setup(self):

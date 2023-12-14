@@ -104,6 +104,8 @@ def get_stopper(conditions: Dict[str, Any]):
         )
     if "max_iteration" in conditions:
         stoppings.append(MaxIterationStopping(conditions["max_iteration"]))
+    if len(conditions) == 0:
+        stoppings.append(NoStoppingCondition())
 
     if len(stoppings) == 0:
         raise NotImplementedError(f"unkonw stopping condition type: {conditions}")

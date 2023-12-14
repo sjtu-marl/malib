@@ -173,7 +173,7 @@ class TestRolloutWorker:
                 ),
                 log_dir=log_dir,
             )
-
+            # create a batch of inference servers, serve for rollout workers (shared among them)
             infer_manager = InferenceManager(
                 group_info=group_info,
                 algorithm=algorithm,
@@ -196,7 +196,7 @@ class TestRolloutWorker:
                 )
                 for agent in agents
             }
-
+            # create a single PB rollout worker, for task execution
             worker = PBRolloutWorker(
                 env_desc=env_desc,
                 agent_groups=group_info["agent_groups"],
