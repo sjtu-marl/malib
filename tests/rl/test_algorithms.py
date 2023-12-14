@@ -30,7 +30,7 @@ import numpy as np
 
 from malib import rl
 from malib.rl.common import policy, trainer
-from malib.utils.episode import Episode
+from malib.rollout.episode import Episode
 from malib.utils.tianshou_batch import Batch
 from malib.rollout.envs.mdp.env import MDPEnvironment
 

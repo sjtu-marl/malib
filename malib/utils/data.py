@@ -1,13 +1,55 @@
 # reference: https://github.com/thu-ml/tianshou/blob/master/tianshou/data/batch.py
 
 
-from typing import Any, Union, Optional, Collection, Dict
+from typing import Any, Union, Optional, Collection, Dict, List
 from numbers import Number
 
 import torch
 import numpy as np
 
 from numba import njit
+
+
+numpy_to_torch_dtype_dict = {
+    np.bool_: torch.bool,
+    np.uint8: torch.uint8,
+    np.int8: torch.int8,
+    np.int16: torch.int16,
+    np.int32: torch.int32,
+    np.int64: torch.int64,
+    np.float16: torch.float16,
+    np.float32: torch.float32,
+    np.float64: torch.float64,
+    np.complex64: torch.complex64,
+    np.complex128: torch.complex128,
+}
+
+
+def merge_array_by_keys(
+    candidates: List[Dict[str, np.ndarray]]
+) -> Dict[str, np.ndarray]:
+    """Merge a list of arrays by keys.
+
+    Args:
+        candidates (List[Dict[str, np.ndarray]]): A list of dict, each element is a dict of arrays.
+
+    Returns:
+        Dict[str, np.ndarray]: A merged dict of arrays.
+    """
+
+    # check whether keys are the same
+    keys_reference = set(candidates[0].keys())
+    for candidate in candidates[1:]:
+        assert keys_reference == set(candidate.keys())
+
+    # then merge arrays by keys
+    merged = {}
+    for key in keys_reference:
+        merged[key] = np.concatenate(
+            [candidate[key] for candidate in candidates], axis=0
+        )
+
+    return merged
 
 
 def _is_scalar(value: Any) -> bool:
@@ -109,6 +151,11 @@ def to_torch(
         if dtype is not None:
             x = x.type(dtype)
         return x
+    elif isinstance(x, dict):
+        new_x = {}
+        for k, v in x.items():
+            new_x[k] = to_torch(v, dtype, device)
+        return new_x
     elif isinstance(x, torch.Tensor):  # second often case
         if dtype is not None:
             x = x.type(dtype)
@@ -176,7 +223,6 @@ class Postprocessor:
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
     ):
-
         adv = _gae_return(
             state_value, next_state_value, reward, done, gamma, gae_lambda
         )
@@ -191,6 +237,19 @@ class Postprocessor:
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
     ):
+        """Compute episodic return with GAE.
+
+        Args:
+            batch (Dict[str, Any]): A dict of batch, including obs, rew, done at least
+            state_value (np.ndarray, optional): A batch of state value. Defaults to None.
+            next_state_value (np.ndarray, optional): A batch next state value. Defaults to None.
+            gamma (float, optional): Gamma. Defaults to 0.99.
+            gae_lambda (float, optional): GAE lambda. Defaults to 0.95.
+
+        Returns:
+            a dict of batch
+        """
+
         if isinstance(batch["rew"], torch.Tensor):
             rew = batch["rew"].cpu().numpy()
         else:

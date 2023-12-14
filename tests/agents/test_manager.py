@@ -34,9 +34,8 @@ from collections import defaultdict
 
 from malib.runner import start_servers
 from malib.utils.typing import AgentID
-from malib.agent import IndependentAgent
-from malib.agent.manager import TrainingManager
-from malib.scenarios.marl_scenario import MARLScenario
+from malib.learner import IndependentAgent
+from malib.learner.manager import TrainingManager
 from malib.rl.random import RandomPolicy, RandomTrainer, DEFAULT_CONFIG
 
 
@@ -64,14 +63,14 @@ def agent_mapping_one_to_one(
 @pytest.mark.parametrize("algorithms", [default_algorithms()])
 @pytest.mark.parametrize("env_desc", [generate_gym_desc("CartPole-v1")])
 @pytest.mark.parametrize(
-    "training_type,custom_training_config", [(IndependentAgent, {})]
+    "learner_type,custom_training_config", [(IndependentAgent, {})]
 )
 class TestTrainingManager:
     def test_policy_add(
         self,
         algorithms: Dict[str, Any],
         env_desc: Dict[str, Any],
-        training_type: Type,
+        learner_type: Type,
         custom_training_config: Dict[str, Any],
         remote_mode: bool = True,
     ):
@@ -91,7 +90,7 @@ class TestTrainingManager:
         parameter_server, offline_dataset_server = start_servers()
 
         training_config = {
-            "type": training_type,
+            "learner_type": learner_type,
             "trainer_config": DEFAULT_CONFIG["training_config"],
             "custom_config": custom_training_config,
         }
@@ -119,7 +118,7 @@ class TestTrainingManager:
             target_agent_groups,
         )
         # check agent interfaces
-        agent_interfaces = self.training_manager._interfaces
+        agent_interfaces = self.training_manager._learners
         assert set(agent_interfaces.keys()) == set(target_agent_groups.keys()), (
             agent_interfaces.keys(),
             target_agent_groups.keys(),

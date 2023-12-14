@@ -24,77 +24,142 @@
 
 from typing import Any
 
-
 import pytest
+import importlib
+import gym
+import numpy as np
 
-from malib import rl
-from malib.utils.tianshou_batch import Batch
-from malib.utils.episode import Episode
-from malib.mocker.mocker_utils import use_ray_env
-from malib.rollout.envs.mdp import env_desc_gen
-from malib.agent.indepdent_agent import IndependentAgent
-
-
-def start_learner(env_id: str, algorithm: Any):
-    experiment_tag = "test_"
-    agent_mapping_func = lambda agent: agent
-    env_desc = env_desc_gen(env_id=env_id)
-    learners = {
-        agent: IndependentAgent(
-            experiment_tag=experiment_tag,
-            runtime_id=agent,
-            log_dir="./logs",
-            env_desc=env_desc,
-            algorithms={
-                "default": (
-                    algorithm.POLICY,
-                    algorithm.TRAINER,
-                    algorithm.DEFAULT_CONFIG["model_config"],
-                    {},
-                )
-            },
-            agent_mapping_func=agent_mapping_func,
-            governed_agents=[agent],
-            trainer_config=algorithm.DEFAULT_CONFIG["training_config"],
-            custom_config={},
-        )
-        for agent in env_desc["possible_agents"]
-    }
-    for learner in learners.values():
-        learner.connect(max_tries=2)
-    return learners
+from malib.utils.general import merge_dicts
+from malib.rl.config import Algorithm
+from malib.learner.learner import MAX_MESSAGE_LENGTH
+from malib.learner.indepdent_learner import IndependentAgent
+from malib.backend.dataset_server.data_loader import DynamicDataset
 
 
-@pytest.mark.parametrize("env_id", ["two_round_dmdp"])
-@pytest.mark.parametrize("algorithm", [rl.pg, rl.a2c, rl.dqn])
+def construct_dataset(
+    feature_handler=None, feature_handler_cls=None, feature_handler_kwargs={}
+):
+    return DynamicDataset(
+        grpc_thread_num_workers=1,
+        max_message_length=MAX_MESSAGE_LENGTH,
+        feature_handler=feature_handler,
+        feature_handler_cls=feature_handler_cls,
+        **feature_handler_kwargs
+    )
+
+
+def construct_learner(
+    obs_space,
+    act_space,
+    algorithm,
+    governed_agents,
+    custom_config=None,
+    dataset=None,
+    feature_handler_gen=None,
+) -> IndependentAgent:
+    return IndependentAgent(
+        runtime_id=None,
+        log_dir=None,
+        observation_space=obs_space,
+        action_space=act_space,
+        algorithm=algorithm,
+        governed_agents=governed_agents,
+        custom_config=custom_config,
+        dataset=dataset,
+        feature_handler_gen=feature_handler_gen,
+    )
+
+
+def construct_algorithm(module_path, model_config={}, trainer_config={}):
+    # import policy, trainer and default config from a given module
+    policy_cls = importlib.import_module(module_path).Policy
+    trainer_cls = importlib.import_module(module_path).Trainer
+    default_config = importlib.import_module(module_path).DEFAULT_CONFIG
+
+    return Algorithm(
+        policy=policy_cls,
+        trainer=trainer_cls,
+        model_config=merge_dicts(default_config.MODEL_CONFIG, model_config),
+        trainer_config=merge_dicts(default_config.TRAINING_CONFIG, trainer_config),
+    )
+
+
+from typing import Dict
+
+import time
+
+from gym import spaces
+from threading import Thread, Event
+from malib.mocker.mocker_utils import FakeFeatureHandler
+from malib.rollout.episode import Episode
+from malib.backend.dataset_server.utils import send_data
+
+
+def datasend_thread(entrypoint: str, batch: Dict[str, np.ndarray], event: Event):
+    while not event.is_set():
+        send_data(data=batch, entrypoint=entrypoint)
+        event.wait(1)
+
+
+@pytest.mark.parametrize("module_path", ["malib.rl.random"])
 class TestIndependentAgent:
-    def test_policy_add(self, env_id, algorithm):
-        with use_ray_env():
-            learners = start_learner(env_id, algorithm)
-            for learner in learners.values():
-                learner.add_policies(n=1)
+    def test_learner_with_outer_dataset(self, module_path):
+        obs_space = spaces.Box(low=-1, high=1, shape=(1,), dtype=np.float32)
+        act_space = spaces.Discrete(2)
+        block_size = 300
 
-    def test_parameter_sync(self, env_id, algorithm):
-        with use_ray_env():
-            learners = start_learner(env_id, algorithm)
-            for learner in learners.values():
-                learner.add_policies(n=1)
-                # then sync parameter to remote parameter server
-                learner.push()
-                # also pull down
-                learner.pull()
+        np_memory = {
+            Episode.CUR_OBS: np.zeros(
+                (block_size,) + obs_space.shape, dtype=np.float32
+            ),
+            Episode.ACTION: np.zeros((block_size,), dtype=np.int32),
+        }
+        governed_agents = ["default"]
 
-    def test_multiagent_post_process(self, env_id, algorithm):
-        with use_ray_env():
-            learners = start_learner(env_id, algorithm)
-            for learner in learners.values():
-                batch = learner.multiagent_post_process((Batch(), None))
-                assert isinstance(batch, Batch)
-                with pytest.raises(TypeError):
-                    learner.multiagent_post_process("fefefefe")
+        # we construct a dataset outside the learner
+        dataset = construct_dataset(
+            feature_handler=FakeFeatureHandler(
+                {
+                    Episode.CUR_OBS: obs_space,
+                    Episode.ACTION: act_space,
+                },
+                np_memory,
+                block_size=block_size,
+                device="cpu",
+            )
+        )
+        algorithm = construct_algorithm(module_path)
+        learner = construct_learner(
+            obs_space,
+            act_space,
+            algorithm,
+            governed_agents,
+            custom_config=None,
+            dataset=dataset,
+        )
 
-    def test_training_pipeline(self, env_id, algorithm):
-        with use_ray_env():
-            learners = start_learner(env_id, algorithm)
-            for learner in learners.values():
-                learner.add_policies(n=1)
+        # start a thread to generate data
+        dataset.start_server()
+        batch = dataset.feature_handler.generate_batch(10)
+        event = Event()
+        thread = Thread(target=datasend_thread, args=(dataset.entrypoint, batch, event))
+        thread.start()
+
+        # run 10 trails
+        for i in range(10):
+            learner.step(prints=True)
+            time.sleep(0.2)
+            print("-------- {}/10 --------".format(i + 1))
+
+        event.set()
+        thread.join()
+        dataset.close()
+
+    def test_learner_with_outer_feature_handler(self, module_path):
+        pass
+
+    def test_learner_with_feature_handler_gen(self, module_path):
+        pass
+
+    def test_learner_with_dataset_gen(self, module_path):
+        pass

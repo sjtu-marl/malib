@@ -32,7 +32,7 @@ from torch.nn import functional as F
 from malib.utils.typing import AgentID
 from malib.utils.tianshou_batch import Batch
 from malib.utils.data import Postprocessor
-from malib.utils.episode import Episode
+from malib.rollout.episode import Episode
 from malib.rl.common import misc
 from malib.rl.common.trainer import Trainer
 from malib.rl.common.policy import Policy

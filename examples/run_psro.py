@@ -26,8 +26,8 @@ from argparse import ArgumentParser
 import os
 import time
 
-from malib.runner import run
-from malib.agent import IndependentAgent
+from malib.scenarios import psro_scenario
+from malib.learner import IndependentAgent
 from malib.scenarios.psro_scenario import PSROScenario
 from malib.rl.dqn import DQNPolicy, DQNTrainer, DEFAULT_CONFIG
 from malib.rollout.envs.open_spiel import env_desc_gen
@@ -99,4 +99,6 @@ if __name__ == "__main__":
         },
     )
 
-    run(scenario)
+    results = psro_scenario.execution_plan(scenario=scenario, verbose=True)
+
+    print(results)

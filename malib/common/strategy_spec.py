@@ -24,7 +24,7 @@
 
 from typing import Dict, Any, Tuple, Type
 from argparse import Namespace
-
+from collections import namedtuple
 import numpy as np
 
 from malib.rl.common.policy import Policy
@@ -48,22 +48,41 @@ def validate_meta_data(policy_ids: Tuple[PolicyID], meta_data: Dict[str, Any]):
         assert np.isclose(sum(meta_data["prob_list"]), 1.0)
 
 
+import copy
+
+from gym import spaces
+
+
 class StrategySpec:
     def __init__(
-        self, identifier: str, policy_ids: Tuple[PolicyID], meta_data: Dict[str, Any]
+        self,
+        policy_cls: Type,
+        observation_space: spaces.Space,
+        action_space: spaces.Space,
+        model_config: Dict[str, Any] = None,
+        identifier: str = None,
+        policy_ids: Tuple[PolicyID] = None,
+        **kwargs,
     ) -> None:
         """Construct a strategy spec.
 
         Args:
             identifier (str): Runtime id as identifier.
-            policy_ids (Tuple[PolicyID]): A tuple of policy id, could be empty.
+            policy_ids (Tuple[PolicyID], optional): A tuple of policy id, could be empty. Defaults to None, then sampling will return a None.
             meta_data (Dict[str, Any]): Meta data, for policy construction.
         """
 
-        validate_meta_data(policy_ids, meta_data)
-        self.id = identifier
-        self.policy_ids = tuple(policy_ids)
-        self.meta_data = meta_data
+        self.id = identifier or "StrategySpec"
+        self.policy_ids = tuple(policy_ids) if policy_ids else ()
+        self.meta_data = {
+            "policy_cls": policy_cls,
+            "init_kwargs": {
+                "observation_space": observation_space,
+                "action_space": action_space,
+                "model_config": model_config,
+                **kwargs,
+            },
+        }
 
     def __str__(self):
         return f"<StrategySpec: {self.policy_ids}>"
@@ -85,7 +104,8 @@ class StrategySpec:
             policy_id (PolicyID): Policy id to register.
         """
 
-        assert policy_id not in self.policy_ids, (policy_id, self.policy_ids)
+        if policy_id in self.policy_ids:
+            raise KeyError("repected policy id detected: {}".format(policy_id))
         self.policy_ids = self.policy_ids + (policy_id,)
 
         if "prob_list" in self.meta_data:
@@ -104,10 +124,11 @@ class StrategySpec:
         for pid, prob in policy_probs.items():
             idx = self.policy_ids.index(pid)
             self.meta_data["prob_list"][idx] = prob
-        assert np.isclose(sum(self.meta_data["prob_list"]), 1.0), (
-            self.meta_data["prob_list"],
-            sum(self.meta_data["prob_list"]),
-        )
+
+        if not np.isclose(sum(self.meta_data["prob_list"]), 1.0):
+            raise ValueError(
+                f"Prob list is not normalized: {self.meta_data['prob_list']}"
+            )
 
     def get_meta_data(self) -> Dict[str, Any]:
         """Return meta data. Keys in meta-data contains
@@ -121,7 +142,7 @@ class StrategySpec:
             Dict[str, Any]: A dict of meta data.
         """
 
-        return self.meta_data
+        return copy.deepcopy(self.meta_data)
 
     def gen_policy(self, device=None) -> Policy:
         """Generate a policy instance with the given meta data.
@@ -131,23 +152,8 @@ class StrategySpec:
         """
 
         policy_cls: Type[Policy] = self.meta_data["policy_cls"]
-        plist = self.meta_data["kwargs"]
-        plist = Namespace(**plist)
-
-        custom_config = plist.custom_config.copy()
-
-        if device is not None and "cuda" in device:
-            custom_config["use_cuda"] = True
-        else:
-            custom_config["use_cuda"] = False
-
-        return policy_cls(
-            observation_space=plist.observation_space,
-            action_space=plist.action_space,
-            model_config=plist.model_config,
-            custom_config=custom_config,
-            **plist.kwargs,
-        )
+        policy = policy_cls(**self.meta_data["init_kwargs"])
+        return policy.to(device)
 
     def sample(self) -> PolicyID:
         """Sample a policy instance. Use uniform sample if there is no presetted prob list in meta data.
@@ -155,6 +161,11 @@ class StrategySpec:
         Returns:
             PolicyID: A sampled policy id.
         """
+
+        if len(self) == 0:
+            raise RuntimeError(
+                "No policy id registered, it would be feasible for an active policy."
+            )
 
         prob_list = self.meta_data.get(
             "prob_list", [1 / self.num_policy] * self.num_policy

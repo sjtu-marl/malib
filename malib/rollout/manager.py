@@ -26,8 +26,7 @@ subprocess). It is responsible for the resources management of worker instances,
 will be assigned with rollout tasks sent from the `CoordinatorServer`.
 """
 
-from typing import Dict, Tuple, Any, Callable, Set, List
-from collections import defaultdict
+from typing import Dict, Tuple, Any, Callable, Set, List, Union
 
 import traceback
 import ray
@@ -35,9 +34,12 @@ import numpy as np
 
 from ray.util import ActorPool
 
+from malib.utils.logging import Logger
+from malib.common.task import RolloutTask
 from malib.common.manager import Manager
 from malib.remote.interface import RemoteInterface
 from malib.common.strategy_spec import StrategySpec
+from malib.rollout.config import RolloutConfig
 from malib.rollout.pb_rolloutworker import PBRolloutWorker
 
 
@@ -55,7 +57,7 @@ def validate_strategy_specs(specs: Dict[str, StrategySpec]):
 
     for rid, spec in specs.items():
         if len(spec) < 1:
-            raise ValueError(f"Empty spec for runtime_id={rid}")
+            continue
         # check prob list
         expected_prob_list = spec.meta_data.get(
             "prob_list", [1 / len(spec)] * len(spec)
@@ -73,22 +75,20 @@ def validate_strategy_specs(specs: Dict[str, StrategySpec]):
 class RolloutWorkerManager(Manager):
     def __init__(
         self,
-        experiment_tag: str,
         stopping_conditions: Dict[str, Any],
         num_worker: int,
-        agent_mapping_func: Callable,
-        rollout_config: Dict[str, Any],
+        group_info: Dict[str, Any],
+        rollout_config: Union[RolloutConfig, Dict[str, Any]],
         env_desc: Dict[str, Any],
         log_dir: str,
         resource_config: Dict[str, Any] = None,
+        ray_actor_namespace: str = "rollout_worker",
         verbose: bool = True,
     ):
         """Construct a manager for multiple rollout workers.
 
         Args:
-            experiment_tag (str): Experiment tag.
             num_worker (int): Indicates how many rollout workers will be initialized.
-            agent_mapping_func (Callable): Agent mapping function, maps agents to runtime id.
             rollout_config (Dict[str, Any]): Runtime rollout configuration.
             env_desc (Dict[str, Any]): Environment description.
             log_dir (str): Log directory.
@@ -96,19 +96,20 @@ class RolloutWorkerManager(Manager):
             verbose (bool, optional): Enable logging or not. Defaults to True.
         """
 
-        super().__init__(verbose=verbose)
+        super().__init__(verbose=verbose, namespace=ray_actor_namespace)
 
         rollout_worker_cls = PBRolloutWorker
         worker_cls = rollout_worker_cls.as_remote(num_cpus=0, num_gpus=0)
         workers = []
-
+        ready_check = []
         for i in range(num_worker):
             workers.append(
-                worker_cls.options(max_concurrency=100).remote(
-                    experiment_tag=experiment_tag,
+                worker_cls.options(
+                    max_concurrency=100, namespace=self.namespace, name=f"actor_{i}"
+                ).remote(
                     env_desc=env_desc,
-                    agent_mapping_func=agent_mapping_func,
-                    rollout_config=rollout_config,
+                    agent_groups=group_info["agent_groups"],
+                    rollout_config=RolloutConfig.from_raw(rollout_config),
                     log_dir=log_dir,
                     rollout_callback=None,
                     simulate_callback=None,
@@ -116,21 +117,17 @@ class RolloutWorkerManager(Manager):
                     verbose=verbose,
                 )
             )
+            ready_check.append(workers[-1].ready.remote())
 
-        self._workers: List[ray.actor] = workers
+        while len(ready_check):
+            _, ready_check = ray.wait(ready_check, num_returns=1, timeout=1)
+
+        self._workers: List[ray.ObjectRef] = workers
         self._actor_pool = ActorPool(self._workers)
+        self._runtime_ids = tuple(group_info["agent_groups"].keys())
+        self._group_info = group_info
 
-        agent_groups = defaultdict(lambda: set())
-        for agent in env_desc["possible_agents"]:
-            rid = agent_mapping_func(agent)
-            agent_groups[rid].add(agent)
-        self._runtime_ids = tuple(agent_groups.keys())
-        self._agent_groups = dict(agent_groups)
-        self.experiment_tag = experiment_tag
-
-        assert (
-            "rollout" in stopping_conditions
-        ), f"Stopping conditions should contain `rollout`: {stopping_conditions}"
+        # FIXME(ming): deprecated
         self.stopping_conditions = stopping_conditions
 
     @property
@@ -151,7 +148,7 @@ class RolloutWorkerManager(Manager):
             Dict[str, Set]: A dict of set.
         """
 
-        return self._agent_groups
+        return self._group_info["agent_groups"]
 
     @property
     def workers(self) -> List[RemoteInterface]:
@@ -163,45 +160,32 @@ class RolloutWorkerManager(Manager):
 
         return self._workers
 
-    def simulate(self, task_list):
-        """Parse simulation task and dispatch it to available workers"""
-
-        for task in task_list:
-            self._actor_pool.submit(
-                lambda actor, task: actor.simulate.remote(runtime_strategy_specs=task),
-                task,
-            )
-
-    def rollout(self, task_list: List[Dict[str, Any]]) -> None:
-        """Start rollout task without blocking.
+    def submit(
+        self, task: Union[Dict[str, Any], List[Dict[str, Any]]], wait: bool = False
+    ) -> Any:
+        """Submit a task to workers
 
         Args:
-            task_list (List[Dict[str, Any]]): A list of task dict, keys include:
-                - `strategy_specs`: a dict of strategy specs, mapping from runtime ids to specs.
-                - `trainable_agents`: a list of trainable agents.
-
+            task (Union[Dict[str, Any], List[Dict[str, Any]]]): Task description or a list of task description
+            task_type (Any): Task type, should be an instance from TaskType
         """
 
-        # validate all strategy specs here
-        for task in task_list:
-            validate_strategy_specs(task["strategy_specs"])
+        if isinstance(task, List):
+            task = [RolloutTask.from_raw(e) for e in task]
+        else:
+            task = [RolloutTask.from_raw(task)]
 
-        while self._actor_pool.has_next():
-            try:
-                self._actor_pool.get_next(timeout=0)
-            except TimeoutError:
-                pass
-
-        for task in task_list:
+        for _task in task:
+            validate_strategy_specs(_task.strategy_specs)
             self._actor_pool.submit(
-                lambda actor, task: actor.rollout.remote(
-                    runtime_strategy_specs=task["strategy_specs"],
-                    stopping_conditions=self.stopping_conditions["rollout"],
-                    trainable_agents=task["trainable_agents"],
-                    data_entrypoints=task["data_entrypoints"],
-                ),
-                task,
+                lambda actor, _task: actor.rollout.remote(_task), _task
             )
+
+        if wait:
+            result_list = self.wait()
+            return result_list
+        else:
+            return None
 
     def retrive_results(self):
         """Retrieve task results
@@ -217,7 +201,7 @@ class RolloutWorkerManager(Manager):
             while self._actor_pool.has_next():
                 yield self._actor_pool.get_next()
         except Exception as e:
-            print(traceback.format_exc())
+            Logger.error(traceback.format_exc())
             raise e
 
     def terminate(self):

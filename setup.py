@@ -40,7 +40,7 @@ setup(
     python_requires=">=3.7",
     install_requires=[
         "wrapt",
-        "ray==1.13.0",
+        "ray>=1.13.0",
         "pickle5",
         "torch",
         "tensorboardX",
@@ -64,6 +64,8 @@ setup(
         "pygame==2.1.0",
         "pettingzoo",
         "networkx",
+        "zerocopy>=0.1.0",
+        "grpcio-tools>=1.59.0",
     ],
     extras_require={
         "dev": [

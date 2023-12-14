@@ -20,8 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import traceback
-from typing import List, Generator, Any
+from typing import List, Any
 from abc import abstractmethod, ABC
 
 import ray
@@ -32,10 +31,11 @@ from malib.remote.interface import RemoteInterface
 
 class Manager(ABC):
     @abstractmethod
-    def __init__(self, verbose: bool):
+    def __init__(self, verbose: bool, namespace: str):
         self._force_stop = False
         self.pending_tasks = []
         self.verbose = verbose
+        self._namespace = namespace
 
     def is_running(self):
         return len(self.pending_tasks) > 0
@@ -44,11 +44,25 @@ class Manager(ABC):
         self._force_stop = True
 
     @property
+    def namespace(self) -> str:
+        return self._namespace
+
+    @property
     def workers(self) -> List[RemoteInterface]:
         raise NotImplementedError
 
+    @abstractmethod
     def retrive_results(self):
-        raise NotImplementedError
+        """Retrieve execution results."""
+
+    @abstractmethod
+    def submit(self, task: Any, wait: bool = False) -> Any:
+        """Submit task to workers.
+
+        Args:
+            task (Any): Task description.
+            wait (bool, optional): Block or not. Defaults to False.
+        """
 
     def wait(self) -> List[Any]:
         """Wait workers to be terminated, and retrieve the executed results.
@@ -79,7 +93,6 @@ class Manager(ABC):
 
         return rets
 
-    @abstractmethod
     def terminate(self):
         """Resource recall"""
 

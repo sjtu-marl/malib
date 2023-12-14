@@ -39,7 +39,6 @@ class RemoteInterface:
         num_cpus: int = None,
         num_gpus: int = None,
         memory: int = None,
-        object_store_memory: int = None,
         resources: dict = None,
     ) -> type:
         """Return a remote class for Actor initialization"""
@@ -48,9 +47,12 @@ class RemoteInterface:
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             memory=memory,
-            object_store_memory=object_store_memory,
             resources=resources,
         )(cls)
+
+    def ready(self):
+        """For initialization checking. Always return True."""
+        return True
 
     def stop_pending_tasks(self):
         """External object can call this method to stop all pending tasks."""

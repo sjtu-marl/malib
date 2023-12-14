@@ -33,40 +33,41 @@ from gym import spaces
 
 from malib.rl.pg import PGPolicy
 from malib.models.torch import continuous, discrete
+from malib.models.torch.net import ActorCritic
 
 
 class A2CPolicy(PGPolicy):
-    def __init__(
-        self,
-        observation_space: spaces.Space,
-        action_space: spaces.Space,
-        model_config: Dict[str, Any],
-        custom_config: Dict[str, Any],
-        **kwargs
-    ):
-        super().__init__(
-            observation_space, action_space, model_config, custom_config, **kwargs
-        )
+    def create_model(self):
+        # since a PGPolicy creates a model as an Actor.
+        actor = super().create_model()
 
-        preprocess_net: nn.Module = self.actor.preprocess
-        if isinstance(action_space, spaces.Discrete):
-            self.critic = discrete.Critic(
+        preprocess_net: nn.Module = actor.preprocess
+        if isinstance(self.action_space, spaces.Discrete):
+            critic = discrete.Critic(
                 preprocess_net=preprocess_net,
-                hidden_sizes=model_config["hidden_sizes"],
+                hidden_sizes=self.model_config["hidden_sizes"],
                 device=self.device,
             )
-        elif isinstance(action_space, spaces.Box):
-            self.critic = continuous.Critic(
+        elif isinstance(self.action_space, spaces.Box):
+            critic = continuous.Critic(
                 preprocess_net=preprocess_net,
-                hidden_sizes=model_config["hidden_sizes"],
+                hidden_sizes=self.model_config["hidden_sizes"],
                 device=self.device,
             )
         else:
             raise TypeError(
-                "Unexpected action space type: {}".format(type(action_space))
+                "Unexpected action space type: {}".format(type(self.action_space))
             )
 
-        self.register_state(self.critic, "critic")
+        return ActorCritic(actor, critic)
+
+    @property
+    def actor(self):
+        return self.model.actor
+
+    @property
+    def critic(self):
+        return self.model.critic
 
     def value_function(self, observation: torch.Tensor, evaluate: bool, **kwargs):
         """Compute values of critic."""

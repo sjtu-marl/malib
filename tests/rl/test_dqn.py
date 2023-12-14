@@ -82,7 +82,6 @@ def test_dqn_policy(
 
 
 def test_dqn_trainer():
-
     num_agents = 4
     batch_size = 64
 

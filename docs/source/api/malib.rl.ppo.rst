@@ -9,6 +9,14 @@ malib.rl.ppo package
 Submodules
 ----------
 
+malib.rl.ppo.config module
+--------------------------
+
+.. automodule:: malib.rl.ppo.config
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 malib.rl.ppo.policy module
 --------------------------
 

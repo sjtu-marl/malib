@@ -1,5 +1,6 @@
-DEFAULT_CONFIG = {
-    "training_config": {
+class Config:
+
+    TRAINING_CONFIG = {
         "optimizer": "Adam",
         "lr": 1e-4,
         "reward_norm": None,
@@ -12,9 +13,9 @@ DEFAULT_CONFIG = {
         "entropy_coef": 1e-3,
         "grad_norm": 5.0,
         "use_cuda": False,
-    },
-    "model_config": {
+    }
+
+    MODEL_CONFIG = {
         "preprocess_net": {"net_type": None, "config": {"hidden_sizes": [64]}},
         "hidden_sizes": [64],
-    },
-}
+    }

@@ -4,7 +4,12 @@ import numpy as np
 import gym
 
 from gym import spaces
-from smac.env import StarCraft2Env as sc_env
+from malib.utils.logging import Logger
+
+try:
+    from smac.env import StarCraft2Env as sc_env
+except ImportError:
+    Logger.warning("Unable to import smac")
 
 from malib.rollout.envs.env import Environment, GroupWrapper
 from malib.utils.typing import AgentID
@@ -149,7 +154,6 @@ class SC2Env(Environment):
 
 
 def StatedSC2(**config):
-
     env = SC2Env(**config)
 
     class Wrapped(GroupWrapper):
@@ -179,7 +183,6 @@ def StatedSC2(**config):
 
 
 if __name__ == "__main__":
-
     env = SC2Env(env_id="3m")
 
     state, obs = env.reset()

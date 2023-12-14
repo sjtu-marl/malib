@@ -22,11 +22,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Dict, Any
+from typing import Dict, Any, List
+
+import ray
+
+from malib.utils.typing import AgentID
+from malib.utils.logging import Logger
 
 from malib.rollout.rolloutworker import RolloutWorker, parse_rollout_info
 from malib.common.strategy_spec import StrategySpec
-from malib.utils.logging import Logger
 
 
 class PBRolloutWorker(RolloutWorker):
@@ -35,66 +39,18 @@ class PBRolloutWorker(RolloutWorker):
     def step_rollout(
         self,
         eval_step: bool,
-        rollout_config: Dict[str, Any],
-        dataset_writer_info_dict: Dict[str, Any],
-    ):
-        tasks = [rollout_config for _ in range(self.rollout_config["num_threads"])]
-
-        # add tasks for evaluation
-        if eval_step:
-            eval_runtime_config = rollout_config.copy()
-            eval_runtime_config["flag"] = "evaluation"
-            tasks.extend(
-                [
-                    eval_runtime_config
-                    for _ in range(self.rollout_config["num_eval_threads"])
-                ]
+        strategy_specs: Dict[AgentID, StrategySpec],
+        data_entrypoints: Dict[str, str],
+    ) -> List[Dict[str, Any]]:
+        results = ray.get(
+            self.env_runner.run.remote(
+                rollout_config=self.rollout_config,
+                strategy_specs=strategy_specs,
+                data_entrypoints=data_entrypoints,
             )
-
-        rets = [
-            x
-            for x in self.actor_pool.map(
-                lambda a, task: a.run.remote(
-                    agent_interfaces=self.agent_interfaces,
-                    rollout_config=task,
-                    dataset_writer_info_dict=dataset_writer_info_dict,
-                ),
-                tasks,
-            )
-        ]
-
+        )
         # check evaluation info
-        parsed_results = parse_rollout_info(rets)
+        parsed_results = parse_rollout_info(results)
         Logger.debug(f"parsed results: {parsed_results}")
+
         return parsed_results
-
-    def step_simulation(
-        self,
-        runtime_strategy_specs: Dict[str, StrategySpec],
-        runtime_config_template: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Step simulation task with a given list of strategy spec dicts.
-
-        Args:
-            runtime_strategy_specs (Dict[str, StrategySpec]): A strategy spec dicts.
-            runtime_config_template (Dict[str, Any]): Runtime configuration template.
-
-        Returns:
-            Dict[str, Any]: Evaluation results, a dict.
-        """
-
-        task = runtime_config_template.copy()
-        task["strategy_specs"] = runtime_strategy_specs
-
-        # we should keep dimension as tasks.
-        rets = [
-            parse_rollout_info([x])
-            for x in self.actor_pool.map(
-                lambda a, task: a.run.remote(
-                    agent_interfaces=self.agent_interfaces, rollout_config=task
-                ),
-                [task],
-            )
-        ][0]
-
-        return rets

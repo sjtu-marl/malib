@@ -30,11 +30,12 @@ import torch
 from gym import spaces
 from torch import nn
 
-from malib.models.torch import net, discrete, continuous
-from malib.rl.common import misc
-from malib.rl.common.policy import Policy, Action, ActionDist, Logits
 from malib.utils.general import merge_dicts
-from .config import DEFAULT_CONFIG
+from malib.models.torch import net, discrete, continuous
+from malib.models.config import ModelConfig
+from malib.rl.common import misc
+from malib.rl.common.policy import Policy, PolicyReturn
+from .config import Config as DEFAULT_CONFIG
 
 
 class PGPolicy(Policy):
@@ -42,8 +43,7 @@ class PGPolicy(Policy):
         self,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        model_config: Dict[str, Any],
-        custom_config: Dict[str, Any],
+        model_config: Union[ModelConfig, Dict[str, Any]] = None,
         **kwargs
     ):
         """Build a REINFORCE policy whose input and output dims are determined by observation_space and action_space, respectively.
@@ -52,8 +52,6 @@ class PGPolicy(Policy):
             observation_space (spaces.Space): The observation space.
             action_space (spaces.Space): The action space.
             model_config (Dict[str, Any]): The model configuration dict.
-            custom_config (Dict[str, Any]): The custom configuration dict.
-            is_fixed (bool, optional): Indicates fixed policy or trainable policy. Defaults to False.
 
         Raises:
             NotImplementedError: Does not support other action space type settings except Box and Discrete.
@@ -61,48 +59,59 @@ class PGPolicy(Policy):
         """
 
         # update model_config with default ones
-        model_config = merge_dicts(DEFAULT_CONFIG["model_config"].copy(), model_config)
-        custom_config = merge_dicts(
-            DEFAULT_CONFIG["custom_config"].copy(), custom_config
+        model_config = merge_dicts(
+            DEFAULT_CONFIG.MODEL_CONFIG.copy(), model_config or {}
         )
+        kwargs = merge_dicts(DEFAULT_CONFIG.CUSTOM_CONFIG.copy(), kwargs)
 
-        super().__init__(
-            observation_space, action_space, model_config, custom_config, **kwargs
-        )
+        super().__init__(observation_space, action_space, model_config, **kwargs)
 
+    def create_model(self):
         # update model preprocess_net config here
         action_shape = (
-            (action_space.n,) if len(action_space.shape) == 0 else action_space.shape
+            (self.action_space.n,)
+            if len(self.action_space.shape) == 0
+            else self.action_space.shape
         )
 
         preprocess_net: nn.Module = net.make_net(
-            observation_space,
+            self.observation_space,
             self.device,
-            model_config["preprocess_net"].get("net_type", None),
-            **model_config["preprocess_net"]["config"]
+            self.model_config["preprocess_net"].get("net_type", None),
+            **self.model_config["preprocess_net"]["config"]
         )
-        if isinstance(action_space, spaces.Discrete):
-            self.actor = discrete.Actor(
+
+        if isinstance(self.action_space, spaces.Discrete):
+            return discrete.Actor(
                 preprocess_net=preprocess_net,
                 action_shape=action_shape,
-                hidden_sizes=model_config["hidden_sizes"],
+                hidden_sizes=self.model_config["hidden_sizes"],
                 softmax_output=False,
                 device=self.device,
             )
-        elif isinstance(action_space, spaces.Box):
-            self.actor = continuous.Actor(
+        elif isinstance(self.action_space, spaces.Box):
+            return continuous.Actor(
                 preprocess_net=preprocess_net,
                 action_shape=action_shape,
-                hidden_sizes=model_config["hidden_sizes"],
-                max_action=custom_config.get("max_action", 1.0),
+                hidden_sizes=self.model_config["hidden_sizes"],
+                max_action=self.custom_config.get("max_action", 1.0),
                 device=self.device,
             )
         else:
             raise TypeError(
-                "Unexpected action space type: {}".format(type(action_space))
+                "Unexpected action space type: {}".format(type(self.action_space))
             )
 
-        self.register_state(self.actor, "actor")
+    @property
+    def actor(self):
+        if isinstance(self._model, nn.Module):
+            return self._model
+        else:
+            return self._model.actor
+
+    @property
+    def critic(self):
+        raise RuntimeError("PG has no critic network can be called!")
 
     def value_function(self, observation: torch.Tensor, evaluate: bool, **kwargs):
         """Compute values of critic."""
@@ -116,8 +125,8 @@ class PGPolicy(Policy):
         evaluate: bool,
         hidden_state: Any = None,
         **kwargs
-    ) -> Tuple[Action, ActionDist, Logits, Any]:
-        with torch.no_grad():
+    ) -> PolicyReturn:
+        with torch.inference_mode():
             logits, hidden = self.actor(observation, state=hidden_state)
             if isinstance(logits, tuple):
                 dist = self.dist_fn.proba_distribution(*logits)
@@ -137,4 +146,4 @@ class PGPolicy(Policy):
         action_dist = probs
         state = hidden
 
-        return action, action_dist, logits, state
+        return PolicyReturn(action, action_dist, logits, state)

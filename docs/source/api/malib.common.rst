@@ -33,10 +33,26 @@ malib.common.payoff\_manager module
    :undoc-members:
    :show-inheritance:
 
+malib.common.retrace module
+---------------------------
+
+.. automodule:: malib.common.retrace
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 malib.common.strategy\_spec module
 ----------------------------------
 
 .. automodule:: malib.common.strategy_spec
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+malib.common.vtrace module
+--------------------------
+
+.. automodule:: malib.common.vtrace
    :members:
    :undoc-members:
    :show-inheritance:

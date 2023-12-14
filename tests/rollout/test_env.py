@@ -22,6 +22,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# NOTE(ming): not been tested yet
+
 import pytest
 
 from pytest_mock import MockerFixture

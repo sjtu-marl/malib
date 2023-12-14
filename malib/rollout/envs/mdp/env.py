@@ -9,8 +9,6 @@ from malib.rollout.envs.env import Environment
 
 class MDPEnvironment(Environment):
     def __init__(self, **configs):
-        super().__init__(**configs)
-
         try:
             from blackhc import mdp
             from blackhc.mdp import example as mdp_examples
@@ -35,18 +33,16 @@ class MDPEnvironment(Environment):
             )
 
         self.env = scenarios[env_id]().to_env()
-        self._possible_agents = ["agent"]
 
-    @property
-    def possible_agents(self) -> List[AgentID]:
-        return self._possible_agents
+        super().__init__(**configs)
 
-    @property
-    def observation_spaces(self) -> Dict[AgentID, gym.Space]:
+    def register_agents(self):
+        return ["default"]
+
+    def register_observation_spaces(self):
         return dict.fromkeys(self.possible_agents, self.env.observation_space)
 
-    @property
-    def action_spaces(self) -> Dict[AgentID, gym.Space]:
+    def register_action_spaces(self):
         return dict.fromkeys(self.possible_agents, self.env.action_space)
 
     def time_step(
@@ -57,7 +53,7 @@ class MDPEnvironment(Environment):
         Dict[AgentID, bool],
         Dict[AgentID, Any],
     ]:
-        obs, rew, done, info = self.env._step(actions["agent"])
+        obs, rew, done, info = self.env._step(actions["default"])
 
         obs = dict.fromkeys(self.possible_agents, obs)
         rew = dict.fromkeys(self.possible_agents, rew)
